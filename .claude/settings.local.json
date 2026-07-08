@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(echo \"Backend PID: $!\")",
+      "PowerShell(Start-Sleep -Seconds 6; try { $r = Invoke-RestMethod -Uri \"http://localhost:3000/health\" -TimeoutSec 10; $r | ConvertTo-Json -Compress } catch { \"HEALTH CHECK FAILED: $\\($_.Exception.Message\\)\" })"
+    ]
+  }
+}

@@ -1,0 +1,73 @@
+[Unit]
+Description=AccTrack Pro CRM API (NestJS)
+Documentation=file:///opt/acctrack/app/docs/deployment/DEPLOYMENT_GUIDE.md
+After=network-online.target postgresql.service
+Wants=network-online.target postgresql.service
+
+[Service]
+Type=simple
+User=acctrack
+Group=acctrack
+WorkingDirectory=/opt/acctrack/app/backend
+
+# Secrets in a 0600-restricted file; non-sensitive config inline.
+EnvironmentFile=/etc/acctrack/backend.env
+Environment=LOG_DIR=/var/log/acctrack
+# Uploaded documents live outside the app directory so they survive redeploys.
+# StateDirectory creates /var/lib/acctrack (owned by acctrack) on first start.
+Environment=UPLOAD_DIR=/var/lib/acctrack/uploads
+
+ExecStart=/usr/bin/node dist/main.js
+KillSignal=SIGTERM
+KillMode=mixed
+TimeoutStartSec=60
+TimeoutStopSec=30
+
+# Restart on crash only; intentional stop/reload does not trigger a restart loop.
+Restart=on-failure
+RestartSec=5s
+# After 5 crashes in 60 s, enter failed state — requires manual reset-failed.
+StartLimitBurst=5
+StartLimitIntervalSec=60s
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=acctrack-api
+
+# LogsDirectory creates /var/log/acctrack, StateDirectory creates
+# /var/lib/acctrack (both owned by acctrack) on first start. Both are
+# implicitly added to ReadWritePaths under ProtectSystem=strict.
+LogsDirectory=acctrack
+StateDirectory=acctrack
+
+LimitNOFILE=65535
+MemoryMax=512M
+TasksMax=256
+
+# Security hardening — run: systemd-analyze security acctrack-api
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectHostname=true
+ProtectClock=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+RemoveIPC=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+# @system-service covers all syscalls Node.js/V8 needs (incl. mmap/mprotect for JIT).
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target
