@@ -14,8 +14,8 @@ export class CreateAccountDto {
   @Matches(/\S/, { message: 'Account name cannot be blank' })
   name!: string;
 
-  @IsIn(['Growth', 'Pursuit', 'Project']) type!: string;
-  @IsIn(['Healthy', 'At Risk', 'Critical']) health!: string;
+  @IsIn(['Strategic', 'Non Strategic', 'New']) type!: string;
+  @IsIn(['Green', 'Amber', 'Red']) health!: string;
 
   // ownerId is optional in the DTO — the controller always overrides it from the JWT.
   // Keeping the field optional so existing API clients that still send it don't fail validation.
@@ -44,6 +44,7 @@ export class CreateAccountDto {
   email?: string;
 
   @IsString() @IsOptional() @MaxLength(1000) address?: string;
+  @IsString() @IsOptional() @MaxLength(1000) location?: string;
   @IsString() @IsOptional() @MaxLength(5000) description?: string;
 }
 

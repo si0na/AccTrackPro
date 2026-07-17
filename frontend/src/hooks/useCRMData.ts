@@ -17,6 +17,7 @@ const DEFAULT_ACCOUNTS_COLUMNS: ColumnConfig[] = [
   { key: 'industry', name: 'Industry',       isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
   { key: 'status',   name: 'Status',         isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
   { key: 'health',   name: 'Health',         isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
+  { key: 'location', name: 'Location',       isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
   { key: 'since',    name: 'Customer Since', isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
   { key: 'revenue',  name: 'Revenue',        isStandard: true, isPinned: false, isDisplayed: true, type: 'number' },
 ];
@@ -25,22 +26,25 @@ const DEFAULT_OPPORTUNITIES_COLUMNS: ColumnConfig[] = [
   { key: 'name',        name: 'Opportunity Name', isStandard: true, isPinned: true,  isDisplayed: true, type: 'text'   },
   { key: 'accountId',   name: 'Account',          isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
   { key: 'stage',       name: 'Stage',            isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
-  { key: 'status',      name: 'Status',           isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
   { key: 'value',       name: 'Deal Size',        isStandard: true, isPinned: false, isDisplayed: true, type: 'number' },
   { key: 'probability', name: 'Probability',      isStandard: true, isPinned: false, isDisplayed: true, type: 'number' },
-  { key: 'owner',       name: 'Owner',            isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
   { key: 'startDate',   name: 'Start Date',       isStandard: true, isPinned: false, isDisplayed: true, type: 'date'   },
   { key: 'closeDate',   name: 'Close Date',       isStandard: true, isPinned: false, isDisplayed: true, type: 'date'   },
+  { key: 'opportunityType', name: 'Opportunity Type', isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
+  { key: 'serviceLine', name: 'Service Line',     isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
+  { key: 'risksAndDependencies', name: 'Risks & Dependencies', isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
 ];
 
 const DEFAULT_ACTION_ITEMS_COLUMNS: ColumnConfig[] = [
   { key: 'title',         name: 'Action Item Title', isStandard: true, isPinned: true,  isDisplayed: true, type: 'text' },
   { key: 'notes',         name: 'Description',       isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
+  { key: 'risksAndDependencies', name: 'Risks & Dependencies', isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
   { key: 'accountId',     name: 'Account',           isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
   { key: 'opportunityId', name: 'Opportunity',       isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
   { key: 'owner',         name: 'Owner',             isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
   { key: 'priority',      name: 'Priority',          isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
   { key: 'status',        name: 'Status',            isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
+  { key: 'openDate',      name: 'Open Date',         isStandard: true, isPinned: false, isDisplayed: true, type: 'date' },
   { key: 'dueDate',       name: 'Due Date',          isStandard: true, isPinned: false, isDisplayed: true, type: 'date' },
 ];
 
@@ -95,7 +99,10 @@ function getMergedConfig(
     if (!current.some((c) => c.key === d.key)) current.push({ ...d });
   });
 
-  current = current.filter((col) => col.isStandard || customCols.some((cc) => cc.key === col.key));
+  current = current.filter((col) =>
+    (col.isStandard && defaults.some((d) => d.key === col.key)) ||
+    (!col.isStandard && customCols.some((cc) => cc.key === col.key)),
+  );
 
   customCols.forEach((cc) => {
     if (!current.some((col) => col.key === cc.key)) {
@@ -317,7 +324,7 @@ export const useCRMData = (
   const addOpportunity = async (data: Omit<Opportunity, 'id'>): Promise<Opportunity> => {
     // The fiscal period is derived server-side from the close date — never
     // stamped by the client.
-    const created = await opportunitiesApi.create({ ...data, owner: normalizeOwnerName(data.owner) });
+    const created = await opportunitiesApi.create(data);
     setOpportunities((prev) => [created, ...prev]);
     const f = buildOwnerFilter(currentUserId);
     activitiesApi.getAll(f).then(setActivities);
@@ -326,7 +333,7 @@ export const useCRMData = (
   };
 
   const updateOpportunity = async (updated: Opportunity): Promise<void> => {
-    await opportunitiesApi.update(updated.id, { ...updated, owner: normalizeOwnerName(updated.owner) });
+    await opportunitiesApi.update(updated.id, updated);
     const f = buildOwnerFilter(currentUserId);
     const fresh = await opportunitiesApi.getAll(f);
     setOpportunities(fresh);

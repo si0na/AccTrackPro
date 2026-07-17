@@ -3,41 +3,36 @@ import { DatabaseService } from '../../database/database.service';
 import { FilterContextService, FilterParams, FiscalContext } from '../../common/services/filter-context.service';
 import { NotificationEventBus } from '../../common/events/notification-event-bus.service';
 import { Opportunity } from '../../types';
-import { resolveOwnerName, extractCustomData } from '../../common/utils/db-mapping.util';
+import { extractCustomData } from '../../common/utils/db-mapping.util';
 import { Pagination, Paginated, extractTotal } from '../../common/utils/pagination.util';
 
 // 'financialYear'/'quarter' remain listed so payloads from older clients are
 // stripped instead of leaking into custom_data — fiscal periods are derived
 // from closeDate and never stored.
 const KNOWN = new Set([
-  'id','name','accountId','accountName','stage','status','value','probability','owner','ownerId',
+  'id','name','accountId','accountName','stage','value','probability','ownerId',
   'closeDate','startDate','endDate','crmValue','description','nextStep',
+  'risksAndDependencies',
   'closeReason','closedAt',
   'tags','team','financialYear','quarter',
+  'clientStakeholderId','clientStakeholderName','clientStakeholderDesignation',
+  'serviceProviderStakeholderId','serviceProviderStakeholderName','serviceProviderStakeholderDesignation',
+  'aopAvailable','aopYear','opportunityType','serviceLine',
 ]);
 
-const OPP_STATUSES = new Set(['Open', 'Won', 'Lost']);
-
-/**
- * Lifecycle rule: an explicit valid status always wins; otherwise the status
- * follows the pipeline stage — reaching 'Won' closes the deal as Won, and a
- * previously auto-won deal whose stage regresses reopens. 'Lost' is only ever
- * set explicitly and is never overridden by stage movement.
- */
-function resolveStatus(requested: any, stage: string, existing?: string): 'Open' | 'Won' | 'Lost' {
-  if (OPP_STATUSES.has(requested)) return requested;
-  if (existing === 'Lost') return 'Lost';
-  if (stage === 'Won') return 'Won';
-  if (existing === 'Won') return 'Open'; // stage regressed away from Won
-  return (existing as 'Open' | undefined) ?? 'Open';
-}
+/** Deal outcome is now tracked solely via pipeline stage — no separate status field. */
+const CLOSED_STAGES = new Set(['Won', 'Lost']);
 
 function rowToOpportunity(row: any, derive: (date: string) => { financialYear: string; quarter: string }): Opportunity {
   const {
     custom_data, is_deleted, created_at, updated_at,
     account_id, account_name, close_date, start_date, end_date, crm_value, next_step,
+    risks_and_dependencies,
     close_reason, closed_at,
-    owner_id, owner_name,
+    owner_id,
+    client_stakeholder_id, client_stakeholder_name, client_stakeholder_designation,
+    service_provider_stakeholder_id, service_provider_stakeholder_name, service_provider_stakeholder_designation,
+    aop_available, aop_year, opportunity_type, service_line,
     ...base
   } = row;
   return {
@@ -45,18 +40,28 @@ function rowToOpportunity(row: any, derive: (date: string) => { financialYear: s
     accountId:     account_id,
     accountName:   account_name ?? undefined,
     ownerId:       owner_id   ?? undefined,
-    owner:         base.owner || owner_name || '',
     closeDate:     close_date,
     startDate:     start_date,
     endDate:       end_date,
     crmValue:      Number(crm_value),
     nextStep:      next_step,
+    risksAndDependencies: risks_and_dependencies ?? '',
     closeReason:   close_reason ?? '',
     closedAt:      closed_at ?? undefined,
     value:         Number(base.value),
     probability:   Number(base.probability),
     tags:          base.tags  ?? [],
     team:          base.team  ?? [],
+    clientStakeholderId:                   client_stakeholder_id ?? undefined,
+    clientStakeholderName:                 client_stakeholder_name ?? undefined,
+    clientStakeholderDesignation:          client_stakeholder_designation ?? undefined,
+    serviceProviderStakeholderId:          service_provider_stakeholder_id ?? undefined,
+    serviceProviderStakeholderName:        service_provider_stakeholder_name ?? undefined,
+    serviceProviderStakeholderDesignation: service_provider_stakeholder_designation ?? undefined,
+    aopAvailable:  aop_available,
+    aopYear:       aop_year ?? null,
+    opportunityType: opportunity_type,
+    serviceLine:   service_line ?? undefined,
     // Read-only reporting labels derived from the business date (close date).
     ...derive(close_date),
     ...(custom_data || {}),
@@ -64,10 +69,13 @@ function rowToOpportunity(row: any, derive: (date: string) => { financialYear: s
 }
 
 const OPP_SELECT = `
-  SELECT o.*, u.name AS owner_name, a.name AS account_name
+  SELECT o.*, a.name AS account_name,
+         cs.name AS client_stakeholder_name, cs.designation AS client_stakeholder_designation,
+         sps.name AS service_provider_stakeholder_name, sps.designation AS service_provider_stakeholder_designation
   FROM opportunities o
   LEFT JOIN accounts a ON o.account_id = a.id
-  LEFT JOIN users    u ON o.owner_id   = u.id
+  LEFT JOIN stakeholders cs  ON o.client_stakeholder_id           = cs.id
+  LEFT JOIN stakeholders sps ON o.service_provider_stakeholder_id = sps.id
 `;
 
 /** Business rule: when both dates are present, end date cannot precede start date. */
@@ -117,7 +125,7 @@ function todayISO(): string {
 function assertCloseDateValid(
   closeDate: string | undefined,
   startDate: string | undefined,
-  status: string,
+  stage: string,
   previousCloseDate?: string,
 ): void {
   if (!closeDate) return;
@@ -125,24 +133,24 @@ function assertCloseDateValid(
     throw new BadRequestException('Expected close date cannot be earlier than the start date');
   }
   const changed = previousCloseDate === undefined || closeDate !== previousCloseDate;
-  if (status === 'Open' && changed && closeDate < todayISO()) {
+  if (!CLOSED_STAGES.has(stage) && changed && closeDate < todayISO()) {
     throw new BadRequestException('Expected close date cannot be in the past for an open opportunity');
   }
 }
 
 /**
- * Win/loss capture: closing a deal (status becomes Won or Lost) requires a
+ * Win/loss capture: closing a deal (stage becomes Won or Lost) requires a
  * reason so pipeline reviews can learn from the outcome.
  */
-function resolveCloseReason(data: any, status: string, existing?: { status: string; closeReason?: string }): string {
+function resolveCloseReason(data: any, stage: string, existing?: { stage: string; closeReason?: string }): string {
   const provided = String(data.closeReason ?? '').trim();
-  if (status !== 'Won' && status !== 'Lost') return ''; // reopened deals shed their close reason
-  const becameClosed = !existing || existing.status !== status;
-  const carried = existing?.status === status ? (existing.closeReason ?? '') : '';
+  if (!CLOSED_STAGES.has(stage)) return ''; // reopened deals shed their close reason
+  const becameClosed = !existing || existing.stage !== stage;
+  const carried = existing?.stage === stage ? (existing.closeReason ?? '') : '';
   const reason = provided || carried;
   if (becameClosed && !reason) {
     throw new BadRequestException(
-      status === 'Won'
+      stage === 'Won'
         ? 'Please provide a win reason when marking this opportunity as Won'
         : 'Please provide a loss reason when marking this opportunity as Lost',
     );
@@ -186,10 +194,13 @@ export class OpportunitiesService {
     const qParams     = pg ? [...owner.params, pg.limit, pg.offset] : owner.params;
 
     const { rows } = await this.db.query(
-      `SELECT o.*, u.name AS owner_name, a.name AS account_name${totalCol}
+      `SELECT o.*, a.name AS account_name,
+              cs.name AS client_stakeholder_name, cs.designation AS client_stakeholder_designation,
+              sps.name AS service_provider_stakeholder_name, sps.designation AS service_provider_stakeholder_designation${totalCol}
        FROM opportunities o
        INNER JOIN accounts a ON o.account_id = a.id AND a.is_deleted = FALSE
-       LEFT  JOIN users    u ON o.owner_id   = u.id
+       LEFT  JOIN stakeholders cs  ON o.client_stakeholder_id           = cs.id
+       LEFT  JOIN stakeholders sps ON o.service_provider_stakeholder_id = sps.id
        WHERE ${where}
        ORDER BY o.created_at DESC${limitClause}`,
       qParams,
@@ -221,32 +232,38 @@ export class OpportunitiesService {
 
     await this.assertAccountExists(data.accountId, data.ownerId);
     assertDateOrder(data.startDate, data.endDate);
+    await this.assertStakeholderAssignment(data.clientStakeholderId, data.accountId, 'CLIENT', 'client stakeholder');
+    await this.assertStakeholderAssignment(data.serviceProviderStakeholderId, data.accountId, 'SERVICE_PROVIDER', 'service provider stakeholder');
 
-    const cd   = extractCustomData(data, KNOWN);
-    const status = resolveStatus(data.status, data.stage);
-    assertStageRequirements(data, data.stage);
-    assertCloseDateValid(data.closeDate, data.startDate, status);
-    const closeReason = resolveCloseReason(data, status);
-    const closedAt = status === 'Won' || status === 'Lost' ? new Date() : null;
-    const ownerDisplayName = data.owner?.trim()
-      ? data.owner.trim()
-      : await resolveOwnerName(this.db, data.ownerId);
+    const stage = data.stage || 'Lead';
+    const cd    = extractCustomData(data, KNOWN);
+    assertStageRequirements(data, stage);
+    assertCloseDateValid(data.closeDate, data.startDate, stage);
+    const closeReason = resolveCloseReason(data, stage);
+    const closedAt = CLOSED_STAGES.has(stage) ? new Date() : null;
 
     const { rows } = await this.db.query(
       `INSERT INTO opportunities
-         (id, name, account_id, stage, status, value, probability, owner_id, owner,
+         (id, name, account_id, stage, value, probability, owner_id,
           close_date, start_date, end_date, crm_value, description, next_step,
-          close_reason, closed_at, tags, team, custom_data)
-       VALUES (gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+          risks_and_dependencies,
+          close_reason, closed_at, tags, team, custom_data,
+          client_stakeholder_id, service_provider_stakeholder_id,
+          aop_available, aop_year, opportunity_type, service_line)
+       VALUES (gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
        RETURNING id`,
       [
-        data.name, data.accountId, data.stage, status,
+        data.name, data.accountId, stage,
         data.value ?? 0, data.probability ?? 0,
-        data.ownerId ?? null, ownerDisplayName,
+        data.ownerId ?? null,
         data.closeDate ?? '', data.startDate ?? '', data.endDate ?? '',
         data.crmValue ?? 0, data.description ?? '', data.nextStep ?? '',
+        data.risksAndDependencies ?? '',
         closeReason, closedAt,
         data.tags ?? [], data.team ?? [], JSON.stringify(cd),
+        data.clientStakeholderId ?? null, data.serviceProviderStakeholderId ?? null,
+        data.aopAvailable ?? false, data.aopAvailable ? (data.aopYear ?? null) : null,
+        data.opportunityType ?? null, data.serviceLine ?? null,
       ],
     );
     const opp = await this.findOne(rows[0].id);
@@ -281,41 +298,56 @@ export class OpportunitiesService {
       await this.assertAccountExists(data.accountId, requestingUserId);
     }
     assertDateOrder(data.startDate, data.endDate);
-    const cd  = extractCustomData(data, KNOWN);
-    const status = resolveStatus(data.status, data.stage, existing.status);
-    if (data.stage !== existing.stage) assertStageRequirements(data, data.stage);
-    assertCloseDateValid(data.closeDate, data.startDate, status, existing.closeDate);
-    const closeReason = resolveCloseReason(data, status, existing);
-    const nowClosed = status === 'Won' || status === 'Lost';
-    // closed_at marks when the deal first reached a closed status; it survives
+    await this.assertStakeholderAssignment(data.clientStakeholderId, data.accountId, 'CLIENT', 'client stakeholder');
+    await this.assertStakeholderAssignment(data.serviceProviderStakeholderId, data.accountId, 'SERVICE_PROVIDER', 'service provider stakeholder');
+    const cd    = extractCustomData(data, KNOWN);
+    const stage = data.stage ?? existing.stage;
+    if (stage !== existing.stage) assertStageRequirements(data, stage);
+    assertCloseDateValid(data.closeDate, data.startDate, stage, existing.closeDate);
+    const closeReason = resolveCloseReason(data, stage, existing);
+    const nowClosed = CLOSED_STAGES.has(stage);
+    // closed_at marks when the deal first reached a closed stage; it survives
     // a Won<->Lost correction and is cleared when the deal reopens.
     const closedAt = nowClosed
       ? (existing.closedAt ? new Date(existing.closedAt) : new Date())
       : null;
 
-    // Ownership (owner_id) preserved from DB — never overwritten by a regular
-    // update. The owner *display name* is user-editable.
+    // Ownership (owner_id) preserved from DB — never overwritten by a regular update.
     const effectiveOwnerId = existing.ownerId ?? null;
-    const ownerDisplayName =
-      typeof data.owner === 'string' && data.owner.trim() ? data.owner.trim() : existing.owner;
+
+    // Opportunity Type/Service Line are mandatory on create but not retroactively
+    // forced on update — a legacy opportunity that predates these fields must
+    // remain editable without first being made to supply them.
+    const opportunityType = data.opportunityType ?? existing.opportunityType;
+    const aopAvailable = typeof data.aopAvailable === 'boolean' ? data.aopAvailable : existing.aopAvailable;
+    const aopYear = aopAvailable ? (data.aopYear ?? existing.aopYear ?? null) : null;
+    const serviceLine = data.serviceLine !== undefined ? data.serviceLine : existing.serviceLine ?? null;
 
     await this.db.query(
       `UPDATE opportunities SET
-         name=$1, account_id=$2, stage=$3, status=$4, value=$5, probability=$6,
-         owner_id=$7, owner=$8,
-         close_date=$9, start_date=$10, end_date=$11, crm_value=$12,
-         description=$13, next_step=$14, close_reason=$15, closed_at=$16,
-         tags=$17, team=$18,
-         custom_data=$19, updated_at=NOW()
-       WHERE id=$20 AND is_deleted=FALSE`,
+         name=$1, account_id=$2, stage=$3, value=$4, probability=$5,
+         owner_id=$6,
+         close_date=$7, start_date=$8, end_date=$9, crm_value=$10,
+         description=$11, next_step=$12, risks_and_dependencies=$13, close_reason=$14, closed_at=$15,
+         tags=$16, team=$17,
+         custom_data=$18,
+         client_stakeholder_id=$19, service_provider_stakeholder_id=$20,
+         aop_available=$21, aop_year=$22, opportunity_type=$23,
+         service_line=$24,
+         updated_at=NOW()
+       WHERE id=$25 AND is_deleted=FALSE`,
       [
-        data.name, data.accountId, data.stage, status,
-        data.value ?? 0, data.probability ?? 0,
-        effectiveOwnerId, ownerDisplayName,
+        data.name, data.accountId, stage,
+        data.value ?? existing.value ?? 0, data.probability ?? existing.probability ?? 0,
+        effectiveOwnerId,
         data.closeDate ?? '', data.startDate ?? '', data.endDate ?? '',
         data.crmValue ?? 0, data.description ?? '', data.nextStep ?? '',
+        data.risksAndDependencies ?? '',
         closeReason, closedAt,
         data.tags ?? [], data.team ?? [], JSON.stringify(cd),
+        data.clientStakeholderId ?? null, data.serviceProviderStakeholderId ?? null,
+        aopAvailable, aopYear, opportunityType,
+        serviceLine,
         id,
       ],
     );
@@ -323,19 +355,19 @@ export class OpportunitiesService {
     await this.log(`Updated Opportunity '${opp.name}'`, opp.accountId, opp.id, requestingUserId);
 
     if (opp.ownerId) {
-      if (existing.status !== opp.status && (opp.status === 'Won' || opp.status === 'Lost')) {
-        this.logger.log(`Emitting Opportunity:StatusChanged [userId=${opp.ownerId} ${existing.status}→${opp.status}]`);
+      if (existing.stage !== opp.stage && CLOSED_STAGES.has(opp.stage)) {
+        this.logger.log(`Emitting Opportunity:StageChanged [userId=${opp.ownerId} ${existing.stage}→${opp.stage}]`);
         this.bus.emit({
           userId:               opp.ownerId,
           type:                 'Opportunity',
-          eventType:            'StatusChanged',
-          title:                opp.status === 'Won' ? 'Opportunity Won' : 'Opportunity Lost',
-          message:              `Opportunity "${opp.name}" was closed as ${opp.status}. Reason: ${opp.closeReason}`,
-          severity:             opp.status === 'Won' ? 'Success' : 'Warning',
+          eventType:            'StageChanged',
+          title:                opp.stage === 'Won' ? 'Opportunity Won' : 'Opportunity Lost',
+          message:              `Opportunity "${opp.name}" was closed as ${opp.stage}. Reason: ${opp.closeReason}`,
+          severity:             opp.stage === 'Won' ? 'Success' : 'Warning',
           notificationCategory: 'BUSINESS',
           accountId:            opp.accountId,
           opportunityId:        opp.id,
-          metadata:             { oldStatus: existing.status, newStatus: opp.status, closeReason: opp.closeReason },
+          metadata:             { oldStage: existing.stage, newStage: opp.stage, closeReason: opp.closeReason },
         });
       } else if (existing.stage !== opp.stage) {
         this.logger.log(`Emitting Opportunity:StageChanged [userId=${opp.ownerId} ${existing.stage}→${opp.stage}]`);
@@ -450,6 +482,22 @@ export class OpportunitiesService {
       [accountId, ownerId ?? null],
     );
     if (!rows.length) throw new BadRequestException('The selected account does not exist');
+  }
+
+  /** Relational rule: an assigned stakeholder must belong to the same account and match the expected type. */
+  private async assertStakeholderAssignment(
+    id: string | undefined,
+    accountId: string,
+    expectedType: 'CLIENT' | 'SERVICE_PROVIDER',
+    label: string,
+  ): Promise<void> {
+    if (!id) return;
+    const { rows } = await this.db.query(
+      `SELECT id FROM stakeholders
+       WHERE id = $1 AND account_id = $2 AND stakeholder_type = $3 AND is_deleted = FALSE`,
+      [id, accountId, expectedType],
+    );
+    if (!rows.length) throw new BadRequestException(`The selected ${label} is invalid for this account`);
   }
 
   private async log(text: string, accountId?: string, opportunityId?: string, userId?: string): Promise<void> {

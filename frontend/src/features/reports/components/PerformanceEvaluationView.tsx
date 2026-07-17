@@ -17,11 +17,16 @@ import {
   Pencil,
   Info,
   Loader2,
+  Users,
+  ClipboardList,
+  TrendingUp,
+  AlertTriangle,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   PageHeader,
   Button,
+  Card,
   FilterBar,
   FilterSelect,
   SearchBar,
@@ -32,6 +37,8 @@ import {
   ErrorState,
   RowActionButton,
   Pagination,
+  SummaryCard,
+  Table,
 } from '@/components/ui';
 import { CustomizeColumnsSidebar } from '@/components/table/CustomizeColumnsSidebar';
 import { CustomColumnFields } from '@/components/CustomColumnFields';
@@ -662,31 +669,39 @@ export const PerformanceEvaluationView: React.FC = () => {
       {/* Reporting summary — server-side per-employee aggregates */}
       {summaryRows.length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Employees Evaluated</p>
-            <p className="text-xl font-extrabold text-slate-900 font-mono mt-1">{summaryRows.length}</p>
-          </div>
-          <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Evaluations</p>
-            <p className="text-xl font-extrabold text-slate-900 font-mono mt-1">
-              {summaryRows.reduce((s, r) => s + r.evaluations, 0)}
-            </p>
-          </div>
-          <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Average Score</p>
-            <p className="text-xl font-extrabold text-indigo-600 font-mono mt-1">
-              {(summaryRows.reduce((s, r) => s + r.averageScore * r.evaluations, 0)
-                / Math.max(1, summaryRows.reduce((s, r) => s + r.evaluations, 0))).toFixed(2)}
-            </p>
-          </div>
-          <div className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-xs">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">High Retention Risk</p>
-            <p className={`text-xl font-extrabold font-mono mt-1 ${
-              summaryRows.some(r => r.latestRetentionRisk === 'High') ? 'text-red-600' : 'text-slate-900'
-            }`}>
-              {summaryRows.filter(r => r.latestRetentionRisk === 'High').length}
-            </p>
-          </div>
+          <SummaryCard
+            label="Employees Evaluated"
+            value={summaryRows.length}
+            icon={<Users className="w-4.5 h-4.5" />}
+            tone="blue"
+          />
+          <SummaryCard
+            label="Total Evaluations"
+            value={summaryRows.reduce((s, r) => s + r.evaluations, 0)}
+            icon={<ClipboardList className="w-4.5 h-4.5" />}
+            tone="emerald"
+          />
+          <SummaryCard
+            label="Average Score"
+            value={
+              <span className="text-indigo-600">
+                {(summaryRows.reduce((s, r) => s + r.averageScore * r.evaluations, 0)
+                  / Math.max(1, summaryRows.reduce((s, r) => s + r.evaluations, 0))).toFixed(2)}
+              </span>
+            }
+            icon={<TrendingUp className="w-4.5 h-4.5" />}
+            tone="purple"
+          />
+          <SummaryCard
+            label="High Retention Risk"
+            value={
+              <span className={summaryRows.some(r => r.latestRetentionRisk === 'High') ? 'text-red-600' : ''}>
+                {summaryRows.filter(r => r.latestRetentionRisk === 'High').length}
+              </span>
+            }
+            icon={<AlertTriangle className="w-4.5 h-4.5" />}
+            tone="amber"
+          />
         </div>
       )}
 
@@ -710,22 +725,27 @@ export const PerformanceEvaluationView: React.FC = () => {
       </FilterBar>
 
       {/* Table */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden flex flex-col">
-        <div className="bg-slate-50 px-5 py-3 border-b border-slate-200 flex items-center justify-between text-xs font-semibold text-slate-600">
-          <div className="flex items-center space-x-2">
+      <Card
+        padding="none"
+        clip
+        className="flex flex-col"
+        title={
+          <div className="flex items-center gap-2">
             <FileSpreadsheet className="w-4.5 h-4.5 text-green-600" />
-            <span className="uppercase tracking-wider text-slate-700">Evaluations Ledger (Excel View)</span>
+            <span className="uppercase tracking-wider text-slate-700 text-xs font-bold">Evaluations Ledger (Excel View)</span>
             <span className="bg-indigo-50 text-indigo-700 text-[10px] px-2 py-0.5 rounded font-mono">
               {processedEvaluations.length} RECORDS FOUND
             </span>
           </div>
-          <div className="text-[10px] text-slate-400 font-medium hidden md:block">
+        }
+        actions={
+          <span className="text-[10px] text-slate-400 font-medium hidden md:block">
             💡 Double-click cells to edit scores. Click headers to sort.
-          </div>
-        </div>
-
+          </span>
+        }
+      >
         <div className="overflow-x-auto w-full custom-scrollbar">
-          <table className="w-full text-left border-collapse text-xs select-none">
+          <Table size="xs" className="select-none">
             <thead>
               <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-200 select-none">
                 <th className="px-3 py-3 w-10 text-center font-mono text-[10px] bg-slate-100/80 text-slate-400 border-r border-slate-200 sticky left-0 z-10">#</th>
@@ -785,7 +805,7 @@ export const PerformanceEvaluationView: React.FC = () => {
                           </td>
                         );
                       })}
-                      <td className="px-3 py-3 text-center">
+                      <td className="px-4 py-3 text-center">
                         <div className="flex items-center justify-center space-x-1.5">
                           <RowActionButton intent="edit" label="Edit evaluation" icon={<Pencil className="w-3.5 h-3.5" />} onClick={() => handleEditClick(evalItem)} />
                           <RowActionButton intent="delete" label="Delete record" icon={<Trash2 className="w-3.5 h-3.5" />} onClick={() => handleDeleteClick(evalItem.id)} />
@@ -796,7 +816,7 @@ export const PerformanceEvaluationView: React.FC = () => {
                 })
               )}
             </tbody>
-          </table>
+          </Table>
         </div>
 
         {/* Pagination */}
@@ -808,12 +828,14 @@ export const PerformanceEvaluationView: React.FC = () => {
           onPageSizeChange={(size) => { setPageSize(size); setCurrentPage(1); }}
           itemLabel="evaluations"
         />
-      </div>
+      </Card>
 
       {/* Score formula note */}
-      <div className="bg-indigo-50 border border-indigo-100 rounded-2xl p-4 flex items-start space-x-3 text-xs leading-relaxed text-indigo-900/90 shadow-2xs">
-        <Info className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />
-        <div className="space-y-1">
+      <div className="bg-gradient-to-br from-indigo-50/80 to-white border border-indigo-200/70 rounded-xl p-4 flex items-start gap-3 text-xs leading-relaxed text-indigo-900/90 shadow-sm">
+        <div className="w-9 h-9 rounded-full flex items-center justify-center shrink-0 bg-indigo-500/10 text-indigo-600 ring-1 ring-indigo-500/15">
+          <Info className="w-4.5 h-4.5" />
+        </div>
+        <div className="space-y-1 pt-0.5">
           <p className="font-extrabold text-indigo-950 uppercase tracking-wider text-[10px]">Calculated Fields Formula Guide</p>
           <ul className="list-disc pl-4 space-y-1">
             <li><strong>Final Score:</strong> Plain mathematical average of all active score dimensions (10 standard metrics, plus <em>Leadership</em> only if reportees are enabled). Range is 1.00 to 10.00.</li>
@@ -836,7 +858,7 @@ export const PerformanceEvaluationView: React.FC = () => {
             onClick={() => setIsAddModalOpen(false)}>
             <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
               onClick={e => e.stopPropagation()}
-              className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+              className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col">
               <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
                 <div className="flex items-center space-x-2.5">
                   <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg"><Plus className="w-5 h-5" aria-hidden="true" /></div>
@@ -876,7 +898,7 @@ export const PerformanceEvaluationView: React.FC = () => {
             onClick={() => setIsEditModalOpen(false)}>
             <motion.div initial={{ scale: 0.95, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.95, opacity: 0 }}
               onClick={e => e.stopPropagation()}
-              className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+              className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col">
               <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
                 <div className="flex items-center space-x-2.5">
                   <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg"><Pencil className="w-5 h-5" aria-hidden="true" /></div>

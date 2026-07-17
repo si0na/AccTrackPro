@@ -6,8 +6,12 @@
 import React, { useState } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
 import { CustomColumnFields } from '@/components/CustomColumnFields';
+import { ActionItemCommentToggle, ActionItemCommentsExpandedRow } from '@/components/ActionItemComments';
 import { Opportunity, ActionItem, Comment, PriorityLevel, ActionItemStatus } from '@/types';
+import { ACTION_ITEM_STATUS_OPTIONS } from '@/constants';
+import { getTodayISODate } from '@/utils';
 import {
+  AlertTriangle,
   CheckSquare,
   MessageSquare,
   Plus,
@@ -19,7 +23,18 @@ import {
   AlertCircle,
   ListTodo
 } from 'lucide-react';
-import { ConfirmDialog, PRIORITY_COLORS, ACTION_STATUS_COLORS, StatusBadge, RowActionButton } from '@/components/ui';
+import {
+  ConfirmDialog,
+  PRIORITY_COLORS,
+  ACTION_STATUS_COLORS,
+  StatusBadge,
+  RowActionButton,
+  Table,
+  TableHead,
+  TableHeadCell,
+  TableCell,
+  TableRow,
+} from '@/components/ui';
 
 interface PanelProps {
   opportunityId: string;
@@ -103,8 +118,11 @@ export const OpportunityActionsCommentsPanel: React.FC<PanelProps> = ({ opportun
   const opp = opportunities.find(o => o.id === opportunityId);
   const account = opp ? accounts.find(a => a.id === opp.accountId) : null;
 
-  // Delete action item confirmation state
-  const [deleteActionTarget, setDeleteActionTarget] = useState<{ id: string; label: string } | null>(null);
+  // Delete confirmation state — covers both action items and their comments
+  const [deleteActionTarget, setDeleteActionTarget] = useState<{ type: 'actionItem' | 'comment'; id: string; label: string } | null>(null);
+
+  // Which action item's comments are currently expanded (same pattern as the Action Items page)
+  const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
 
   // Form states
   const [commentText, setCommentText] = useState('');
@@ -116,10 +134,12 @@ export const OpportunityActionsCommentsPanel: React.FC<PanelProps> = ({ opportun
     accountId: '',
     opportunityId: '',
     owner: '',
+    openDate: getTodayISODate(),
     dueDate: '',
     priority: 'Medium' as PriorityLevel,
-    status: 'Not Started' as ActionItemStatus,
-    notes: ''
+    status: 'To Do' as ActionItemStatus,
+    notes: '',
+    risksAndDependencies: ''
   };
   const [newAction, setNewAction] = useState<Omit<ActionItem, 'id'>>(emptyAction);
 
@@ -184,10 +204,10 @@ export const OpportunityActionsCommentsPanel: React.FC<PanelProps> = ({ opportun
         )}
       </div>
 
-      {/* Main Panel Content Split */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 divide-y lg:divide-y-0 lg:divide-x divide-slate-200 flex-1 overflow-y-auto">
-        {/* Left Side: Deliverables & Action Table (3/5 width) */}
-        <div className="lg:col-span-3 p-5 space-y-4 flex flex-col">
+      {/* Main Panel Content — Action Items span the full width, Comments follow below */}
+      <div className="flex flex-col divide-y divide-slate-200 flex-1 overflow-y-auto">
+        {/* Deliverables & Action Table (full width) */}
+        <div className="p-5 space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div className="flex items-center space-x-2">
               <CheckSquare className="w-4.5 h-4.5 text-blue-600" />
@@ -248,7 +268,17 @@ export const OpportunityActionsCommentsPanel: React.FC<PanelProps> = ({ opportun
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase">Open Date</label>
+                    <input
+                      type="date"
+                      required
+                      value={newAction.openDate}
+                      onChange={(e) => setNewAction({ ...newAction, openDate: e.target.value })}
+                      className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white font-mono"
+                    />
+                  </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-slate-500 uppercase">Due Date</label>
                     <input
@@ -278,10 +308,9 @@ export const OpportunityActionsCommentsPanel: React.FC<PanelProps> = ({ opportun
                       onChange={(e) => setNewAction({ ...newAction, status: e.target.value as ActionItemStatus })}
                       className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white"
                     >
-                      <option value="Not Started">Not Started</option>
-                      <option value="In Progress">In Progress</option>
-                      <option value="Blocked">Blocked</option>
-                      <option value="Completed">Completed</option>
+                      {ACTION_ITEM_STATUS_OPTIONS.map(s => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
                     </select>
                   </div>
                 </div>
@@ -293,6 +322,17 @@ export const OpportunityActionsCommentsPanel: React.FC<PanelProps> = ({ opportun
                     placeholder="Provide description or context regarding this deliverable..."
                     value={newAction.notes}
                     onChange={(e) => setNewAction({ ...newAction, notes: e.target.value })}
+                    className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Risks & Dependencies</label>
+                  <textarea
+                    rows={2}
+                    placeholder="e.g., Pending budget approval, dependent on vendor SOW sign-off"
+                    value={newAction.risksAndDependencies}
+                    onChange={(e) => setNewAction({ ...newAction, risksAndDependencies: e.target.value })}
                     className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white"
                   />
                 </div>
@@ -325,100 +365,146 @@ export const OpportunityActionsCommentsPanel: React.FC<PanelProps> = ({ opportun
           )}
 
           {/* Action Items List Table */}
-          <div className="flex-1 overflow-x-auto border border-slate-200 rounded-xl bg-slate-50/30">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider select-none">
-                  <th className="py-2.5 px-4">Task Name</th>
-                  <th className="py-2.5 px-3">Description</th>
-                  <th className="py-2.5 px-3">Owner</th>
-                  <th className="py-2.5 px-3">Priority</th>
-                  <th className="py-2.5 px-3">Status</th>
-                  <th className="py-2.5 px-3">Due Date</th>
-                  <th className="py-2.5 px-3 text-center">Action</th>
-                </tr>
-              </thead>
+          <div className="overflow-x-auto border border-slate-200 rounded-xl bg-slate-50/30">
+            <Table>
+              <TableHead>
+                <TableHeadCell>Task Name</TableHeadCell>
+                <TableHeadCell>Description</TableHeadCell>
+                <TableHeadCell>Owner</TableHeadCell>
+                <TableHeadCell>Priority</TableHeadCell>
+                <TableHeadCell>Status</TableHeadCell>
+                <TableHeadCell>Open Date</TableHeadCell>
+                <TableHeadCell>Due Date</TableHeadCell>
+                <TableHeadCell align="center">Action</TableHeadCell>
+              </TableHead>
               <tbody>
                 {oppActions.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="text-center py-10 text-slate-400 font-medium bg-white">
+                    <td colSpan={8} className="text-center py-10 text-slate-400 font-medium bg-white">
                       No active deliverables logged for this opportunity. Click "Create Task" to add one.
                     </td>
                   </tr>
                 ) : (
-                  oppActions.map(action => (
-                    <tr key={action.id} className="border-b last:border-0 hover:bg-slate-50/50 bg-white font-medium text-slate-800 transition-colors">
-                      <td className="py-3 px-4 max-w-[160px]">
-                        <p className="font-extrabold text-slate-900 truncate" title={action.title}>
-                          {action.title}
-                        </p>
-                      </td>
-                      <td className="py-3 px-3 text-slate-600 font-normal max-w-[240px]">
-                        {action.notes || '—'}
-                      </td>
-                      <td className="py-3 px-3 text-slate-600 font-semibold">{action.owner}</td>
-                      <td className="py-3 px-3">
-                        <StatusBadge value={action.priority} colorMap={PRIORITY_COLORS} shape="rounded" />
-                      </td>
-                      <td className="py-3 px-3">
-                        <select
-                          value={action.status}
-                          onChange={(e) => updateActionItem({ ...action, status: e.target.value as ActionItemStatus })}
-                          className={`text-[10px] font-extrabold border rounded-md p-1 bg-white cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-500/20 ${
-                            action.status === 'Completed' ? 'text-green-700 border-green-200 bg-green-50/40' :
-                            action.status === 'Blocked' ? 'text-red-700 border-red-200 bg-red-50/40' :
-                            action.status === 'In Progress' ? 'text-blue-700 border-blue-200 bg-blue-50/40' :
-                            'text-slate-600 border-slate-200'
-                          }`}
-                        >
-                          <option value="Not Started">Not Started</option>
-                          <option value="In Progress">In Progress</option>
-                          <option value="Blocked">Blocked</option>
-                          <option value="Completed">Completed</option>
-                        </select>
-                      </td>
-                      <td className="py-3 px-3 font-mono font-bold text-slate-500 whitespace-nowrap">{action.dueDate}</td>
-                      <td className="py-3 px-3 text-center">
-                        <RowActionButton
-                          intent="delete"
-                          label={`Delete task ${action.title}`}
-                          icon={<Trash2 className="w-3.5 h-3.5" />}
-                          onClick={() => setDeleteActionTarget({ id: action.id, label: action.title })}
-                        />
-                      </td>
-                    </tr>
-                  ))
+                  oppActions.map(action => {
+                    const actionComments = comments.filter(c => c.targetType === 'actionItem' && c.targetId === action.id);
+                    return (
+                      <React.Fragment key={action.id}>
+                        <TableRow className="hover:bg-slate-50/50 bg-white">
+                          <TableCell className="max-w-[200px]">
+                            <div className="flex items-center gap-1">
+                              <p className="font-extrabold text-slate-900 truncate min-w-0 flex-1" title={action.title}>
+                                {action.title}
+                              </p>
+                              {!!action.risksAndDependencies?.trim() && (
+                                <span
+                                  className="shrink-0 inline-flex"
+                                  title={`Risks & Dependencies: ${action.risksAndDependencies}`}
+                                  aria-label={`Action item has risks or dependencies: ${action.risksAndDependencies}`}
+                                  role="img"
+                                >
+                                  <AlertTriangle className="w-3.5 h-3.5 text-amber-500" aria-hidden="true" />
+                                </span>
+                              )}
+                              <div className="shrink-0">
+                                <ActionItemCommentToggle
+                                  itemTitle={action.title}
+                                  commentCount={actionComments.length}
+                                  isExpanded={expandedItemId === action.id}
+                                  onToggle={() => setExpandedItemId(expandedItemId === action.id ? null : action.id)}
+                                />
+                              </div>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-slate-600 font-normal max-w-[240px]">
+                            <span className="block line-clamp-2" title={action.notes || undefined}>
+                              {action.notes || '—'}
+                            </span>
+                            {!!action.risksAndDependencies?.trim() && (
+                              <span
+                                className="mt-1 flex items-start gap-1 text-xs text-amber-700"
+                                title={`Risks & Dependencies: ${action.risksAndDependencies}`}
+                              >
+                                <AlertTriangle className="w-3 h-3 shrink-0 mt-0.5 text-amber-500" aria-hidden="true" />
+                                <span className="line-clamp-2">{action.risksAndDependencies}</span>
+                              </span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-slate-600 font-semibold">{action.owner}</TableCell>
+                          <TableCell>
+                            <StatusBadge value={action.priority} colorMap={PRIORITY_COLORS} shape="rounded" />
+                          </TableCell>
+                          <TableCell>
+                            <select
+                              value={action.status}
+                              onChange={(e) => updateActionItem({ ...action, status: e.target.value as ActionItemStatus })}
+                              className={`text-[10px] font-extrabold border rounded-md p-1 bg-white cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-500/20 ${
+                                action.status === 'Completed' ? 'text-green-700 border-green-200 bg-green-50/40' :
+                                action.status === 'Blocked' ? 'text-red-700 border-red-200 bg-red-50/40' :
+                                action.status === 'In Progress' ? 'text-blue-700 border-blue-200 bg-blue-50/40' :
+                                action.status === 'Cancelled' ? 'text-zinc-500 border-zinc-200 bg-zinc-100/40' :
+                                'text-slate-600 border-slate-200'
+                              }`}
+                            >
+                              {ACTION_ITEM_STATUS_OPTIONS.map(s => (
+                                <option key={s} value={s}>{s}</option>
+                              ))}
+                            </select>
+                          </TableCell>
+                          <TableCell className="font-mono font-bold text-slate-500 whitespace-nowrap">{action.openDate}</TableCell>
+                          <TableCell className="font-mono font-bold text-slate-500 whitespace-nowrap">{action.dueDate}</TableCell>
+                          <TableCell align="center">
+                            <RowActionButton
+                              intent="delete"
+                              label={`Delete task ${action.title}`}
+                              icon={<Trash2 className="w-3.5 h-3.5" />}
+                              onClick={() => setDeleteActionTarget({ type: 'actionItem', id: action.id, label: action.title })}
+                            />
+                          </TableCell>
+                        </TableRow>
+
+                        {expandedItemId === action.id && (
+                          <ActionItemCommentsExpandedRow
+                            colSpan={8}
+                            comments={actionComments}
+                            risksAndDependencies={action.risksAndDependencies ?? ''}
+                            onAddComment={(text) => addComment('actionItem', action.id, text)}
+                            onDeleteComment={(comment) => setDeleteActionTarget({ type: 'comment', id: comment.id, label: comment.text.substring(0, 40) })}
+                          />
+                        )}
+                      </React.Fragment>
+                    );
+                  })
                 )}
               </tbody>
-            </table>
+            </Table>
           </div>
         </div>
 
-        {/* Right Side: Governance Comments (2/5 width) */}
-        <div className="lg:col-span-2 p-5 space-y-4 flex flex-col justify-between">
-          <div className="space-y-4 flex flex-col flex-1 min-h-[300px]">
-            <div className="flex items-center space-x-2 border-b border-slate-100 pb-3 shrink-0">
+        {/* Opportunity Comments (full width, below the Action Items table) */}
+        <div className="p-5 space-y-4">
+          <div className="space-y-4">
+            <div className="flex items-center space-x-2 border-b border-slate-100 pb-3">
               <MessageSquare className="w-4.5 h-4.5 text-blue-600" />
-              <h4 className="font-bold text-slate-800 text-sm tracking-tight">Governance Comments Feed</h4>
+              <h4 className="font-bold text-slate-800 text-sm tracking-tight">Opportunity Comments</h4>
               <span className="text-[11px] bg-slate-100 text-slate-600 font-bold px-2 py-0.5 rounded-full">
                 {oppComments.length}
               </span>
             </div>
 
             {/* Scrollable Container for multiple large comments */}
-            <div className="flex-1 overflow-y-auto lg:max-h-[500px] pr-1.5 space-y-3 custom-scrollbar">
+            <div className="overflow-y-auto max-h-[360px] pr-1.5 space-y-3 custom-scrollbar">
               {oppComments.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center text-center p-6 bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
+                <div className="flex flex-col items-center justify-center text-center p-6 bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
                   <MessageSquare className="w-8 h-8 text-slate-300 mb-2" />
                   <p className="text-xs text-slate-400 font-medium">No comments logged for this deal yet.</p>
                   <p className="text-[10px] text-slate-400 mt-1">Start the dialogue below with executive updates.</p>
                 </div>
               ) : (
                 oppComments.map(comment => (
-                  <CommentCard 
-                    key={comment.id} 
-                    comment={comment} 
-                    onDelete={deleteComment} 
+                  <CommentCard
+                    key={comment.id}
+                    comment={comment}
+                    onDelete={deleteComment}
                   />
                 ))
               )}
@@ -426,13 +512,13 @@ export const OpportunityActionsCommentsPanel: React.FC<PanelProps> = ({ opportun
           </div>
 
           {/* Comment input form */}
-          <form onSubmit={handlePostComment} className="border-t border-slate-100 pt-4 mt-3 shrink-0">
+          <form onSubmit={handlePostComment} className="border-t border-slate-100 pt-4">
             <div className="flex gap-2.5 items-end">
               <div className="flex-1 space-y-1">
                 <textarea
                   rows={2}
                   required
-                  placeholder="Type comment or governance update..."
+                  placeholder="Type a comment or update..."
                   value={commentText}
                   onChange={(e) => setCommentText(e.target.value)}
                   className="w-full text-xs p-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 bg-slate-50 focus:bg-white transition-all resize-none"
@@ -457,12 +543,12 @@ export const OpportunityActionsCommentsPanel: React.FC<PanelProps> = ({ opportun
 
       <ConfirmDialog
         isOpen={!!deleteActionTarget}
-        title="Delete Action Item"
+        title={deleteActionTarget?.type === 'comment' ? 'Delete Comment' : 'Delete Action Item'}
         onConfirm={async () => {
-          if (deleteActionTarget) {
-            await deleteActionItem(deleteActionTarget.id);
-            setDeleteActionTarget(null);
-          }
+          if (!deleteActionTarget) return;
+          if (deleteActionTarget.type === 'comment') await deleteComment(deleteActionTarget.id);
+          else await deleteActionItem(deleteActionTarget.id);
+          setDeleteActionTarget(null);
         }}
         onCancel={() => setDeleteActionTarget(null)}
       />

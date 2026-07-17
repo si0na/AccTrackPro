@@ -1,12 +1,17 @@
-export type AccountType = 'Growth' | 'Pursuit' | 'Project';
-export type AccountHealth = 'Healthy' | 'At Risk' | 'Critical';
-export type OpportunityStage = 'Lead' | 'Qualified' | 'Proposal' | 'Negotiation' | 'Won';
-/** Lifecycle status: an opportunity stays operationally visible until it is closed (Won or Lost). */
-export type OpportunityStatus = 'Open' | 'Won' | 'Lost';
+export type AccountType = 'Strategic' | 'Non Strategic' | 'New';
+export type AccountHealth = 'Green' | 'Amber' | 'Red';
+export type OpportunityStage =
+  | 'Lead' | 'Qualified' | 'Proposal' | 'Negotiation' | 'Won'
+  | 'Blocked' | 'Delayed' | 'Lost';
+export type OpportunityType = 'Growth' | 'Pursuit' | 'Whitespace';
+export type ServiceLine =
+  | 'Data' | 'AI' | 'Cloud' | 'Application Development' | 'Application Support'
+  | 'Infrastructure' | 'Cyber Security' | 'SharePoint';
 export type PriorityLevel = 'High' | 'Medium' | 'Low';
-export type ActionItemStatus = 'Not Started' | 'In Progress' | 'Blocked' | 'Completed';
+export type ActionItemStatus = 'To Do' | 'In Progress' | 'Blocked' | 'Completed' | 'Cancelled';
 export type InfluenceLevel = 'High' | 'Medium' | 'Low';
 export type RelationshipStatus = 'Strong' | 'Neutral' | 'Weak';
+export type StakeholderType = 'CLIENT' | 'SERVICE_PROVIDER';
 
 export interface Account {
   id: string;
@@ -22,6 +27,7 @@ export interface Account {
   phone: string;
   email: string;
   address: string;
+  location: string;
   description: string;
   /** Read-only, set by backend — used for "Recently Updated Accounts". */
   updatedAt?: string;
@@ -55,11 +61,8 @@ export interface Opportunity {
   /** Parent account display name (joined server-side; valid even when the account is deactivated). */
   accountName?: string;
   stage: OpportunityStage;
-  /** Lifecycle status — defaults to 'Open'; backend syncs 'Won' with the stage. */
-  status: OpportunityStatus;
   value: number;
   probability: number;
-  owner: string;
   ownerId?: string;
   closeDate: string;
   description: string;
@@ -67,9 +70,11 @@ export interface Opportunity {
   endDate: string;
   crmValue: number;
   nextStep: string;
-  /** Why the deal was Won or Lost; required when the status transitions to a closed state. */
+  /** Known risks or blocking dependencies for this opportunity. */
+  risksAndDependencies: string;
+  /** Why the deal was Won or Lost; required when the stage transitions to a closed state. */
   closeReason?: string;
-  /** When the deal first reached a closed status (Won/Lost); cleared if reopened. Read-only. */
+  /** When the deal first reached a closed stage (Won/Lost); cleared if reopened. Read-only. */
   closedAt?: string;
   tags: string[];
   team: string[];
@@ -77,6 +82,19 @@ export interface Opportunity {
   financialYear?: string;
   /** Read-only, derived by backend from closeDate via the configured Financial Calendar. Never sent on create/update. */
   quarter?: string;
+  clientStakeholderId?: string;
+  /** Joined display fields (server-side). */
+  clientStakeholderName?: string;
+  clientStakeholderDesignation?: string;
+  serviceProviderStakeholderId?: string;
+  serviceProviderStakeholderName?: string;
+  serviceProviderStakeholderDesignation?: string;
+  opportunityType: OpportunityType;
+  /** Whether this opportunity has an approved AOP (Annual Operating Plan) year. */
+  aopAvailable: boolean;
+  /** AOP year range in YYYY-YYYY format (e.g. "2026-2027"); only meaningful (and stored) when aopAvailable is true. */
+  aopYear?: string | null;
+  serviceLine?: ServiceLine;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   [key: string]: any;
 }
@@ -90,10 +108,14 @@ export interface ActionItem {
   opportunityId?: string;
   owner: string;
   ownerId?: string;
+  /** When the task was opened; defaults to the creation date but is user-editable. */
+  openDate: string;
   dueDate: string;
   priority: PriorityLevel;
   status: ActionItemStatus;
   notes: string;
+  /** Known risks or blocking dependencies for this action item. */
+  risksAndDependencies: string;
   completedDate?: string;
   /** Read-only, derived by backend from dueDate via the configured Financial Calendar. Never sent on create/update. */
   financialYear?: string;
@@ -114,6 +136,8 @@ export interface Stakeholder {
   relationship: RelationshipStatus;
   email: string;
   phone: string;
+  stakeholderType: StakeholderType;
+  department?: string;
 }
 
 export interface Activity {
@@ -262,6 +286,8 @@ export interface AdminUser {
   isActive: boolean;
   lastLogin?: string | null;
   createdAt: string;
+  failedAttempts?: number;
+  lockedUntil?: string | null;
 }
 
 export interface AdminSettings {

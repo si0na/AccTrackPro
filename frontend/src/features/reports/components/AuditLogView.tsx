@@ -6,7 +6,7 @@
 import React, { useEffect, useState } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
 import { activitiesApi } from '@/api/crm.api';
-import { LoadingState, Spinner } from '@/components/common/LoadingState';
+import { LoadingState } from '@/components/common/LoadingState';
 import { Activity } from '@/types';
 import {
   ShieldCheck,
@@ -18,10 +18,26 @@ import {
   Calendar,
   Filter,
 } from 'lucide-react';
-import { EmptyRow, FilterBar, FilterChip, PageHeader, SearchBar, SortableHeader } from '@/components/ui';
+import {
+  Card,
+  EmptyRow,
+  FilterBar,
+  FilterChip,
+  PageHeader,
+  Pagination,
+  SearchBar,
+  SortableHeader,
+  Table,
+  TableCell,
+  TableHead,
+  TableHeadCell,
+  TableRow,
+} from '@/components/ui';
 import { compareForSort, SortDirection } from '@/utils';
 
-const PAGE_SIZE = 50;
+/** Chunk size for incremental server fetches (the display page size is user-selectable). */
+const SERVER_PAGE_SIZE = 50;
+const PAGE_SIZE_OPTIONS = [10, 25, 50];
 
 export const AuditLogView: React.FC = () => {
   const {
@@ -43,19 +59,24 @@ export const AuditLogView: React.FC = () => {
   // loads pages incrementally instead of pulling the whole table.
   const [activities, setActivities] = useState<Activity[]>([]);
   const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(1);
+  const [serverPage, setServerPage] = useState(1);
   const [initialLoading, setInitialLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
+
+  // Display pagination (shared Pagination component) layered over the
+  // incrementally-loaded rows; paging forward transparently loads more.
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   useEffect(() => {
     let cancelled = false;
     setInitialLoading(true);
-    activitiesApi.getPage(1, PAGE_SIZE)
+    activitiesApi.getPage(1, SERVER_PAGE_SIZE)
       .then((res) => {
         if (cancelled) return;
         setActivities(res.data);
         setTotal(res.total);
-        setPage(1);
+        setServerPage(1);
       })
       .catch(() => { /* view shows its empty state; reads fail quietly */ })
       .finally(() => { if (!cancelled) setInitialLoading(false); });
@@ -65,21 +86,23 @@ export const AuditLogView: React.FC = () => {
   const handleLoadMore = async () => {
     setLoadingMore(true);
     try {
-      const res = await activitiesApi.getPage(page + 1, PAGE_SIZE);
+      const res = await activitiesApi.getPage(serverPage + 1, SERVER_PAGE_SIZE);
       setActivities((prev) => {
         const seen = new Set(prev.map((a) => a.id));
         return [...prev, ...res.data.filter((a) => !seen.has(a.id))];
       });
       setTotal(res.total);
-      setPage(res.page);
+      setServerPage(res.page);
     } catch {
-      // ignore — the button stays visible for a retry
+      // ignore — pagination stays on the current page for a retry
     } finally {
       setLoadingMore(false);
     }
   };
 
-  const hasMore = activities.length < total;
+  // Reset to page 1 whenever a filter narrows/widens the result set, so the
+  // user is never stranded on a now-empty page.
+  useEffect(() => { setPage(1); }, [filterType, searchQuery]);
 
   // Navigate to the most specific view for this activity, tagged so the target
   // page renders a "Back to Audit Log" button.
@@ -119,6 +142,23 @@ export const AuditLogView: React.FC = () => {
   const sortedActivities = sortField
     ? [...filteredActivities].sort((a, b) => compareForSort((a as any)[sortField], (b as any)[sortField], sortDirection))
     : filteredActivities;
+
+  const filtersActive = filterType !== 'All' || searchQuery.trim() !== '';
+
+  // When no filter narrows the loaded set, pagination ranges over the full
+  // server-side total (paging forward transparently loads more); once a
+  // filter is active, pagination is bounded to what has been loaded so far.
+  const paginationTotal = filtersActive ? sortedActivities.length : total;
+  const totalPages = Math.max(1, Math.ceil(paginationTotal / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const pagedActivities = sortedActivities.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+
+  const handlePageChange = async (p: number) => {
+    setPage(p);
+    if (!filtersActive && p * pageSize > activities.length && activities.length < total && !loadingMore) {
+      await handleLoadMore();
+    }
+  };
 
   const getActivityIcon = (type: Activity['type']) => {
     switch (type) {
@@ -178,34 +218,32 @@ export const AuditLogView: React.FC = () => {
       </FilterBar>
 
       {/* Logs Table */}
-      <div className="bg-white rounded-xl border border-slate-200/80 overflow-hidden shadow-sm">
+      <Card padding="none" clip>
         {initialLoading && <LoadingState label="Loading audit trail…" />}
         <div className={`overflow-x-auto ${initialLoading ? 'hidden' : ''}`}>
-          <table className="w-full text-left border-collapse text-xs">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider">
-                <th className="py-3 px-5 w-16"><SortableHeader label="Event" field="type" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} /></th>
-                <th className="py-3 px-4"><SortableHeader label="Action Details" field="text" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} /></th>
-                <th className="py-3 px-4 w-40"><SortableHeader label="Performed By" field="user" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} /></th>
-                <th className="py-3 px-4 w-36"><SortableHeader label="Time Elapsed" field="timestamp" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} /></th>
-                <th className="py-3 px-5 text-right w-28">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
+          <Table>
+            <TableHead>
+              <TableHeadCell className="w-16"><SortableHeader label="Event" field="type" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} /></TableHeadCell>
+              <TableHeadCell><SortableHeader label="Action Details" field="text" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} /></TableHeadCell>
+              <TableHeadCell className="w-40"><SortableHeader label="Performed By" field="user" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} /></TableHeadCell>
+              <TableHeadCell className="w-36"><SortableHeader label="Time Elapsed" field="timestamp" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} /></TableHeadCell>
+              <TableHeadCell align="right" className="w-28">Action</TableHeadCell>
+            </TableHead>
+            <tbody>
               {sortedActivities.length === 0 ? (
                 <EmptyRow colSpan={5} message="No matching audit activities found in system telemetry logs." />
               ) : (
-                sortedActivities.map(act => {
+                pagedActivities.map(act => {
                   const hasLink = (act.accountId && accounts.some(a => a.id === act.accountId)) ||
                                   (act.opportunityId && opportunities.some(o => o.id === act.opportunityId));
                   return (
-                    <tr key={act.id} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="py-3.5 px-5">
+                    <TableRow key={act.id} className="hover:bg-slate-50/50 transition-colors">
+                      <TableCell>
                         <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center">
                           {getActivityIcon(act.type)}
                         </div>
-                      </td>
-                      <td className="py-3.5 px-4">
+                      </TableCell>
+                      <TableCell>
                         <div className="space-y-0.5">
                           <p className="font-bold text-slate-800 text-sm leading-snug">{act.text}</p>
                           <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-semibold tracking-wide">
@@ -218,22 +256,22 @@ export const AuditLogView: React.FC = () => {
                             )}
                           </div>
                         </div>
-                      </td>
-                      <td className="py-3.5 px-4 text-slate-600 font-semibold">
+                      </TableCell>
+                      <TableCell className="text-slate-600 font-semibold">
                         <div className="flex items-center gap-1.5 text-xs">
                           <div className="w-5 h-5 rounded-full bg-slate-200 flex items-center justify-center text-[10px] font-bold text-slate-600 select-none">
                             {act.user.charAt(0)}
                           </div>
                           <span>{act.user}</span>
                         </div>
-                      </td>
-                      <td className="py-3.5 px-4 text-slate-500 font-medium font-mono text-[11px]">
+                      </TableCell>
+                      <TableCell className="text-slate-500 font-medium font-mono text-[11px]">
                         <div className="flex items-center gap-1">
                           <Calendar className="w-3.5 h-3.5 text-slate-400" />
                           <span>{act.timestamp}</span>
                         </div>
-                      </td>
-                      <td className="py-3.5 px-5 text-right">
+                      </TableCell>
+                      <TableCell align="right">
                         {hasLink ? (
                           <button
                             onClick={() => handleActivityClick(act)}
@@ -244,27 +282,27 @@ export const AuditLogView: React.FC = () => {
                         ) : (
                           <span className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">System</span>
                         )}
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   );
                 })
               )}
             </tbody>
-          </table>
+          </Table>
         </div>
-        {!initialLoading && hasMore && (
-          <div className="border-t border-slate-100 p-3 flex items-center justify-center">
-            <button
-              onClick={handleLoadMore}
-              disabled={loadingMore}
-              className="inline-flex items-center gap-2 text-xs px-4 py-2 rounded-lg font-bold text-slate-600 bg-slate-50 border border-slate-200 hover:bg-slate-100 cursor-pointer disabled:opacity-60"
-            >
-              {loadingMore && <Spinner className="w-3.5 h-3.5" />}
-              Load more ({activities.length} of {total})
-            </button>
-          </div>
+
+        {!initialLoading && sortedActivities.length > 0 && (
+          <Pagination
+            page={currentPage}
+            pageSize={pageSize}
+            totalItems={paginationTotal}
+            onPageChange={handlePageChange}
+            onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
+            pageSizeOptions={PAGE_SIZE_OPTIONS}
+            itemLabel="log entries"
+          />
         )}
-      </div>
+      </Card>
     </div>
   );
 };

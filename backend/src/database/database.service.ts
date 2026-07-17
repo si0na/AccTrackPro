@@ -78,10 +78,8 @@ export class DatabaseService implements OnModuleDestroy {
       `UPDATE accounts a SET owner_id = u.id FROM users u
        WHERE u.name = a.owner AND a.owner_id IS NULL`,
     );
-    await this.pool.query(
-      `UPDATE opportunities o SET owner_id = u.id FROM users u
-       WHERE u.name = o.owner AND o.owner_id IS NULL`,
-    );
+    // Opportunities no longer carry a display-name 'owner' column (removed in
+    // migration 032) — owner_id can no longer be backfilled from it here.
     await this.pool.query(
       `UPDATE action_items ai SET owner_id = u.id FROM users u
        WHERE u.name = ai.owner AND ai.owner_id IS NULL`,

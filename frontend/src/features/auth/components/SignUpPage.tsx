@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
-import { Building2, User, Mail, Lock, CheckCircle2, AlertCircle, ArrowRight, Eye, EyeOff } from 'lucide-react';
+import { User, Mail, Lock, CheckCircle2, ArrowRight, Eye, EyeOff } from 'lucide-react';
+import { Card, Button, ErrorBanner, FormField, INPUT_CLS } from '@/components/ui';
 
 interface SignUpPageProps {
   onGoToLogin: () => void;
@@ -13,7 +14,7 @@ function PasswordStrength({ password }: { password: string }) {
     { label: 'Contains number', pass: /\d/.test(password) },
   ];
   const score = checks.filter((c) => c.pass).length;
-  const colors = ['bg-slate-700', 'bg-amber-500', 'bg-emerald-500'];
+  const colors = ['bg-slate-200', 'bg-amber-500', 'bg-emerald-500'];
 
   if (!password) return null;
   return (
@@ -22,13 +23,13 @@ function PasswordStrength({ password }: { password: string }) {
         {checks.map((_, i) => (
           <div
             key={i}
-            className={`flex-1 h-0.5 rounded-full transition-colors ${i < score ? colors[score] : 'bg-slate-800'}`}
+            className={`flex-1 h-0.5 rounded-full transition-colors ${i < score ? colors[score] : 'bg-slate-200'}`}
           />
         ))}
       </div>
       <div className="flex flex-wrap gap-x-3 gap-y-0.5">
         {checks.map((c) => (
-          <span key={c.label} className={`text-[9px] font-medium ${c.pass ? 'text-emerald-400' : 'text-slate-600'}`}>
+          <span key={c.label} className={`text-[9px] font-medium ${c.pass ? 'text-emerald-600' : 'text-slate-400'}`}>
             {c.pass ? '✓' : '○'} {c.label}
           </span>
         ))}
@@ -79,151 +80,150 @@ export const SignUpPage: React.FC<SignUpPageProps> = ({ onGoToLogin }) => {
 
   if (success) {
     return (
-      <div className="min-h-screen w-full bg-slate-900 flex items-center justify-center p-4 font-sans">
-        <div className="w-full max-w-md bg-slate-950 border border-slate-800/80 rounded-2xl p-10 shadow-2xl text-center space-y-5">
-          <div className="w-14 h-14 rounded-full bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center mx-auto">
-            <CheckCircle2 className="w-7 h-7 text-emerald-400" />
-          </div>
-          <div>
-            <h2 className="text-lg font-bold text-white">Account Created!</h2>
-            <p className="text-xs text-slate-400 mt-1">
-              Welcome, <span className="text-slate-200 font-semibold">{name}</span>. Redirecting you to the login page…
-            </p>
-          </div>
-          <button
-            onClick={onGoToLogin}
-            className="flex items-center justify-center space-x-1.5 mx-auto text-xs text-indigo-400 hover:text-indigo-300 font-semibold transition-colors cursor-pointer"
-          >
-            <span>Go to Login now</span>
-            <ArrowRight className="w-3.5 h-3.5" />
-          </button>
+      <div className="min-h-screen w-full relative isolate overflow-hidden bg-gradient-to-b from-slate-50 via-white to-blue-50/40 flex items-center justify-center p-4 sm:p-6 font-sans">
+        <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
+          <div className="absolute -top-32 -left-24 h-80 w-80 rounded-full bg-blue-200/30 blur-3xl" />
+          <div className="absolute -bottom-32 -right-24 h-80 w-80 rounded-full bg-slate-300/30 blur-3xl" />
         </div>
+        <Card padding="none" className="w-full max-w-md">
+          <div className="p-10 sm:p-11 text-center space-y-6">
+            <div className="w-14 h-14 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center mx-auto ring-4 ring-emerald-500/10">
+              <CheckCircle2 className="w-7 h-7 text-emerald-600" />
+            </div>
+            <div>
+              <h2 className="text-lg font-bold text-slate-800">Account Created!</h2>
+              <p className="text-xs text-slate-500 mt-1.5">
+                Welcome, <span className="text-slate-700 font-semibold">{name}</span>. Redirecting you to the login page…
+              </p>
+            </div>
+            <button
+              onClick={onGoToLogin}
+              className="flex items-center justify-center space-x-1.5 mx-auto text-xs text-blue-600 hover:text-blue-700 font-semibold transition-colors cursor-pointer"
+            >
+              <span>Go to Login now</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </Card>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen w-full bg-slate-900 flex items-center justify-center p-4 relative font-sans">
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[350px] h-[350px] rounded-full bg-indigo-500/5 blur-[100px] pointer-events-none" />
-
-      <div className="w-full max-w-md bg-slate-950 border border-slate-800/80 rounded-2xl p-8 shadow-2xl relative z-10 space-y-6">
-        <div className="flex flex-col items-center text-center space-y-2">
-          <div className="w-11 h-11 rounded-xl bg-indigo-600 flex items-center justify-center shadow-lg shadow-indigo-600/20">
-            <Building2 className="w-5 h-5 text-white" />
+    <div className="min-h-screen w-full relative isolate overflow-hidden bg-gradient-to-b from-slate-50 via-white to-blue-50/40 flex items-center justify-center p-4 sm:p-6 font-sans">
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
+        <div className="absolute -top-32 -left-24 h-80 w-80 rounded-full bg-blue-200/30 blur-3xl" />
+        <div className="absolute -bottom-32 -right-24 h-80 w-80 rounded-full bg-slate-300/30 blur-3xl" />
+      </div>
+      <Card padding="none" className="w-full max-w-md">
+        <div className="p-8 sm:p-9 space-y-6">
+          <div className="flex flex-col items-center text-center space-y-3">
+            <div className="w-11 h-11 rounded-xl bg-blue-600 flex items-center justify-center font-bold text-white shadow-md shadow-blue-600/20 ring-4 ring-blue-600/10">
+              AT
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-slate-800 tracking-tight">Create your AccTrack Pro account</h1>
+              <p className="text-xs text-slate-500 mt-1.5">Register to access the enterprise CRM workspace.</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl font-bold text-white tracking-tight">Create your APEX account</h1>
-            <p className="text-xs text-slate-400 mt-1">Register to access the enterprise CRM workspace.</p>
+
+          {error && <ErrorBanner message={error} />}
+
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <FormField label="Full Name" required>
+              <div className="relative">
+                <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  type="text"
+                  required
+                  autoComplete="name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="e.g., Alex Morgan"
+                  className={`${INPUT_CLS} pl-9`}
+                />
+              </div>
+            </FormField>
+
+            <FormField label="Work Email" required>
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  type="email"
+                  required
+                  autoComplete="username"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="alex.morgan@reflectionsinfos.com"
+                  className={`${INPUT_CLS} pl-9`}
+                />
+              </div>
+            </FormField>
+
+            <FormField label="Password" required>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  type={showPass ? 'text' : 'password'}
+                  required
+                  autoComplete="new-password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="Min. 8 characters, at least 1 number"
+                  className={`${INPUT_CLS} pl-9 pr-9`}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPass((v) => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                  tabIndex={-1}
+                >
+                  {showPass ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
+              </div>
+              <PasswordStrength password={password} />
+            </FormField>
+
+            <FormField label="Confirm Password" required>
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <input
+                  type="password"
+                  required
+                  autoComplete="new-password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirm(e.target.value)}
+                  placeholder="Re-enter password"
+                  className={`${INPUT_CLS} pl-9`}
+                />
+              </div>
+            </FormField>
+
+            <Button type="submit" variant="primary" size="md" disabled={isLoading} className="w-full">
+              {isLoading ? (
+                <span>Creating account…</span>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Create Account</span>
+                </>
+              )}
+            </Button>
+          </form>
+
+          <div className="pt-5 border-t border-slate-100">
+            <p className="text-center text-xs text-slate-500">
+              Already have an account?{' '}
+              <button
+                onClick={onGoToLogin}
+                className="text-blue-600 hover:text-blue-700 font-semibold transition-colors cursor-pointer"
+              >
+                Sign in
+              </button>
+            </p>
           </div>
         </div>
-
-        {error && (
-          <div className="bg-red-500/10 border border-red-500/20 text-red-400 p-3 rounded-lg flex items-start space-x-2 text-xs">
-            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
-            <span className="font-semibold">{error}</span>
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-1">
-            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Full Name</label>
-            <div className="relative">
-              <User className="absolute left-3 top-3.5 w-4 h-4 text-slate-500" />
-              <input
-                type="text"
-                required
-                autoComplete="name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="e.g., Alex Morgan"
-                className="w-full text-xs bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-4 py-3 text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500/80 focus:ring-1 focus:ring-indigo-500/80"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Work Email</label>
-            <div className="relative">
-              <Mail className="absolute left-3 top-3.5 w-4 h-4 text-slate-500" />
-              <input
-                type="email"
-                required
-                autoComplete="username"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="alex.morgan@reflectionsinfos.com"
-                className="w-full text-xs bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-4 py-3 text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500/80 focus:ring-1 focus:ring-indigo-500/80"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Password</label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-3.5 w-4 h-4 text-slate-500" />
-              <input
-                type={showPass ? 'text' : 'password'}
-                required
-                autoComplete="new-password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Min. 8 characters, at least 1 number"
-                className="w-full text-xs bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-9 py-3 text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500/80 focus:ring-1 focus:ring-indigo-500/80"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPass((v) => !v)}
-                className="absolute right-3 top-3.5 text-slate-500 hover:text-slate-300 transition-colors cursor-pointer"
-                tabIndex={-1}
-              >
-                {showPass ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-              </button>
-            </div>
-            <PasswordStrength password={password} />
-          </div>
-
-          <div className="space-y-1">
-            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Confirm Password</label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-3.5 w-4 h-4 text-slate-500" />
-              <input
-                type="password"
-                required
-                autoComplete="new-password"
-                value={confirmPassword}
-                onChange={(e) => setConfirm(e.target.value)}
-                placeholder="Re-enter password"
-                className="w-full text-xs bg-slate-900 border border-slate-800 rounded-xl pl-9 pr-4 py-3 text-white placeholder-slate-600 focus:outline-none focus:border-indigo-500/80 focus:ring-1 focus:ring-indigo-500/80"
-              />
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            disabled={isLoading}
-            className="w-full flex items-center justify-center space-x-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white font-semibold py-3 px-4 rounded-xl shadow-lg transition-all text-xs cursor-pointer"
-          >
-            {isLoading ? (
-              <span>Creating account…</span>
-            ) : (
-              <>
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>Create Account</span>
-              </>
-            )}
-          </button>
-        </form>
-
-        <p className="text-center text-[11px] text-slate-500">
-          Already have an account?{' '}
-          <button
-            onClick={onGoToLogin}
-            className="text-indigo-400 hover:text-indigo-300 font-semibold transition-colors cursor-pointer"
-          >
-            Sign in
-          </button>
-        </p>
-      </div>
+      </Card>
     </div>
   );
 };

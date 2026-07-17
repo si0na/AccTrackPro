@@ -98,6 +98,9 @@ interface CRMContextProps {
   navSource: NavSource | null;
   selectedStage: string;
   setSelectedStage: (stage: string) => void;
+  /** Account Health filter applied to the Accounts list — driven by the filter dropdown or a dashboard drill-down. */
+  selectedHealth: string;
+  setSelectedHealth: (health: string) => void;
   dashboardStageHighlight: string;
   setDashboardStageHighlight: (stage: string) => void;
   /** True when the Action Items list should show only items due this week (dashboard drill-down). */
@@ -272,6 +275,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [cameFromDashboard, setCameFromDashboard] = useState<boolean>(false);
   const [navSource, setNavSource] = useState<NavSource | null>(null);
   const [selectedStage, setSelectedStage] = useState<string>('All');
+  const [selectedHealth, setSelectedHealth] = useState<string>('All');
   const [dashboardStageHighlight, setDashboardStageHighlight] = useState<string>('');
   const [dueThisWeekFilter, setDueThisWeekFilter] = useState<boolean>(false);
   const [dashboardOppStatusFilter, setDashboardOppStatusFilter] = useState<string>('All');
@@ -316,6 +320,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setCameFromDashboard(false);
       setDashboardStageHighlight('');
       setSelectedStage('All');
+      setSelectedHealth('All');
       setDueThisWeekFilter(false);
       setDashboardOppStatusFilter('All');
       setOpenActionItemsFilter(false);
@@ -366,6 +371,8 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         navSource,
         selectedStage,
         setSelectedStage,
+        selectedHealth,
+        setSelectedHealth,
         dashboardStageHighlight,
         setDashboardStageHighlight,
         dueThisWeekFilter,

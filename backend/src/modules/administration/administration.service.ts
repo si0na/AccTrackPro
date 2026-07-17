@@ -25,6 +25,8 @@ export interface AdminUser {
   isActive: boolean;
   lastLogin: string | null;
   createdAt: string;
+  failedAttempts: number;
+  lockedUntil: string | null;
 }
 
 export interface SystemOverview {
@@ -84,18 +86,22 @@ export class AdministrationService {
     const { rows } = await this.db.query(`
       SELECT id, name, email, role, is_active,
              last_login::TEXT AS last_login,
-             created_at::TEXT AS created_at
+             created_at::TEXT AS created_at,
+             failed_attempts,
+             locked_until::TEXT AS locked_until
       FROM users
       ORDER BY name ASC
     `);
     return rows.map((r) => ({
-      id:        r.id,
-      name:      r.name,
-      email:     r.email,
-      role:      r.role,
-      isActive:  r.is_active,
-      lastLogin: r.last_login ?? null,
-      createdAt: r.created_at,
+      id:             r.id,
+      name:           r.name,
+      email:          r.email,
+      role:           r.role,
+      isActive:       r.is_active,
+      lastLogin:      r.last_login ?? null,
+      createdAt:      r.created_at,
+      failedAttempts: r.failed_attempts ?? 0,
+      lockedUntil:    r.locked_until ?? null,
     }));
   }
 

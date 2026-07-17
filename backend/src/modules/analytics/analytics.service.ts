@@ -119,7 +119,7 @@ export class AnalyticsService {
     const baseJoin = `
       FROM opportunities o
       INNER JOIN accounts a ON o.account_id = a.id AND a.is_deleted = FALSE
-      WHERE o.is_deleted = FALSE AND o.status <> 'Lost'
+      WHERE o.is_deleted = FALSE AND o.stage <> 'Lost'
     `;
 
     // ── KPI summary ───────────────────────────────────────────────────────────

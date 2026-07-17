@@ -63,7 +63,7 @@ export const TableActions: React.FC<TableActionsProps> = ({
   onDelete,
   className = '',
 }) => (
-  <div className={`flex items-center justify-center gap-2 ${className}`}>
+  <div className={`flex items-center justify-center gap-1.5 whitespace-nowrap ${className}`}>
     {onView && (
       <RowActionButton
         intent="view"

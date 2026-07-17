@@ -31,11 +31,12 @@ export const CustomColumnFields: React.FC<CustomColumnFieldsProps> = ({
   if (visibleCols.length === 0) return null;
 
   return (
-    <div className="border-t border-slate-100 pt-4 mt-2 space-y-3 text-xs">
-      <h4 className="text-[10px] font-extrabold uppercase tracking-widest text-slate-400">
-        Custom Fields
+    <div className="pt-2 space-y-3 text-xs">
+      <h4 className="flex items-center gap-2 border-b border-slate-200 pb-2">
+        <span className="w-1 h-3.5 rounded-full bg-indigo-500 shrink-0" aria-hidden="true" />
+        <span className="text-label font-bold text-slate-700 uppercase tracking-wider">Custom Fields</span>
       </h4>
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {visibleCols.map((col) => {
           const rawVal = values[col.key] ?? (col.type === 'boolean' ? false : '');
           return (

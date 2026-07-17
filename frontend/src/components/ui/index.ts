@@ -29,7 +29,6 @@ export {
   HEALTH_COLORS,
   ACCOUNT_TYPE_COLORS,
   STAGE_COLORS,
-  OPPORTUNITY_STATUS_COLORS,
   PRIORITY_COLORS,
   ACTION_STATUS_COLORS,
   INFLUENCE_COLORS,
@@ -37,6 +36,8 @@ export {
   ALERT_SEVERITY_COLORS,
   NOTIFICATION_SEVERITY_COLORS,
   RETENTION_RISK_COLORS,
+  STAKEHOLDER_TYPE_LABELS,
+  STAKEHOLDER_TYPE_COLORS,
 } from './StatusBadge';
 export type { StatusBadgeProps } from './StatusBadge';
 
@@ -57,7 +58,7 @@ export type { FileUploadButtonProps } from './FileUpload';
 export { Pagination } from './Pagination';
 export type { PaginationProps } from './Pagination';
 
-export { FormField, FormGrid, FormModal, INPUT_CLS, SELECT_CLS, INPUT_CLS_AMBER } from './Form';
+export { FormField, FormGrid, FormSection, FormModal, INPUT_CLS, SELECT_CLS, INPUT_CLS_AMBER } from './Form';
 export type { FormFieldProps, FormModalProps } from './Form';
 
 export { DeactivatedSection } from './DeactivatedSection';
@@ -65,3 +66,37 @@ export type { DeactivatedSectionProps } from './DeactivatedSection';
 
 export { SortableHeader } from './SortableHeader';
 export type { SortableHeaderProps } from './SortableHeader';
+
+export { Card } from './Card';
+export type { CardProps, CardTone } from './Card';
+
+export { SummaryCard } from './SummaryCard';
+export type { SummaryCardProps } from './SummaryCard';
+
+export { InfoBlock } from './InfoBlock';
+export type { InfoBlockProps } from './InfoBlock';
+
+export { DetailHeaderCard } from './DetailHeaderCard';
+export type { DetailHeaderCardProps } from './DetailHeaderCard';
+
+export { DetailTabBar } from './DetailTabBar';
+export type { DetailTab, DetailTabBarProps } from './DetailTabBar';
+
+export {
+  PhoneInput,
+  splitPhone,
+  validatePhone,
+  isValidPhone,
+  COUNTRY_DIAL_CODES,
+  DEFAULT_DIAL_CODE,
+} from './PhoneInput';
+export type { PhoneInputProps, CountryDialCode } from './PhoneInput';
+
+export { Table, TableHead, TableHeadCell, TableCell, TableRow } from './Table';
+export type { TableProps, TableHeadProps, TableHeadCellProps, TableCellProps, TableRowProps } from './Table';
+
+export { TextPreviewCell } from './TextPreviewCell';
+export type { TextPreviewCellProps } from './TextPreviewCell';
+
+export { ExpandableTextCell } from './ExpandableTextCell';
+export type { ExpandableTextCellProps } from './ExpandableTextCell';

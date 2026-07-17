@@ -17,13 +17,18 @@ export class CreateActionItemDto {
   @IsString() @MaxLength(100) owner!: string;
 
   @EmptyToUndefined()
+  @IsOptional() @Matches(ISO_DATE_RE, { message: `openDate ${ISO_DATE_MSG}` })
+  openDate?: string;
+
+  @EmptyToUndefined()
   @IsOptional() @Matches(ISO_DATE_RE, { message: `dueDate ${ISO_DATE_MSG}` })
   dueDate?: string;
 
   @IsIn(['High', 'Medium', 'Low']) priority!: string;
-  @IsIn(['Not Started', 'In Progress', 'Blocked', 'Completed']) status!: string;
+  @IsIn(['To Do', 'In Progress', 'Blocked', 'Completed', 'Cancelled']) status!: string;
 
   @IsString() @IsOptional() @MaxLength(5000) notes?: string;
+  @IsString() @IsOptional() @MaxLength(5000) risksAndDependencies?: string;
 
   @EmptyToUndefined()
   @IsOptional() @Matches(ISO_DATE_RE, { message: `completedDate ${ISO_DATE_MSG}` })

@@ -33,8 +33,8 @@ export const FormField: React.FC<FormFieldProps> = ({
   className = '',
   children,
 }) => (
-  <label className={`block space-y-1 ${wide ? 'sm:col-span-2' : ''} ${className}`}>
-    <span className="block text-xs font-bold text-slate-500 uppercase tracking-wide">
+  <label className={`block space-y-1 ${wide ? 'sm:col-span-full' : ''} ${className}`}>
+    <span className="block text-label font-semibold text-slate-500 uppercase tracking-wide">
       {label}
       {required && (
         <span className="text-red-500 ml-0.5" aria-hidden="true">
@@ -43,15 +43,48 @@ export const FormField: React.FC<FormFieldProps> = ({
       )}
     </span>
     {children}
-    {hint && <span className="block text-[10px] text-slate-400 font-medium">{hint}</span>}
+    {hint && <span className="block text-micro text-slate-400 font-medium">{hint}</span>}
   </label>
 );
 
-/** Two-column responsive grid for form fields (single column on mobile). */
-export const FormGrid: React.FC<{ className?: string; children: React.ReactNode }> = ({
+/**
+ * Responsive grid for form fields — single column on mobile, 2 columns from
+ * `sm` up, and (via `columns={3}`) 3 columns from `lg` up once a modal is
+ * wide enough to hold a third column without cramping. `FormField`'s `wide`
+ * always spans the full row (`col-span-full`) regardless of column count.
+ */
+export const FormGrid: React.FC<{ className?: string; columns?: 2 | 3; children: React.ReactNode }> = ({
   className = '',
+  columns = 2,
   children,
-}) => <div className={`grid grid-cols-1 sm:grid-cols-2 gap-4 ${className}`}>{children}</div>;
+}) => (
+  <div className={`grid grid-cols-1 sm:grid-cols-2 ${columns === 3 ? 'lg:grid-cols-3' : ''} gap-4 ${className}`}>
+    {children}
+  </div>
+);
+
+/**
+ * Labeled group within a form body — groups related fields under a heading
+ * instead of one long undifferentiated field list. Wrap a `FormGrid` (or any
+ * content) in it; sections stack with consistent spacing inside `FormModal`.
+ *
+ * Every section heading carries the same accent treatment (indigo marker bar +
+ * emphasised title over a divider) so a new section is immediately
+ * recognisable — the hierarchy lives in the heading, not in the field content.
+ */
+export const FormSection: React.FC<{
+  title: string;
+  children: React.ReactNode;
+  className?: string;
+}> = ({ title, children, className = '' }) => (
+  <div className={`space-y-3 ${className}`}>
+    <h4 className="flex items-center gap-2 border-b border-slate-200 pb-2">
+      <span className="w-1 h-3.5 rounded-full bg-indigo-500 shrink-0" aria-hidden="true" />
+      <span className="text-label font-bold text-slate-700 uppercase tracking-wider">{title}</span>
+    </h4>
+    {children}
+  </div>
+);
 
 export interface FormModalProps {
   isOpen: boolean;
@@ -83,12 +116,12 @@ export const FormModal: React.FC<FormModalProps> = ({
   cancelLabel = 'Cancel',
   isSubmitting = false,
   submitVariant = 'primary',
-  maxWidth = 'max-w-md',
+  maxWidth = 'max-w-lg',
   children,
 }) => (
   <Modal isOpen={isOpen} title={title} icon={icon} onClose={onClose} maxWidth={maxWidth}>
     <form onSubmit={onSubmit} className="flex flex-col">
-      <div className="p-6 space-y-4 text-xs">{children}</div>
+      <div className="p-6 sm:p-7 space-y-5 text-xs">{children}</div>
       <ModalFooter>
         <Button variant="secondary" onClick={onClose} disabled={isSubmitting}>
           {cancelLabel}

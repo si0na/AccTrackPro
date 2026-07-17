@@ -14,6 +14,7 @@ export class CreateStakeholderDto {
 
   @IsIn(['High', 'Medium', 'Low']) influence!: string;
   @IsIn(['Strong', 'Neutral', 'Weak']) relationship!: string;
+  @IsIn(['CLIENT', 'SERVICE_PROVIDER']) stakeholderType!: string;
 
   @EmptyToUndefined()
   @IsOptional() @IsEmail({}, { message: 'email must be a valid email address' }) @MaxLength(200)
@@ -22,6 +23,10 @@ export class CreateStakeholderDto {
   @EmptyToUndefined()
   @IsOptional() @IsString() @MaxLength(50)
   phone?: string;
+
+  @EmptyToUndefined()
+  @IsOptional() @IsString() @MaxLength(150)
+  department?: string;
 }
 
 export class UpdateStakeholderDto extends CreateStakeholderDto {
