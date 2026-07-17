@@ -6,15 +6,17 @@
 import React, { useState } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
 import { Account, AccountType, AccountHealth } from '@/types';
-import { Plus, Building2, Settings2 } from 'lucide-react';
+import { Plus, Building2, Settings2, HeartPulse, X } from 'lucide-react';
 import { CustomizeColumnsSidebar } from '@/components/table/CustomizeColumnsSidebar';
 import { InlineEditModal } from '@/components/InlineEditModal';
 import { LoadingState } from '@/components/common/LoadingState';
 import { compareForSort, SortDirection } from '@/utils';
+import { ACCOUNT_TYPE_OPTIONS, ACCOUNT_HEALTH_OPTIONS } from '@/constants';
 import {
   ACCOUNT_TYPE_COLORS,
   BackButton,
   Button,
+  Card,
   ConfirmDialog,
   DeactivatedSection,
   EmptyRow,
@@ -24,6 +26,7 @@ import {
   FormField,
   FormGrid,
   FormModal,
+  FormSection,
   HEALTH_COLORS,
   INPUT_CLS,
   PageHeader,
@@ -34,7 +37,12 @@ import {
   SELECT_CLS,
   SortableHeader,
   StatusBadge,
+  Table,
   TableActions,
+  TableCell,
+  TableHead,
+  TableHeadCell,
+  TableRow,
 } from '@/components/ui';
 
 export const AccountsListView: React.FC = () => {
@@ -42,6 +50,7 @@ export const AccountsListView: React.FC = () => {
     accounts,
     deactivatedAccounts,
     opportunities,
+    stakeholders,
     addAccount,
     deleteAccount,
     restoreAccount,
@@ -53,6 +62,8 @@ export const AccountsListView: React.FC = () => {
     addCustomColumn,
     cameFromDashboard,
     navSource,
+    selectedHealth,
+    setSelectedHealth,
     currentUser,
     loading,
   } = useCRM();
@@ -78,8 +89,8 @@ export const AccountsListView: React.FC = () => {
   // Module-specific filter states (operational — never fiscal-period-based)
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedType, setSelectedType] = useState<string>('All');
-  const [selectedHealth, setSelectedHealth] = useState<string>('All');
   const [selectedIndustry, setSelectedIndustry] = useState<string>('All');
+  const [selectedLocation, setSelectedLocation] = useState<string>('All');
 
   // Client-side pagination over the already-filtered rows (display only)
   const [page, setPage] = useState(1);
@@ -118,6 +129,7 @@ export const AccountsListView: React.FC = () => {
     phone: '',
     email: '',
     address: '',
+    location: '',
     description: ''
   };
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -125,16 +137,19 @@ export const AccountsListView: React.FC = () => {
 
   // Dropdown options derived from live data (deduped, sorted).
   const industryOptions = Array.from(new Set(accounts.map(a => a.industry?.trim()).filter(Boolean))).sort();
+  const locationOptions = Array.from(new Set(accounts.map(a => a.location?.trim()).filter(Boolean))).sort();
 
   // Accounts are never fiscal-period-filtered — the list always shows every
   // account (subject to owner scoping server-side and the UI filters below).
   const filteredAccounts = accounts.filter(acc => {
     const matchesSearch = acc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          acc.industry.toLowerCase().includes(searchQuery.toLowerCase());
+                          acc.industry.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          (acc.location ?? '').toLowerCase().includes(searchQuery.toLowerCase());
     const matchesType     = selectedType   === 'All' || acc.type   === selectedType;
     const matchesHealth   = selectedHealth === 'All' || acc.health === selectedHealth;
     const matchesIndustry = selectedIndustry === 'All' || acc.industry?.trim() === selectedIndustry;
-    return matchesSearch && matchesType && matchesHealth && matchesIndustry;
+    const matchesLocation = selectedLocation === 'All' || acc.location?.trim() === selectedLocation;
+    return matchesSearch && matchesType && matchesHealth && matchesIndustry && matchesLocation;
   });
 
   const sortedAccounts = [...filteredAccounts].sort((a, b) =>
@@ -169,13 +184,37 @@ export const AccountsListView: React.FC = () => {
   };
 
   const displayedConfigs = accountsColumnConfig.filter(col => col.isDisplayed);
+  // User-added (non-standard) columns widen the table past the viewport and
+  // trigger horizontal scroll; the default column set always fits the screen.
+  const extraColumnCount = displayedConfigs.filter(col => !col.isStandard).length;
 
   if (loading) return <LoadingState label="Loading accounts…" />;
 
   return (
     <div className="space-y-6 relative">
       {cameFromDashboard && (
-        <BackButton label="Back to Dashboard" onClick={() => setView('dashboard')} />
+        <div className="flex flex-wrap items-center gap-3">
+          <BackButton label="Back to Dashboard" onClick={() => setView('dashboard')} />
+
+          {selectedHealth !== 'All' && (
+            <div className="inline-flex items-center gap-3 bg-indigo-50 border border-indigo-200 text-indigo-800 px-4 py-1.5 rounded-lg text-xs font-semibold">
+              <div className="flex items-center gap-1.5">
+                <HeartPulse className="w-3.5 h-3.5 text-indigo-500" aria-hidden="true" />
+                <span>Account health:</span>
+                <span className="font-extrabold text-indigo-700">{selectedHealth}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedHealth('All')}
+                className="flex items-center gap-1 text-indigo-500 hover:text-indigo-800 font-bold transition-colors cursor-pointer ml-1 border-l border-indigo-200 pl-3"
+                title="Show all health statuses"
+              >
+                <X className="w-3 h-3" aria-hidden="true" />
+                <span>Clear</span>
+              </button>
+            </div>
+          )}
+        </div>
       )}
 
       {navSource && (
@@ -218,7 +257,7 @@ export const AccountsListView: React.FC = () => {
       />
 
       {/* Control Panel: Search & Module-Specific Filters */}
-      <FilterBar className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 items-center">
+      <FilterBar className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 items-center">
         <SearchBar
           value={searchQuery}
           onChange={setSearchQuery}
@@ -244,9 +283,7 @@ export const AccountsListView: React.FC = () => {
           onChange={setSelectedHealth}
           options={[
             { value: 'All', label: 'All Health' },
-            { value: 'Healthy', label: 'Healthy' },
-            { value: 'At Risk', label: 'At Risk' },
-            { value: 'Critical', label: 'Critical' },
+            ...ACCOUNT_HEALTH_OPTIONS.map(h => ({ value: h as string, label: h as string })),
           ]}
         />
 
@@ -257,41 +294,45 @@ export const AccountsListView: React.FC = () => {
           onChange={setSelectedType}
           options={[
             { value: 'All', label: 'All Types' },
-            { value: 'Growth', label: 'Growth' },
-            { value: 'Pursuit', label: 'Pursuit' },
-            { value: 'Project', label: 'Project' },
+            ...ACCOUNT_TYPE_OPTIONS.map(t => ({ value: t as string, label: t as string })),
+          ]}
+        />
+
+        <FilterSelect
+          label="Location"
+          hideLabel
+          value={selectedLocation}
+          onChange={setSelectedLocation}
+          options={[
+            { value: 'All', label: 'All Locations' },
+            ...locationOptions.map(loc => ({ value: loc as string, label: loc as string })),
           ]}
         />
       </FilterBar>
 
       {/* Accounts Excel-style List Table */}
-      <div className="bg-white rounded-xl border border-slate-200/80 overflow-hidden shadow-sm">
+      <Card padding="none" clip>
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-200 select-none text-slate-500 font-bold text-xs uppercase tracking-wider">
-                {displayedConfigs.filter(col => col.key !== 'owner').map(col => (
-                  <th
-                    key={col.key}
-                    className={`py-3 px-4 font-bold text-xs uppercase tracking-wider ${
-                      col.key === 'name' ? 'px-5' : ''
-                    } ${
-                      col.key === 'revenue' ? 'text-right' : 'text-left'
-                    }`}
-                  >
-                    <SortableHeader
-                      label={col.name}
-                      field={col.key}
-                      sortField={sortField}
-                      sortDirection={sortDirection}
-                      onSort={handleSort}
-                      className={col.key === 'revenue' ? 'justify-end w-full' : ''}
-                    />
-                  </th>
-                ))}
-                <th className="py-3 px-5 text-center">Actions</th>
-              </tr>
-            </thead>
+          <Table extraColumns={extraColumnCount} resizable storageKey="accounts">
+            <TableHead>
+              {displayedConfigs.filter(col => col.key !== 'owner').map(col => (
+                <TableHeadCell
+                  key={col.key}
+                  columnId={col.key}
+                  align={col.key === 'revenue' ? 'right' : 'left'}
+                >
+                  <SortableHeader
+                    label={col.name}
+                    field={col.key}
+                    sortField={sortField}
+                    sortDirection={sortDirection}
+                    onSort={handleSort}
+                    className={col.key === 'revenue' ? 'justify-end w-full' : ''}
+                  />
+                </TableHeadCell>
+              ))}
+              <TableHeadCell align="center" sticky="right">Actions</TableHeadCell>
+            </TableHead>
             <tbody>
               {filteredAccounts.length === 0 ? (
                 <EmptyRow
@@ -300,15 +341,15 @@ export const AccountsListView: React.FC = () => {
                 />
               ) : (
                 pagedAccounts.map((acc) => (
-                  <tr
+                  <TableRow
                     key={acc.id}
+                    clickable
                     onClick={() => handleRowClick(acc.id)}
-                    className="border-b border-slate-100 last:border-0 hover:bg-slate-50/50 cursor-pointer text-xs font-medium text-slate-800 transition-colors"
                   >
                     {displayedConfigs.filter(col => col.key !== 'owner').map(col => {
                       if (col.key === 'name') {
                         return (
-                          <td key={col.key} className="py-4 px-5">
+                          <TableCell key={col.key}>
                             <div className="flex items-center space-x-3">
                               <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
                                 {acc.name.charAt(0)}
@@ -320,63 +361,70 @@ export const AccountsListView: React.FC = () => {
                                 <p className="text-[10px] text-slate-400 font-normal">{acc.industry}</p>
                               </div>
                             </div>
-                          </td>
+                          </TableCell>
                         );
                       }
                       if (col.key === 'status') {
                         return (
-                          <td key={col.key} className="py-4 px-4 text-slate-600 font-semibold">
+                          <TableCell key={col.key} className="text-slate-600 font-semibold">
                             {acc.status || 'Active'}
-                          </td>
+                          </TableCell>
                         );
                       }
                       if (col.key === 'health') {
                         return (
-                          <td key={col.key} className="py-4 px-4">
+                          <TableCell key={col.key}>
                             <StatusBadge value={acc.health} colorMap={HEALTH_COLORS} />
-                          </td>
+                          </TableCell>
                         );
                       }
                       if (col.key === 'owner') {
                         return (
-                          <td key={col.key} className="py-4 px-4 text-slate-600 font-medium">
+                          <TableCell key={col.key} className="text-slate-600 font-medium">
                             {acc.owner}
-                          </td>
+                          </TableCell>
                         );
                       }
                       if (col.key === 'type') {
                         return (
-                          <td key={col.key} className="py-4 px-4">
+                          <TableCell key={col.key}>
                             <StatusBadge value={acc.type} colorMap={ACCOUNT_TYPE_COLORS} />
-                          </td>
+                          </TableCell>
                         );
                       }
                       if (col.key === 'industry') {
                         return (
-                          <td key={col.key} className="py-4 px-4 text-slate-600 font-medium">
+                          <TableCell key={col.key} className="text-slate-600 font-medium">
                             {acc.industry || <span className="text-slate-300">—</span>}
-                          </td>
+                          </TableCell>
                         );
                       }
                       if (col.key === 'since') {
                         return (
-                          <td key={col.key} className="py-4 px-4 text-slate-600 font-medium">
+                          <TableCell key={col.key} className="text-slate-600 font-medium">
                             {acc.since || <span className="text-slate-300">—</span>}
-                          </td>
+                          </TableCell>
+                        );
+                      }
+                      if (col.key === 'location') {
+                        return (
+                          <TableCell key={col.key} className="text-slate-600 font-medium">
+                            {acc.location || <span className="text-slate-300">—</span>}
+                          </TableCell>
                         );
                       }
                       if (col.key === 'revenue') {
                         return (
-                          <td key={col.key} className="py-4 px-4 text-right text-slate-900 font-bold font-mono">
+                          <TableCell key={col.key} align="right" className="text-slate-900 font-bold font-mono">
                             {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(acc.revenue)}
-                          </td>
+                          </TableCell>
                         );
                       }
 
                       // Dynamic Render for custom columns/fields
                       const rawVal = acc[col.key] ?? (col.type === 'boolean' ? false : '');
                       return (
-                        <td key={col.key} className="py-4 px-4" onClick={(e) => e.stopPropagation()}>
+                        <TableCell key={col.key} onClick={(e) => e.stopPropagation()}>
                           {col.type === 'boolean' ? (
                             <div className="flex items-center">
                               <input
@@ -422,24 +470,24 @@ export const AccountsListView: React.FC = () => {
                               className="w-32 text-xs bg-slate-50 hover:bg-slate-100/70 focus:bg-white border border-transparent hover:border-slate-200 focus:border-blue-500 rounded px-2 py-1 text-slate-800 font-medium transition-all"
                             />
                           )}
-                        </td>
+                        </TableCell>
                       );
                     })}
 
                     {/* Action Panel */}
-                    <td className="py-4 px-5 text-center" onClick={(e) => e.stopPropagation()}>
+                    <TableCell align="center" sticky="right" onClick={(e) => e.stopPropagation()}>
                       <TableActions
                         entityLabel={`account ${acc.name}`}
                         onView={() => handleRowClick(acc.id)}
                         onEdit={() => { setEditingAccount({ ...acc }); setIsEditModalOpen(true); }}
                         onDelete={() => setDeleteTarget({ id: acc.id, label: acc.name })}
                       />
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 ))
               )}
             </tbody>
-          </table>
+          </Table>
         </div>
 
         {/* Pagination footer — client-side slicing of the filtered rows */}
@@ -451,7 +499,7 @@ export const AccountsListView: React.FC = () => {
           onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
           itemLabel="entries"
         />
-      </div>
+      </Card>
 
       {/* Deactivated Accounts Section */}
       {deactivatedAccounts.length > 0 && (
@@ -463,42 +511,40 @@ export const AccountsListView: React.FC = () => {
               className="mx-5 my-3"
             />
           )}
-          <table className="w-full text-left border-collapse text-xs">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 font-bold uppercase tracking-wider">
-                <th className="py-2.5 px-5">Account Name</th>
-                <th className="py-2.5 px-4">Type</th>
-                <th className="py-2.5 px-4">Health</th>
-                <th className="py-2.5 px-4">Owner</th>
-                <th className="py-2.5 px-5 text-center">Restore</th>
-              </tr>
-            </thead>
+          <Table>
+            <TableHead>
+              <TableHeadCell>Account Name</TableHeadCell>
+              <TableHeadCell>Type</TableHeadCell>
+              <TableHeadCell>Health</TableHeadCell>
+              <TableHeadCell>Owner</TableHeadCell>
+              <TableHeadCell align="center">Restore</TableHeadCell>
+            </TableHead>
             <tbody>
               {deactivatedAccounts.map((acc) => (
-                <tr key={acc.id} className="border-b last:border-0 text-slate-500 font-medium opacity-70">
-                  <td className="py-3 px-5">
+                <TableRow key={acc.id} className="opacity-70">
+                  <TableCell>
                     <div className="flex items-center space-x-2.5">
                       <div className="w-7 h-7 rounded-lg bg-slate-100 text-slate-400 flex items-center justify-center font-bold text-[11px]">
                         {acc.name.charAt(0)}
                       </div>
                       <span className="font-semibold text-slate-600 line-through decoration-slate-300">{acc.name}</span>
                     </div>
-                  </td>
-                  <td className="py-3 px-4">{acc.type}</td>
-                  <td className="py-3 px-4">
+                  </TableCell>
+                  <TableCell>{acc.type}</TableCell>
+                  <TableCell>
                     <StatusBadge value={acc.health} colorMap={HEALTH_COLORS} shape="rounded" muted />
-                  </td>
-                  <td className="py-3 px-4">{acc.owner}</td>
-                  <td className="py-3 px-5 text-center">
+                  </TableCell>
+                  <TableCell>{acc.owner}</TableCell>
+                  <TableCell align="center">
                     <RestoreButton
                       label={`Restore account ${acc.name}`}
                       onClick={() => setRestoreTarget({ id: acc.id, label: acc.name })}
                     />
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
             </tbody>
-          </table>
+          </Table>
         </DeactivatedSection>
       )}
 
@@ -537,6 +583,7 @@ export const AccountsListView: React.FC = () => {
           displayedConfigs={displayedConfigs}
           accounts={accounts}
           opportunities={opportunities}
+          stakeholders={stakeholders}
           onChange={(patch) => setEditingAccount({ ...editingAccount, ...patch })}
           onSave={async (e) => {
             e.preventDefault();
@@ -559,68 +606,82 @@ export const AccountsListView: React.FC = () => {
         onClose={() => setIsAddModalOpen(false)}
         onSubmit={handleCreateAccount}
         submitLabel="Create Account"
-        maxWidth="max-w-2xl"
+        maxWidth="max-w-4xl"
       >
-        <FormGrid>
-          <FormField label="Account Name" required wide>
-            <input
-              type="text"
-              required
-              value={newAccount.name}
-              onChange={(e) => setNewAccount({ ...newAccount, name: e.target.value })}
-              placeholder="e.g., Tesla Inc."
-              className={INPUT_CLS}
-            />
-          </FormField>
+        <div className="space-y-5">
+          <FormSection title="Identity">
+            <FormGrid>
+              <FormField label="Account Name" required wide>
+                <input
+                  type="text"
+                  required
+                  value={newAccount.name}
+                  onChange={(e) => setNewAccount({ ...newAccount, name: e.target.value })}
+                  placeholder="e.g., Tesla Inc."
+                  className={INPUT_CLS}
+                />
+              </FormField>
 
-          <FormField label="Account Type" required>
-            <select
-              required
-              value={newAccount.type}
-              onChange={(e) => setNewAccount({ ...newAccount, type: e.target.value as AccountType })}
-              className={SELECT_CLS}
-            >
-              <option value="" disabled>Select type…</option>
-              <option value="Growth">Growth</option>
-              <option value="Pursuit">Pursuit</option>
-              <option value="Project">Project</option>
-            </select>
-          </FormField>
+              <FormField label="Account Type" required>
+                <select
+                  required
+                  value={newAccount.type}
+                  onChange={(e) => setNewAccount({ ...newAccount, type: e.target.value as AccountType })}
+                  className={SELECT_CLS}
+                >
+                  <option value="" disabled>Select type…</option>
+                  {ACCOUNT_TYPE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </FormField>
 
-          <FormField label="Health Status" required>
-            <select
-              required
-              value={newAccount.health}
-              onChange={(e) => setNewAccount({ ...newAccount, health: e.target.value as AccountHealth })}
-              className={SELECT_CLS}
-            >
-              <option value="" disabled>Select health…</option>
-              <option value="Healthy">Healthy</option>
-              <option value="At Risk">At Risk</option>
-              <option value="Critical">Critical</option>
-            </select>
-          </FormField>
+              <FormField label="Health Status" required>
+                <select
+                  required
+                  value={newAccount.health}
+                  onChange={(e) => setNewAccount({ ...newAccount, health: e.target.value as AccountHealth })}
+                  className={SELECT_CLS}
+                >
+                  <option value="" disabled>Select health…</option>
+                  {ACCOUNT_HEALTH_OPTIONS.map(h => <option key={h} value={h}>{h}</option>)}
+                </select>
+              </FormField>
+            </FormGrid>
+          </FormSection>
 
-          <FormField label="Industry (Optional)" wide>
-            <input
-              type="text"
-              value={newAccount.industry}
-              onChange={(e) => setNewAccount({ ...newAccount, industry: e.target.value })}
-              placeholder="e.g., Technology"
-              className={INPUT_CLS}
-            />
-          </FormField>
+          <FormSection title="Details">
+            <FormGrid columns={3}>
+              <FormField label="Industry (Optional)">
+                <input
+                  type="text"
+                  value={newAccount.industry}
+                  onChange={(e) => setNewAccount({ ...newAccount, industry: e.target.value })}
+                  placeholder="e.g., Technology"
+                  className={INPUT_CLS}
+                />
+              </FormField>
 
-          <FormField label="Customer Since (Optional)" wide>
-            <input
-              type="text"
-              value={newAccount.since || ''}
-              onChange={(e) => setNewAccount({ ...newAccount, since: e.target.value })}
-              placeholder="e.g., 2020"
-              className={INPUT_CLS}
-            />
-          </FormField>
-        </FormGrid>
+              <FormField label="Customer Since (Optional)">
+                <input
+                  type="text"
+                  value={newAccount.since || ''}
+                  onChange={(e) => setNewAccount({ ...newAccount, since: e.target.value })}
+                  placeholder="e.g., 2020"
+                  className={INPUT_CLS}
+                />
+              </FormField>
+
+              <FormField label="Location (Optional)">
+                <input
+                  type="text"
+                  value={newAccount.location || ''}
+                  onChange={(e) => setNewAccount({ ...newAccount, location: e.target.value })}
+                  placeholder="e.g., San Francisco, CA"
+                  className={INPUT_CLS}
+                />
+              </FormField>
+            </FormGrid>
+          </FormSection>
+        </div>
       </FormModal>
     </div>
   );

@@ -5,28 +5,34 @@
 
 import React, { useState } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
-import { Stakeholder, InfluenceLevel, RelationshipStatus } from '@/types';
-import { Plus, Mail, Phone, Trash2, Users, X } from 'lucide-react';
+import { Stakeholder } from '@/types';
+import { Plus, Mail, Phone, X, Users } from 'lucide-react';
 import {
   BackButton,
   Button,
+  Card,
   ConfirmDialog,
   DeactivatedSection,
   EmptyRow,
   FilterBar,
-  FormField,
-  FormGrid,
-  FormModal,
-  INPUT_CLS,
+  FilterSelect,
   INFLUENCE_COLORS,
   PageHeader,
+  Pagination,
   RELATIONSHIP_COLORS,
-  RowActionButton,
   SearchBar,
-  SELECT_CLS,
   SortableHeader,
+  STAKEHOLDER_TYPE_COLORS,
+  STAKEHOLDER_TYPE_LABELS,
   StatusBadge,
+  Table,
+  TableActions,
+  TableHead,
+  TableHeadCell,
+  TableCell,
+  TableRow,
 } from '@/components/ui';
+import { StakeholderFormModal } from './StakeholderFormModal';
 import { LoadingState } from '@/components/common/LoadingState';
 import { compareForSort, SortDirection } from '@/utils';
 
@@ -37,6 +43,7 @@ export const StakeholdersView: React.FC = () => {
     accounts,
     deactivatedAccounts,
     addStakeholder,
+    updateStakeholder,
     deleteStakeholder,
     focusedRecord,
     setFocusedRecord,
@@ -53,6 +60,12 @@ export const StakeholdersView: React.FC = () => {
     : undefined;
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [accountFilter, setAccountFilter] = useState<string>('All');
+  const [stakeholderTypeFilter, setStakeholderTypeFilter] = useState<string>('All');
+
+  // Client-side pagination over the already-filtered/sorted rows (display only)
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   // Delete confirmation state
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; label: string } | null>(null);
@@ -60,22 +73,24 @@ export const StakeholdersView: React.FC = () => {
   const resolveAccount = (accountId: string) =>
     accounts.find(a => a.id === accountId) || deactivatedAccounts.find(a => a.id === accountId);
 
-  // Creation state. Account, influence, and relationship start unselected —
-  // the user must make explicit choices rather than inheriting defaults.
-  const EMPTY_STAKEHOLDER: Omit<Stakeholder, 'id'> = {
-    name: '',
-    accountId: '',
-    designation: '',
-    influence: '' as InfluenceLevel,
-    relationship: '' as RelationshipStatus,
-    email: '',
-    phone: ''
-  };
+  // Create/edit dialog state (shared StakeholderFormModal)
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [newStk, setNewStk] = useState<Omit<Stakeholder, 'id'>>(EMPTY_STAKEHOLDER);
+  const [editTarget, setEditTarget] = useState<Stakeholder | null>(null);
+
+  // Account filter options: only accounts that actually have stakeholders.
+  const accountFilterOptions = Array.from(new Set(stakeholders.map(s => s.accountId)))
+    .map(id => ({
+      value: id,
+      label: resolveAccount(id)?.name
+        || stakeholders.find(s => s.accountId === id)?.accountName
+        || id,
+    }))
+    .sort((a, b) => a.label.localeCompare(b.label));
 
   const filteredStks = stakeholders.filter(s => {
     if (focusedStakeholderId && s.id !== focusedStakeholderId) return false;
+    if (accountFilter !== 'All' && s.accountId !== accountFilter) return false;
+    if (stakeholderTypeFilter !== 'All' && s.stakeholderType !== stakeholderTypeFilter) return false;
     const account = resolveAccount(s.accountId);
     return s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       s.designation.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -97,17 +112,10 @@ export const StakeholdersView: React.FC = () => {
     compareForSort(getSortValue(a, sortField), getSortValue(b, sortField), sortDirection),
   );
 
-  const handleCreateStakeholder = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newStk.name.trim() || !newStk.accountId || !newStk.influence || !newStk.relationship) return;
-    try {
-      await addStakeholder(newStk);
-      setIsModalOpen(false);
-      setNewStk(EMPTY_STAKEHOLDER);
-    } catch {
-      // Failure toast raised centrally by the API client; keep the modal open.
-    }
-  };
+  // Clamp the page so filter changes never leave the user on an empty page.
+  const totalPages = Math.max(1, Math.ceil(sortedStks.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const pagedStks = sortedStks.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   if (loading) return <LoadingState label="Loading stakeholders…" />;
 
@@ -143,7 +151,8 @@ export const StakeholdersView: React.FC = () => {
       {/* Single-record focus banner (arrived here from a notification) */}
       {focusedStakeholderId && (
         <div className="flex items-center justify-between gap-3 bg-indigo-50 border border-indigo-200 text-indigo-800 px-4 py-2.5 rounded-lg text-xs font-semibold">
-          <span>
+          <span className="flex items-center gap-2">
+            <Users className="w-3.5 h-3.5 text-indigo-500 shrink-0" aria-hidden="true" />
             {focusedStakeholder
               ? <>Showing the stakeholder <span className="font-extrabold">"{focusedStakeholder.name}"</span> from your notification.</>
               : 'The stakeholder from your notification is not in the current period/filter — they may be deactivated or belong to another financial year.'}
@@ -165,205 +174,163 @@ export const StakeholdersView: React.FC = () => {
           value={searchQuery}
           onChange={setSearchQuery}
           placeholder="Search stakeholders by name, designation, or client account..."
+          className="flex-1 min-w-[240px]"
+        />
+        <FilterSelect
+          label="Account"
+          hideLabel
+          value={accountFilter}
+          onChange={(v) => { setAccountFilter(v); setPage(1); }}
+          options={[{ value: 'All', label: 'All Accounts' }, ...accountFilterOptions]}
+          className="w-56 shrink-0"
+        />
+        <FilterSelect
+          label="Stakeholder Type"
+          hideLabel
+          value={stakeholderTypeFilter}
+          onChange={(v) => { setStakeholderTypeFilter(v); setPage(1); }}
+          options={[
+            { value: 'All', label: 'All Stakeholders' },
+            { value: 'CLIENT', label: 'Client Stakeholders' },
+            { value: 'SERVICE_PROVIDER', label: 'Service Provider Stakeholders' },
+          ]}
+          className="w-56 shrink-0"
         />
       </FilterBar>
 
       {/* Stakeholders spreadsheet grid */}
-      <div className="bg-white rounded-xl border border-slate-200/80 overflow-hidden shadow-sm">
+      <Card padding="none" clip>
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider select-none">
-                <th className="py-3 px-5"><SortableHeader label="Name" field="name" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} /></th>
-                <th className="py-3 px-4"><SortableHeader label="Client Account" field="accountId" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} /></th>
-                <th className="py-3 px-4"><SortableHeader label="Designation" field="designation" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} /></th>
-                <th className="py-3 px-4 text-center"><SortableHeader label="Influence" field="influence" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="justify-center w-full" /></th>
-                <th className="py-3 px-4 text-center"><SortableHeader label="Relationship" field="relationship" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="justify-center w-full" /></th>
-                <th className="py-3 px-4"><SortableHeader label="Email" field="email" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} /></th>
-                <th className="py-3 px-4"><SortableHeader label="Phone" field="phone" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} /></th>
-                <th className="py-3 px-5 text-center">Remove</th>
-              </tr>
-            </thead>
+          <Table resizable storageKey="stakeholders">
+            <TableHead>
+              <TableHeadCell><SortableHeader label="Name" field="name" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} /></TableHeadCell>
+              <TableHeadCell><SortableHeader label="Client Account" field="accountId" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} /></TableHeadCell>
+              <TableHeadCell><SortableHeader label="Type" field="stakeholderType" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} /></TableHeadCell>
+              <TableHeadCell><SortableHeader label="Department" field="department" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} /></TableHeadCell>
+              <TableHeadCell><SortableHeader label="Designation" field="designation" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} /></TableHeadCell>
+              <TableHeadCell align="center"><SortableHeader label="Influence" field="influence" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="justify-center w-full" /></TableHeadCell>
+              <TableHeadCell align="center"><SortableHeader label="Relationship" field="relationship" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="justify-center w-full" /></TableHeadCell>
+              <TableHeadCell><SortableHeader label="Email" field="email" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} /></TableHeadCell>
+              <TableHeadCell><SortableHeader label="Phone" field="phone" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} /></TableHeadCell>
+              <TableHeadCell align="center" sticky="right">Actions</TableHeadCell>
+            </TableHead>
             <tbody>
               {sortedStks.length === 0 ? (
-                <EmptyRow colSpan={8} message="No stakeholders registered yet in the registry." />
+                <EmptyRow colSpan={10} message="No stakeholders registered yet in the registry." />
               ) : (
-                sortedStks.map(s => {
+                pagedStks.map(s => {
                   const account = resolveAccount(s.accountId);
                   return (
-                    <tr key={s.id} className="border-b last:border-0 hover:bg-slate-50/50 text-slate-800 font-medium">
-                      <td className="py-3.5 px-5 font-extrabold text-slate-900">{s.name}</td>
-                      <td className="py-3.5 px-4 text-slate-600 font-bold">{account?.name || s.accountName || 'Unknown'}</td>
-                      <td className="py-3.5 px-4 text-slate-500 font-semibold">{s.designation}</td>
-                      <td className="py-3.5 px-4 text-center">
+                    <TableRow key={s.id} className="hover:bg-slate-50/50">
+                      <TableCell className="font-extrabold text-slate-900">{s.name}</TableCell>
+                      <TableCell className="text-slate-600 font-bold">{account?.name || s.accountName || 'Unknown'}</TableCell>
+                      <TableCell>
+                        <StatusBadge value={STAKEHOLDER_TYPE_LABELS[s.stakeholderType]} colorMap={STAKEHOLDER_TYPE_COLORS} shape="rounded" />
+                      </TableCell>
+                      <TableCell className="text-slate-500 font-semibold">{s.department || '—'}</TableCell>
+                      <TableCell className="text-slate-500 font-semibold">{s.designation}</TableCell>
+                      <TableCell align="center">
                         <StatusBadge value={s.influence} colorMap={INFLUENCE_COLORS} shape="rounded" />
-                      </td>
-                      <td className="py-3.5 px-4 text-center">
+                      </TableCell>
+                      <TableCell align="center">
                         <StatusBadge value={s.relationship} colorMap={RELATIONSHIP_COLORS} />
-                      </td>
-                      <td className="py-3.5 px-4 select-all text-slate-500 hover:text-blue-500 transition-colors">
+                      </TableCell>
+                      <TableCell className="select-all text-slate-500 hover:text-blue-500 transition-colors">
                         <a href={`mailto:${s.email}`} className="flex items-center space-x-1 font-semibold">
                           <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden="true" />
                           <span className="truncate max-w-[150px]">{s.email}</span>
                         </a>
-                      </td>
-                      <td className="py-3.5 px-4 font-mono select-all text-slate-500">
+                      </TableCell>
+                      <TableCell className="font-mono select-all text-slate-500">
                         <span className="flex items-center space-x-1">
                           <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden="true" />
                           <span>{s.phone}</span>
                         </span>
-                      </td>
-                      <td className="py-3.5 px-5 text-center">
-                        <RowActionButton
-                          intent="delete"
-                          label={`Delete stakeholder ${s.name}`}
-                          icon={<Trash2 className="w-3.5 h-3.5" />}
-                          onClick={() => setDeleteTarget({ id: s.id, label: s.name })}
+                      </TableCell>
+                      <TableCell align="center" sticky="right">
+                        <TableActions
+                          entityLabel={`stakeholder ${s.name}`}
+                          onEdit={() => setEditTarget(s)}
+                          onDelete={() => setDeleteTarget({ id: s.id, label: s.name })}
                         />
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   );
                 })
               )}
             </tbody>
-          </table>
+          </Table>
         </div>
-      </div>
+
+        <Pagination
+          page={currentPage}
+          pageSize={pageSize}
+          totalItems={sortedStks.length}
+          onPageChange={setPage}
+          onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
+          itemLabel="stakeholders"
+        />
+      </Card>
 
       {/* Add stakeholder modal */}
-      <FormModal
+      <StakeholderFormModal
         isOpen={isModalOpen}
-        title="Register Corporate Stakeholder"
-        icon={<Users className="w-5 h-5 text-blue-600" aria-hidden="true" />}
+        mode="create"
+        accounts={accounts}
         onClose={() => setIsModalOpen(false)}
-        onSubmit={handleCreateStakeholder}
-        submitLabel="Register Stakeholder"
-      >
-        <FormField label="Stakeholder Name" required>
-          <input
-            type="text"
-            required
-            value={newStk.name}
-            onChange={(e) => setNewStk({ ...newStk, name: e.target.value })}
-            placeholder="e.g., David Miller"
-            className={INPUT_CLS}
-          />
-        </FormField>
+        onSubmit={async (draft) => { await addStakeholder(draft); }}
+      />
 
-        <FormField label="Client Account Association" required>
-          <select
-            required
-            value={newStk.accountId}
-            onChange={(e) => setNewStk({ ...newStk, accountId: e.target.value })}
-            className={SELECT_CLS}
-          >
-            <option value="" disabled>Select account…</option>
-            {accounts.map(acc => (
-              <option key={acc.id} value={acc.id}>
-                {acc.name}
-              </option>
-            ))}
-          </select>
-        </FormField>
-
-        <FormGrid>
-          <FormField label="Corporate Designation" required>
-            <input
-              type="text"
-              required
-              value={newStk.designation}
-              onChange={(e) => setNewStk({ ...newStk, designation: e.target.value })}
-              placeholder="e.g., CTO"
-              className={INPUT_CLS}
-            />
-          </FormField>
-
-          <FormField label="Influence Level" required>
-            <select
-              required
-              value={newStk.influence}
-              onChange={(e) => setNewStk({ ...newStk, influence: e.target.value as InfluenceLevel })}
-              className={SELECT_CLS}
-            >
-              <option value="" disabled>Select influence…</option>
-              <option value="High">High</option>
-              <option value="Medium">Medium</option>
-              <option value="Low">Low</option>
-            </select>
-          </FormField>
-
-          <FormField label="Relationship Status" required>
-            <select
-              required
-              value={newStk.relationship}
-              onChange={(e) => setNewStk({ ...newStk, relationship: e.target.value as RelationshipStatus })}
-              className={SELECT_CLS}
-            >
-              <option value="" disabled>Select relationship…</option>
-              <option value="Strong">Strong</option>
-              <option value="Neutral">Neutral</option>
-              <option value="Weak">Weak</option>
-            </select>
-          </FormField>
-
-          <FormField label="Direct Line Phone" required>
-            <input
-              type="text"
-              required
-              value={newStk.phone}
-              onChange={(e) => setNewStk({ ...newStk, phone: e.target.value })}
-              placeholder="e.g., +1 555 123 4567"
-              className={`${INPUT_CLS} font-mono`}
-            />
-          </FormField>
-        </FormGrid>
-
-        <FormField label="Direct Email" required>
-          <input
-            type="email"
-            required
-            value={newStk.email}
-            onChange={(e) => setNewStk({ ...newStk, email: e.target.value })}
-            placeholder="e.g., david.miller@company.com"
-            className={INPUT_CLS}
-          />
-        </FormField>
-      </FormModal>
+      {/* Edit stakeholder modal */}
+      <StakeholderFormModal
+        isOpen={!!editTarget}
+        mode="edit"
+        stakeholder={editTarget}
+        accounts={accounts}
+        onClose={() => setEditTarget(null)}
+        onSubmit={async (draft) => {
+          if (editTarget) await updateStakeholder({ ...editTarget, ...draft });
+        }}
+      />
 
       {/* Deactivated Stakeholders Section */}
       {deactivatedStakeholders.length > 0 && (
         <DeactivatedSection title="Deactivated Stakeholders" count={deactivatedStakeholders.length}>
-          <table className="w-full text-left border-collapse text-xs">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 font-bold uppercase tracking-wider select-none">
-                <th className="py-2.5 px-5">Name</th>
-                <th className="py-2.5 px-4">Client Account</th>
-                <th className="py-2.5 px-4">Designation</th>
-                <th className="py-2.5 px-4 text-center">Influence</th>
-                <th className="py-2.5 px-4 text-center">Relationship</th>
-                <th className="py-2.5 px-4">Email</th>
-              </tr>
-            </thead>
+          <Table>
+            <TableHead>
+              <TableHeadCell>Name</TableHeadCell>
+              <TableHeadCell>Client Account</TableHeadCell>
+              <TableHeadCell>Type</TableHeadCell>
+              <TableHeadCell>Department</TableHeadCell>
+              <TableHeadCell>Designation</TableHeadCell>
+              <TableHeadCell align="center">Influence</TableHeadCell>
+              <TableHeadCell align="center">Relationship</TableHeadCell>
+              <TableHeadCell>Email</TableHeadCell>
+            </TableHead>
             <tbody>
               {deactivatedStakeholders.map((s) => {
                 const acc = resolveAccount(s.accountId);
                 return (
-                  <tr key={s.id} className="border-b last:border-0 text-slate-500 font-medium opacity-70">
-                    <td className="py-3 px-5 font-semibold text-slate-600 line-through decoration-slate-300">{s.name}</td>
-                    <td className="py-3 px-4 text-slate-500">{s.accountName || acc?.name || '—'}</td>
-                    <td className="py-3 px-4 text-slate-400">{s.designation}</td>
-                    <td className="py-3 px-4 text-center">
+                  <TableRow key={s.id} className="opacity-70">
+                    <TableCell className="font-semibold text-slate-600 line-through decoration-slate-300">{s.name}</TableCell>
+                    <TableCell className="text-slate-500">{s.accountName || acc?.name || '—'}</TableCell>
+                    <TableCell>
+                      <StatusBadge value={STAKEHOLDER_TYPE_LABELS[s.stakeholderType]} colorMap={STAKEHOLDER_TYPE_COLORS} shape="rounded" muted />
+                    </TableCell>
+                    <TableCell className="text-slate-400">{s.department || '—'}</TableCell>
+                    <TableCell className="text-slate-400">{s.designation}</TableCell>
+                    <TableCell align="center">
                       <StatusBadge value={s.influence} colorMap={INFLUENCE_COLORS} shape="rounded" muted />
-                    </td>
-                    <td className="py-3 px-4 text-center">
+                    </TableCell>
+                    <TableCell align="center">
                       <StatusBadge value={s.relationship} colorMap={RELATIONSHIP_COLORS} muted />
-                    </td>
-                    <td className="py-3 px-4 text-slate-400 text-[10px] font-mono">{s.email}</td>
-                  </tr>
+                    </TableCell>
+                    <TableCell className="text-slate-400 text-[10px] font-mono">{s.email}</TableCell>
+                  </TableRow>
                 );
               })}
             </tbody>
-          </table>
+          </Table>
         </DeactivatedSection>
       )}
 

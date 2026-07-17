@@ -5,57 +5,85 @@
 
 import React, { useState } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
-import { OpportunityStage, PriorityLevel, ActionItem, ActionItemStatus } from '@/types';
+import { Opportunity, OpportunityStage, PriorityLevel, ActionItem, ActionItemStatus } from '@/types';
 import {
+  Briefcase,
   Calendar,
-  TrendingUp,
   CheckSquare,
+  DollarSign,
+  Edit2,
+  FileText,
   MessageSquare,
+  MoreVertical,
   Plus,
   Trash2,
   Settings2,
+  TrendingUp,
   X,
   Pencil,
-  Edit2,
-  Save
 } from 'lucide-react';
 import { CustomizeColumnsSidebar } from '@/components/table/CustomizeColumnsSidebar';
 import { DocumentsPanel } from '@/components/documents/DocumentsPanel';
 import { InlineEditModal } from '@/components/InlineEditModal';
-import { NumberInput } from '@/components/NumberInput';
 import { CustomColumnFields } from '@/components/CustomColumnFields';
+import { OpportunityPipelineProgress } from './OpportunityPipelineProgress';
+import { ACTION_ITEM_STATUS_OPTIONS, OPPORTUNITY_STAGE_OPTIONS } from '@/constants';
 import {
   ACTION_STATUS_COLORS,
   BackButton,
   Button,
+  Card,
   ConfirmDialog,
+  DetailHeaderCard,
+  DetailTabBar,
   EmptyRow,
+  FilterBar,
+  FilterSelect,
   FormField,
   FormGrid,
   FormModal,
+  FormSection,
   INPUT_CLS,
-  OPPORTUNITY_STATUS_COLORS,
+  Pagination,
   PRIORITY_COLORS,
   RowActionButton,
+  SearchBar,
   SELECT_CLS,
+  SortableHeader,
   STAGE_COLORS,
   StatusBadge,
+  SummaryCard,
+  Table,
+  TableHead,
+  TableHeadCell,
+  TableCell,
+  TableRow,
 } from '@/components/ui';
+import { compareForSort, getTodayISODate, isOpenActionItemStatus, SortDirection } from '@/utils';
+
+type OppTab = 'overview' | 'action-items' | 'comments' | 'documents';
+
+const SORTABLE_AI_FIELDS = new Set(['title', 'owner', 'priority', 'status', 'dueDate']);
 
 export const OpportunityDetailsView: React.FC = () => {
   const {
     opportunities,
     accounts,
     actionItems,
+    stakeholders,
     comments,
     selectedOpportunityId,
     setView,
+    setSelectedAccountId,
     setSelectedOpportunityId,
+    setFocusedRecord,
     updateOpportunity,
+    deleteOpportunity,
     addComment,
     deleteComment,
     actionItemColumns,
     actionItemsColumnConfig,
+    opportunitiesColumnConfig,
     addActionItem,
     updateActionItem,
     deleteActionItem,
@@ -72,16 +100,39 @@ export const OpportunityDetailsView: React.FC = () => {
   const opp = opportunities.find(o => o.id === selectedOpportunityId);
   const account = opp ? accounts.find(a => a.id === opp.accountId) : null;
 
-  // Active Tab
-  const [activeTab, setActiveTab] = useState<'overview' | 'comments'>('overview');
+  // Tab navigation + Documents tab count
+  const [activeTab, setActiveTab] = useState<OppTab>('overview');
+  const [docCount, setDocCount] = useState(0);
+
   const [commentText, setCommentText] = useState('');
 
   // Delete confirmation state
-  const [deleteTarget, setDeleteTarget] = useState<{ type: 'actionItem' | 'comment'; id: string; label: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ type: 'actionItem' | 'comment' | 'opportunity'; id: string; label: string } | null>(null);
+
+  // Header overflow actions menu
+  const [showOppMenu, setShowOppMenu] = useState(false);
 
   // Customizable column sidebar & comment states for action items
   const [isColumnsSidebarOpen, setIsColumnsSidebarOpen] = useState(false);
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
+
+  // Action Items tab: search / filter / sort / pagination
+  const [aiSearch, setAiSearch] = useState('');
+  const [aiStatusFilter, setAiStatusFilter] = useState('all');
+  const [aiPriorityFilter, setAiPriorityFilter] = useState('all');
+  const [aiSortField, setAiSortField] = useState<string | null>(null);
+  const [aiSortDirection, setAiSortDirection] = useState<SortDirection>('asc');
+  const [aiPage, setAiPage] = useState(1);
+  const [aiPageSize, setAiPageSize] = useState(10);
+
+  const handleAiSort = (field: string) => {
+    if (aiSortField === field) {
+      setAiSortDirection(d => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setAiSortField(field);
+      setAiSortDirection('asc');
+    }
+  };
 
   // Edit Action Item Modal State
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -106,39 +157,25 @@ export const OpportunityDetailsView: React.FC = () => {
   const [closeReasonDraft, setCloseReasonDraft] = useState('');
   const [isClosingOpp, setIsClosingOpp] = useState(false);
 
-  // Opportunity inline edit state
-  const [isEditingOpp, setIsEditingOpp] = useState(false);
-  const [isSavingOpp, setIsSavingOpp] = useState(false);
-  const [oppDraft, setOppDraft] = useState({
-    name: '', stage: 'Lead' as OpportunityStage, value: 0, probability: 0,
-    owner: '', startDate: '', closeDate: '', description: '',
-  });
+  // Edit Opportunity Modal state — shares InlineEditModal with the
+  // Opportunities page and Account Detail view so all three entry points
+  // render an identical edit experience.
+  const [isEditOppModalOpen, setIsEditOppModalOpen] = useState(false);
+  const [oppDraft, setOppDraft] = useState<Opportunity | null>(null);
 
   const openOppEdit = () => {
     if (!opp) return;
-    setOppDraft({
-      name: opp.name,
-      stage: opp.stage,
-      value: opp.value,
-      probability: opp.probability,
-      owner: opp.owner,
-      startDate: opp.startDate || '',
-      closeDate: opp.closeDate || '',
-      description: opp.description || '',
-    });
-    setIsEditingOpp(true);
+    setOppDraft({ ...opp });
+    setIsEditOppModalOpen(true);
+    setActiveTab('overview');
   };
 
-  const handleSaveOpp = async (e: React.FormEvent) => {
+  const handleSaveOpp = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!opp) return;
-    setIsSavingOpp(true);
-    try {
-      await updateOpportunity({ ...opp, ...oppDraft });
-    } finally {
-      setIsSavingOpp(false);
-      setIsEditingOpp(false);
-    }
+    if (!oppDraft || !oppDraft.name.trim()) return;
+    updateOpportunity(oppDraft);
+    setIsEditOppModalOpen(false);
+    setOppDraft(null);
   };
 
   // New action item modal state
@@ -148,10 +185,12 @@ export const OpportunityDetailsView: React.FC = () => {
     accountId: '',
     opportunityId: '',
     owner: '',
+    openDate: getTodayISODate(),
     dueDate: '',
     priority: 'Medium' as PriorityLevel,
-    status: 'Not Started' as ActionItemStatus,
-    notes: ''
+    status: 'To Do' as ActionItemStatus,
+    notes: '',
+    risksAndDependencies: ''
   };
   const [newAi, setNewAi] = useState<Omit<ActionItem, 'id'>>(emptyTask);
 
@@ -167,25 +206,31 @@ export const OpportunityDetailsView: React.FC = () => {
     setNewAi(emptyTask);
   };
 
+  // Shared by the "no opportunity" fallback and by post-deactivation
+  // navigation — both leave this view the same way the back button would.
+  const goBackFromOpportunity = () => {
+    if (oppDetailsSourceView === 'account-details') {
+      setAccountDetailsActiveTab('opportunities');
+      setView('account-details');
+      setOppDetailsSourceView(null);
+    } else {
+      setView('opportunities');
+    }
+  };
+
   if (!opp || !account) {
     return (
-      <div className="bg-white p-8 text-center rounded-xl border border-slate-200">
-        <p className="text-slate-400 font-medium">No opportunity selected.</p>
-        <button
-          onClick={() => {
-            if (oppDetailsSourceView === 'account-details') {
-              setAccountDetailsActiveTab('opportunities');
-              setView('account-details');
-              setOppDetailsSourceView(null);
-            } else {
-              setView('opportunities');
-            }
-          }}
-          className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-semibold cursor-pointer"
-        >
-          Back
-        </button>
-      </div>
+      <Card padding="none">
+        <div className="p-8 text-center">
+          <p className="text-slate-400 font-medium">No opportunity selected.</p>
+          <button
+            onClick={goBackFromOpportunity}
+            className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-semibold cursor-pointer"
+          >
+            Back
+          </button>
+        </div>
+      </Card>
     );
   }
 
@@ -205,6 +250,27 @@ export const OpportunityDetailsView: React.FC = () => {
     addComment('opportunity', opp.id, commentText);
     setCommentText('');
   };
+
+  // Action items: filter -> sort -> paginate
+  const displayedActionCols = actionItemsColumnConfig.filter(col => col.isDisplayed);
+  // User-added (non-standard) columns widen the table past the viewport and
+  // trigger horizontal scroll; the default column set always fits the screen.
+  const extraActionColCount = displayedActionCols.filter(col => !col.isStandard).length;
+  const filteredActions = oppActions.filter(item => {
+    const q = aiSearch.trim().toLowerCase();
+    const matchesSearch = !q
+      || item.title.toLowerCase().includes(q)
+      || item.owner.toLowerCase().includes(q)
+      || (item.notes ?? '').toLowerCase().includes(q);
+    const matchesStatus = aiStatusFilter === 'all' || item.status === aiStatusFilter;
+    const matchesPriority = aiPriorityFilter === 'all' || item.priority === aiPriorityFilter;
+    return matchesSearch && matchesStatus && matchesPriority;
+  });
+  const sortedActions = aiSortField
+    ? [...filteredActions].sort((a, b) => compareForSort((a as any)[aiSortField], (b as any)[aiSortField], aiSortDirection))
+    : filteredActions;
+  const totalActions = sortedActions.length;
+  const pagedActions = sortedActions.slice((aiPage - 1) * aiPageSize, aiPage * aiPageSize);
 
   return (
     <div className="space-y-6">
@@ -230,63 +296,17 @@ export const OpportunityDetailsView: React.FC = () => {
         />
       )}
 
-      {/* Header Card: identity, quick actions, and pipeline progress */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-5">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-          <div className="flex items-center space-x-3">
-            {!navSource && (
-              <BackButton
-                label={oppDetailsSourceView === 'account-details' ? 'Back to Account' : 'Back'}
-                onClick={() => {
-                  if (oppDetailsSourceView === 'account-details') {
-                    setAccountDetailsActiveTab('opportunities');
-                    setView('account-details');
-                    setOppDetailsSourceView(null);
-                  } else {
-                    setView('opportunities');
-                  }
-                }}
-              />
-            )}
-            <div>
-              <div className="flex items-center space-x-2.5">
-                <h2 className="text-2xl font-bold text-slate-900 tracking-tight border-l-4 border-blue-600 pl-3">{opp.name}</h2>
-                <StatusBadge value={opp.stage} colorMap={STAGE_COLORS} />
-                <StatusBadge value={opp.status ?? 'Open'} colorMap={OPPORTUNITY_STATUS_COLORS} />
-              </div>
-              <p className="text-xs text-slate-400 font-semibold font-mono uppercase tracking-widest">
-                Associated Account:{' '}
-                <span className="text-blue-500 hover:underline cursor-pointer" onClick={() => setView('account-details')}>
-                  {account.name}
-                </span>
-              </p>
-            </div>
-          </div>
-
-          {/* Stage quick transitions + Edit */}
-          <div className="flex items-center gap-3">
-            <div className="flex items-center space-x-2">
-              <label className="text-xs font-bold text-slate-500 mr-2 uppercase tracking-wide">Update Stage:</label>
-              <select
-                value={opp.stage}
-                onChange={(e) => {
-                  const stage = e.target.value as OpportunityStage;
-                  if (stage === 'Won' && opp.status !== 'Won') {
-                    // Winning the deal requires a win reason — captured in the close-out dialog.
-                    setCloseReasonDraft(opp.closeReason || '');
-                    setCloseDialog({ outcome: 'Won', stage });
-                  } else {
-                    updateOpportunity({ ...opp, stage });
-                  }
-                }}
-                className="text-xs border border-slate-200 rounded-lg p-2 bg-white font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-              >
-                {stages.map(stg => (
-                  <option key={stg} value={stg}>{stg}</option>
-                ))}
-              </select>
-            </div>
-            {opp.status === 'Open' && (
+      {/* Page Header — shared with Account Detail via DetailHeaderCard */}
+      <DetailHeaderCard
+        onBack={!navSource ? goBackFromOpportunity : undefined}
+        backTitle={oppDetailsSourceView === 'account-details' ? 'Back to Account' : 'Back to Opportunities'}
+        avatarContent={<TrendingUp className="w-6 h-6" aria-hidden="true" />}
+        avatarColorClass="bg-indigo-50 text-indigo-600"
+        title={opp.name}
+        badges={<StatusBadge value={opp.stage} colorMap={STAGE_COLORS} />}
+        actions={
+          <>
+            {opp.stage !== 'Won' && opp.stage !== 'Lost' && (
               <Button
                 variant="danger"
                 icon={<X className="w-3.5 h-3.5" aria-hidden="true" />}
@@ -299,541 +319,654 @@ export const OpportunityDetailsView: React.FC = () => {
               </Button>
             )}
             <Button
-              variant={isEditingOpp ? 'secondary' : 'primary'}
+              variant="primary"
               icon={<Edit2 className="w-3.5 h-3.5" aria-hidden="true" />}
-              onClick={isEditingOpp ? () => setIsEditingOpp(false) : openOppEdit}
+              onClick={openOppEdit}
             >
-              {isEditingOpp ? 'Cancel' : 'Edit Opportunity'}
+              Edit Opportunity
             </Button>
-          </div>
-        </div>
+            <div className="relative">
+              <button
+                onClick={() => setShowOppMenu(v => !v)}
+                className="p-2.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 cursor-pointer transition-colors"
+                title="More actions"
+              >
+                <MoreVertical className="w-4 h-4" />
+              </button>
+              {showOppMenu && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setShowOppMenu(false)} />
+                  <div className="absolute right-0 top-full mt-1.5 w-48 bg-white border border-slate-200 rounded-lg shadow-lg z-20 py-1">
+                    <button
+                      onClick={() => {
+                        setShowOppMenu(false);
+                        setDeleteTarget({ type: 'opportunity', id: opp.id, label: opp.name });
+                      }}
+                      className="w-full text-left px-3.5 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 cursor-pointer transition-colors"
+                    >
+                      Deactivate Opportunity
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          </>
+        }
+        attributes={[
+          {
+            icon: <Briefcase className="w-4 h-4" />,
+            label: 'Account',
+            value: (
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedAccountId(opp.accountId);
+                  setView('account-details');
+                }}
+                title={`View account ${account.name}`}
+                className="text-blue-600 hover:underline font-bold cursor-pointer truncate max-w-full text-left"
+              >
+                {account.name}
+              </button>
+            ),
+          },
+          { icon: <DollarSign className="w-4 h-4" />, label: 'CRM Value', mono: true, value: formatCur(opp.crmValue) },
+          { icon: <TrendingUp className="w-4 h-4" />, label: 'Probability', mono: true, value: `${opp.probability}%` },
+          { icon: <Calendar className="w-4 h-4" />, label: 'Expected Close Date', mono: true, value: opp.closeDate || 'N/A' },
+        ]}
+        attributesClassName="grid-cols-2 lg:grid-cols-4"
+      />
 
-        {/* Pipeline progress stepper */}
-        <div className="pt-1 border-t border-slate-100">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Pipeline Progress</span>
-            <span className="text-xs font-bold text-indigo-600">
-              {Math.round(((currentStageIdx + 1) / stages.length) * 100)}% Complete
-            </span>
-          </div>
-          <div className="overflow-hidden h-2 rounded-full bg-slate-100">
-            <div
-              style={{ width: `${((currentStageIdx + 1) / stages.length) * 100}%` }}
-              className="h-full bg-indigo-600 transition-all duration-300"
-            />
-          </div>
-          <div className="grid grid-cols-5 mt-2 text-center text-[10px] font-bold text-slate-400 select-none">
-            {stages.map((stg, i) => {
-              const isPastOrCurrent = i <= currentStageIdx;
-              return (
-                <span key={stg} className={isPastOrCurrent ? 'text-indigo-600 font-bold' : 'font-medium'}>
-                  {stg}
-                </span>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-
-      {/* Closed-deal banner: outcome, when, and the captured win/loss reason */}
-      {(opp.status === 'Won' || opp.status === 'Lost') && (
+      {/* Closed-deal banner: outcome, when, and the captured win/loss reason.
+          Shown regardless of active tab since it's cross-cutting deal status. */}
+      {(opp.stage === 'Won' || opp.stage === 'Lost') && (
         <div className={`flex flex-wrap items-start justify-between gap-3 p-4 rounded-xl border ${
-          opp.status === 'Won' ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'
+          opp.stage === 'Won' ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'
         }`}>
           <div className="min-w-0">
-            <p className={`text-xs font-extrabold uppercase tracking-wide ${opp.status === 'Won' ? 'text-emerald-700' : 'text-red-700'}`}>
-              Closed as {opp.status}
+            <p className={`text-xs font-extrabold uppercase tracking-wide ${opp.stage === 'Won' ? 'text-emerald-700' : 'text-red-700'}`}>
+              Closed as {opp.stage}
               {opp.closedAt && ` on ${new Date(opp.closedAt).toLocaleDateString()}`}
             </p>
             {opp.closeReason && (
               <p className="text-xs text-slate-600 mt-1">
-                <span className="font-bold">{opp.status === 'Won' ? 'Win reason' : 'Loss reason'}:</span> {opp.closeReason}
+                <span className="font-bold">{opp.stage === 'Won' ? 'Win reason' : 'Loss reason'}:</span> {opp.closeReason}
               </p>
             )}
           </div>
-          <button
+          <Button
+            variant="secondary"
+            className="shrink-0"
             onClick={() => updateOpportunity({
               ...opp,
-              status: 'Open',
-              // A deal cannot sit in the Won stage while open — step it back.
-              stage: opp.stage === 'Won' ? 'Negotiation' : opp.stage,
+              // A deal cannot stay Won/Lost while reopened — step it back to Negotiation.
+              stage: 'Negotiation',
               closeReason: '',
             })}
-            className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-bold cursor-pointer border bg-white text-slate-600 border-slate-200 hover:bg-slate-50"
           >
             Reopen Deal
-          </button>
+          </Button>
         </div>
       )}
 
-      {/* 1. Details & Documents */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-        <div className="lg:col-span-2">
-        {isEditingOpp ? (
-          <form onSubmit={handleSaveOpp} className="bg-white p-5 rounded-xl border border-blue-200 shadow-sm space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-              <h4 className="font-extrabold text-slate-800 text-sm tracking-tight flex items-center gap-2">
-                <Edit2 className="w-4 h-4 text-blue-600" aria-hidden="true" />
-                Edit Opportunity
-              </h4>
-            </div>
+      {/* Navigation Tabs */}
+      <DetailTabBar
+        tabs={[
+          { id: 'overview', label: 'Overview', icon: Briefcase, count: null },
+          { id: 'action-items', label: 'Action Items', icon: CheckSquare, count: oppActions.length },
+          { id: 'comments', label: 'Comments', icon: MessageSquare, count: oppComments.length },
+          { id: 'documents', label: 'Documents', icon: FileText, count: docCount > 0 ? docCount : null },
+        ]}
+        activeTab={activeTab}
+        onChange={(id) => setActiveTab(id as OppTab)}
+      />
 
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Opportunity Name</label>
-              <input
-                type="text"
-                required
-                value={oppDraft.name}
-                onChange={(e) => setOppDraft({ ...oppDraft, name: e.target.value })}
-                className={INPUT_CLS}
+      {/* Dynamic Tab Contents */}
+      <div className="space-y-6">
+        {activeTab === 'overview' && (
+          <div className="space-y-6">
+            {/* KPI Summary Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <SummaryCard
+                label="Action Items"
+                value={oppActions.length}
+                icon={<CheckSquare className="w-4.5 h-4.5" />}
+                tone="blue"
+                description={oppActions.length === 0
+                  ? 'No pending items'
+                  : `${oppActions.filter(ai => isOpenActionItemStatus(ai.status)).length} pending`}
+                actionLabel="View Details"
+                onAction={() => setActiveTab('action-items')}
+              />
+              <SummaryCard
+                label="Comments"
+                value={oppComments.length}
+                icon={<MessageSquare className="w-4.5 h-4.5" />}
+                tone="purple"
+                description={oppComments.length === 0 ? 'No comments yet' : 'Latest activity feed'}
+                actionLabel="View Details"
+                onAction={() => setActiveTab('comments')}
+              />
+              <SummaryCard
+                label="Documents"
+                value={docCount}
+                icon={<FileText className="w-4.5 h-4.5" />}
+                tone="indigo"
+                description={docCount === 0 ? 'No documents' : 'Uploaded files'}
+                actionLabel="View Details"
+                onAction={() => setActiveTab('documents')}
+              />
+              <SummaryCard
+                label="Deal Value"
+                value={formatCur(opp.value)}
+                icon={<DollarSign className="w-4.5 h-4.5" />}
+                tone="emerald"
+                description="Total deal value"
               />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Stage</label>
-                <select
-                  value={oppDraft.stage}
-                  onChange={(e) => setOppDraft({ ...oppDraft, stage: e.target.value as OpportunityStage })}
-                  className={SELECT_CLS}
-                >
-                  <option value="Lead">Lead</option>
-                  <option value="Qualified">Qualified</option>
-                  <option value="Proposal">Proposal</option>
-                  <option value="Negotiation">Negotiation</option>
-                  <option value="Won">Won</option>
-                </select>
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Probability (%)</label>
-                <NumberInput
-                  min={0}
-                  max={100}
-                  value={oppDraft.probability}
-                  onValueChange={(v) => setOppDraft({ ...oppDraft, probability: v })}
-                  placeholder="0–100"
-                  className={`${INPUT_CLS} font-mono`}
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Owner</label>
-                <input
-                  type="text"
-                  value={oppDraft.owner}
-                  onChange={(e) => setOppDraft({ ...oppDraft, owner: e.target.value })}
-                  placeholder="e.g., John Smith"
-                  className={INPUT_CLS}
-                />
-              </div>
-            </div>
+            {/* Pipeline Progress Card */}
+            <Card
+              title="Pipeline Progress"
+              actions={
+                <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
+                  {currentStageIdx === -1 ? (
+                    <StatusBadge value={opp.stage} colorMap={STAGE_COLORS} />
+                  ) : (
+                    <span className="text-xs font-bold text-indigo-600 whitespace-nowrap">
+                      {Math.round(((currentStageIdx + 1) / stages.length) * 100)}% Complete
+                    </span>
+                  )}
+                  <div className="flex items-center gap-2">
+                    <label className="text-label font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">Update Stage:</label>
+                    <select
+                      value={opp.stage}
+                      onChange={(e) => {
+                        const stage = e.target.value as OpportunityStage;
+                        if (stage === 'Won' || stage === 'Lost') {
+                          // Winning/losing the deal requires a reason — captured in the close-out dialog.
+                          setCloseReasonDraft(opp.closeReason || '');
+                          setCloseDialog({ outcome: stage, stage });
+                        } else {
+                          updateOpportunity({ ...opp, stage });
+                        }
+                      }}
+                      className="text-xs border border-slate-200 rounded-lg p-2 bg-white font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                    >
+                      {OPPORTUNITY_STAGE_OPTIONS.map(stg => (
+                        <option key={stg} value={stg}>{stg}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              }
+              padding="compact"
+            >
+              <OpportunityPipelineProgress stage={opp.stage} />
+            </Card>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Deal Value ($)</label>
-                <NumberInput
-                  min={0}
-                  required
-                  value={oppDraft.value}
-                  onValueChange={(v) => setOppDraft({ ...oppDraft, value: v })}
-                  placeholder="e.g. 50000"
-                  className={`${INPUT_CLS} font-mono`}
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Start Date</label>
-                <input
-                  type="date"
-                  value={oppDraft.startDate}
-                  onChange={(e) => setOppDraft({ ...oppDraft, startDate: e.target.value })}
-                  className={`${INPUT_CLS} font-mono`}
-                />
-              </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Close Date</label>
-                <input
-                  type="date"
-                  value={oppDraft.closeDate}
-                  onChange={(e) => setOppDraft({ ...oppDraft, closeDate: e.target.value })}
-                  className={`${INPUT_CLS} font-mono`}
-                />
-              </div>
-            </div>
+            {/* Opportunity Details & Scope — grouped into clearly separated sections;
+                account/value/probability/owner already surface in the header and KPI
+                cards above, so this card focuses on the detail that lives only here. */}
+              <Card title="Opportunity Details & Scope" bodyClassName="space-y-6">
+                <FormSection title="Timeline">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                    <div>
+                      <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1">Start Date</span>
+                      <span className="text-sm text-slate-800 font-mono font-semibold flex items-center">
+                        <Calendar className="w-3.5 h-3.5 text-slate-400 mr-1.5" aria-hidden="true" />
+                        {opp.startDate || 'N/A'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1">Expected Close Date</span>
+                      <span className="text-sm text-slate-800 font-mono font-semibold flex items-center">
+                        <Calendar className="w-3.5 h-3.5 text-slate-400 mr-1.5" aria-hidden="true" />
+                        {opp.closeDate}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1">SLA Target Value</span>
+                      <span className="text-sm text-slate-800 font-mono font-semibold">{formatCur(opp.value)}</span>
+                    </div>
+                  </div>
+                </FormSection>
 
-            <div className="space-y-1">
-              <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Scope Description</label>
-              <textarea
-                rows={3}
-                value={oppDraft.description}
-                onChange={(e) => setOppDraft({ ...oppDraft, description: e.target.value })}
-                className={`${INPUT_CLS} resize-none`}
-              />
-            </div>
+                <FormSection title="Stakeholders">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {([
+                      { label: 'Client Stakeholder', id: opp.clientStakeholderId, name: opp.clientStakeholderName, designation: opp.clientStakeholderDesignation },
+                      { label: 'Service Provider Stakeholder', id: opp.serviceProviderStakeholderId, name: opp.serviceProviderStakeholderName, designation: opp.serviceProviderStakeholderDesignation },
+                    ]).map(sh => (
+                      <div key={sh.label} className="rounded-lg border border-slate-100 p-3.5 hover:border-slate-200 transition-colors">
+                        <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">{sh.label}</span>
+                        {sh.id && sh.name ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFocusedRecord({ type: 'stakeholder', id: sh.id! });
+                              setView('stakeholders');
+                            }}
+                            className="text-left cursor-pointer group"
+                          >
+                            <p className="text-sm text-blue-600 group-hover:underline font-semibold">{sh.name}</p>
+                            {sh.designation && <p className="text-xs text-slate-500 font-medium mt-0.5">{sh.designation}</p>}
+                          </button>
+                        ) : (
+                          <p className="text-sm text-slate-400 font-medium italic">Not assigned</p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </FormSection>
 
-            <div className="flex justify-end gap-2 pt-1 border-t border-slate-100">
-              <Button variant="secondary" type="button" onClick={() => setIsEditingOpp(false)}>
-                Cancel
-              </Button>
-              <Button
-                variant="warning"
-                type="submit"
-                disabled={isSavingOpp}
-                icon={<Save className="w-3.5 h-3.5" aria-hidden="true" />}
-              >
-                {isSavingOpp ? 'Saving…' : 'Save Changes'}
-              </Button>
-            </div>
-          </form>
-        ) : (
-          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-6">
-            <h4 className="font-extrabold text-slate-800 text-sm tracking-tight border-b border-slate-100 pb-2">
-              Opportunity Details & Scope
-            </h4>
+                <FormSection title="Classification">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                    <div>
+                      <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1">Opportunity Type</span>
+                      <p className="text-sm text-slate-800 font-semibold">{opp.opportunityType}</p>
+                    </div>
+                    <div>
+                      <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1">Service Line</span>
+                      <p className="text-sm text-slate-800 font-semibold">{opp.serviceLine || <span className="text-slate-400 font-medium italic">Not set</span>}</p>
+                    </div>
+                    <div>
+                      <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1">AOP Planned</span>
+                      <p className="text-sm text-slate-800 font-semibold">
+                        {opp.aopAvailable ? `Yes${opp.aopYear ? ` (${opp.aopYear})` : ''}` : 'No'}
+                      </p>
+                    </div>
+                  </div>
+                </FormSection>
 
-            {/* Financial stats summary card integrated */}
-            <div className="grid grid-cols-2 md:grid-cols-5 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200/60 shadow-inner">
-              <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Account Client</p>
-                <p className="text-xs font-extrabold text-slate-800 truncate">{account.name}</p>
-              </div>
-              <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Deal Value</p>
-                <p className="text-xs font-extrabold text-slate-900 font-mono">{formatCur(opp.value)}</p>
-              </div>
-              <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">CRM Value</p>
-                <p className="text-xs font-extrabold text-slate-700 font-mono">{formatCur(opp.crmValue)}</p>
-              </div>
-              <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Probability</p>
-                <p className="text-xs font-extrabold text-indigo-600 font-mono">{opp.probability}%</p>
-              </div>
-              <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Lead Owner</p>
-                <p className="text-xs font-extrabold text-slate-800">{opp.owner}</p>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs text-slate-600 px-1">
-              <div className="space-y-1">
-                <span className="font-bold text-slate-400 uppercase tracking-wider text-[9px] block">Start Date</span>
-                <span className="text-slate-800 font-mono font-bold flex items-center">
-                  <Calendar className="w-3.5 h-3.5 text-slate-400 mr-1.5" aria-hidden="true" />
-                  {opp.startDate || 'N/A'}
-                </span>
-              </div>
-              <div className="space-y-1">
-                <span className="font-bold text-slate-400 uppercase tracking-wider text-[9px] block">Expected Close Date</span>
-                <span className="text-slate-800 font-mono font-bold flex items-center">
-                  <Calendar className="w-3.5 h-3.5 text-slate-400 mr-1.5" aria-hidden="true" />
-                  {opp.closeDate}
-                </span>
-              </div>
-              <div className="space-y-1">
-                <span className="font-bold text-slate-400 uppercase tracking-wider text-[9px] block">SLA Target Value</span>
-                <span className="text-slate-800 font-mono font-bold">{formatCur(opp.value)}</span>
-              </div>
-            </div>
-
-            <div className="bg-slate-50 p-4 rounded-lg border border-slate-100 text-xs">
-              <span className="font-bold text-slate-400 uppercase tracking-wider text-[9px] block mb-1">Scope Description</span>
-              <p className="text-slate-600 leading-relaxed font-medium">{opp.description}</p>
-            </div>
+                <FormSection title="Scope & Risk">
+                  <div className="space-y-4">
+                    <div>
+                      <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">Scope Description</span>
+                      <p className="text-sm text-slate-600 leading-relaxed font-medium">{opp.description}</p>
+                    </div>
+                    <div>
+                      <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">Risks & Dependencies</span>
+                      <p className="text-sm text-slate-600 leading-relaxed font-medium">
+                        {opp.risksAndDependencies || <span className="text-slate-400 font-medium italic">None noted</span>}
+                      </p>
+                    </div>
+                  </div>
+                </FormSection>
+              </Card>
           </div>
+        )}
+
+        {activeTab === 'action-items' && (
+          <div className="space-y-4">
+            <FilterBar>
+              <SearchBar
+                value={aiSearch}
+                onChange={(v) => { setAiSearch(v); setAiPage(1); }}
+                placeholder="Search action items by title, owner, or notes..."
+              />
+              <FilterSelect
+                label="Status"
+                value={aiStatusFilter}
+                onChange={(v) => { setAiStatusFilter(v); setAiPage(1); }}
+                options={[
+                  { value: 'all', label: 'All Statuses' },
+                  ...ACTION_ITEM_STATUS_OPTIONS.map(s => ({ value: s, label: s })),
+                ]}
+              />
+              <FilterSelect
+                label="Priority"
+                value={aiPriorityFilter}
+                onChange={(v) => { setAiPriorityFilter(v); setAiPage(1); }}
+                options={[
+                  { value: 'all', label: 'All Priorities' },
+                  { value: 'High', label: 'High' },
+                  { value: 'Medium', label: 'Medium' },
+                  { value: 'Low', label: 'Low' },
+                ]}
+              />
+            </FilterBar>
+
+            <Card
+              padding="none"
+              clip
+              title={
+                <span className="inline-flex items-center gap-2">
+                  <CheckSquare className="w-5 h-5 text-blue-600 shrink-0" aria-hidden="true" />
+                  <span className="text-sm font-bold text-slate-800 tracking-tight truncate">
+                    Action Items ({oppActions.length})
+                  </span>
+                </span>
+              }
+              actions={
+                <>
+                  <Button
+                    variant="secondary"
+                    icon={<Settings2 className="w-3.5 h-3.5 text-slate-500" aria-hidden="true" />}
+                    onClick={() => setIsColumnsSidebarOpen(true)}
+                  >
+                    Customize Columns
+                  </Button>
+                  <Button
+                    icon={<Plus className="w-3.5 h-3.5" aria-hidden="true" />}
+                    onClick={() => setIsAddTaskOpen(true)}
+                  >
+                    Add Task
+                  </Button>
+                </>
+              }
+            >
+              <div className="overflow-x-auto">
+                <Table extraColumns={extraActionColCount} resizable storageKey="opportunity-details:action-items">
+                  <TableHead>
+                    {displayedActionCols.map(col => (
+                      <TableHeadCell
+                        key={col.key}
+                        columnId={col.key}
+                        className={col.key === 'title' ? 'px-5' : ''}
+                      >
+                        {SORTABLE_AI_FIELDS.has(col.key) ? (
+                          <SortableHeader
+                            label={col.name}
+                            field={col.key}
+                            sortField={aiSortField}
+                            sortDirection={aiSortDirection}
+                            onSort={handleAiSort}
+                          />
+                        ) : (
+                          col.name
+                        )}
+                      </TableHeadCell>
+                    ))}
+                    <TableHeadCell align="center" sticky="right">Delete</TableHeadCell>
+                  </TableHead>
+                  <tbody>
+                      {pagedActions.length === 0 ? (
+                        <EmptyRow
+                          colSpan={displayedActionCols.length + 1}
+                          message={oppActions.length === 0
+                            ? 'No action items linked to this opportunity. Click "Add Task" to create one.'
+                            : 'No action items match your search or filters.'}
+                        />
+                      ) : (
+                        pagedActions.map(item => {
+                          const itemComments = comments.filter(c => c.targetType === 'actionItem' && c.targetId === item.id);
+                          return (
+                            <React.Fragment key={item.id}>
+                              <TableRow className="hover:bg-slate-50/50">
+                                {displayedActionCols.map(col => {
+                                  if (col.key === 'title') {
+                                    return (
+                                      <TableCell key={col.key}>
+                                        <div className="flex items-center flex-wrap gap-1">
+                                          <div className="flex-1">
+                                            <p className="font-extrabold text-slate-900 text-sm">{item.title}</p>
+                                          </div>
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setExpandedItemId(expandedItemId === item.id ? null : item.id);
+                                            }}
+                                            aria-expanded={expandedItemId === item.id}
+                                            aria-label="Toggle comments"
+                                            className={`inline-flex items-center space-x-1 ml-2 px-1.5 py-0.5 rounded transition-all cursor-pointer ${
+                                              expandedItemId === item.id
+                                                ? 'bg-blue-100 text-blue-700 font-bold'
+                                                : 'text-slate-400 hover:text-blue-600 hover:bg-slate-100'
+                                            }`}
+                                          >
+                                            <MessageSquare className="w-3.5 h-3.5" aria-hidden="true" />
+                                            <span className="text-[10px] font-bold">{itemComments.length}</span>
+                                          </button>
+                                        </div>
+                                      </TableCell>
+                                    );
+                                  }
+                                  if (col.key === 'notes') {
+                                    return (
+                                      <TableCell key={col.key} className="text-slate-600 font-medium">
+                                        <span className="block max-w-[280px] line-clamp-2" title={item.notes || undefined}>
+                                          {item.notes || '—'}
+                                        </span>
+                                      </TableCell>
+                                    );
+                                  }
+                                  if (col.key === 'accountId') {
+                                    return (
+                                      <TableCell key={col.key} className="text-slate-600 font-bold">
+                                        {account ? account.name : 'Unknown Account'}
+                                      </TableCell>
+                                    );
+                                  }
+                                  if (col.key === 'owner') {
+                                    return (
+                                      <TableCell key={col.key} className="text-slate-600 font-semibold">
+                                        {item.owner}
+                                      </TableCell>
+                                    );
+                                  }
+                                  if (col.key === 'priority') {
+                                    return (
+                                      <TableCell key={col.key}>
+                                        <StatusBadge value={item.priority} colorMap={PRIORITY_COLORS} shape="rounded" />
+                                      </TableCell>
+                                    );
+                                  }
+                                  if (col.key === 'status') {
+                                    return (
+                                      <TableCell key={col.key}>
+                                        <StatusBadge value={item.status} colorMap={ACTION_STATUS_COLORS} shape="rounded" />
+                                      </TableCell>
+                                    );
+                                  }
+                                  if (col.key === 'openDate') {
+                                    return (
+                                      <TableCell key={col.key} className="font-mono font-medium text-slate-500">
+                                        {item.openDate}
+                                      </TableCell>
+                                    );
+                                  }
+                                  if (col.key === 'dueDate') {
+                                    return (
+                                      <TableCell key={col.key} className="font-mono font-medium text-slate-500">
+                                        {item.dueDate}
+                                      </TableCell>
+                                    );
+                                  }
+
+                                  const rawVal = item[col.key] ?? (col.type === 'boolean' ? false : '');
+                                  return (
+                                    <TableCell key={col.key}>
+                                      {col.type === 'boolean' ? (
+                                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${rawVal ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>
+                                          {rawVal ? 'Yes' : 'No'}
+                                        </span>
+                                      ) : col.type === 'number' ? (
+                                        <span className="font-mono font-semibold text-slate-700">{rawVal}</span>
+                                      ) : (
+                                        <span className="text-slate-600">{String(rawVal)}</span>
+                                      )}
+                                    </TableCell>
+                                  );
+                                })}
+                                <TableCell align="center" sticky="right">
+                                  <div className="flex items-center justify-center space-x-1">
+                                    <RowActionButton
+                                      intent="edit"
+                                      label={`Edit action item ${item.title}`}
+                                      icon={<Pencil className="w-3.5 h-3.5" />}
+                                      onClick={() => handleEditClick(item)}
+                                    />
+                                    <RowActionButton
+                                      intent="delete"
+                                      label={`Delete action item ${item.title}`}
+                                      icon={<Trash2 className="w-3.5 h-3.5" />}
+                                      onClick={() => setDeleteTarget({ type: 'actionItem', id: item.id, label: item.title })}
+                                    />
+                                  </div>
+                                </TableCell>
+                              </TableRow>
+
+                              {expandedItemId === item.id && (
+                                <tr className="bg-slate-50/70 border-b border-slate-200">
+                                  <td colSpan={displayedActionCols.length + 1} className="p-4">
+                                    <div className="space-y-3 max-w-2xl">
+                                      <div className="flex items-center space-x-2 border-b border-slate-200 pb-1.5">
+                                        <MessageSquare className="w-4 h-4 text-blue-600" aria-hidden="true" />
+                                        <h4 className="font-bold text-slate-700 text-xs">Governance Comments ({itemComments.length})</h4>
+                                      </div>
+
+                                      <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                                        {itemComments.length === 0 ? (
+                                          <p className="text-[11px] text-slate-400 font-medium py-1">No comments logged for this action item.</p>
+                                        ) : (
+                                          itemComments.map(c => (
+                                            <div key={c.id} className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm space-y-1 relative group">
+                                              <div className="flex items-center justify-between">
+                                                <div className="flex items-center space-x-2">
+                                                  <span className="font-bold text-slate-700 text-[11px]">{c.user}</span>
+                                                  <span className="text-slate-300">•</span>
+                                                  <span className="text-[9px] text-slate-400 font-mono">{c.timestamp}</span>
+                                                </div>
+                                                <button
+                                                  onClick={() => setDeleteTarget({ type: 'comment', id: c.id, label: c.text.substring(0, 40) })}
+                                                  className="text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all text-[10px] font-bold cursor-pointer"
+                                                >
+                                                  Delete
+                                                </button>
+                                              </div>
+                                              <p className="text-[11px] text-slate-600 leading-relaxed font-medium whitespace-pre-wrap">{c.text}</p>
+                                            </div>
+                                          ))
+                                        )}
+                                      </div>
+
+                                      <form
+                                        onSubmit={(e) => {
+                                          e.preventDefault();
+                                          const input = e.currentTarget.elements.namedItem('commentText') as HTMLInputElement;
+                                          if (input && input.value.trim()) {
+                                            addComment('actionItem', item.id, input.value.trim());
+                                            input.value = '';
+                                          }
+                                        }}
+                                        className="flex gap-2"
+                                      >
+                                        <input
+                                          type="text"
+                                          name="commentText"
+                                          required
+                                          placeholder="Add a comment or update..."
+                                          className={`flex-1 ${INPUT_CLS}`}
+                                        />
+                                        <Button type="submit" size="xs" className="shrink-0">
+                                          Add Comment
+                                        </Button>
+                                      </form>
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </React.Fragment>
+                          );
+                        })
+                      )}
+                    </tbody>
+                </Table>
+              </div>
+              <Pagination
+                page={aiPage}
+                pageSize={aiPageSize}
+                totalItems={totalActions}
+                onPageChange={setAiPage}
+                onPageSizeChange={(size) => { setAiPageSize(size); setAiPage(1); }}
+                itemLabel="action items"
+              />
+            </Card>
+          </div>
+        )}
+
+        {activeTab === 'comments' && (
+          <Card
+            title={
+              <span className="inline-flex items-center gap-2">
+                <MessageSquare className="w-5 h-5 text-indigo-600 shrink-0" aria-hidden="true" />
+                <span className="text-sm font-bold text-slate-800 tracking-tight truncate">
+                  Opportunity Comments ({oppComments.length})
+                </span>
+              </span>
+            }
+            bodyClassName="space-y-4"
+          >
+            <form onSubmit={handlePostComment} className="flex space-x-3 items-end">
+              <div className="flex-1 space-y-1">
+                <textarea
+                  rows={2}
+                  required
+                  placeholder="Type an executive comment or update..."
+                  value={commentText}
+                  onChange={(e) => setCommentText(e.target.value)}
+                  className={`w-full ${INPUT_CLS} resize-none`}
+                />
+              </div>
+              <Button type="submit" className="shrink-0">
+                Post Comment
+              </Button>
+            </form>
+
+            {/* Fixed height + internal scroll: posting a comment never grows the panel */}
+            <div className="h-[360px] overflow-y-auto pr-2 space-y-4 border-t border-slate-100 pt-4">
+              {oppComments.length === 0 ? (
+                <p className="text-xs text-slate-400 font-medium italic">No comments posted yet. Start the dialogue above.</p>
+              ) : (
+                oppComments.map(c => (
+                  <div key={c.id} className="bg-slate-50 p-3.5 rounded-lg border border-slate-100 space-y-2 relative group">
+                    <div className="flex items-center justify-between text-xs">
+                      <div className="flex items-center space-x-2">
+                        <span className="font-extrabold text-slate-700">{c.user}</span>
+                        <span className="text-slate-400">•</span>
+                        <span className="text-[10px] text-slate-400 font-mono">{c.timestamp}</span>
+                      </div>
+                      <button
+                        onClick={() => setDeleteTarget({ type: 'comment', id: c.id, label: c.text.substring(0, 40) })}
+                        className="text-slate-300 hover:text-red-500 hidden group-hover:block cursor-pointer transition-colors"
+                      >
+                        Delete
+                      </button>
+                    </div>
+                    <p className="text-xs text-slate-600 font-medium leading-relaxed">{c.text}</p>
+                  </div>
+                ))
+              )}
+            </div>
+          </Card>
+        )}
+
+        {activeTab === 'documents' && (
+          <DocumentsPanel
+            target={{ opportunityId: opp.id }}
+            entityLabel="opportunity"
+            currentUser={currentUser}
+            onCountChange={setDocCount}
+          />
         )}
       </div>
 
-      <div className="lg:col-span-1">
-        <DocumentsPanel
-          target={{ opportunityId: opp.id }}
-          entityLabel="opportunity"
-          currentUser={currentUser}
+      {/* Edit Opportunity Modal — same InlineEditModal used by the Opportunities
+          page and Account Detail view, so all three entry points match. */}
+      {isEditOppModalOpen && oppDraft && (
+        <InlineEditModal
+          mode="opportunities"
+          entity={oppDraft}
+          displayedConfigs={opportunitiesColumnConfig.filter(c => c.isDisplayed)}
+          accounts={accounts}
+          opportunities={opportunities}
+          stakeholders={stakeholders}
+          onChange={(patch) => setOppDraft({ ...oppDraft, ...patch })}
+          onSave={handleSaveOpp}
+          onCancel={() => { setIsEditOppModalOpen(false); setOppDraft(null); }}
         />
-      </div>
-      </div>
-
-      {/* 2. Action Item Table (Full Width) */}
-      <div className="w-full bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-100 pb-3">
-          <div className="flex items-center space-x-2">
-            <CheckSquare className="w-5 h-5 text-blue-600" aria-hidden="true" />
-            <h4 className="font-extrabold text-slate-800 text-sm tracking-tight">
-              Action Items ({oppActions.length})
-            </h4>
-          </div>
-          <div className="flex items-center space-x-2 self-end sm:self-auto">
-            <Button
-              variant="secondary"
-              icon={<Settings2 className="w-3.5 h-3.5 text-slate-500" aria-hidden="true" />}
-              onClick={() => setIsColumnsSidebarOpen(true)}
-            >
-              Customize Columns
-            </Button>
-            <Button
-              icon={<Plus className="w-3.5 h-3.5" aria-hidden="true" />}
-              onClick={() => setIsAddTaskOpen(true)}
-            >
-              Add Task
-            </Button>
-          </div>
-        </div>
-
-        <div className="overflow-hidden border border-slate-200/80 rounded-xl">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider">
-                  {actionItemsColumnConfig.filter(col => col.isDisplayed).map(col => (
-                    <th
-                      key={col.key}
-                      className={`py-2.5 px-4 font-bold uppercase tracking-wider ${col.key === 'title' ? 'px-5' : ''}`}
-                    >
-                      {col.name}
-                    </th>
-                  ))}
-                  <th className="py-2.5 px-5 text-center">Delete</th>
-                </tr>
-              </thead>
-              <tbody>
-                {oppActions.length === 0 ? (
-                  <EmptyRow
-                    colSpan={actionItemsColumnConfig.filter(col => col.isDisplayed).length + 1}
-                    message='No action items linked to this opportunity. Click "Add Task" to create one.'
-                  />
-                ) : (
-                  oppActions.map(item => {
-                    const itemComments = comments.filter(c => c.targetType === 'actionItem' && c.targetId === item.id);
-                    return (
-                      <React.Fragment key={item.id}>
-                        <tr className="border-b last:border-0 hover:bg-slate-50/50 text-slate-800 font-medium">
-                          {actionItemsColumnConfig.filter(col => col.isDisplayed).map(col => {
-                            if (col.key === 'title') {
-                              return (
-                                <td key={col.key} className="py-3 px-5">
-                                  <div className="flex items-center flex-wrap gap-1">
-                                    <div className="flex-1">
-                                      <p className="font-extrabold text-slate-900 text-sm">{item.title}</p>
-                                    </div>
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setExpandedItemId(expandedItemId === item.id ? null : item.id);
-                                      }}
-                                      aria-expanded={expandedItemId === item.id}
-                                      aria-label="Toggle comments"
-                                      className={`inline-flex items-center space-x-1 ml-2 px-1.5 py-0.5 rounded transition-all cursor-pointer ${
-                                        expandedItemId === item.id
-                                          ? 'bg-blue-100 text-blue-700 font-bold'
-                                          : 'text-slate-400 hover:text-blue-600 hover:bg-slate-100'
-                                      }`}
-                                    >
-                                      <MessageSquare className="w-3.5 h-3.5" aria-hidden="true" />
-                                      <span className="text-[10px] font-bold">{itemComments.length}</span>
-                                    </button>
-                                  </div>
-                                </td>
-                              );
-                            }
-                            if (col.key === 'notes') {
-                              return (
-                                <td key={col.key} className="py-3 px-4 text-slate-600 font-medium">
-                                  {item.notes || '—'}
-                                </td>
-                              );
-                            }
-                            if (col.key === 'accountId') {
-                              return (
-                                <td key={col.key} className="py-3 px-4 text-slate-600 font-bold">
-                                  {account ? account.name : 'Unknown Account'}
-                                </td>
-                              );
-                            }
-                            if (col.key === 'owner') {
-                              return (
-                                <td key={col.key} className="py-3 px-4 text-slate-600 font-semibold">
-                                  {item.owner}
-                                </td>
-                              );
-                            }
-                            if (col.key === 'priority') {
-                              return (
-                                <td key={col.key} className="py-3 px-4">
-                                  <StatusBadge value={item.priority} colorMap={PRIORITY_COLORS} shape="rounded" />
-                                </td>
-                              );
-                            }
-                            if (col.key === 'status') {
-                              return (
-                                <td key={col.key} className="py-3 px-4">
-                                  <StatusBadge value={item.status} colorMap={ACTION_STATUS_COLORS} shape="rounded" />
-                                </td>
-                              );
-                            }
-                            if (col.key === 'dueDate') {
-                              return (
-                                <td key={col.key} className="py-3 px-4 font-mono font-medium text-slate-500">
-                                  {item.dueDate}
-                                </td>
-                              );
-                            }
-
-                            const rawVal = item[col.key] ?? (col.type === 'boolean' ? false : '');
-                            return (
-                              <td key={col.key} className="py-3 px-4">
-                                {col.type === 'boolean' ? (
-                                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${rawVal ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>
-                                    {rawVal ? 'Yes' : 'No'}
-                                  </span>
-                                ) : col.type === 'number' ? (
-                                  <span className="font-mono font-semibold text-slate-700">{rawVal}</span>
-                                ) : (
-                                  <span className="text-slate-600">{String(rawVal)}</span>
-                                )}
-                              </td>
-                            );
-                          })}
-                          <td className="py-3 px-5 text-center">
-                            <div className="flex items-center justify-center space-x-1">
-                              <RowActionButton
-                                intent="edit"
-                                label={`Edit action item ${item.title}`}
-                                icon={<Pencil className="w-3.5 h-3.5" />}
-                                onClick={() => handleEditClick(item)}
-                              />
-                              <RowActionButton
-                                intent="delete"
-                                label={`Delete action item ${item.title}`}
-                                icon={<Trash2 className="w-3.5 h-3.5" />}
-                                onClick={() => setDeleteTarget({ type: 'actionItem', id: item.id, label: item.title })}
-                              />
-                            </div>
-                          </td>
-                        </tr>
-
-                        {expandedItemId === item.id && (
-                          <tr className="bg-slate-50/70 border-b border-slate-200">
-                            <td colSpan={actionItemsColumnConfig.filter(col => col.isDisplayed).length + 1} className="p-4">
-                              <div className="space-y-3 max-w-2xl">
-                                <div className="flex items-center space-x-2 border-b border-slate-200 pb-1.5">
-                                  <MessageSquare className="w-4 h-4 text-blue-600" aria-hidden="true" />
-                                  <h4 className="font-bold text-slate-700 text-xs">Governance Comments ({itemComments.length})</h4>
-                                </div>
-
-                                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                                  {itemComments.length === 0 ? (
-                                    <p className="text-[11px] text-slate-400 font-medium py-1">No comments logged for this action item.</p>
-                                  ) : (
-                                    itemComments.map(c => (
-                                      <div key={c.id} className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm space-y-1 relative group">
-                                        <div className="flex items-center justify-between">
-                                          <div className="flex items-center space-x-2">
-                                            <span className="font-bold text-slate-700 text-[11px]">{c.user}</span>
-                                            <span className="text-slate-300">•</span>
-                                            <span className="text-[9px] text-slate-400 font-mono">{c.timestamp}</span>
-                                          </div>
-                                          <button
-                                            onClick={() => setDeleteTarget({ type: 'comment', id: c.id, label: c.text.substring(0, 40) })}
-                                            className="text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all text-[10px] font-bold cursor-pointer"
-                                          >
-                                            Delete
-                                          </button>
-                                        </div>
-                                        <p className="text-[11px] text-slate-600 leading-relaxed font-medium whitespace-pre-wrap">{c.text}</p>
-                                      </div>
-                                    ))
-                                  )}
-                                </div>
-
-                                <form
-                                  onSubmit={(e) => {
-                                    e.preventDefault();
-                                    const input = e.currentTarget.elements.namedItem('commentText') as HTMLInputElement;
-                                    if (input && input.value.trim()) {
-                                      addComment('actionItem', item.id, input.value.trim());
-                                      input.value = '';
-                                    }
-                                  }}
-                                  className="flex gap-2"
-                                >
-                                  <input
-                                    type="text"
-                                    name="commentText"
-                                    required
-                                    placeholder="Add a comment or update..."
-                                    className={`flex-1 ${INPUT_CLS}`}
-                                  />
-                                  <button
-                                    type="submit"
-                                    className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-[11px] font-bold cursor-pointer transition-colors shrink-0 shadow-sm"
-                                  >
-                                    Add Comment
-                                  </button>
-                                </form>
-                              </div>
-                            </td>
-                          </tr>
-                        )}
-                      </React.Fragment>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      {/* 3. Comments (fixed-height panel, full width) */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
-        <h4 className="font-extrabold text-slate-800 text-sm tracking-tight border-b border-slate-100 pb-2 flex items-center space-x-2">
-          <MessageSquare className="w-5 h-5 text-indigo-600" aria-hidden="true" />
-          <span>Corporate Governance Comments ({oppComments.length})</span>
-        </h4>
-
-        <form onSubmit={handlePostComment} className="flex space-x-3 items-end">
-          <div className="flex-1 space-y-1">
-            <textarea
-              rows={2}
-              required
-              placeholder="Type an executive comment, update, or governance alert..."
-              value={commentText}
-              onChange={(e) => setCommentText(e.target.value)}
-              className={`w-full ${INPUT_CLS} resize-none`}
-            />
-          </div>
-          <button
-            type="submit"
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2.5 rounded-lg text-xs font-bold cursor-pointer shrink-0 transition-all shadow-md"
-          >
-            Post Comment
-          </button>
-        </form>
-
-        {/* Fixed height + internal scroll: posting a comment never grows the panel */}
-        <div className="h-[360px] overflow-y-auto pr-2 space-y-4 border-t border-slate-100 pt-4">
-          {oppComments.length === 0 ? (
-            <p className="text-xs text-slate-400 font-medium italic">No comments posted yet. Start the dialogue above.</p>
-          ) : (
-            oppComments.map(c => (
-              <div key={c.id} className="bg-slate-50 p-3.5 rounded-lg border border-slate-100 space-y-2 relative group">
-                <div className="flex items-center justify-between text-xs">
-                  <div className="flex items-center space-x-2">
-                    <span className="font-extrabold text-slate-700">{c.user}</span>
-                    <span className="text-slate-400">•</span>
-                    <span className="text-[10px] text-slate-400 font-mono">{c.timestamp}</span>
-                  </div>
-                  <button
-                    onClick={() => setDeleteTarget({ type: 'comment', id: c.id, label: c.text.substring(0, 40) })}
-                    className="text-slate-300 hover:text-red-500 hidden group-hover:block cursor-pointer transition-colors"
-                  >
-                    Delete
-                  </button>
-                </div>
-                <p className="text-xs text-slate-600 font-medium leading-relaxed">{c.text}</p>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
+      )}
 
       {/* Edit Action Item Modal */}
       {isEditModalOpen && editingAi && (
@@ -843,6 +976,7 @@ export const OpportunityDetailsView: React.FC = () => {
           displayedConfigs={actionItemsColumnConfig.filter(c => c.isDisplayed)}
           accounts={accounts}
           opportunities={opportunities}
+          stakeholders={stakeholders}
           onChange={(patch) => setEditingAi({ ...editingAi, ...patch })}
           onSave={handleUpdateActionItem}
           onCancel={() => { setIsEditModalOpen(false); setEditingAi(null); }}
@@ -864,10 +998,10 @@ export const OpportunityDetailsView: React.FC = () => {
         onClose={() => setIsAddTaskOpen(false)}
         onSubmit={handleCreateAddTask}
         submitLabel="Create Task"
-        maxWidth="max-w-md"
+        maxWidth="max-w-4xl"
       >
-        <FormGrid>
-          <FormField label="Task Title" required wide>
+        <FormGrid columns={3}>
+          <FormField label="Task Title" required>
             <input
               type="text"
               required
@@ -900,7 +1034,29 @@ export const OpportunityDetailsView: React.FC = () => {
             </select>
           </FormField>
 
-          <FormField label="Due Date" required wide>
+          <FormField label="Status">
+            <select
+              value={newAi.status}
+              onChange={(e) => setNewAi({ ...newAi, status: e.target.value as ActionItemStatus })}
+              className={SELECT_CLS}
+            >
+              {ACTION_ITEM_STATUS_OPTIONS.map(s => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+          </FormField>
+
+          <FormField label="Open Date" required>
+            <input
+              type="date"
+              required
+              value={newAi.openDate}
+              onChange={(e) => setNewAi({ ...newAi, openDate: e.target.value })}
+              className={`${INPUT_CLS} font-mono`}
+            />
+          </FormField>
+
+          <FormField label="Due Date" required>
             <input
               type="date"
               required
@@ -910,12 +1066,22 @@ export const OpportunityDetailsView: React.FC = () => {
             />
           </FormField>
 
-          <FormField label="Task Notes" wide>
+          <FormField label="Task Details" wide>
             <textarea
               rows={2}
               value={newAi.notes}
               onChange={(e) => setNewAi({ ...newAi, notes: e.target.value })}
               placeholder="Additional operational context..."
+              className={`${INPUT_CLS} resize-none`}
+            />
+          </FormField>
+
+          <FormField label="Risks & Dependencies" wide>
+            <textarea
+              rows={2}
+              value={newAi.risksAndDependencies}
+              onChange={(e) => setNewAi({ ...newAi, risksAndDependencies: e.target.value })}
+              placeholder="e.g., Pending budget approval, dependent on vendor SOW sign-off"
               className={`${INPUT_CLS} resize-none`}
             />
           </FormField>
@@ -931,12 +1097,28 @@ export const OpportunityDetailsView: React.FC = () => {
 
       <ConfirmDialog
         isOpen={!!deleteTarget}
-        title={deleteTarget?.type === 'comment' ? 'Delete Comment' : 'Delete Action Item'}
-        message={deleteTarget ? <>Delete <span className="font-bold">"{deleteTarget.label}"</span>? This cannot be undone.</> : undefined}
+        title={
+          deleteTarget?.type === 'comment' ? 'Delete Comment' :
+          deleteTarget?.type === 'opportunity' ? 'Delete Opportunity' :
+          'Delete Action Item'
+        }
+        message={
+          deleteTarget?.type === 'opportunity'
+            ? <>Deactivate opportunity <span className="font-bold">"{deleteTarget.label}"</span>? It will move to the Deactivated section.</>
+            : deleteTarget
+              ? <>Delete <span className="font-bold">"{deleteTarget.label}"</span>? This cannot be undone.</>
+              : undefined
+        }
+        confirmLabel={deleteTarget?.type === 'opportunity' ? 'Deactivate' : 'Delete'}
         onConfirm={async () => {
           if (!deleteTarget) return;
           if (deleteTarget.type === 'actionItem') await deleteActionItem(deleteTarget.id);
-          else await deleteComment(deleteTarget.id);
+          else if (deleteTarget.type === 'opportunity') {
+            await deleteOpportunity(deleteTarget.id);
+            setDeleteTarget(null);
+            goBackFromOpportunity();
+            return;
+          } else await deleteComment(deleteTarget.id);
           setDeleteTarget(null);
         }}
         onCancel={() => setDeleteTarget(null)}
@@ -955,7 +1137,6 @@ export const OpportunityDetailsView: React.FC = () => {
             await updateOpportunity({
               ...opp,
               stage: closeDialog.stage,
-              status: closeDialog.outcome,
               closeReason: closeReasonDraft.trim(),
             });
             setCloseDialog(null);
@@ -969,7 +1150,7 @@ export const OpportunityDetailsView: React.FC = () => {
         maxWidth="max-w-md"
       >
         <div className="space-y-2">
-          <label className="text-xs font-bold text-slate-600 uppercase tracking-wide block">
+          <label className="text-label font-semibold text-slate-600 uppercase tracking-wide block">
             {closeDialog?.outcome === 'Won' ? 'Win Reason' : 'Loss Reason'} <span className="text-red-500">*</span>
           </label>
           <textarea

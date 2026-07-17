@@ -25,14 +25,14 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
   <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
     <div className="min-w-0">
       <h2
-        className={`text-2xl font-bold text-slate-900 tracking-tight border-l-4 pl-3 flex items-center gap-2 ${
+        className={`text-page-title font-bold text-slate-900 tracking-tight border-l-4 pl-3 flex items-center gap-2 ${
           accent === 'slate' ? 'border-slate-900' : 'border-blue-600'
         }`}
       >
         {icon}
         <span className="truncate">{title}</span>
       </h2>
-      {subtitle && <p className="text-sm text-slate-500 font-medium mt-0.5">{subtitle}</p>}
+      {subtitle && <p className="text-body text-slate-500 font-medium mt-1">{subtitle}</p>}
     </div>
     {actions && <div className="flex flex-wrap items-center gap-2 shrink-0">{actions}</div>}
   </div>

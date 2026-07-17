@@ -5,40 +5,42 @@
 
 import React, { useState, useEffect } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
-import { Opportunity, OpportunityStage } from '@/types';
+import { Opportunity } from '@/types';
 import { Plus, Eye, Trash2, TrendingUp, X, FileSpreadsheet, Settings2, Pencil } from 'lucide-react';
 import { CustomizeColumnsSidebar } from '@/components/table/CustomizeColumnsSidebar';
 import { OpportunityActionsCommentsPanel } from '@/features/opportunities/components/OpportunityActionsCommentsPanel';
+import { OpportunityFormModal } from '@/features/opportunities/components/OpportunityFormModal';
+import { renderOpportunityCell } from '@/features/opportunities/components/OpportunityTableCells';
 import { InlineEditModal } from '@/components/InlineEditModal';
 import { LoadingState } from '@/components/common/LoadingState';
-import { NumberInput } from '@/components/NumberInput';
-import { CustomColumnFields } from '@/components/CustomColumnFields';
-import { compareForSort, normalizeOwnerName, SortDirection } from '@/utils';
+import { OPPORTUNITY_STAGE_OPTIONS } from '@/constants';
+import { compareForSort, deriveOppStatus, SortDirection } from '@/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   BackButton,
   Button,
+  Card,
   ConfirmDialog,
   DeactivatedSection,
   EmptyRow,
   ErrorBanner,
   FilterBar,
   FilterSelect,
-  FormField,
-  FormGrid,
-  FormModal,
   INPUT_CLS,
-  OPPORTUNITY_STATUS_COLORS,
   PageHeader,
   Pagination,
   RestoreButton,
   RestoreDialog,
   RowActionButton,
   SearchBar,
-  SELECT_CLS,
   SortableHeader,
   STAGE_COLORS,
   StatusBadge,
+  Table,
+  TableCell,
+  TableHead,
+  TableHeadCell,
+  TableRow,
 } from '@/components/ui';
 
 export const OpportunitiesView: React.FC = () => {
@@ -46,6 +48,7 @@ export const OpportunitiesView: React.FC = () => {
     opportunities,
     deactivatedOpportunities,
     accounts,
+    stakeholders,
     addOpportunity,
     deleteOpportunity,
     restoreOpportunity,
@@ -67,9 +70,7 @@ export const OpportunitiesView: React.FC = () => {
 
   // Module-specific filter states (operational — never fiscal-period-based)
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedOwner, setSelectedOwner] = useState<string>('All');
   const [selectedAccountFilter, setSelectedAccountFilter] = useState<string>('All');
-  const [selectedStatus, setSelectedStatus] = useState<string>('All');
   const [closeDateFrom, setCloseDateFrom] = useState<string>('');
   const [closeDateTo, setCloseDateTo] = useState<string>('');
   const [minProbability, setMinProbability] = useState<string>('All');
@@ -136,45 +137,38 @@ export const OpportunitiesView: React.FC = () => {
     name: '',
     accountId: '',
     stage: 'Lead',
-    status: 'Open',
     value: 0,
     crmValue: 0,
     probability: 0,
-    owner: '',
     closeDate: '',
     description: '',
     startDate: '',
     endDate: '',
     nextStep: '',
+    risksAndDependencies: '',
     tags: [],
-    team: []
+    team: [],
+    clientStakeholderId: '',
+    serviceProviderStakeholderId: '',
+    opportunityType: 'Growth',
+    aopAvailable: false,
+    aopYear: null,
+    serviceLine: undefined,
   });
-
-  // Dedupe case-insensitively so legacy variants ("john"/"JOHN") yield one entry.
-  const ownersList = Array.from(
-    new Map(
-      opportunities
-        .filter(o => o.owner?.trim())
-        .map(o => [o.owner.trim().toLowerCase(), normalizeOwnerName(o.owner)]),
-    ).values(),
-  );
 
   // Operational list — module-specific filters only, never fiscal-period-based.
   const filteredOpps = opportunities.filter(o => {
     const account = accounts.find(a => a.id === o.accountId);
     const matchesSearch = o.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          (account?.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          o.owner.toLowerCase().includes(searchQuery.toLowerCase());
+                          (account?.name || '').toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStage   = selectedStage === 'All' || o.stage === selectedStage;
-    const matchesOwner   = selectedOwner === 'All' || o.owner.trim().toLowerCase() === selectedOwner.toLowerCase();
     const matchesAccount = selectedAccountFilter === 'All' || o.accountId === selectedAccountFilter;
-    const matchesStatus  = selectedStatus === 'All' || (o.status ?? 'Open') === selectedStatus;
-    const matchesDashboardStatus = dashboardOppStatusFilter === 'All' || (o.status ?? 'Open') === dashboardOppStatusFilter;
+    const matchesDashboardStatus = dashboardOppStatusFilter === 'All' || deriveOppStatus(o.stage) === dashboardOppStatusFilter;
     const matchesCloseFrom = !closeDateFrom || (o.closeDate && o.closeDate >= closeDateFrom);
     const matchesCloseTo   = !closeDateTo   || (o.closeDate && o.closeDate <= closeDateTo);
     const matchesProbability = minProbability === 'All' || o.probability >= parseInt(minProbability, 10);
-    return matchesSearch && matchesStage && matchesOwner && matchesAccount &&
-           matchesStatus && matchesDashboardStatus && matchesCloseFrom && matchesCloseTo && matchesProbability;
+    return matchesSearch && matchesStage && matchesAccount &&
+           matchesDashboardStatus && matchesCloseFrom && matchesCloseTo && matchesProbability;
   });
 
   const sortedOpps = [...filteredOpps].sort((a, b) =>
@@ -207,8 +201,15 @@ export const OpportunitiesView: React.FC = () => {
       startDate: '',
       endDate: '',
       nextStep: '',
+      risksAndDependencies: '',
       tags: [],
-      team: []
+      team: [],
+      clientStakeholderId: '',
+      serviceProviderStakeholderId: '',
+      opportunityType: 'Growth',
+      aopAvailable: false,
+      aopYear: null,
+      serviceLine: undefined,
     });
     // Jump straight to details
     setSelectedOpportunityId(created.id);
@@ -233,6 +234,9 @@ export const OpportunitiesView: React.FC = () => {
   };
 
   const displayedConfigs = opportunitiesColumnConfig.filter(col => col.isDisplayed);
+  // User-added (non-standard) columns widen the table past the viewport and
+  // trigger horizontal scroll; the default column set always fits the screen.
+  const extraColumnCount = displayedConfigs.filter(col => !col.isStandard).length;
 
   if (loading) return <LoadingState label="Loading opportunities…" />;
 
@@ -336,22 +340,7 @@ export const OpportunitiesView: React.FC = () => {
           onChange={setSelectedStage}
           options={[
             { value: 'All', label: 'All Stages' },
-            { value: 'Lead', label: 'Lead' },
-            { value: 'Qualified', label: 'Qualified' },
-            { value: 'Proposal', label: 'Proposal' },
-            { value: 'Negotiation', label: 'Negotiation' },
-            { value: 'Won', label: 'Won' },
-          ]}
-        />
-
-        <FilterSelect
-          label="Owner"
-          hideLabel
-          value={selectedOwner}
-          onChange={setSelectedOwner}
-          options={[
-            { value: 'All', label: 'All Owners' },
-            ...ownersList.map(owner => ({ value: owner, label: owner })),
+            ...OPPORTUNITY_STAGE_OPTIONS.map((s) => ({ value: s, label: s })),
           ]}
         />
 
@@ -363,19 +352,6 @@ export const OpportunitiesView: React.FC = () => {
           options={[
             { value: 'All', label: 'All Accounts' },
             ...accounts.map(acc => ({ value: acc.id, label: acc.name })),
-          ]}
-        />
-
-        <FilterSelect
-          label="Status"
-          hideLabel
-          value={selectedStatus}
-          onChange={setSelectedStatus}
-          options={[
-            { value: 'All', label: 'All Statuses' },
-            { value: 'Open', label: 'Open' },
-            { value: 'Won', label: 'Won' },
-            { value: 'Lost', label: 'Lost' },
           ]}
         />
 
@@ -417,35 +393,30 @@ export const OpportunitiesView: React.FC = () => {
       </FilterBar>
 
       {/* Opportunities Grid Table */}
-      <div className="bg-white rounded-xl border border-slate-200/80 overflow-hidden shadow-sm">
+      <Card padding="none" clip>
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-200 select-none text-slate-500 font-bold text-xs uppercase tracking-wider">
-                {displayedConfigs.map(col => (
-                  <th
-                    key={col.key}
-                    className={`py-3 px-4 font-bold text-xs uppercase tracking-wider ${
-                      col.key === 'name' ? 'px-5' : ''
-                    } ${
-                      col.key === 'value' ? 'text-right' : col.key === 'probability' ? 'text-center' : 'text-left'
-                    }`}
-                  >
-                    <SortableHeader
-                      label={col.name}
-                      field={col.key}
-                      sortField={sortField}
-                      sortDirection={sortDirection}
-                      onSort={handleSort}
-                      className={
-                        col.key === 'value' ? 'justify-end w-full' : col.key === 'probability' ? 'justify-center w-full' : ''
-                      }
-                    />
-                  </th>
-                ))}
-                <th className="py-3 px-5 text-center">Actions</th>
-              </tr>
-            </thead>
+          <Table extraColumns={extraColumnCount} resizable storageKey="opportunities">
+            <TableHead>
+              {displayedConfigs.map(col => (
+                <TableHeadCell
+                  key={col.key}
+                  columnId={col.key}
+                  align={col.key === 'value' ? 'right' : col.key === 'probability' ? 'center' : 'left'}
+                >
+                  <SortableHeader
+                    label={col.name}
+                    field={col.key}
+                    sortField={sortField}
+                    sortDirection={sortDirection}
+                    onSort={handleSort}
+                    className={
+                      col.key === 'value' ? 'justify-end w-full' : col.key === 'probability' ? 'justify-center w-full' : ''
+                    }
+                  />
+                </TableHeadCell>
+              ))}
+              <TableHeadCell align="center" sticky="right">Actions</TableHeadCell>
+            </TableHead>
             <tbody>
               {filteredOpps.length === 0 ? (
                 <EmptyRow
@@ -456,120 +427,33 @@ export const OpportunitiesView: React.FC = () => {
                 pagedOpps.map((opp) => {
                   const associatedAccount = accounts.find(a => a.id === opp.accountId);
                   return (
-                    <tr
+                    <TableRow
                       key={opp.id}
+                      clickable
                       onClick={() => setSelectedOppId(opp.id)}
-                      className={`border-b border-slate-100 last:border-0 hover:bg-slate-50/50 cursor-pointer text-xs font-medium text-slate-800 transition-colors ${
-                        selectedOppId === opp.id ? 'bg-blue-50/45 border-l-4 border-l-blue-600 font-semibold' : ''
-                      }`}
+                      className={selectedOppId === opp.id ? 'bg-blue-50/45 border-l-4 border-l-blue-600 font-semibold' : ''}
                     >
-                      {displayedConfigs.map(col => {
-                        if (col.key === 'name') {
-                          return (
-                            <td key={col.key} className="py-4 px-5">
-                              <div className="flex items-center space-x-3">
-                                <div className="p-2 bg-indigo-50 text-indigo-600 rounded-lg font-bold shrink-0">
-                                  <TrendingUp className="w-4 h-4" aria-hidden="true" />
-                                </div>
-                                <div>
-                                  <p className="font-bold text-slate-900 text-sm hover:text-indigo-600 transition-colors">
-                                    {opp.name}
-                                  </p>
-                                </div>
-                              </div>
-                            </td>
-                          );
-                        }
-                        if (col.key === 'accountId') {
-                          return (
-                            <td key={col.key} className="py-4 px-4 text-slate-600 font-semibold">
-                              {associatedAccount ? associatedAccount.name : (opp.accountName ?? 'Unknown Account')}
-                            </td>
-                          );
-                        }
-                        if (col.key === 'stage') {
-                          return (
-                            <td key={col.key} className="py-4 px-4">
-                              <StatusBadge value={opp.stage} colorMap={STAGE_COLORS} />
-                            </td>
-                          );
-                        }
-                        if (col.key === 'status') {
-                          return (
-                            <td key={col.key} className="py-4 px-4">
-                              <StatusBadge value={opp.status ?? 'Open'} colorMap={OPPORTUNITY_STATUS_COLORS} />
-                            </td>
-                          );
-                        }
-                        if (col.key === 'value') {
-                          return (
-                            <td key={col.key} className="py-4 px-4 text-right text-slate-900 font-bold font-mono text-sm">
-                              {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(opp.value)}
-                            </td>
-                          );
-                        }
-                        if (col.key === 'probability') {
-                          return (
-                            <td key={col.key} className="py-4 px-4 text-center">
-                              <div className="flex items-center justify-center space-x-2">
-                                <div className="w-12 bg-slate-100 h-2 rounded-full overflow-hidden shrink-0">
-                                  <div
-                                    className={`h-full ${
-                                      opp.probability >= 80 ? 'bg-green-500' :
-                                      opp.probability >= 50 ? 'bg-blue-500' :
-                                      'bg-yellow-500'
-                                    }`}
-                                    style={{ width: `${opp.probability}%` }}
-                                    aria-label={`${opp.probability}%`}
-                                  />
-                                </div>
-                                <span className="font-bold text-slate-700 font-mono text-[11px]">{opp.probability}%</span>
-                              </div>
-                            </td>
-                          );
-                        }
-                        if (col.key === 'owner') {
-                          return (
-                            <td key={col.key} className="py-4 px-4 text-slate-600 font-medium">
-                              {opp.owner}
-                            </td>
-                          );
-                        }
-                        if (col.key === 'startDate') {
-                          return (
-                            <td key={col.key} className="py-4 px-4 text-slate-500 font-mono font-medium whitespace-nowrap">
-                              {opp.startDate || 'N/A'}
-                            </td>
-                          );
-                        }
-                        if (col.key === 'closeDate') {
-                          return (
-                            <td key={col.key} className="py-4 px-4 text-slate-500 font-mono font-medium">
-                              {opp.closeDate}
-                            </td>
-                          );
-                        }
-
-                        // Customizable dynamic custom columns
-                        const rawVal = opp[col.key] ?? (col.type === 'boolean' ? false : '');
-                        return (
-                          <td key={col.key} className="py-4 px-4">
-                            {col.type === 'boolean' ? (
-                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${rawVal ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>
-                                {rawVal ? 'Yes' : 'No'}
-                              </span>
-                            ) : col.type === 'number' ? (
-                              <span className="font-mono font-semibold text-slate-700">{rawVal}</span>
-                            ) : (
-                              <span className="text-slate-600">{String(rawVal)}</span>
-                            )}
-                          </td>
-                        );
-                      })}
+                      {displayedConfigs.map(col => (
+                        <TableCell
+                          key={col.key}
+                          align={col.key === 'value' ? 'right' : col.key === 'probability' ? 'center' : 'left'}
+                        >
+                          {renderOpportunityCell(
+                            col,
+                            opp,
+                            associatedAccount ? associatedAccount.name : (opp.accountName ?? 'Unknown Account'),
+                          )}
+                        </TableCell>
+                      ))}
 
                       {/* Actions */}
-                      <td className="py-4 px-5 text-center" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center justify-center gap-2">
+                      <TableCell
+                        align="center"
+                        sticky="right"
+                        className={selectedOppId === opp.id ? 'bg-blue-50' : ''}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="flex items-center justify-center gap-1.5 whitespace-nowrap">
                           <RowActionButton
                             intent="view"
                             label={`View opportunity ${opp.name}`}
@@ -589,13 +473,13 @@ export const OpportunitiesView: React.FC = () => {
                             onClick={() => setDeleteTarget({ id: opp.id, label: opp.name })}
                           />
                         </div>
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                   );
                 })
               )}
             </tbody>
-          </table>
+          </Table>
         </div>
 
         <Pagination
@@ -606,7 +490,7 @@ export const OpportunitiesView: React.FC = () => {
           onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
           itemLabel="opportunities"
         />
-      </div>
+      </Card>
 
       <ConfirmDialog
         isOpen={!!deleteTarget}
@@ -653,144 +537,18 @@ export const OpportunitiesView: React.FC = () => {
       </AnimatePresence>
 
       {/* Add Opportunity Modal */}
-      <FormModal
+      <OpportunityFormModal
         isOpen={isAddModalOpen}
-        title="Create Corporate Opportunity"
-        icon={<TrendingUp className="w-5 h-5 text-indigo-600" aria-hidden="true" />}
         onClose={() => setIsAddModalOpen(false)}
         onSubmit={handleCreateOpportunity}
         submitLabel="Create Opportunity"
-        maxWidth="max-w-lg"
-      >
-        <FormGrid>
-          <FormField label="Target Corporate Account" required wide>
-            <select
-              required
-              value={newOpp.accountId}
-              onChange={(e) => setNewOpp({ ...newOpp, accountId: e.target.value })}
-              className={SELECT_CLS}
-            >
-              <option value="" disabled>Select an account...</option>
-              {accounts.map(acc => (
-                <option key={acc.id} value={acc.id}>{acc.name}</option>
-              ))}
-            </select>
-          </FormField>
-
-          <FormField label="Opportunity Name" required wide>
-            <input
-              type="text"
-              required
-              value={newOpp.name}
-              onChange={(e) => setNewOpp({ ...newOpp, name: e.target.value })}
-              placeholder="e.g., Salesforce Integration"
-              className={INPUT_CLS}
-            />
-          </FormField>
-
-          <FormField label="Deal Value ($)" required>
-            <NumberInput
-              required
-              min={0}
-              value={newOpp.value}
-              onValueChange={(v) => setNewOpp({ ...newOpp, value: v, crmValue: Math.round(v * 0.9) })}
-              placeholder="e.g. 50000"
-              className={INPUT_CLS}
-            />
-          </FormField>
-
-          <FormField label="Expected Close Date" required>
-            <input
-              type="date"
-              required
-              min={new Date().toLocaleDateString('en-CA')}
-              value={newOpp.closeDate}
-              onChange={(e) => setNewOpp({ ...newOpp, closeDate: e.target.value })}
-              className={`${INPUT_CLS} font-mono`}
-            />
-          </FormField>
-
-          <FormField label="Start Date">
-            <input
-              type="date"
-              value={newOpp.startDate}
-              onChange={(e) => setNewOpp({ ...newOpp, startDate: e.target.value })}
-              className={`${INPUT_CLS} font-mono`}
-            />
-          </FormField>
-
-          <FormField label="Initial Stage">
-            <select
-              value={newOpp.stage}
-              onChange={(e) => {
-                const stage = e.target.value as OpportunityStage;
-                // Lifecycle sync: reaching Won closes the deal as Won.
-                setNewOpp({ ...newOpp, stage, status: stage === 'Won' ? 'Won' : 'Open' });
-              }}
-              className={SELECT_CLS}
-            >
-              <option value="Lead">Lead</option>
-              <option value="Qualified">Qualified</option>
-              <option value="Proposal">Proposal</option>
-              <option value="Negotiation">Negotiation</option>
-              <option value="Won">Won</option>
-            </select>
-          </FormField>
-
-          <FormField label="Probability (%)">
-            <NumberInput
-              min={0}
-              max={100}
-              required
-              value={newOpp.probability}
-              onValueChange={(v) => setNewOpp({ ...newOpp, probability: v })}
-              placeholder="0–100"
-              className={INPUT_CLS}
-            />
-          </FormField>
-
-          <FormField label="Owner" wide>
-            <input
-              type="text"
-              value={newOpp.owner}
-              onChange={(e) => setNewOpp({ ...newOpp, owner: e.target.value })}
-              placeholder="e.g., John Smith"
-              className={INPUT_CLS}
-            />
-          </FormField>
-
-          {/* Win reason — required when the deal is created already Won */}
-          {newOpp.stage === 'Won' && (
-            <FormField label="Win Reason" required wide>
-              <textarea
-                required
-                rows={2}
-                value={newOpp.closeReason ?? ''}
-                onChange={(e) => setNewOpp({ ...newOpp, closeReason: e.target.value })}
-                placeholder="e.g., Strong technical fit and competitive pricing"
-                className={`${INPUT_CLS} resize-none`}
-              />
-            </FormField>
-          )}
-
-          <FormField label="Detailed Scope" wide>
-            <textarea
-              rows={2}
-              value={newOpp.description}
-              onChange={(e) => setNewOpp({ ...newOpp, description: e.target.value })}
-              className={`${INPUT_CLS} resize-none`}
-            />
-          </FormField>
-        </FormGrid>
-
-        {/* Active custom columns (hidden ones excluded) */}
-        <CustomColumnFields
-          columns={opportunityColumns}
-          config={opportunitiesColumnConfig}
-          values={newOpp}
-          onChange={(key, value) => setNewOpp({ ...newOpp, [key]: value })}
-        />
-      </FormModal>
+        value={newOpp}
+        onChange={(patch) => setNewOpp({ ...newOpp, ...patch })}
+        accounts={accounts}
+        stakeholders={stakeholders}
+        opportunityColumns={opportunityColumns}
+        opportunitiesColumnConfig={opportunitiesColumnConfig}
+      />
 
       {isEditModalOpen && editingOpp && (
         <InlineEditModal
@@ -799,6 +557,7 @@ export const OpportunitiesView: React.FC = () => {
           displayedConfigs={displayedConfigs}
           accounts={accounts}
           opportunities={opportunities}
+          stakeholders={stakeholders}
           onChange={(patch) => setEditingOpp({ ...editingOpp, ...patch })}
           onSave={handleUpdateOpportunity}
           onCancel={() => {
@@ -818,44 +577,40 @@ export const OpportunitiesView: React.FC = () => {
               className="mx-5 my-3"
             />
           )}
-          <table className="w-full text-left border-collapse text-xs">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 font-bold uppercase tracking-wider">
-                <th className="py-2.5 px-5">Opportunity Name</th>
-                <th className="py-2.5 px-4">Account</th>
-                <th className="py-2.5 px-4">Stage</th>
-                <th className="py-2.5 px-4">Deal Value</th>
-                <th className="py-2.5 px-4">Owner</th>
-                <th className="py-2.5 px-5 text-center">Restore</th>
-              </tr>
-            </thead>
+          <Table>
+            <TableHead>
+              <TableHeadCell>Opportunity Name</TableHeadCell>
+              <TableHeadCell>Account</TableHeadCell>
+              <TableHeadCell>Stage</TableHeadCell>
+              <TableHeadCell>Deal Value</TableHeadCell>
+              <TableHeadCell align="center">Restore</TableHeadCell>
+            </TableHead>
             <tbody>
               {deactivatedOpportunities.map((opp) => {
                 // accountName is joined server-side, so it resolves even when the
                 // parent account was cascade-deactivated with this opportunity.
                 const accountName = opp.accountName || accounts.find(a => a.id === opp.accountId)?.name;
                 return (
-                  <tr key={opp.id} className="border-b last:border-0 text-slate-500 font-medium opacity-70">
-                    <td className="py-3 px-5">
+                  <TableRow key={opp.id} className="opacity-70">
+                    <TableCell>
                       <span className="font-semibold text-slate-600 line-through decoration-slate-300">{opp.name}</span>
-                    </td>
-                    <td className="py-3 px-4">{accountName || '—'}</td>
-                    <td className="py-3 px-4">
+                    </TableCell>
+                    <TableCell>{accountName || '—'}</TableCell>
+                    <TableCell>
                       <StatusBadge value={opp.stage} colorMap={STAGE_COLORS} shape="rounded" muted />
-                    </td>
-                    <td className="py-3 px-4 font-mono">${opp.value?.toLocaleString() || '0'}</td>
-                    <td className="py-3 px-4">{opp.owner}</td>
-                    <td className="py-3 px-5 text-center">
+                    </TableCell>
+                    <TableCell className="font-mono">${opp.value?.toLocaleString() || '0'}</TableCell>
+                    <TableCell align="center">
                       <RestoreButton
                         label={`Restore opportunity ${opp.name}`}
                         onClick={() => setRestoreTarget({ id: opp.id, label: opp.name })}
                       />
-                    </td>
-                  </tr>
+                    </TableCell>
+                  </TableRow>
                 );
               })}
             </tbody>
-          </table>
+          </Table>
         </DeactivatedSection>
       )}
 

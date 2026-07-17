@@ -65,7 +65,7 @@ export class AlertsService {
        FROM action_items ai
        INNER JOIN accounts a ON ai.account_id = a.id AND a.is_deleted = FALSE ${joinCond}
        WHERE ai.is_deleted = FALSE
-         AND ai.status != 'Completed'
+         AND ai.status NOT IN ('Completed', 'Cancelled')
        ORDER BY ai.due_date ASC NULLS LAST`,
       qParams,
     );
@@ -147,7 +147,7 @@ export class AlertsService {
     const { conditions, params: qParams } = this.filter.buildOwnerConditions('accounts', f, 1);
     const where = [
       'is_deleted = FALSE',
-      "health IN ('Critical','At Risk')",
+      "health IN ('Red','Amber')",
       ...conditions,
     ].join(' AND ');
 
@@ -159,8 +159,8 @@ export class AlertsService {
     const nowIso = new Date().toISOString();
     return rows.map(row => ({
       id:          `acct-health-${row.id}`,
-      type:        row.health === 'Critical' ? 'CriticalAccount' : 'AtRiskAccount',
-      severity:    (row.health === 'Critical' ? 'critical' : 'high') as Alert['severity'],
+      type:        row.health === 'Red' ? 'CriticalAccount' : 'AtRiskAccount',
+      severity:    (row.health === 'Red' ? 'critical' : 'high') as Alert['severity'],
       title:       `Account Health: ${row.health}`,
       description: `Account "${row.name}" has a ${row.health} health status and requires attention.`,
       accountId:   row.id,

@@ -7,8 +7,8 @@ import React, { useState } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
 import { PeriodSelector } from './PeriodSelector';
 import { exportReportToXlsx, exportCurrency, buildExportFileName } from '@/utils/exportReport';
-import { Download } from 'lucide-react';
-import { Button, EmptyState, FilterBar, FilterSelect, PageHeader } from '@/components/ui';
+import { ArrowUpRight, Download, Layers, Target, TrendingUp } from 'lucide-react';
+import { Button, Card, EmptyState, FilterBar, FilterSelect, PageHeader, SummaryCard } from '@/components/ui';
 
 export const RevenueForecastView: React.FC = () => {
   const { accounts, opportunities, selectedYear, selectedQuarter } = useCRM();
@@ -21,7 +21,7 @@ export const RevenueForecastView: React.FC = () => {
   // (computed from each opportunity's Expected Close Date via the configured
   // Financial Calendar). Closed-lost deals never contribute to forecasts.
   const filteredOpps = opportunities.filter(o => {
-    if ((o.status ?? 'Open') === 'Lost') return false;
+    if (o.stage === 'Lost') return false;
     if (selectedAccountId !== 'All' && o.accountId !== selectedAccountId) return false;
     if (fyLabel && o.financialYear !== fyLabel) return false;
     if (selectedQuarter !== 'All' && o.quarter !== selectedQuarter) return false;
@@ -122,7 +122,7 @@ export const RevenueForecastView: React.FC = () => {
       : '0%';
 
     // Pipeline by stage — weighted forecast and raw pipeline per stage
-    const stages = ['Lead', 'Qualified', 'Proposal', 'Negotiation', 'Won'];
+    const stages = ['Lead', 'Qualified', 'Proposal', 'Negotiation', 'Won', 'Blocked', 'Delayed', 'Lost'];
     const stageRows = stages.map(stage => {
       const stageOpps = filteredOpps.filter(o => o.stage === stage);
       const rawPipeline = stageOpps.reduce((s, o) => s + o.value, 0);
@@ -186,16 +186,14 @@ export const RevenueForecastView: React.FC = () => {
         },
         {
           title: 'Opportunity Detail',
-          headers: ['Opportunity', 'Account', 'Owner', 'Stage', 'Status', 'Close Date', 'Raw Value', 'Probability', 'Weighted Forecast', 'Financial Year', 'Quarter'],
+          headers: ['Opportunity', 'Account', 'Stage', 'Close Date', 'Raw Value', 'Probability', 'Weighted Forecast', 'Financial Year', 'Quarter'],
           rows: filteredOpps
             .slice()
             .sort((a, b) => (b.value * b.probability) - (a.value * a.probability))
             .map(o => [
               o.name,
               accounts.find(a => a.id === o.accountId)?.name || '—',
-              o.owner || '—',
               o.stage,
-              o.status ?? 'Open',
               o.closeDate || '—',
               exportCurrency(o.value),
               `${o.probability}%`,
@@ -244,14 +242,16 @@ export const RevenueForecastView: React.FC = () => {
       </FilterBar>
 
       {/* Charts Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-7">
         {/* Forecast by Quarter */}
-        <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm space-y-4 text-left">
-          <div className="flex items-center justify-between pb-3 border-b mb-3">
-            <h4 className="font-extrabold text-slate-800 text-xs uppercase tracking-wider">Forecast by Quarter</h4>
-            <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded font-bold font-mono uppercase">Weighted Sum</span>
-          </div>
-
+        <Card
+          title="Forecast by Quarter"
+          actions={
+            <span className="text-xs font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100/50">
+              Weighted Sum
+            </span>
+          }
+        >
           <div className="relative py-2">
             {selectedQuarter === 'All' ? (
               /* ── All quarters: spline chart ─────────────────────────────── */
@@ -334,24 +334,24 @@ export const RevenueForecastView: React.FC = () => {
               </svg>
             )}
           </div>
-        </div>
+        </Card>
 
         {/* Forecast Breakdown: by Account or Opportunity */}
-        <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm space-y-4 text-left">
-          <div className="flex items-center justify-between pb-3 border-b mb-3">
-            <h4 className="font-extrabold text-slate-800 text-xs uppercase tracking-wider">
-              {selectedAccountId === 'All' ? 'Forecast by Account' : 'Forecast by Opportunity'}
-            </h4>
-            <span className="text-[10px] bg-emerald-50 text-emerald-600 px-2 py-0.5 rounded font-bold font-mono">
+        <Card
+          title={selectedAccountId === 'All' ? 'Forecast by Account' : 'Forecast by Opportunity'}
+          actions={
+            <span className="text-xs font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100/50">
               TOTAL: {formatCurrency(breakdownSum)}
             </span>
-          </div>
-
+          }
+        >
           <div className="space-y-4 py-1.5">
             {breakdownList.length === 0 ? (
-              <p className="text-xs text-slate-400 italic text-center py-12">
-                No weighted pipeline elements to model for this selection.
-              </p>
+              <EmptyState
+                icon={<Layers className="w-6 h-6 text-slate-400" aria-hidden="true" />}
+                title="No weighted pipeline to model"
+                hint="Adjust the account or period filters to see a forecast breakdown."
+              />
             ) : (
               breakdownList.map(item => {
                 const pct = breakdownSum > 0 ? Math.round((item.value / breakdownSum) * 100) : 0;
@@ -369,42 +369,38 @@ export const RevenueForecastView: React.FC = () => {
               })
             )}
           </div>
-        </div>
+        </Card>
       </div>
 
       {/* Aggregate KPI Summary Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-5">
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-1 text-left">
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Total Forecast</p>
-          <p className="text-2xl font-black text-slate-800 tracking-tight font-mono">{formatCurrency(totalForecastValue)}</p>
-          <span className="text-[10px] text-green-600 font-bold">
-            Weighted <span className="text-slate-400 font-normal">deal probabilities</span>
-          </span>
-        </div>
+        <SummaryCard
+          label="Total Forecast"
+          value={formatCurrency(totalForecastValue)}
+          icon={<TrendingUp className="w-5 h-5" />}
+          tone="emerald"
+        />
 
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-1 text-left">
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Committed Pipeline</p>
-          <p className="text-2xl font-black text-slate-800 tracking-tight font-mono">{formatCurrency(committedForecastValue)}</p>
-          <span className="text-[10px] text-slate-400 font-semibold uppercase">
-            Probability &gt;= 70%
-          </span>
-        </div>
+        <SummaryCard
+          label="Committed Pipeline"
+          value={formatCurrency(committedForecastValue)}
+          icon={<Target className="w-5 h-5" />}
+          tone="purple"
+        />
 
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-1 text-left">
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Best Case Forecast</p>
-          <p className="text-2xl font-black text-slate-800 tracking-tight font-mono">{formatCurrency(bestCaseForecastValue)}</p>
-          <span className="text-[10px] text-blue-600 font-bold">
-            Estimated <span className="text-slate-400 font-normal">upside scenarios</span>
-          </span>
-        </div>
+        <SummaryCard
+          label="Best Case Forecast"
+          value={formatCurrency(bestCaseForecastValue)}
+          icon={<ArrowUpRight className="w-5 h-5" />}
+          tone="blue"
+        />
 
-        <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-1 text-left">
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Total Raw Pipeline</p>
-          <p className="text-2xl font-black text-slate-800 tracking-tight font-mono">{formatCurrency(totalPipelineValue)}</p>
-          <span className="text-[10px] text-indigo-600 font-bold">
-            Face value <span className="text-slate-400 font-normal">unweighted</span>
-          </span>
-        </div>
+        <SummaryCard
+          label="Total Raw Pipeline"
+          value={formatCurrency(totalPipelineValue)}
+          icon={<Layers className="w-5 h-5" />}
+          tone="indigo"
+        />
       </div>
     </div>
   );

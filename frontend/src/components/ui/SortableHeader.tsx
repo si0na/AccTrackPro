@@ -29,14 +29,16 @@ export function SortableHeader<TField extends string = string>({
     <button
       type="button"
       onClick={() => onSort(field)}
-      className={`flex items-center space-x-1 hover:text-slate-900 focus:outline-none cursor-pointer ${className}`}
+      className={`flex items-center space-x-1 text-left leading-snug transition-colors focus:outline-none cursor-pointer ${
+        isActive ? 'text-blue-600' : 'hover:text-slate-900'
+      } ${className}`}
     >
       <span>{label}</span>
       {isActive ? (
         sortDirection === 'asc' ? (
-          <ArrowUp className="w-3 h-3 text-slate-600 shrink-0" />
+          <ArrowUp className="w-3 h-3 text-blue-600 shrink-0" />
         ) : (
-          <ArrowDown className="w-3 h-3 text-slate-600 shrink-0" />
+          <ArrowDown className="w-3 h-3 text-blue-600 shrink-0" />
         )
       ) : (
         <ArrowUpDown className="w-3 h-3 text-slate-400 shrink-0" />

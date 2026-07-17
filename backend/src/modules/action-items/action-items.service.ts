@@ -11,14 +11,20 @@ import { Pagination, Paginated, extractTotal } from '../../common/utils/paginati
 // from dueDate and never stored.
 const KNOWN = new Set([
   'id','title','accountId','accountName','opportunityId','owner','ownerId',
-  'dueDate','priority','status','notes','completedDate',
+  'openDate','dueDate','priority','status','notes','risksAndDependencies','completedDate',
   'financialYear','quarter',
 ]);
+
+/** Default open_date for rows created without one (e.g. older API clients). */
+function todayIsoDate(): string {
+  return new Date().toISOString().slice(0, 10);
+}
 
 function rowToActionItem(row: any, derive: (date: string) => { financialYear: string; quarter: string }): ActionItem {
   const {
     custom_data, is_deleted, created_at, updated_at,
-    account_id, account_name, opportunity_id, due_date, completed_date,
+    account_id, account_name, opportunity_id, open_date, due_date, completed_date,
+    risks_and_dependencies,
     owner_id, owner_name,
     ...base
   } = row;
@@ -29,8 +35,10 @@ function rowToActionItem(row: any, derive: (date: string) => { financialYear: st
     opportunityId: opportunity_id ?? undefined,
     ownerId:       owner_id   ?? undefined,
     owner:         base.owner || owner_name || '',
+    openDate:      open_date,
     dueDate:       due_date,
     completedDate: completed_date ?? undefined,
+    risksAndDependencies: risks_and_dependencies ?? '',
     // Read-only reporting labels derived from the business date (due date).
     ...derive(due_date),
     ...(custom_data || {}),
@@ -134,13 +142,14 @@ export class ActionItemsService {
 
     const { rows } = await this.db.query(
       `INSERT INTO action_items
-         (id, title, account_id, opportunity_id, owner_id, owner, due_date, priority, status, notes, completed_date, custom_data)
-       VALUES (gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+         (id, title, account_id, opportunity_id, owner_id, owner, open_date, due_date, priority, status, notes, risks_and_dependencies, completed_date, custom_data)
+       VALUES (gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
        RETURNING id`,
       [
         data.title, data.accountId, data.opportunityId ?? null,
         data.ownerId ?? null, ownerDisplayName,
-        data.dueDate ?? '', data.priority, data.status, data.notes ?? '',
+        data.openDate || todayIsoDate(), data.dueDate ?? '', data.priority, data.status, data.notes ?? '',
+        data.risksAndDependencies ?? '',
         data.completedDate ?? null, JSON.stringify(cd),
       ],
     );
@@ -185,14 +194,15 @@ export class ActionItemsService {
 
     await this.db.query(
       `UPDATE action_items SET
-         title=$1, account_id=$2, opportunity_id=$3, owner_id=$4, owner=$5, due_date=$6,
-         priority=$7, status=$8, notes=$9, completed_date=$10,
-         custom_data=$11, updated_at=NOW()
-       WHERE id=$12 AND is_deleted=FALSE`,
+         title=$1, account_id=$2, opportunity_id=$3, owner_id=$4, owner=$5, open_date=$6, due_date=$7,
+         priority=$8, status=$9, notes=$10, risks_and_dependencies=$11, completed_date=$12,
+         custom_data=$13, updated_at=NOW()
+       WHERE id=$14 AND is_deleted=FALSE`,
       [
         data.title, data.accountId, data.opportunityId ?? null,
         effectiveOwnerId, ownerDisplayName,
-        data.dueDate ?? '', data.priority, data.status, data.notes ?? '',
+        data.openDate || existing.openDate, data.dueDate ?? '', data.priority, data.status, data.notes ?? '',
+        data.risksAndDependencies ?? '',
         data.completedDate ?? null, JSON.stringify(cd),
         id,
       ],

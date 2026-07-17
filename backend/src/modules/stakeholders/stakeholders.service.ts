@@ -5,11 +5,12 @@ import { NotificationEventBus } from '../../common/events/notification-event-bus
 import { Stakeholder } from '../../types';
 
 function rowToStakeholder(row: any): Stakeholder {
-  const { is_deleted, created_at, updated_at, account_id, account_name, ...base } = row;
+  const { is_deleted, created_at, updated_at, account_id, account_name, stakeholder_type, ...base } = row;
   return {
     ...base,
-    accountId:   account_id,
-    accountName: account_name ?? undefined,
+    accountId:       account_id,
+    accountName:     account_name ?? undefined,
+    stakeholderType: stakeholder_type,
   } as Stakeholder;
 }
 
@@ -91,11 +92,12 @@ export class StakeholdersService {
     await this.assertEmailAvailable(data.accountId, data.email);
 
     const { rows } = await this.db.query(
-      `INSERT INTO stakeholders (id, name, account_id, designation, influence, relationship, email, phone)
-       VALUES (gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7)
+      `INSERT INTO stakeholders (id, name, account_id, designation, influence, relationship, email, phone, stakeholder_type, department)
+       VALUES (gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7,$8,$9)
        RETURNING *`,
       [data.name, data.accountId, data.designation ?? '', data.influence,
-       data.relationship, data.email ?? '', data.phone ?? ''],
+       data.relationship, data.email ?? '', data.phone ?? '',
+       data.stakeholderType, data.department ?? null],
     );
     const stk = rowToStakeholder(rows[0]);
     this.logger.log(`Stakeholder created [id=${stk.id} name="${stk.name}" accountId=${stk.accountId}]`);
@@ -130,10 +132,11 @@ export class StakeholdersService {
     const { rows } = await this.db.query(
       `UPDATE stakeholders SET
          name=$1, account_id=$2, designation=$3, influence=$4,
-         relationship=$5, email=$6, phone=$7, updated_at=NOW()
-       WHERE id=$8 AND is_deleted=FALSE RETURNING *`,
+         relationship=$5, email=$6, phone=$7, stakeholder_type=$8, department=$9, updated_at=NOW()
+       WHERE id=$10 AND is_deleted=FALSE RETURNING *`,
       [data.name, data.accountId, data.designation ?? '', data.influence,
-       data.relationship, data.email ?? '', data.phone ?? '', id],
+       data.relationship, data.email ?? '', data.phone ?? '',
+       data.stakeholderType, data.department ?? null, id],
     );
     const stk = rowToStakeholder(rows[0]);
     await this.log(`Updated Stakeholder '${stk.name}'`, stk.accountId);

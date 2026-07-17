@@ -29,7 +29,7 @@ export const Modal: React.FC<ModalProps> = ({
   title,
   icon,
   onClose,
-  maxWidth = 'max-w-md',
+  maxWidth = 'max-w-lg',
   tone = 'neutral',
   children,
 }) => {

@@ -10,10 +10,12 @@ import {
   Users, BarChart3, Briefcase, FileText, Bell,
   Plus, CheckCircle, XCircle, Settings2,
   RefreshCw, CalendarDays,
-  Pencil, Trash2, ShieldCheck,
+  Pencil, Trash2, ShieldCheck, ShieldAlert,
+  ClipboardList, SlidersHorizontal,
 } from 'lucide-react';
 import {
   Button,
+  Card,
   EmptyRow,
   ErrorBanner,
   FormField,
@@ -22,7 +24,14 @@ import {
   RowActionButton,
   SELECT_CLS,
   StatusBadge,
+  SummaryCard,
+  Table,
+  TableCell,
+  TableHead,
+  TableHeadCell,
+  TableRow,
 } from '@/components/ui';
+import type { CardTone } from '@/components/ui';
 
 // ─── Local status color maps (admin-only enums) ──────────────────────────────
 
@@ -62,30 +71,28 @@ interface StatCardProps {
   icon: React.ReactNode;
   label: string;
   value: number | null;
-  color: string;
+  tone: CardTone;
 }
 
-const StatCard: React.FC<StatCardProps> = ({ icon, label, value, color }) => (
-  <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 flex items-center gap-4">
-    <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${color}`}>
-      {icon}
-    </div>
-    <div>
-      <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{label}</p>
-      <p className="text-2xl font-bold text-slate-800 leading-tight">
-        {value === null ? '—' : value.toLocaleString()}
-      </p>
-    </div>
-  </div>
+const StatCard: React.FC<StatCardProps> = ({ icon, label, value, tone }) => (
+  <SummaryCard label={label} value={value === null ? '—' : value.toLocaleString()} icon={icon} tone={tone} />
 );
 
-// ─── Section wrapper ──────────────────────────────────────────────────────────
+// ─── Tab bar ──────────────────────────────────────────────────────────────────
 
-const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
-  <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
-    <h4 className="font-bold text-slate-800 text-xs uppercase tracking-wider border-b border-slate-100 pb-2">
-      {title}
-    </h4>
+const TABS = [
+  { id: 'users', label: 'User Management', icon: Users },
+  { id: 'employees', label: 'Employee Master', icon: ShieldCheck },
+  { id: 'financial-years', label: 'Financial Years', icon: CalendarDays },
+  { id: 'calendar', label: 'Calendar Configuration', icon: ClipboardList },
+  { id: 'settings', label: 'Application Settings', icon: SlidersHorizontal },
+] as const;
+
+type AdminTab = typeof TABS[number]['id'];
+
+/** A form/action row that sits above a table — visually separated so buttons don't crowd the table. */
+const Toolbar: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <div className="flex flex-wrap items-end gap-3 pb-5 mb-5 border-b border-slate-100">
     {children}
   </div>
 );
@@ -94,6 +101,8 @@ const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title
 
 export const AdministrationPage: React.FC = () => {
   const { financialYears, financialCalendar, adminSettings, refreshData } = useCRM();
+
+  const [activeTab, setActiveTab] = useState<AdminTab>('users');
 
   // System Overview
   const [overview, setOverview] = useState<AdminSystemOverview | null>(null);
@@ -371,62 +380,90 @@ export const AdministrationPage: React.FC = () => {
       />
 
       {/* ── 1. System Overview ── */}
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
-        <StatCard
-          icon={<Users className="w-5 h-5 text-indigo-600" aria-hidden="true" />}
-          label="Total Users"
-          value={overviewLoading ? null : (overview?.totalUsers ?? 0)}
-          color="bg-indigo-50"
-        />
-        <StatCard
-          icon={<Briefcase className="w-5 h-5 text-blue-600" aria-hidden="true" />}
-          label="Accounts"
-          value={overviewLoading ? null : (overview?.totalAccounts ?? 0)}
-          color="bg-blue-50"
-        />
-        <StatCard
-          icon={<BarChart3 className="w-5 h-5 text-emerald-600" aria-hidden="true" />}
-          label="Opportunities"
-          value={overviewLoading ? null : (overview?.totalOpportunities ?? 0)}
-          color="bg-emerald-50"
-        />
-        <StatCard
-          icon={<FileText className="w-5 h-5 text-amber-600" aria-hidden="true" />}
-          label="Documents"
-          value={overviewLoading ? null : (overview?.totalDocuments ?? 0)}
-          color="bg-amber-50"
-        />
-        <StatCard
-          icon={<Bell className="w-5 h-5 text-rose-600" aria-hidden="true" />}
-          label="Notifications"
-          value={overviewLoading ? null : (overview?.totalNotifications ?? 0)}
-          color="bg-rose-50"
-        />
+      <div>
+        <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-3">System Overview</h3>
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
+          <StatCard
+            icon={<Users className="w-5 h-5" aria-hidden="true" />}
+            label="Total Users"
+            value={overviewLoading ? null : (overview?.totalUsers ?? 0)}
+            tone="indigo"
+          />
+          <StatCard
+            icon={<Briefcase className="w-5 h-5" aria-hidden="true" />}
+            label="Accounts"
+            value={overviewLoading ? null : (overview?.totalAccounts ?? 0)}
+            tone="blue"
+          />
+          <StatCard
+            icon={<BarChart3 className="w-5 h-5" aria-hidden="true" />}
+            label="Opportunities"
+            value={overviewLoading ? null : (overview?.totalOpportunities ?? 0)}
+            tone="emerald"
+          />
+          <StatCard
+            icon={<FileText className="w-5 h-5" aria-hidden="true" />}
+            label="Documents"
+            value={overviewLoading ? null : (overview?.totalDocuments ?? 0)}
+            tone="amber"
+          />
+          <StatCard
+            icon={<Bell className="w-5 h-5" aria-hidden="true" />}
+            label="Notifications"
+            value={overviewLoading ? null : (overview?.totalNotifications ?? 0)}
+            tone="purple"
+          />
+        </div>
       </div>
 
-      {/* ── 2. User Management ── */}
-      <Section title="User Management">
+      {/* ── Section tabs ── */}
+      <div className="border-b border-slate-200 flex items-center gap-1 overflow-x-auto select-none">
+        {TABS.map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-2 px-4 py-3 -mb-px border-b-2 rounded-t-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                isActive
+                  ? 'border-blue-600 text-blue-600 bg-blue-50/40'
+                  : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              <Icon className="w-4 h-4" aria-hidden="true" />
+              <span>{tab.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* ── User Management ── */}
+      {activeTab === 'users' && (
+      <Card title="User Management" actions={<span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded font-bold font-mono">{users.length} USERS</span>} padding="cozy">
         {usersLoading ? (
           <p className="text-xs text-slate-400 italic py-4 text-center">Loading users…</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-xs border-collapse">
-              <thead>
-                <tr className="border-b border-slate-100 text-slate-400 font-bold uppercase text-[10px] tracking-wider">
-                  <th className="py-2 text-left">Name</th>
-                  <th className="py-2 text-left">Email</th>
-                  <th className="py-2 text-left">Role</th>
-                  <th className="py-2 text-left">Status</th>
-                  <th className="py-2 text-left">Last Login</th>
-                </tr>
-              </thead>
+            <Table>
+              <TableHead>
+                <TableHeadCell>Name</TableHeadCell>
+                <TableHeadCell>Email</TableHeadCell>
+                <TableHeadCell>Role</TableHeadCell>
+                <TableHeadCell>Status</TableHeadCell>
+                <TableHeadCell>Security</TableHeadCell>
+                <TableHeadCell>Created</TableHeadCell>
+                <TableHeadCell>Last Login</TableHeadCell>
+              </TableHead>
               <tbody>
                 {users.length === 0 ? (
-                  <EmptyRow colSpan={5} message="No users found." />
+                  <EmptyRow colSpan={7} message="No users found." />
                 ) : (
-                  users.map((u) => (
-                    <tr key={u.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50">
-                      <td className="py-2.5 font-semibold text-slate-800">
+                  users.map((u) => {
+                    const isLocked = !!(u.lockedUntil && new Date(u.lockedUntil).getTime() > Date.now());
+                    return (
+                    <TableRow key={u.id} className="hover:bg-slate-50/50">
+                      <TableCell className="font-semibold text-slate-800">
                         <div className="flex items-center gap-2">
                           <div
                             className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-[10px] font-bold text-indigo-700 shrink-0"
@@ -436,37 +473,55 @@ export const AdministrationPage: React.FC = () => {
                           </div>
                           {u.name}
                         </div>
-                      </td>
-                      <td className="py-2.5 text-slate-500 font-mono">{u.email}</td>
-                      <td className="py-2.5 text-slate-600">{u.role}</td>
-                      <td className="py-2.5">
+                      </TableCell>
+                      <TableCell className="text-slate-500 font-mono">{u.email}</TableCell>
+                      <TableCell className="text-slate-600">{u.role}</TableCell>
+                      <TableCell>
                         <StatusBadge
                           value={u.isActive ? 'Active' : 'Inactive'}
                           colorMap={USER_STATUS_COLORS}
                         />
-                      </td>
-                      <td className="py-2.5 text-slate-400 font-mono">
+                      </TableCell>
+                      <TableCell>
+                        {isLocked ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-700">
+                            <ShieldAlert className="w-3 h-3" aria-hidden="true" /> Locked
+                          </span>
+                        ) : u.failedAttempts ? (
+                          <span className="text-[10px] font-semibold text-amber-600">
+                            {u.failedAttempts} failed attempt{u.failedAttempts === 1 ? '' : 's'}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-slate-400 italic">Clear</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-slate-400 font-mono text-[11px]">
+                        {new Date(u.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                      </TableCell>
+                      <TableCell className="text-slate-400 font-mono">
                         {u.lastLogin
                           ? new Date(u.lastLogin).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
                           : <span className="italic">Never</span>}
-                      </td>
-                    </tr>
-                  ))
+                      </TableCell>
+                    </TableRow>
+                    );
+                  })
                 )}
               </tbody>
-            </table>
+            </Table>
           </div>
         )}
-      </Section>
+      </Card>
+      )}
 
-      {/* ── 2b. Employee Master ── */}
-      <Section title="Employee Master">
-        <p className="text-xs text-slate-500">
-          Only employees listed here are authorized to create an account. Deleting an entry is blocked if the employee has already registered.
-        </p>
-
-        {/* Add employee row */}
-        <div className="flex flex-wrap items-end gap-3">
+      {/* ── Employee Master ── */}
+      {activeTab === 'employees' && (
+      <Card
+        title="Employee Master"
+        subtitle="Only employees listed here are authorized to create an account. Deleting an entry is blocked if the employee has already registered."
+        padding="cozy"
+      >
+        <Toolbar>
           <FormField label="Email Address" className="flex-1 min-w-48">
             <input
               type="email"
@@ -499,26 +554,24 @@ export const AdministrationPage: React.FC = () => {
           >
             {empAdding ? 'Adding…' : 'Add Employee'}
           </Button>
-        </div>
+        </Toolbar>
 
-        {empAddError   && <ErrorBanner message={empAddError} />}
-        {empAddSuccess && <p className="text-xs text-green-600 font-medium">{empAddSuccess}</p>}
+        {empAddError   && <div className="mb-4"><ErrorBanner message={empAddError} /></div>}
+        {empAddSuccess && <p className="text-xs text-green-600 font-medium mb-4">{empAddSuccess}</p>}
 
         {/* Employee list */}
         {empLoading ? (
           <p className="text-xs text-slate-400 italic py-4 text-center">Loading employees…</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="w-full text-xs border-collapse">
-              <thead>
-                <tr className="border-b border-slate-100 text-slate-400 font-bold uppercase text-[10px] tracking-wider">
-                  <th className="py-2 text-left">Email</th>
-                  <th className="py-2 text-left">Name</th>
-                  <th className="py-2 text-left">Registered User</th>
-                  <th className="py-2 text-left">Added</th>
-                  <th className="py-2 text-left">Actions</th>
-                </tr>
-              </thead>
+            <Table>
+              <TableHead>
+                <TableHeadCell>Email</TableHeadCell>
+                <TableHeadCell>Name</TableHeadCell>
+                <TableHeadCell>Registered User</TableHeadCell>
+                <TableHeadCell>Added</TableHeadCell>
+                <TableHeadCell>Actions</TableHeadCell>
+              </TableHead>
               <tbody>
                 {employees.length === 0 ? (
                   <EmptyRow colSpan={5} message="No authorized employees configured." />
@@ -530,8 +583,8 @@ export const AdministrationPage: React.FC = () => {
                     const deleteErr  = empDeleteError[emp.id];
                     return (
                       <React.Fragment key={emp.id}>
-                        <tr className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50">
-                          <td className="py-2.5 font-mono text-slate-700">
+                        <TableRow className="hover:bg-slate-50/50">
+                          <TableCell className="font-mono text-slate-700">
                             {isEditing ? (
                               <input
                                 type="email"
@@ -548,8 +601,8 @@ export const AdministrationPage: React.FC = () => {
                                 {emp.email}
                               </div>
                             )}
-                          </td>
-                          <td className="py-2.5 text-slate-700">
+                          </TableCell>
+                          <TableCell className="text-slate-700">
                             {isEditing ? (
                               <input
                                 type="text"
@@ -563,8 +616,8 @@ export const AdministrationPage: React.FC = () => {
                             ) : (
                               emp.name || <span className="text-slate-400 italic text-[10px]">No name set</span>
                             )}
-                          </td>
-                          <td className="py-2.5">
+                          </TableCell>
+                          <TableCell>
                             {registeredUser ? (
                               <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-700">
                                 {registeredUser.name}
@@ -572,11 +625,11 @@ export const AdministrationPage: React.FC = () => {
                             ) : (
                               <span className="text-slate-400 italic text-[10px]">Not registered</span>
                             )}
-                          </td>
-                          <td className="py-2.5 text-slate-400 font-mono text-[10px]">
+                          </TableCell>
+                          <TableCell className="text-slate-400 font-mono text-[10px]">
                             {new Date(emp.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
-                          </td>
-                          <td className="py-2.5">
+                          </TableCell>
+                          <TableCell>
                             <div className="flex items-center gap-1.5">
                               {isEditing ? (
                                 <>
@@ -616,8 +669,8 @@ export const AdministrationPage: React.FC = () => {
                                 </>
                               )}
                             </div>
-                          </td>
-                        </tr>
+                          </TableCell>
+                        </TableRow>
                         {(isEditing && empEditError) && (
                           <tr>
                             <td colSpan={5} className="pb-2">
@@ -637,15 +690,16 @@ export const AdministrationPage: React.FC = () => {
                   })
                 )}
               </tbody>
-            </table>
+            </Table>
           </div>
         )}
-      </Section>
+      </Card>
+      )}
 
-      {/* ── 3. Financial Year Management ── */}
-      <Section title="Financial Year Management">
-        {/* Add FY row */}
-        <div className="flex flex-wrap items-end gap-3">
+      {/* ── Financial Year Management ── */}
+      {activeTab === 'financial-years' && (
+      <Card title="Financial Year Management" padding="cozy">
+        <Toolbar>
           <FormField label="Start Year" className="w-32">
             <input
               type="number"
@@ -672,23 +726,21 @@ export const AdministrationPage: React.FC = () => {
           >
             Suggest Next
           </Button>
-        </div>
+        </Toolbar>
 
-        {fyError   && <ErrorBanner message={fyError} />}
-        {fySuccess && <p className="text-xs text-green-600 font-medium">{fySuccess}</p>}
+        {fyError   && <div className="mb-4"><ErrorBanner message={fyError} /></div>}
+        {fySuccess && <p className="text-xs text-green-600 font-medium mb-4">{fySuccess}</p>}
 
         <div className="overflow-x-auto">
-          <table className="w-full text-xs border-collapse">
-            <thead>
-              <tr className="border-b border-slate-100 text-slate-400 font-bold uppercase text-[10px] tracking-wider">
-                <th className="py-2 text-left">Financial Year</th>
-                <th className="py-2 text-left">Status</th>
-                <th className="py-2 text-left">Start Date</th>
-                <th className="py-2 text-left">End Date</th>
-                <th className="py-2 text-left">Financial Calendar</th>
-                <th className="py-2 text-left">Actions</th>
-              </tr>
-            </thead>
+          <Table>
+            <TableHead>
+              <TableHeadCell>Financial Year</TableHeadCell>
+              <TableHeadCell>Status</TableHeadCell>
+              <TableHeadCell>Start Date</TableHeadCell>
+              <TableHeadCell>End Date</TableHeadCell>
+              <TableHeadCell>Financial Calendar</TableHeadCell>
+              <TableHeadCell>Actions</TableHeadCell>
+            </TableHead>
             <tbody>
               {financialYears.length === 0 ? (
                 <EmptyRow colSpan={6} message="No financial years configured." />
@@ -697,25 +749,25 @@ export const AdministrationPage: React.FC = () => {
                   const isActioning = fyActionId === fy.id;
                   return (
                     <React.Fragment key={fy.id}>
-                    <tr className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50">
-                      <td className="py-2.5 font-bold text-slate-800">FY {fy.fyLabel}</td>
-                      <td className="py-2.5">
+                    <TableRow className="hover:bg-slate-50/50">
+                      <TableCell className="font-bold text-slate-800">FY {fy.fyLabel}</TableCell>
+                      <TableCell>
                         <StatusBadge
                           value={fy.isActive ? 'ACTIVE' : 'INACTIVE'}
                           colorMap={FY_STATUS_COLORS}
                         />
-                      </td>
-                      <td className="py-2.5 font-mono text-slate-600">{fy.startDate}</td>
-                      <td className="py-2.5 font-mono text-slate-600">{fy.endDate}</td>
-                      <td className="py-2.5 text-slate-500">
+                      </TableCell>
+                      <TableCell className="font-mono text-slate-600">{fy.startDate}</TableCell>
+                      <TableCell className="font-mono text-slate-600">{fy.endDate}</TableCell>
+                      <TableCell className="text-slate-500">
                         {fy.calendarQuarters.map((q) => (
                           <span key={q.label} className="mr-2 whitespace-nowrap">
                             <span className="font-semibold text-slate-700">{q.label}</span>{' '}
                             <span className="text-[10px]">{monthAbbr(q.startMonth)}–{monthAbbr(q.endMonth)}</span>
                           </span>
                         ))}
-                      </td>
-                      <td className="py-2.5">
+                      </TableCell>
+                      <TableCell>
                         <div className="flex items-center gap-1.5">
                           <Button
                             variant={fy.isActive ? 'warning' : 'success'}
@@ -750,8 +802,8 @@ export const AdministrationPage: React.FC = () => {
                             <CalendarDays className="w-3 h-3" aria-hidden="true" /> Change Calendar
                           </button>
                         </div>
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
                     {editingCalendarFYId === fy.id && (
                       <tr className="bg-indigo-50/40 border-b border-indigo-100">
                         <td colSpan={6} className="py-3 px-4">
@@ -803,19 +855,19 @@ export const AdministrationPage: React.FC = () => {
                 })
               )}
             </tbody>
-          </table>
+          </Table>
         </div>
-      </Section>
+      </Card>
+      )}
 
-      {/* ── 4. Financial Calendar Configuration ── */}
-      <Section title="Financial Calendar Configuration">
-        <p className="text-xs text-slate-500">
-          Define the start month of the financial year. Quarter boundaries are automatically derived as equal 3-month periods.
-          Changes apply to <strong>new financial years only</strong>; existing records retain their current FY assignments.
-        </p>
-
-        <div className="flex flex-wrap items-end gap-6">
-          {/* Start Month */}
+      {/* ── Financial Calendar Configuration ── */}
+      {activeTab === 'calendar' && (
+      <Card
+        title="Financial Calendar Configuration"
+        subtitle={<>Define the start month of the financial year — quarter boundaries are derived automatically. Applies to <strong>new financial years only</strong>.</>}
+        padding="cozy"
+      >
+        <Toolbar>
           <FormField label="FY Start Month" className="min-w-44">
             <select
               value={calStartMonth}
@@ -828,7 +880,6 @@ export const AdministrationPage: React.FC = () => {
             </select>
           </FormField>
 
-          {/* Preview */}
           <div className="flex items-center gap-2 flex-wrap">
             {previewQuarters.map((q) => (
               <span key={q.label} className="px-2.5 py-1 bg-indigo-50 rounded-lg text-xs font-semibold text-indigo-700 border border-indigo-100">
@@ -836,38 +887,35 @@ export const AdministrationPage: React.FC = () => {
               </span>
             ))}
           </div>
-        </div>
+        </Toolbar>
 
-        {/* Quarter detail table */}
         <div className="overflow-x-auto">
-          <table className="w-full text-xs border-collapse">
-            <thead>
-              <tr className="border-b border-slate-100 text-slate-400 font-bold uppercase text-[10px] tracking-wider">
-                <th className="py-1.5 text-left">Quarter</th>
-                <th className="py-1.5 text-left">Start Month</th>
-                <th className="py-1.5 text-left">End Month</th>
-                <th className="py-1.5 text-left">Calendar Months</th>
-              </tr>
-            </thead>
+          <Table>
+            <TableHead>
+              <TableHeadCell>Quarter</TableHeadCell>
+              <TableHeadCell>Start Month</TableHeadCell>
+              <TableHeadCell>End Month</TableHeadCell>
+              <TableHeadCell>Calendar Months</TableHeadCell>
+            </TableHead>
             <tbody>
               {previewQuarters.map((q) => (
-                <tr key={q.label} className="border-b border-slate-50 last:border-0">
-                  <td className="py-2 font-bold text-slate-800">{q.label}</td>
-                  <td className="py-2 text-slate-600">{monthName(q.startMonth)}</td>
-                  <td className="py-2 text-slate-600">{monthName(q.endMonth)}</td>
-                  <td className="py-2 text-slate-500">
+                <TableRow key={q.label}>
+                  <TableCell className="font-bold text-slate-800">{q.label}</TableCell>
+                  <TableCell className="text-slate-600">{monthName(q.startMonth)}</TableCell>
+                  <TableCell className="text-slate-600">{monthName(q.endMonth)}</TableCell>
+                  <TableCell className="text-slate-500">
                     {Array.from({ length: 3 }, (_, i) => {
                       const m = ((q.startMonth - 1 + i) % 12) + 1;
                       return monthAbbr(m);
                     }).join(', ')}
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
             </tbody>
-          </table>
+          </Table>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 pt-1">
+        <div className="flex flex-wrap items-center gap-3 pt-5 mt-5 border-t border-slate-100">
           <Button
             size="sm"
             icon={calLoading
@@ -880,44 +928,44 @@ export const AdministrationPage: React.FC = () => {
           </Button>
           {calError   && <ErrorBanner message={calError} />}
           {calSuccess && <p className="text-xs text-green-600 font-medium">{calSuccess}</p>}
+          {financialCalendar?.updatedAt && (
+            <p className="text-[10px] text-slate-400 ml-auto">
+              Last updated: {new Date(financialCalendar.updatedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+            </p>
+          )}
         </div>
+      </Card>
+      )}
 
-        {financialCalendar?.updatedAt && (
-          <p className="text-[10px] text-slate-400">
-            Last updated: {new Date(financialCalendar.updatedAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
-          </p>
-        )}
-      </Section>
-
-      {/* ── 5. Application Settings ── */}
-      <Section title="Application Settings">
-        <div className="space-y-4">
-          <div className="flex flex-wrap items-end gap-4">
-            <FormField
-              label="Financial Years shown in global selector"
-              hint="Controls how many financial years appear in the period selector in the application header."
-              className="max-w-xs"
-            >
-              <input
-                type="number"
-                value={selectorCount}
-                onChange={(e) => { setSelectorCount(e.target.value); setSettingsSuccess(''); }}
-                min={1}
-                max={20}
-                className={`${INPUT_CLS} font-mono`}
-              />
-            </FormField>
-            <Button
-              size="sm"
-              onClick={handleSaveSettings}
-              disabled={settingsSaving}
-            >
-              {settingsSaving ? 'Saving…' : 'Save Settings'}
-            </Button>
-            {settingsSuccess && <p className="text-xs text-green-600 font-medium">{settingsSuccess}</p>}
-          </div>
+      {/* ── Application Settings ── */}
+      {activeTab === 'settings' && (
+      <Card title="Application Settings" padding="cozy">
+        <div className="flex flex-wrap items-end gap-4">
+          <FormField
+            label="Financial Years shown in global selector"
+            hint="Controls how many financial years appear in the period selector in the application header."
+            className="max-w-xs"
+          >
+            <input
+              type="number"
+              value={selectorCount}
+              onChange={(e) => { setSelectorCount(e.target.value); setSettingsSuccess(''); }}
+              min={1}
+              max={20}
+              className={`${INPUT_CLS} font-mono`}
+            />
+          </FormField>
+          <Button
+            size="sm"
+            onClick={handleSaveSettings}
+            disabled={settingsSaving}
+          >
+            {settingsSaving ? 'Saving…' : 'Save Settings'}
+          </Button>
+          {settingsSuccess && <p className="text-xs text-green-600 font-medium">{settingsSuccess}</p>}
         </div>
-      </Section>
+      </Card>
+      )}
     </div>
   );
 };

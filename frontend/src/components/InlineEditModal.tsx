@@ -1,7 +1,9 @@
 import React, { useMemo } from 'react';
 import { Pencil } from 'lucide-react';
-import { FormModal, INPUT_CLS_AMBER } from '@/components/ui';
+import { FormField, FormGrid, FormModal, FormSection, INPUT_CLS_AMBER } from '@/components/ui';
 import { NumberInput } from '@/components/NumberInput';
+import { AopYearFields } from '@/components/AopYearFields';
+import { ACTION_ITEM_STATUS_OPTIONS, OPPORTUNITY_STAGE_OPTIONS, OPPORTUNITY_TYPE_OPTIONS, SERVICE_LINE_OPTIONS, ACCOUNT_TYPE_OPTIONS, ACCOUNT_HEALTH_OPTIONS } from '@/constants';
 import type {
   Account,
   Opportunity,
@@ -9,9 +11,9 @@ import type {
   AccountType,
   AccountHealth,
   OpportunityStage,
-  OpportunityStatus,
   PriorityLevel,
   ActionItemStatus,
+  Stakeholder,
 } from '@/types';
 
 export type EditMode = 'accounts' | 'opportunities' | 'actionItems';
@@ -23,6 +25,7 @@ export interface InlineEditModalProps {
   displayedConfigs: ColumnConfig[];
   accounts: Account[];
   opportunities: Opportunity[];
+  stakeholders: Stakeholder[];
   onChange: (patch: Record<string, any>) => void;
   onSave: (e: React.FormEvent) => void;
   onCancel: () => void;
@@ -35,10 +38,14 @@ const MODE_META: Record<EditMode, { title: string; primaryKey: string }> = {
   actionItems:   { title: 'Edit Action Item', primaryKey: 'title' },
 };
 
-// These keys span both columns of the 2-col grid.
+// These keys span both columns of the 2-col grid — reserved for fields that
+// genuinely need the room (long free text, read-only context, composite
+// controls). Short values (selects, dates, categorical text) stay half-width
+// so more fields fit per row and the modal scrolls less.
 const WIDE_KEYS = new Set([
-  'name', 'title', 'accountId', 'industry', 'address',
-  'description', 'notes', 'nextStep', 'tags', 'team',
+  'name', 'title', 'accountId', 'address',
+  'description', 'notes', 'nextStep', 'risksAndDependencies', 'tags', 'team',
+  'aopAvailable',
 ]);
 
 export const InlineEditModal: React.FC<InlineEditModalProps> = ({
@@ -47,6 +54,7 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
   displayedConfigs,
   accounts,
   opportunities,
+  stakeholders,
   onChange,
   onSave,
   onCancel,
@@ -55,19 +63,43 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
   const { title, primaryKey } = MODE_META[mode];
   const inputCls = INPUT_CLS_AMBER;
 
-  // Always include the primary identifier field even if hidden in the table.
+  // Always include the primary identifier field even if hidden in the table,
+  // plus (for opportunities) the client/service-provider stakeholder assignment
+  // fields — these aren't part of the customizable-columns system, so they must
+  // be force-included the same way the primary key is.
   const formConfigs = useMemo<ColumnConfig[]>(() => {
-    if (displayedConfigs.some((c) => c.key === primaryKey)) return displayedConfigs;
-    const pkCol: ColumnConfig = {
-      key: primaryKey,
-      name: primaryKey === 'title' ? 'Task Title' : 'Name',
-      isStandard: true,
-      isPinned: true,
-      isDisplayed: true,
-      type: 'text',
-    };
-    return [pkCol, ...displayedConfigs];
-  }, [displayedConfigs, primaryKey]);
+    const cols = displayedConfigs.some((c) => c.key === primaryKey)
+      ? displayedConfigs
+      : [{
+          key: primaryKey,
+          name: primaryKey === 'title' ? 'Task Title' : 'Name',
+          isStandard: true,
+          isPinned: true,
+          isDisplayed: true,
+          type: 'text' as const,
+        }, ...displayedConfigs];
+
+    // Risks & Dependencies must always be editable, even when the user has
+    // hidden its table column, so force-include it in the Action Item form.
+    if (mode === 'actionItems') {
+      const risksCol: ColumnConfig = {
+        key: 'risksAndDependencies', name: 'Risks & Dependencies', isStandard: true, isPinned: false, isDisplayed: true, type: 'text',
+      };
+      return cols.some((c) => c.key === risksCol.key) ? cols : [...cols, risksCol];
+    }
+
+    // Opportunities render the dedicated sectioned form below (mirroring the
+    // Create Opportunity dialog) instead of this flat column-driven list.
+    return cols;
+  }, [displayedConfigs, primaryKey, mode]);
+
+  // Synthetic column descriptor for opportunity fields that renderInput keys on.
+  const editCol = (key: string, name: string, type: ColumnConfig['type'] = 'text'): ColumnConfig => ({
+    key, name, isStandard: true, isPinned: false, isDisplayed: true, type,
+  });
+
+  // User-defined custom columns currently visible in the opportunities table.
+  const customOppConfigs = mode === 'opportunities' ? displayedConfigs.filter((c) => !c.isStandard) : [];
 
   const renderInput = (col: ColumnConfig): React.ReactNode => {
     const { key, type: colType } = col;
@@ -89,27 +121,33 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
       case 'type':
         return (
           <select
-            value={val ?? 'Growth'}
+            value={val ?? ACCOUNT_TYPE_OPTIONS[0]}
             onChange={(e) => onChange({ type: e.target.value as AccountType })}
             className={`${inputCls} bg-white`}
           >
-            <option value="Growth">Growth</option>
-            <option value="Pursuit">Pursuit</option>
-            <option value="Project">Project</option>
+            {ACCOUNT_TYPE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
           </select>
         );
 
       case 'health':
         return (
           <select
-            value={val ?? 'Healthy'}
+            value={val ?? ACCOUNT_HEALTH_OPTIONS[0]}
             onChange={(e) => onChange({ health: e.target.value as AccountHealth })}
             className={`${inputCls} bg-white`}
           >
-            <option value="Healthy">Healthy</option>
-            <option value="At Risk">At Risk</option>
-            <option value="Critical">Critical</option>
+            {ACCOUNT_HEALTH_OPTIONS.map(h => <option key={h} value={h}>{h}</option>)}
           </select>
+        );
+
+      case 'location':
+        return (
+          <input
+            type="text"
+            value={val ?? ''}
+            onChange={(e) => onChange({ location: e.target.value })}
+            className={inputCls}
+          />
         );
 
       case 'owner':
@@ -167,6 +205,7 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
 
       case 'description':
       case 'notes':
+      case 'risksAndDependencies':
         return (
           <textarea
             value={val ?? ''}
@@ -188,26 +227,34 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
         );
       }
 
+      case 'clientStakeholderId':
+      case 'serviceProviderStakeholderId': {
+        const expectedType = key === 'clientStakeholderId' ? 'CLIENT' : 'SERVICE_PROVIDER';
+        const options = stakeholders.filter((s) => s.accountId === entity.accountId && s.stakeholderType === expectedType);
+        return (
+          <select
+            value={val ?? ''}
+            onChange={(e) => onChange({ [key]: e.target.value || undefined })}
+            className={`${inputCls} bg-white`}
+          >
+            <option value="">— None —</option>
+            {options.map((s) => (
+              <option key={s.id} value={s.id}>{s.name} ({s.designation})</option>
+            ))}
+          </select>
+        );
+      }
+
       case 'stage':
         return (
           <select
             value={val ?? 'Lead'}
-            onChange={(e) => {
-              const stage = e.target.value as OpportunityStage;
-              // Lifecycle sync: reaching Won closes the deal; regressing from
-              // Won reopens it (an explicit Lost is never overridden).
-              const patch: Record<string, any> = { stage };
-              if (stage === 'Won') patch.status = 'Won';
-              else if (entity.status === 'Won') patch.status = 'Open';
-              onChange(patch);
-            }}
+            onChange={(e) => onChange({ stage: e.target.value as OpportunityStage })}
             className={`${inputCls} bg-white`}
           >
-            <option value="Lead">Lead</option>
-            <option value="Qualified">Qualified</option>
-            <option value="Proposal">Proposal</option>
-            <option value="Negotiation">Negotiation</option>
-            <option value="Won">Won</option>
+            {OPPORTUNITY_STAGE_OPTIONS.map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
           </select>
         );
 
@@ -238,6 +285,7 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
       case 'startDate':
       case 'endDate':
       case 'dueDate':
+      case 'openDate':
         return (
           <input
             type="date"
@@ -285,27 +333,53 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
             </div>
           );
         }
-        return mode === 'actionItems' ? (
+        return (
           <select
-            value={val ?? 'Not Started'}
+            value={val ?? 'To Do'}
             onChange={(e) => onChange({ status: e.target.value as ActionItemStatus })}
             className={`${inputCls} bg-white`}
           >
-            <option value="Not Started">Not Started</option>
-            <option value="In Progress">In Progress</option>
-            <option value="Blocked">Blocked</option>
-            <option value="Completed">Completed</option>
+            {ACTION_ITEM_STATUS_OPTIONS.map((s) => (
+              <option key={s} value={s}>{s}</option>
+            ))}
           </select>
-        ) : (
+        );
+
+      case 'opportunityType':
+        return (
           <select
-            value={val ?? 'Open'}
-            onChange={(e) => onChange({ status: e.target.value as OpportunityStatus })}
+            value={val ?? 'Growth'}
+            onChange={(e) => onChange({ opportunityType: e.target.value })}
             className={`${inputCls} bg-white`}
           >
-            <option value="Open">Open</option>
-            <option value="Won">Won</option>
-            <option value="Lost">Lost</option>
+            {OPPORTUNITY_TYPE_OPTIONS.map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
           </select>
+        );
+
+      case 'serviceLine':
+        return (
+          <select
+            value={val ?? ''}
+            onChange={(e) => onChange({ serviceLine: e.target.value || undefined })}
+            className={`${inputCls} bg-white`}
+          >
+            <option value="">— None —</option>
+            {SERVICE_LINE_OPTIONS.map((l) => (
+              <option key={l} value={l}>{l}</option>
+            ))}
+          </select>
+        );
+
+      case 'aopAvailable':
+        return (
+          <AopYearFields
+            aopAvailable={!!val}
+            aopYear={entity.aopYear}
+            onChange={(patch) => onChange(patch)}
+            inputCls={inputCls}
+          />
         );
 
       case 'tags':
@@ -395,39 +469,128 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
       submitLabel="Save Changes"
       isSubmitting={isSaving}
       submitVariant="warning"
-      maxWidth="max-w-2xl"
+      maxWidth="max-w-5xl"
     >
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {formConfigs.map((col) => (
-          <div
-            key={col.key}
-            className={`space-y-1${WIDE_KEYS.has(col.key) ? ' md:col-span-2' : ''}`}
-          >
-            <label className="text-xs font-bold text-slate-600 uppercase tracking-wide">
-              {col.name}
-            </label>
-            {renderInput(col)}
-          </div>
-        ))}
-        {/* Closing a deal requires a win/loss reason (enforced server-side too). */}
-        {mode === 'opportunities' && (entity.status === 'Won' || entity.status === 'Lost') && (
-          <div className="space-y-1 md:col-span-2">
-            <label className="text-xs font-bold text-slate-600 uppercase tracking-wide">
-              {entity.status === 'Won' ? 'Win Reason' : 'Loss Reason'} <span className="text-red-500">*</span>
-            </label>
-            <textarea
-              required
-              value={entity.closeReason ?? ''}
-              rows={2}
-              onChange={(e) => onChange({ closeReason: e.target.value })}
-              placeholder={entity.status === 'Won'
-                ? 'e.g., Strong technical fit and competitive pricing'
-                : 'e.g., Lost to competitor on price'}
-              className={`${inputCls} resize-none`}
-            />
-          </div>
-        )}
-      </div>
+      {mode === 'opportunities' ? (
+        /* Sectioned layout mirroring the Create Opportunity dialog so every
+           editable field — including the Additional Details section — is
+           available when editing, grouped exactly like the create flow. */
+        <div className="space-y-5">
+          <FormSection title="Deal Information">
+            <FormGrid>
+              <FormField label="Target Corporate Account">
+                {renderInput(editCol('accountId', 'Target Corporate Account'))}
+              </FormField>
+              <FormField label="Opportunity Name" required>
+                {renderInput(editCol('name', 'Opportunity Name'))}
+              </FormField>
+            </FormGrid>
+          </FormSection>
+
+          <FormSection title="Classification">
+            <FormGrid columns={3}>
+              <FormField label="Stage">
+                {renderInput(editCol('stage', 'Stage'))}
+              </FormField>
+              <FormField label="Probability (%)">
+                {renderInput(editCol('probability', 'Probability (%)', 'number'))}
+              </FormField>
+              <FormField label="Opportunity Type">
+                {renderInput(editCol('opportunityType', 'Opportunity Type'))}
+              </FormField>
+              <FormField label="Service Line">
+                {renderInput(editCol('serviceLine', 'Service Line'))}
+              </FormField>
+            </FormGrid>
+
+            {/* Closing a deal requires a win/loss reason (enforced server-side too). */}
+            {(entity.stage === 'Won' || entity.stage === 'Lost') && (
+              <FormGrid>
+                <FormField label={entity.stage === 'Won' ? 'Win Reason' : 'Loss Reason'} required wide>
+                  <textarea
+                    required
+                    value={entity.closeReason ?? ''}
+                    rows={2}
+                    onChange={(e) => onChange({ closeReason: e.target.value })}
+                    placeholder={entity.stage === 'Won'
+                      ? 'e.g., Strong technical fit and competitive pricing'
+                      : 'e.g., Lost to competitor on price'}
+                    className={`${inputCls} resize-none`}
+                  />
+                </FormField>
+              </FormGrid>
+            )}
+          </FormSection>
+
+          <FormSection title="Timeline & Value">
+            <FormGrid columns={3}>
+              <FormField label="Deal Value ($)">
+                {renderInput(editCol('value', 'Deal Value ($)', 'number'))}
+              </FormField>
+              <FormField label="Start Date">
+                {renderInput(editCol('startDate', 'Start Date', 'date'))}
+              </FormField>
+              <FormField label="Expected Close Date">
+                {renderInput(editCol('closeDate', 'Expected Close Date', 'date'))}
+              </FormField>
+            </FormGrid>
+          </FormSection>
+
+          <FormSection title="Stakeholders">
+            <FormGrid>
+              <FormField label="Client Stakeholder">
+                {renderInput(editCol('clientStakeholderId', 'Client Stakeholder'))}
+              </FormField>
+              <FormField label="Service Provider Stakeholder">
+                {renderInput(editCol('serviceProviderStakeholderId', 'Service Provider Stakeholder'))}
+              </FormField>
+            </FormGrid>
+          </FormSection>
+
+          <FormSection title="AOP Planning">
+            <FormField label="AOP Planned" wide>
+              {renderInput(editCol('aopAvailable', 'AOP Planned'))}
+            </FormField>
+          </FormSection>
+
+          <FormSection title="Additional Details">
+            <FormGrid>
+              <FormField label="Detailed Scope" wide>
+                {renderInput(editCol('description', 'Detailed Scope'))}
+              </FormField>
+              <FormField label="Risks & Dependencies" wide>
+                {renderInput(editCol('risksAndDependencies', 'Risks & Dependencies'))}
+              </FormField>
+            </FormGrid>
+          </FormSection>
+
+          {customOppConfigs.length > 0 && (
+            <FormSection title="Custom Fields">
+              <FormGrid>
+                {customOppConfigs.map((col) => (
+                  <FormField key={col.key} label={col.name}>
+                    {renderInput(col)}
+                  </FormField>
+                ))}
+              </FormGrid>
+            </FormSection>
+          )}
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {formConfigs.map((col) => (
+            <div
+              key={col.key}
+              className={`space-y-1${WIDE_KEYS.has(col.key) ? ' md:col-span-full' : ''}`}
+            >
+              <label className="text-label font-semibold text-slate-600 uppercase tracking-wide">
+                {col.name}
+              </label>
+              {renderInput(col)}
+            </div>
+          ))}
+        </div>
+      )}
     </FormModal>
   );
 };

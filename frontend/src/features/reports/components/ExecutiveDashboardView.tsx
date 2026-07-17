@@ -7,8 +7,43 @@ import React, { useState } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
 import { PeriodSelector } from './PeriodSelector';
 import { exportReportToPdf, exportCurrency, buildExportFileName } from '@/utils/exportReport';
-import { Download, Filter, ArrowUpRight } from 'lucide-react';
-import { PageHeader, Button } from '@/components/ui';
+import { deriveOppStatus, isOpenActionItemStatus } from '@/utils';
+import {
+  Download,
+  ArrowUpRight,
+  Building2,
+  Target,
+  DollarSign,
+  TrendingUp,
+  AlertTriangle,
+  ListChecks,
+} from 'lucide-react';
+import {
+  PageHeader,
+  Button,
+  Card,
+  SummaryCard,
+  Table,
+  TableHead,
+  TableHeadCell,
+  TableCell,
+  TableRow,
+  FilterBar,
+  FilterSelect,
+  EmptyRow,
+} from '@/components/ui';
+import type { CardTone } from '@/components/ui';
+
+// Icon + tone per KPI tile, in the same order as the `kpis` array below.
+const KPI_ICONS = [
+  <Building2 className="w-5 h-5" />,
+  <Target className="w-5 h-5" />,
+  <DollarSign className="w-5 h-5" />,
+  <TrendingUp className="w-5 h-5" />,
+  <AlertTriangle className="w-5 h-5" />,
+  <ListChecks className="w-5 h-5" />,
+];
+const KPI_TONES: CardTone[] = ['blue', 'indigo', 'emerald', 'purple', 'amber', 'slate'];
 
 export const ExecutiveDashboardView: React.FC = () => {
   const { accounts, opportunities, actionItems, selectedYear, selectedQuarter } = useCRM();
@@ -20,7 +55,7 @@ export const ExecutiveDashboardView: React.FC = () => {
   const fyLabel = selectedYear !== 'All' ? selectedYear : null;
 
   const filteredOpps = opportunities.filter(o => {
-    if ((o.status ?? 'Open') === 'Lost') return false;
+    if (o.stage === 'Lost') return false;
     if (selectedAccountId !== 'All' && o.accountId !== selectedAccountId) return false;
     if (fyLabel && o.financialYear !== fyLabel) return false;
     if (selectedQuarter !== 'All' && o.quarter !== selectedQuarter) return false;
@@ -42,8 +77,8 @@ export const ExecutiveDashboardView: React.FC = () => {
   // Core Aggregations
   const totalPipelineValue = filteredOpps.reduce((sum, o) => sum + o.value, 0);
   const totalForecastValue = filteredOpps.reduce((sum, o) => sum + o.value * (o.probability / 100), 0);
-  const openOppsCount = filteredOpps.filter(o => (o.status ?? 'Open') === 'Open').length;
-  const pendingActionsCount = filteredActionItems.filter(ai => ai.status !== 'Completed').length;
+  const openOppsCount = filteredOpps.filter(o => deriveOppStatus(o.stage) === 'Open').length;
+  const pendingActionsCount = filteredActionItems.filter(ai => isOpenActionItemStatus(ai.status)).length;
 
   // Format Helper
   const formatCurrency = (val: number) => {
@@ -60,7 +95,7 @@ export const ExecutiveDashboardView: React.FC = () => {
   const kpis = [
     {
       label: selectedAccountId === 'All' ? 'Total Accounts' : 'Account Type',
-      val: selectedAccountId === 'All' ? filteredAccounts.length.toString() : (accounts.find(a => a.id === selectedAccountId)?.type || 'Growth'),
+      val: selectedAccountId === 'All' ? filteredAccounts.length.toString() : (accounts.find(a => a.id === selectedAccountId)?.type || 'New'),
     },
     {
       label: 'Open Opportunities',
@@ -77,8 +112,8 @@ export const ExecutiveDashboardView: React.FC = () => {
     {
       label: selectedAccountId === 'All' ? 'At-Risk Accounts' : 'Account Health',
       val: selectedAccountId === 'All'
-        ? filteredAccounts.filter(a => a.health !== 'Healthy').length.toString()
-        : (accounts.find(a => a.id === selectedAccountId)?.health || 'Healthy'),
+        ? filteredAccounts.filter(a => a.health !== 'Green').length.toString()
+        : (accounts.find(a => a.id === selectedAccountId)?.health || 'Green'),
     },
     {
       label: 'Pending Tasks',
@@ -87,13 +122,16 @@ export const ExecutiveDashboardView: React.FC = () => {
   ];
 
   // 2. Pipeline by Stage
-  const stages = ['Lead', 'Qualified', 'Proposal', 'Negotiation', 'Won'];
+  const stages = ['Lead', 'Qualified', 'Proposal', 'Negotiation', 'Won', 'Blocked', 'Delayed', 'Lost'];
   const colors = [
     'bg-blue-500',
     'bg-indigo-500',
     'bg-purple-500',
     'bg-pink-500',
-    'bg-emerald-500'
+    'bg-emerald-500',
+    'bg-orange-500',
+    'bg-amber-500',
+    'bg-red-500',
   ];
   const stageData = stages.map((stage, i) => {
     const value = filteredOpps.filter(o => o.stage === stage).reduce((sum, o) => sum + o.value, 0);
@@ -119,8 +157,8 @@ export const ExecutiveDashboardView: React.FC = () => {
     .sort((a, b) => b.value - a.value)
     .slice(0, 3);
 
-  // 5. Forecast Revenue by Account Type Breakdown (Growth, Pursuit, Project)
-  const accountTypes = ['Growth', 'Pursuit', 'Project'];
+  // 5. Forecast Revenue by Account Type Breakdown (Strategic, Non Strategic, New)
+  const accountTypes = ['Strategic', 'Non Strategic', 'New'];
   const donutColors = ['#3b82f6', '#10b981', '#8b5cf6'];
   const typeBreakdown = accountTypes.map((type, idx) => {
     const oppsInType = filteredOpps.filter(o => {
@@ -190,56 +228,56 @@ export const ExecutiveDashboardView: React.FC = () => {
         title="Corporate Executive Dashboard"
         subtitle="Dynamic client portfolio operations metrics, forecasts, and status breakdowns."
         actions={
-          <div className="flex flex-wrap items-center gap-3">
-            <PeriodSelector />
-            <div className="flex items-center space-x-2 text-xs">
-              <label className="font-bold text-slate-600 uppercase tracking-wide flex items-center gap-1">
-                <Filter className="w-3.5 h-3.5" aria-hidden="true" /> Filter Report:
-              </label>
-              <select
-                value={selectedAccountId}
-                onChange={(e) => setSelectedAccountId(e.target.value)}
-                aria-label="Filter report by account"
-                className="border border-slate-200 rounded-lg py-1.5 px-3 bg-white font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 text-xs shadow-xs"
-              >
-                <option value="All">All Portfolio Accounts</option>
-                {accounts.map(acc => (
-                  <option key={acc.id} value={acc.id}>{acc.name} ({acc.type})</option>
-                ))}
-              </select>
-            </div>
-            <Button
-              variant="secondary"
-              icon={<Download className="w-3.5 h-3.5 text-slate-400" aria-hidden="true" />}
-              onClick={handleExport}
-            >
-              Export Summary
-            </Button>
-          </div>
+          <Button
+            variant="secondary"
+            icon={<Download className="w-3.5 h-3.5 text-slate-400" aria-hidden="true" />}
+            onClick={handleExport}
+          >
+            Export Summary
+          </Button>
         }
       />
 
+      <FilterBar>
+        <PeriodSelector />
+        <FilterSelect
+          label="Filter Report"
+          hideLabel
+          value={selectedAccountId}
+          onChange={setSelectedAccountId}
+          options={[
+            { value: 'All', label: 'All Portfolio Accounts' },
+            ...accounts.map(acc => ({ value: acc.id, label: `${acc.name} (${acc.type})` })),
+          ]}
+          className="w-64"
+        />
+      </FilterBar>
+
       {/* KPI Metrics Row - 6 items */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-        {kpis.map(kpi => (
-          <div key={kpi.label} className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs hover:border-slate-300 transition-all text-center space-y-1">
-            <p className="text-[9px] font-extrabold text-slate-400 uppercase tracking-wider">{kpi.label}</p>
-            <h3 className="text-lg font-black text-slate-800 font-mono leading-none truncate">{kpi.val}</h3>
-          </div>
+        {kpis.map((kpi, i) => (
+          <SummaryCard
+            key={kpi.label}
+            label={kpi.label}
+            value={kpi.val}
+            icon={KPI_ICONS[i]}
+            tone={KPI_TONES[i]}
+          />
         ))}
       </div>
 
       {/* Second Row: Pipeline by Stage & Forecast vs Target */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-7">
         {/* Pipeline by Stage Card */}
-        <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm lg:col-span-3 space-y-4 text-left">
-          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-            <h4 className="font-extrabold text-slate-800 text-xs uppercase tracking-wider">Pipeline by Stage</h4>
+        <Card
+          title="Pipeline by Stage"
+          actions={
             <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded font-bold font-mono">
               TOTAL: {formatCurrency(totalPipelineValue)}
             </span>
-          </div>
-
+          }
+          className="lg:col-span-3"
+        >
           {/* Horizontal Bar Chart */}
           <div className="space-y-4 py-2">
             {stageData.map(item => (
@@ -254,18 +292,20 @@ export const ExecutiveDashboardView: React.FC = () => {
               </div>
             ))}
           </div>
-        </div>
+        </Card>
 
         {/* Forecast vs Target Gauge Card */}
-        <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm lg:col-span-2 flex flex-col justify-between text-left">
+        <Card
+          title="Forecast vs Target"
+          actions={
+            <span className={`text-[10px] px-2 py-0.5 rounded font-bold font-mono ${targetMetPct >= 80 ? 'text-green-600 bg-green-50' : 'text-orange-500 bg-orange-50'}`}>
+              {targetMetPct >= 85 ? 'ON TARGET' : 'IN PLAY'}
+            </span>
+          }
+          className="lg:col-span-2"
+          bodyClassName="h-full flex flex-col justify-between"
+        >
           <div>
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
-              <h4 className="font-extrabold text-slate-800 text-xs uppercase tracking-wider">Forecast vs Target</h4>
-              <span className={`text-[10px] px-2 py-0.5 rounded font-bold font-mono ${targetMetPct >= 80 ? 'text-green-600 bg-green-50' : 'text-orange-500 bg-orange-50'}`}>
-                {targetMetPct >= 85 ? 'ON TARGET' : 'IN PLAY'}
-              </span>
-            </div>
-
             {/* Circle radial progress */}
             <div className="flex items-center justify-center relative py-2">
               <svg className="w-36 h-36 transform -rotate-90">
@@ -290,67 +330,62 @@ export const ExecutiveDashboardView: React.FC = () => {
             </div>
           </div>
 
-          <div className="text-center border-t pt-3 mt-4 text-xs font-semibold text-slate-500 flex items-center justify-between">
+          <div className="text-center border-t border-slate-100 pt-3 mt-4 text-xs font-semibold text-slate-500 flex items-center justify-between">
             <span>Target Goal: {formatCurrency(targetValue)}</span>
             <span className={`${targetMetPct >= 80 ? 'text-green-600' : 'text-orange-500'} font-bold`}>{targetMetPct}% Met</span>
           </div>
-        </div>
+        </Card>
       </div>
 
       {/* Third Row: Top Opportunities & Revenue Breakdown */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-7">
         {/* Top Opportunities list */}
-        <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm lg:col-span-3 flex flex-col justify-between text-left">
-          <div>
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
-              <h4 className="font-extrabold text-slate-800 text-xs uppercase tracking-wider">Top Opportunities</h4>
-              <span className="text-[10px] text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded font-bold font-mono">PRIORITY PIPELINE</span>
-            </div>
-
-            <div className="overflow-x-auto text-xs font-medium">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="border-b border-slate-100 text-slate-400 font-bold uppercase text-[10px] tracking-wider">
-                    <th className="py-2">Opportunity Name</th>
-                    <th className="py-2 text-right">Value</th>
-                    <th className="py-2 text-center">Probability</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {topOpps.length === 0 ? (
-                    <tr>
-                      <td colSpan={3} className="py-8 text-center italic text-slate-400">
-                        No active opportunities for this account filter selection.
-                      </td>
-                    </tr>
-                  ) : (
-                    topOpps.map(opp => (
-                      <tr key={opp.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50">
-                        <td className="py-3 pr-2 font-bold text-slate-700 flex items-center gap-1.5">
+        <Card
+          title="Top Opportunities"
+          actions={<span className="text-[10px] text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded font-bold font-mono">PRIORITY PIPELINE</span>}
+          className="lg:col-span-3"
+        >
+          <div className="overflow-x-auto text-xs font-medium">
+            <Table>
+              <TableHead>
+                <TableHeadCell>Opportunity Name</TableHeadCell>
+                <TableHeadCell align="right">Value</TableHeadCell>
+                <TableHeadCell align="center">Probability</TableHeadCell>
+              </TableHead>
+              <tbody>
+                {topOpps.length === 0 ? (
+                  <EmptyRow colSpan={3} message="No active opportunities for this account filter selection." />
+                ) : (
+                  topOpps.map(opp => (
+                    <TableRow key={opp.id} className="hover:bg-slate-50/50">
+                      <TableCell className="font-bold text-slate-700">
+                        <div className="flex items-center gap-1.5">
                           <ArrowUpRight className="w-3.5 h-3.5 text-slate-400" />
                           <span>{opp.name}</span>
-                        </td>
-                        <td className="py-3 text-right font-bold text-slate-900 font-mono">{formatCurrency(opp.value)}</td>
-                        <td className="py-3 text-center font-bold text-emerald-600 font-mono">{opp.probability}%</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+                        </div>
+                      </TableCell>
+                      <TableCell align="right" className="font-bold text-slate-900 font-mono">{formatCurrency(opp.value)}</TableCell>
+                      <TableCell align="center" className="font-bold text-emerald-600 font-mono">{opp.probability}%</TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </tbody>
+            </Table>
           </div>
-        </div>
+        </Card>
 
         {/* Forecast Revenue by Account Type Breakdown */}
-        <div className="bg-white p-5 rounded-xl border border-slate-200/80 shadow-sm lg:col-span-2 flex flex-col justify-between text-left">
+        <Card
+          title="Revenue by Account Type"
+          actions={
+            <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded font-bold font-mono">
+              {selectedYear === 'All' ? 'All FYs' : `FY ${selectedYear}`}
+            </span>
+          }
+          className="lg:col-span-2"
+          bodyClassName="h-full flex flex-col justify-between"
+        >
           <div>
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
-              <h4 className="font-extrabold text-slate-800 text-xs uppercase tracking-wider">Revenue by Account Type</h4>
-              <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded font-bold font-mono">
-                {selectedYear === 'All' ? 'All FYs' : `FY ${selectedYear}`}
-              </span>
-            </div>
-
             {/* Pie diagram */}
             <div className="flex items-center justify-center relative py-2">
               <svg className="w-24 h-24 transform -rotate-90">
@@ -361,7 +396,7 @@ export const ExecutiveDashboardView: React.FC = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-2 text-[10px] mt-4 border-t pt-3">
+          <div className="grid grid-cols-1 gap-2 text-[10px] mt-4 border-t border-slate-100 pt-3">
             {typeBreakdown.map((item) => (
               <div key={item.type} className="flex items-center justify-between font-semibold text-slate-600">
                 <div className="flex items-center space-x-1.5">
@@ -372,7 +407,7 @@ export const ExecutiveDashboardView: React.FC = () => {
               </div>
             ))}
           </div>
-        </div>
+        </Card>
       </div>
     </div>
   );

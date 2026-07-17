@@ -7,39 +7,44 @@ import React, { useState } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
 import { ActionItem, ActionItemStatus, PriorityLevel } from '@/types';
 import {
+  AlertTriangle,
   Plus,
-  CheckSquare,
   X,
   Settings2,
-  MessageSquare,
 } from 'lucide-react';
 import { CustomizeColumnsSidebar } from '@/components/table/CustomizeColumnsSidebar';
 import {
   ACTION_STATUS_COLORS,
   BackButton,
   Button,
+  Card,
   ConfirmDialog,
   DeactivatedSection,
   EmptyRow,
   FilterBar,
   FilterChip,
   FilterSelect,
-  FormField,
-  FormGrid,
-  FormModal,
-  INPUT_CLS,
   PageHeader,
+  Pagination,
   PRIORITY_COLORS,
   SearchBar,
   SELECT_CLS,
   SortableHeader,
   StatusBadge,
+  Table,
   TableActions,
+  TableCell,
+  TableHead,
+  TableHeadCell,
+  TableRow,
+  ExpandableTextCell,
 } from '@/components/ui';
 import { InlineEditModal } from '@/components/InlineEditModal';
 import { LoadingState } from '@/components/common/LoadingState';
-import { CustomColumnFields } from '@/components/CustomColumnFields';
-import { compareForSort, isDueThisWeek, normalizeOwnerName, SortDirection } from '@/utils';
+import { ActionItemFormModal } from '@/features/action-items/components/ActionItemFormModal';
+import { ActionItemCommentToggle, ActionItemCommentsExpandedRow } from '@/components/ActionItemComments';
+import { ACTION_ITEM_STATUS_OPTIONS } from '@/constants';
+import { compareForSort, getTodayISODate, isDueThisWeek, isOpenActionItemStatus, normalizeOwnerName, SortDirection } from '@/utils';
 
 export const ActionItemsView: React.FC = () => {
   const {
@@ -48,6 +53,7 @@ export const ActionItemsView: React.FC = () => {
     accounts,
     deactivatedAccounts,
     opportunities,
+    stakeholders,
     addActionItem,
     updateActionItem,
     deleteActionItem,
@@ -98,6 +104,10 @@ export const ActionItemsView: React.FC = () => {
   /** Quick due-date filter: All | Overdue | Due Today | Due This Week */
   const [dueFilter, setDueFilter] = useState<string>('All');
 
+  // Client-side pagination over the already-filtered/sorted rows (display only)
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
   // Opportunity filter is dependent on the selected account — switching
   // accounts invalidates any opportunity selection that no longer applies.
   const handleAccountFilterChange = (value: string) => {
@@ -141,16 +151,19 @@ export const ActionItemsView: React.FC = () => {
 
   // New Action Item Modal State. Priority starts unselected — the user must
   // choose explicitly. Status legitimately starts at the lifecycle's first
-  // state ('Not Started'), which is not a preference default.
+  // state ('To Do'), which is not a preference default. Open Date defaults to
+  // today but stays user-editable before saving.
   const EMPTY_ACTION_ITEM: Omit<ActionItem, 'id'> = {
     title: '',
     accountId: '',
     opportunityId: '',
     owner: '',
+    openDate: getTodayISODate(),
     dueDate: '',
     priority: '' as PriorityLevel,
-    status: 'Not Started',
-    notes: ''
+    status: 'To Do',
+    notes: '',
+    risksAndDependencies: ''
   };
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newAi, setNewAi] = useState<Omit<ActionItem, 'id'>>(EMPTY_ACTION_ITEM);
@@ -164,7 +177,7 @@ export const ActionItemsView: React.FC = () => {
     ).values(),
   );
 
-  const todayStr = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD, local time
+  const todayStr = getTodayISODate();
 
   // Operational task list — module-specific filters only, never fiscal-period-based.
   const filteredActionItems = actionItems.filter(ai => {
@@ -184,25 +197,30 @@ export const ActionItemsView: React.FC = () => {
     if (selectedOpportunityFilter !== 'All' && ai.opportunityId !== selectedOpportunityFilter) return false;
     if (selectedStatus !== 'All' && ai.status !== selectedStatus) return false;
     if (selectedPriority !== 'All' && ai.priority !== selectedPriority) return false;
-    // Quick due-date filters apply to open (not completed) items with a valid date.
+    // Quick due-date filters apply to open (not completed/cancelled) items with a valid date.
     if (dueFilter === 'Overdue' &&
-        (ai.status === 'Completed' || !ai.dueDate || ai.dueDate >= todayStr)) return false;
+        (!isOpenActionItemStatus(ai.status) || !ai.dueDate || ai.dueDate >= todayStr)) return false;
     if (dueFilter === 'Due Today' &&
-        (ai.status === 'Completed' || ai.dueDate !== todayStr)) return false;
+        (!isOpenActionItemStatus(ai.status) || ai.dueDate !== todayStr)) return false;
     if (dueFilter === 'Due This Week' &&
-        (ai.status === 'Completed' || !isDueThisWeek(ai.dueDate))) return false;
+        (!isOpenActionItemStatus(ai.status) || !isDueThisWeek(ai.dueDate))) return false;
     // Dashboard "Due This Week" drill-down: same rule as the dashboard widget.
-    if (dueThisWeekFilter && (ai.status === 'Completed' || !isDueThisWeek(ai.dueDate))) return false;
-    // Dashboard "My Action Items" drill-down: only non-completed items.
-    if (openActionItemsFilter && ai.status === 'Completed') return false;
+    if (dueThisWeekFilter && (!isOpenActionItemStatus(ai.status) || !isDueThisWeek(ai.dueDate))) return false;
+    // Dashboard "My Action Items" drill-down: only open items.
+    if (openActionItemsFilter && !isOpenActionItemStatus(ai.status)) return false;
     // Dashboard "Overdue Tasks" drill-down: open items past their due date.
-    if (overdueActionItemsFilter && (ai.status === 'Completed' || !ai.dueDate || ai.dueDate >= todayStr)) return false;
+    if (overdueActionItemsFilter && (!isOpenActionItemStatus(ai.status) || !ai.dueDate || ai.dueDate >= todayStr)) return false;
     return true;
   });
 
   const sortedActionItems = [...filteredActionItems].sort((a, b) =>
     compareForSort(getSortValue(a, sortField), getSortValue(b, sortField), sortDirection),
   );
+
+  // Clamp the page so filter changes never leave the user on an empty page.
+  const totalPages = Math.max(1, Math.ceil(sortedActionItems.length / pageSize));
+  const currentPage = Math.min(page, totalPages);
+  const pagedActionItems = sortedActionItems.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   // Create action item
   const handleCreateActionItem = async (e: React.FormEvent) => {
@@ -228,6 +246,9 @@ export const ActionItemsView: React.FC = () => {
   };
 
   const displayedConfigs = actionItemsColumnConfig.filter(col => col.isDisplayed);
+  // User-added (non-standard) columns widen the table past the viewport and
+  // trigger horizontal scroll; the default column set always fits the screen.
+  const extraColumnCount = displayedConfigs.filter(col => !col.isStandard).length;
 
   if (loading) return <LoadingState label="Loading action items…" />;
 
@@ -372,10 +393,7 @@ export const ActionItemsView: React.FC = () => {
           onChange={setSelectedStatus}
           options={[
             { value: 'All', label: 'All Statuses' },
-            { value: 'Not Started', label: 'Not Started' },
-            { value: 'In Progress', label: 'In Progress' },
-            { value: 'Blocked', label: 'Blocked' },
-            { value: 'Completed', label: 'Completed' },
+            ...ACTION_ITEM_STATUS_OPTIONS.map(s => ({ value: s, label: s })),
           ]}
         />
 
@@ -407,30 +425,23 @@ export const ActionItemsView: React.FC = () => {
       </FilterBar>
 
       {/* List Layout View */}
-      <div className="bg-white rounded-xl border border-slate-200/80 overflow-hidden shadow-sm">
+      <Card padding="none" clip>
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider">
-                {displayedConfigs.map(col => (
-                  <th
-                    key={col.key}
-                    className={`py-3 px-4 font-bold uppercase tracking-wider ${
-                      col.key === 'title' ? 'px-5' : ''
-                    }`}
-                  >
-                    <SortableHeader
-                      label={col.name}
-                      field={col.key}
-                      sortField={sortField}
-                      sortDirection={sortDirection}
-                      onSort={handleSort}
-                    />
-                  </th>
-                ))}
-                <th className="py-3 px-5 text-center">Delete</th>
-              </tr>
-            </thead>
+          <Table extraColumns={extraColumnCount} resizable storageKey="action-items">
+            <TableHead>
+              {displayedConfigs.map(col => (
+                <TableHeadCell key={col.key} columnId={col.key}>
+                  <SortableHeader
+                    label={col.name}
+                    field={col.key}
+                    sortField={sortField}
+                    sortDirection={sortDirection}
+                    onSort={handleSort}
+                  />
+                </TableHeadCell>
+              ))}
+              <TableHeadCell align="center" sticky="right">Delete</TableHeadCell>
+            </TableHead>
             <tbody>
               {filteredActionItems.length === 0 && (
                 <EmptyRow
@@ -446,96 +457,115 @@ export const ActionItemsView: React.FC = () => {
                   }
                 />
               )}
-              {sortedActionItems.map(item => {
+              {pagedActionItems.map(item => {
                 const account = resolveAccount(item.accountId);
                 const itemComments = comments.filter(c => c.targetType === 'actionItem' && c.targetId === item.id);
                 return (
                   <React.Fragment key={item.id}>
-                    <tr className="border-b last:border-0 hover:bg-slate-50/50 text-slate-800 font-medium">
+                    <TableRow className="hover:bg-slate-50/50">
                       {displayedConfigs.map(col => {
                         if (col.key === 'title') {
                           return (
-                            <td key={col.key} className="py-3.5 px-5">
+                            <TableCell key={col.key}>
                               <div className="flex items-center flex-wrap gap-1">
                                 <div className="flex-1">
                                   <p className="font-extrabold text-slate-900 text-sm">{item.title}</p>
                                 </div>
-                                <button 
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setExpandedItemId(expandedItemId === item.id ? null : item.id);
-                                  }}
-                                  className={`inline-flex items-center space-x-1 ml-2 px-1.5 py-0.5 rounded transition-all cursor-pointer ${
-                                    expandedItemId === item.id
-                                      ? 'bg-blue-100 text-blue-700 font-bold'
-                                      : 'text-slate-400 hover:text-blue-600 hover:bg-slate-100'
-                                  }`}
-                                  title="View/Add Comments"
-                                  aria-label={`View or add comments for ${item.title}`}
-                                  aria-expanded={expandedItemId === item.id}
-                                >
-                                  <MessageSquare className="w-3.5 h-3.5" aria-hidden="true" />
-                                  <span className="text-[10px] font-bold">{itemComments.length}</span>
-                                </button>
+                                {!!item.risksAndDependencies?.trim() && (
+                                  <span
+                                    className="shrink-0 inline-flex"
+                                    title={`Risks & Dependencies: ${item.risksAndDependencies}`}
+                                    aria-label={`Action item has risks or dependencies: ${item.risksAndDependencies}`}
+                                    role="img"
+                                  >
+                                    <AlertTriangle className="w-3.5 h-3.5 text-amber-500" aria-hidden="true" />
+                                  </span>
+                                )}
+                                <ActionItemCommentToggle
+                                  itemTitle={item.title}
+                                  commentCount={itemComments.length}
+                                  isExpanded={expandedItemId === item.id}
+                                  onToggle={() => setExpandedItemId(expandedItemId === item.id ? null : item.id)}
+                                />
                               </div>
-                            </td>
+                            </TableCell>
                           );
                         }
                         if (col.key === 'notes') {
                           return (
-                            <td key={col.key} className="py-3.5 px-4 text-slate-600 font-medium">
-                              {item.notes || '—'}
-                            </td>
+                            <TableCell key={col.key} className="text-slate-600 font-medium">
+                              <span className="block max-w-[280px] line-clamp-2" title={item.notes || undefined}>
+                                {item.notes || '—'}
+                              </span>
+                            </TableCell>
+                          );
+                        }
+                        if (col.key === 'risksAndDependencies') {
+                          return (
+                            <TableCell key={col.key}>
+                              <ExpandableTextCell
+                                text={item.risksAndDependencies}
+                                label="Risks & Dependencies"
+                                emptyLabel="No Risks"
+                              />
+                            </TableCell>
                           );
                         }
                         if (col.key === 'accountId') {
                           return (
-                            <td key={col.key} className="py-3.5 px-4 text-slate-600 font-bold">
+                            <TableCell key={col.key} className="text-slate-600 font-bold">
                               {account?.name || item.accountName || 'Unknown Account'}
-                            </td>
+                            </TableCell>
                           );
                         }
                         if (col.key === 'opportunityId') {
                           const opp = opportunities.find(o => o.id === item.opportunityId);
                           return (
-                            <td key={col.key} className="py-3.5 px-4 text-slate-600 font-semibold text-xs">
+                            <TableCell key={col.key} className="text-slate-600 font-semibold text-xs">
                               {opp ? opp.name : '—'}
-                            </td>
+                            </TableCell>
                           );
                         }
                         if (col.key === 'owner') {
                           return (
-                            <td key={col.key} className="py-3.5 px-4 text-slate-600 font-semibold">
+                            <TableCell key={col.key} className="text-slate-600 font-semibold">
                               {item.owner}
-                            </td>
+                            </TableCell>
                           );
                         }
                         if (col.key === 'priority') {
                           return (
-                            <td key={col.key} className="py-3.5 px-4">
+                            <TableCell key={col.key}>
                               <StatusBadge value={item.priority} colorMap={PRIORITY_COLORS} shape="rounded" />
-                            </td>
+                            </TableCell>
                           );
                         }
                         if (col.key === 'status') {
                           return (
-                            <td key={col.key} className="py-3.5 px-4">
+                            <TableCell key={col.key}>
                               <StatusBadge value={item.status} colorMap={ACTION_STATUS_COLORS} shape="rounded" />
-                            </td>
+                            </TableCell>
+                          );
+                        }
+                        if (col.key === 'openDate') {
+                          return (
+                            <TableCell key={col.key} className="font-mono font-medium text-slate-500">
+                              {item.openDate}
+                            </TableCell>
                           );
                         }
                         if (col.key === 'dueDate') {
                           return (
-                            <td key={col.key} className="py-3.5 px-4 font-mono font-medium text-slate-500">
+                            <TableCell key={col.key} className="font-mono font-medium text-slate-500">
                               {item.dueDate}
-                            </td>
+                            </TableCell>
                           );
                         }
 
                         // Customizable dynamic custom columns
                         const rawVal = item[col.key] ?? (col.type === 'boolean' ? false : '');
                         return (
-                          <td key={col.key} className="py-3.5 px-4">
+                          <TableCell key={col.key}>
                             {col.type === 'boolean' ? (
                               <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${rawVal ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>
                                 {rawVal ? 'Yes' : 'No'}
@@ -545,237 +575,58 @@ export const ActionItemsView: React.FC = () => {
                             ) : (
                               <span className="text-slate-600">{String(rawVal)}</span>
                             )}
-                          </td>
+                          </TableCell>
                         );
                       })}
 
-                      <td className="py-3.5 px-5 text-center">
+                      <TableCell align="center" sticky="right">
                         <TableActions
                           entityLabel={`action item ${item.title}`}
                           onEdit={() => handleEditClick(item)}
                           onDelete={() => setDeleteTarget({ type: 'actionItem', id: item.id, label: item.title })}
                         />
-                      </td>
-                    </tr>
+                      </TableCell>
+                    </TableRow>
 
                     {expandedItemId === item.id && (
-                      <tr className="bg-slate-50/70 border-b border-slate-200">
-                        <td colSpan={displayedConfigs.length + 1} className="p-4">
-                          <div className="space-y-3 max-w-2xl">
-                            <div className="flex items-center space-x-2 border-b border-slate-200 pb-1.5">
-                              <MessageSquare className="w-4 h-4 text-blue-600" aria-hidden="true" />
-                              <h4 className="font-bold text-slate-700 text-xs">Governance Comments ({itemComments.length})</h4>
-                            </div>
-                            
-                            <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                              {itemComments.length === 0 ? (
-                                <p className="text-[11px] text-slate-400 font-medium py-1">No comments logged for this action item.</p>
-                              ) : (
-                                itemComments.map(c => (
-                                  <div key={c.id} className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm space-y-1 relative group">
-                                    <div className="flex items-center justify-between">
-                                      <div className="flex items-center space-x-2">
-                                        <span className="font-bold text-slate-700 text-[11px]">{c.user}</span>
-                                        <span className="text-slate-300">•</span>
-                                        <span className="text-[9px] text-slate-400 font-mono">{c.timestamp}</span>
-                                      </div>
-                                      <button
-                                        onClick={() => setDeleteTarget({ type: 'comment', id: c.id, label: c.text.substring(0, 40) })}
-                                        className="text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all text-[10px] font-bold cursor-pointer"
-                                      >
-                                        Delete
-                                      </button>
-                                    </div>
-                                    <p className="text-[11px] text-slate-600 leading-relaxed font-medium whitespace-pre-wrap">{c.text}</p>
-                                  </div>
-                                ))
-                              )}
-                            </div>
-
-                            <form 
-                              onSubmit={(e) => {
-                                e.preventDefault();
-                                const input = e.currentTarget.elements.namedItem('commentText') as HTMLInputElement;
-                                if (input && input.value.trim()) {
-                                  addComment('actionItem', item.id, input.value.trim());
-                                  input.value = '';
-                                }
-                              }} 
-                              className="flex gap-2"
-                            >
-                              <input
-                                type="text"
-                                name="commentText"
-                                required
-                                placeholder="Add a comment or update..."
-                                aria-label="Add a comment or update"
-                                className={`${INPUT_CLS} flex-1 bg-white`}
-                              />
-                              <Button type="submit" size="xs" className="shrink-0">
-                                Add Comment
-                              </Button>
-                            </form>
-                          </div>
-                        </td>
-                      </tr>
+                      <ActionItemCommentsExpandedRow
+                        colSpan={displayedConfigs.length + 1}
+                        comments={itemComments}
+                        risksAndDependencies={item.risksAndDependencies ?? ''}
+                        onAddComment={(text) => addComment('actionItem', item.id, text)}
+                        onDeleteComment={(comment) => setDeleteTarget({ type: 'comment', id: comment.id, label: comment.text.substring(0, 40) })}
+                      />
                     )}
                   </React.Fragment>
                 );
               })}
             </tbody>
-          </table>
+          </Table>
         </div>
-      </div>
+
+        <Pagination
+          page={currentPage}
+          pageSize={pageSize}
+          totalItems={sortedActionItems.length}
+          onPageChange={setPage}
+          onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
+          itemLabel="action items"
+        />
+      </Card>
 
       {/* New Action Item Modal */}
-      {isAddModalOpen && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 max-w-md w-full flex flex-col max-h-[90vh] overflow-hidden">
-            <div className="bg-slate-50 px-6 py-4 border-b border-slate-200 flex items-center justify-between shrink-0">
-              <div className="flex items-center space-x-2.5">
-                <CheckSquare className="w-5 h-5 text-blue-600" />
-                <h3 className="font-bold text-slate-800 tracking-tight">Create Action Item</h3>
-              </div>
-              <button onClick={() => setIsAddModalOpen(false)} className="text-slate-400 hover:text-slate-600 p-1 rounded-full cursor-pointer">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateActionItem} className="flex flex-col flex-1 min-h-0 text-xs">
-              <div className="p-6 space-y-4 overflow-y-auto flex-1 min-h-0">
-              {/* Task Title */}
-              <div className="space-y-1">
-                <label className="font-bold text-slate-500 uppercase tracking-wide">Task Title</label>
-                <input
-                  type="text"
-                  required
-                  value={newAi.title}
-                  onChange={(e) => setNewAi({ ...newAi, title: e.target.value })}
-                  placeholder="e.g., Share Technical SLA Draft"
-                  className="w-full text-xs px-3 py-2 border rounded-lg focus:outline-none"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                {/* Account ID */}
-                <div className="space-y-1">
-                  <label className="font-bold text-slate-500 uppercase tracking-wide">Target Account</label>
-                  <select
-                    required
-                    value={newAi.accountId}
-                    onChange={(e) => setNewAi({ ...newAi, accountId: e.target.value, opportunityId: '' })}
-                    className="w-full text-xs px-3 py-2 border rounded-lg bg-white focus:outline-none"
-                  >
-                    <option value="" disabled>Select an account...</option>
-                    {accounts.map(acc => (
-                      <option key={acc.id} value={acc.id}>
-                        {acc.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                {/* Associated Opportunity */}
-                <div className="space-y-1">
-                  <label className="font-bold text-slate-500 uppercase tracking-wide">Associated Opportunity</label>
-                  <select
-                    value={newAi.opportunityId || ''}
-                    onChange={(e) => setNewAi({ ...newAi, opportunityId: e.target.value })}
-                    className="w-full text-xs px-3 py-2 border rounded-lg bg-white focus:outline-none"
-                  >
-                    <option value="">None / General Task</option>
-                    {opportunities
-                      .filter(opp => opp.accountId === newAi.accountId)
-                      .map(opp => (
-                        <option key={opp.id} value={opp.id}>
-                          {opp.name}
-                        </option>
-                      ))}
-                  </select>
-                </div>
-
-                {/* Owner */}
-                <div className="space-y-1">
-                  <label className="font-bold text-slate-500 uppercase tracking-wide">Task Owner</label>
-                  <input
-                    type="text"
-                    value={newAi.owner}
-                    onChange={(e) => setNewAi({ ...newAi, owner: e.target.value })}
-                    placeholder="e.g., John Smith"
-                    className="w-full text-xs px-3 py-2 border rounded-lg focus:outline-none"
-                  />
-                </div>
-
-                {/* Priority */}
-                <div className="space-y-1">
-                  <label className="font-bold text-slate-500 uppercase tracking-wide">Priority</label>
-                  <select
-                    required
-                    value={newAi.priority}
-                    onChange={(e) => setNewAi({ ...newAi, priority: e.target.value as PriorityLevel })}
-                    className="w-full text-xs px-3 py-2 border rounded-lg bg-white focus:outline-none"
-                  >
-                    <option value="" disabled>Select priority…</option>
-                    <option value="High">High</option>
-                    <option value="Medium">Medium</option>
-                    <option value="Low">Low</option>
-                  </select>
-                </div>
-
-                {/* Due Date */}
-                <div className="space-y-1">
-                  <label className="font-bold text-slate-500 uppercase tracking-wide">Due Date</label>
-                  <input
-                    type="date"
-                    required
-                    value={newAi.dueDate}
-                    onChange={(e) => setNewAi({ ...newAi, dueDate: e.target.value })}
-                    className="w-full text-xs px-3 py-2 border rounded-lg focus:outline-none font-mono"
-                  />
-                </div>
-              </div>
-
-              {/* Notes */}
-              <div className="space-y-1">
-                <label className="font-bold text-slate-500 uppercase tracking-wide">Task Notes</label>
-                <textarea
-                  rows={2}
-                  value={newAi.notes}
-                  onChange={(e) => setNewAi({ ...newAi, notes: e.target.value })}
-                  placeholder="Additional context or requirements..."
-                  className="w-full text-xs p-2.5 border rounded-lg focus:outline-none"
-                />
-              </div>
-
-              {/* Active custom columns (hidden ones excluded) */}
-              <CustomColumnFields
-                columns={actionItemColumns}
-                config={actionItemsColumnConfig}
-                values={newAi}
-                onChange={(key, value) => setNewAi({ ...newAi, [key]: value })}
-              />
-
-              </div>{/* end scrollable body */}
-              {/* Actions Footer */}
-              <div className="flex items-center justify-end space-x-2 px-6 py-4 border-t border-slate-100 bg-white shrink-0">
-                <button
-                  type="button"
-                  onClick={() => setIsAddModalOpen(false)}
-                  className="px-4 py-1.5 border rounded-lg text-xs font-semibold hover:bg-slate-50 cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 rounded-lg text-xs font-bold text-white shadow-md cursor-pointer"
-                >
-                  Create Action Item
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <ActionItemFormModal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        onSubmit={handleCreateActionItem}
+        submitLabel="Create Action Item"
+        value={newAi}
+        onChange={(patch) => setNewAi({ ...newAi, ...patch })}
+        accounts={accounts}
+        opportunities={opportunities}
+        actionItemColumns={actionItemColumns}
+        actionItemsColumnConfig={actionItemsColumnConfig}
+      />
 
       {isEditModalOpen && editingAi && (
         <InlineEditModal
@@ -784,6 +635,7 @@ export const ActionItemsView: React.FC = () => {
           displayedConfigs={displayedConfigs}
           accounts={accounts}
           opportunities={opportunities}
+          stakeholders={stakeholders}
           onChange={(patch) => setEditingAi({ ...editingAi, ...patch })}
           onSave={handleUpdateActionItem}
           onCancel={() => {
@@ -795,37 +647,37 @@ export const ActionItemsView: React.FC = () => {
       {/* Deactivated Action Items Section */}
       {deactivatedActionItems.length > 0 && (
         <DeactivatedSection title="Deactivated Action Items" count={deactivatedActionItems.length}>
-          <table className="w-full text-left border-collapse text-xs">
-            <thead>
-              <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 font-bold uppercase tracking-wider">
-                <th className="py-2.5 px-5">Title</th>
-                <th className="py-2.5 px-4">Account</th>
-                <th className="py-2.5 px-4">Owner</th>
-                <th className="py-2.5 px-4">Priority</th>
-                <th className="py-2.5 px-4">Status</th>
-                <th className="py-2.5 px-4">Due Date</th>
-              </tr>
-            </thead>
+          <Table>
+            <TableHead>
+              <TableHeadCell>Title</TableHeadCell>
+              <TableHeadCell>Account</TableHeadCell>
+              <TableHeadCell>Owner</TableHeadCell>
+              <TableHeadCell>Priority</TableHeadCell>
+              <TableHeadCell>Status</TableHeadCell>
+              <TableHeadCell>Open Date</TableHeadCell>
+              <TableHeadCell>Due Date</TableHeadCell>
+            </TableHead>
             <tbody>
               {deactivatedActionItems.map((item) => {
                 const acc = resolveAccount(item.accountId);
                 return (
-                  <tr key={item.id} className="border-b last:border-0 text-slate-500 font-medium opacity-70">
-                    <td className="py-3 px-5 font-semibold text-slate-600 line-through decoration-slate-300">{item.title}</td>
-                    <td className="py-3 px-4 text-slate-500">{item.accountName || acc?.name || '—'}</td>
-                    <td className="py-3 px-4">{item.owner}</td>
-                    <td className="py-3 px-4">
+                  <TableRow key={item.id} className="opacity-70">
+                    <TableCell className="font-semibold text-slate-600 line-through decoration-slate-300">{item.title}</TableCell>
+                    <TableCell className="text-slate-500">{item.accountName || acc?.name || '—'}</TableCell>
+                    <TableCell>{item.owner}</TableCell>
+                    <TableCell>
                       <StatusBadge value={item.priority} colorMap={PRIORITY_COLORS} shape="rounded" muted />
-                    </td>
-                    <td className="py-3 px-4">
+                    </TableCell>
+                    <TableCell>
                       <StatusBadge value={item.status} colorMap={ACTION_STATUS_COLORS} muted />
-                    </td>
-                    <td className="py-3 px-4 font-mono text-slate-400">{item.dueDate}</td>
-                  </tr>
+                    </TableCell>
+                    <TableCell className="font-mono text-slate-400">{item.openDate}</TableCell>
+                    <TableCell className="font-mono text-slate-400">{item.dueDate}</TableCell>
+                  </TableRow>
                 );
               })}
             </tbody>
-          </table>
+          </Table>
         </DeactivatedSection>
       )}
 

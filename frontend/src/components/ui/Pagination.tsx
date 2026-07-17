@@ -14,7 +14,7 @@ export interface PaginationProps {
 }
 
 const NAV_BTN =
-  'px-2.5 py-1.5 border border-slate-200 rounded bg-white font-semibold text-slate-500 hover:bg-slate-50 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed transition-colors';
+  'px-2.5 py-1.5 border border-slate-200 rounded-lg bg-white font-semibold text-slate-500 shadow-sm hover:bg-slate-50 hover:border-slate-300 hover:shadow cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:shadow-none transition-all duration-150';
 
 /**
  * Standard pagination footer: item-range summary, optional page-size
@@ -73,7 +73,10 @@ export const Pagination: React.FC<PaginationProps> = ({
         >
           Previous
         </button>
-        <span className="px-2 font-bold text-slate-700" aria-live="polite">
+        <span
+          className="px-2.5 py-1 rounded-lg bg-slate-100/80 font-bold text-slate-700"
+          aria-live="polite"
+        >
           Page {page} of {totalPages}
         </span>
         <button

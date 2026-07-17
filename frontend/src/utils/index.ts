@@ -1,4 +1,28 @@
+import type { ActionItemStatus, OpportunityStage } from '@/types';
+
 export type SortDirection = 'asc' | 'desc';
+
+/**
+ * Deal outcome, derived purely from pipeline stage: 'Won'/'Lost' stages are
+ * closed, everything else is still open. There is no separate status field —
+ * Won/Lost is just another stage value.
+ */
+export function deriveOppStatus(stage: OpportunityStage | string): 'Open' | 'Won' | 'Lost' {
+  return stage === 'Won' || stage === 'Lost' ? stage : 'Open';
+}
+
+/** Today's date as "YYYY-MM-DD" (local time) — the default Open Date for new action items. */
+export function getTodayISODate(): string {
+  return new Date().toLocaleDateString('en-CA');
+}
+
+/**
+ * An action item is still "open" (counts toward open-task widgets, overdue
+ * alerts, and quick due-date filters) unless it's Completed or Cancelled.
+ */
+export function isOpenActionItemStatus(status: ActionItemStatus | string): boolean {
+  return status !== 'Completed' && status !== 'Cancelled';
+}
 
 /**
  * Generic comparator for table column sorting: numbers compare numerically,

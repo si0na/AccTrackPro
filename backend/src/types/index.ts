@@ -1,14 +1,19 @@
 /** CRM entity type definitions for the NestJS backend. */
 
-export type AccountType = 'Growth' | 'Pursuit' | 'Project';
-export type AccountHealth = 'Healthy' | 'At Risk' | 'Critical';
-export type OpportunityStage = 'Lead' | 'Qualified' | 'Proposal' | 'Negotiation' | 'Won';
-/** Lifecycle status: an opportunity stays operationally visible until it is closed (Won or Lost). */
-export type OpportunityStatus = 'Open' | 'Won' | 'Lost';
+export type AccountType = 'Strategic' | 'Non Strategic' | 'New';
+export type AccountHealth = 'Green' | 'Amber' | 'Red';
+export type OpportunityStage =
+  | 'Lead' | 'Qualified' | 'Proposal' | 'Negotiation' | 'Won'
+  | 'Blocked' | 'Delayed' | 'Lost';
+export type OpportunityType = 'Growth' | 'Pursuit' | 'Whitespace';
+export type ServiceLine =
+  | 'Data' | 'AI' | 'Cloud' | 'Application Development' | 'Application Support'
+  | 'Infrastructure' | 'Cyber Security' | 'SharePoint';
 export type PriorityLevel = 'High' | 'Medium' | 'Low';
-export type ActionItemStatus = 'Not Started' | 'In Progress' | 'Blocked' | 'Completed';
+export type ActionItemStatus = 'To Do' | 'In Progress' | 'Blocked' | 'Completed' | 'Cancelled';
 export type InfluenceLevel = 'High' | 'Medium' | 'Low';
 export type RelationshipStatus = 'Strong' | 'Neutral' | 'Weak';
+export type StakeholderType = 'CLIENT' | 'SERVICE_PROVIDER';
 
 export interface Account {
   id: string;
@@ -23,6 +28,7 @@ export interface Account {
   phone: string;
   email: string;
   address: string;
+  location: string;
   description: string;
   [key: string]: any;
 }
@@ -34,19 +40,19 @@ export interface Opportunity {
   /** Parent account display name (joined server-side; valid even when the account is deactivated). */
   accountName?: string;
   stage: OpportunityStage;
-  status: OpportunityStatus;
   value: number;
   probability: number;
-  owner: string;
   closeDate: string;
   description: string;
   startDate: string;
   endDate: string;
   crmValue: number;
   nextStep: string;
-  /** Why the deal was Won or Lost; required when the status transitions to a closed state. */
+  /** Known risks or blocking dependencies for this opportunity. */
+  risksAndDependencies: string;
+  /** Why the deal was Won or Lost; required when the stage transitions to a closed state. */
   closeReason: string;
-  /** When the deal first reached a closed status (Won/Lost); cleared if reopened. */
+  /** When the deal first reached a closed stage (Won/Lost); cleared if reopened. */
   closedAt?: string;
   tags: string[];
   team: string[];
@@ -54,6 +60,19 @@ export interface Opportunity {
   financialYear: string;
   /** Derived (never stored): quarter computed from closeDate via the configured Financial Calendar. */
   quarter: string;
+  clientStakeholderId?: string;
+  /** Joined display fields (server-side); valid even when not eagerly requested. */
+  clientStakeholderName?: string;
+  clientStakeholderDesignation?: string;
+  serviceProviderStakeholderId?: string;
+  serviceProviderStakeholderName?: string;
+  serviceProviderStakeholderDesignation?: string;
+  opportunityType: OpportunityType;
+  /** Whether this opportunity has an approved AOP (Annual Operating Plan) year. */
+  aopAvailable: boolean;
+  /** AOP year range in YYYY-YYYY format (e.g. "2026-2027"); only meaningful (and stored) when aopAvailable is true. */
+  aopYear?: string | null;
+  serviceLine?: ServiceLine;
   [key: string]: any;
 }
 
@@ -65,10 +84,14 @@ export interface ActionItem {
   accountName?: string;
   opportunityId?: string;
   owner: string;
+  /** When the task was opened; defaults to the creation date but is user-editable. */
+  openDate: string;
   dueDate: string;
   priority: PriorityLevel;
   status: ActionItemStatus;
   notes: string;
+  /** Known risks or blocking dependencies for this action item. */
+  risksAndDependencies: string;
   completedDate?: string;
   /** Derived (never stored): FY label computed from dueDate via the configured Financial Calendar. */
   financialYear: string;
@@ -88,6 +111,8 @@ export interface Stakeholder {
   relationship: RelationshipStatus;
   email: string;
   phone: string;
+  stakeholderType: StakeholderType;
+  department?: string;
 }
 
 export interface Activity {

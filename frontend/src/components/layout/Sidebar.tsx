@@ -5,6 +5,7 @@
 
 import React from 'react';
 import { useCRM, ViewType } from '@/contexts/CRMContext';
+import { isOpenActionItemStatus } from '@/utils';
 import {
   LayoutDashboard,
   Building2,
@@ -39,73 +40,88 @@ export const Sidebar: React.FC = () => {
     setSidebarCollapsed,
   } = useCRM();
 
-  const menuItems = [
+  const sections = [
     {
-      id: 'dashboard' as ViewType,
-      label: 'Dashboard',
-      icon: LayoutDashboard,
-      badge: null,
+      label: 'Workspace',
+      items: [
+        {
+          id: 'dashboard' as ViewType,
+          label: 'Dashboard',
+          icon: LayoutDashboard,
+          badge: null,
+        },
+        {
+          id: 'accounts' as ViewType,
+          label: 'Accounts',
+          icon: Building2,
+          badge: accounts.length,
+        },
+        {
+          id: 'opportunities' as ViewType,
+          label: 'Opportunities',
+          icon: TrendingUp,
+          badge: opportunities.length,
+        },
+        {
+          id: 'actionItems' as ViewType,
+          label: 'Action Items',
+          icon: CheckSquare,
+          badge: actionItems.filter(ai => isOpenActionItemStatus(ai.status)).length,
+        },
+        {
+          id: 'stakeholders' as ViewType,
+          label: 'Stakeholders',
+          icon: Users,
+          badge: stakeholders.length,
+        },
+      ],
     },
     {
-      id: 'accounts' as ViewType,
-      label: 'Accounts',
-      icon: Building2,
-      badge: accounts.length,
+      label: 'Insights',
+      items: [
+        {
+          id: 'forecast' as ViewType,
+          label: 'Forecast',
+          icon: LineChart,
+          badge: null
+        },
+        {
+          id: 'executive' as ViewType,
+          label: 'Reports',
+          icon: BarChart3,
+          badge: null
+        },
+        {
+          id: 'performance-evaluation' as ViewType,
+          label: 'Performance Evaluation',
+          icon: ClipboardCheck,
+          badge: null
+        },
+      ],
     },
     {
-      id: 'opportunities' as ViewType,
-      label: 'Opportunities',
-      icon: TrendingUp,
-      badge: opportunities.length,
+      label: 'System',
+      items: [
+        {
+          id: 'notifications' as ViewType,
+          label: 'Notifications',
+          icon: Bell,
+          badge: unreadNotificationCount > 0 ? unreadNotificationCount : null
+        },
+        {
+          id: 'audit-log' as ViewType,
+          label: 'Audit Logs',
+          icon: ShieldCheck,
+          badge: null
+        },
+        {
+          id: 'administration' as ViewType,
+          label: 'Administration',
+          icon: Settings,
+          badge: null
+        },
+      ],
     },
-    {
-      id: 'actionItems' as ViewType,
-      label: 'Action Items',
-      icon: CheckSquare,
-      badge: actionItems.filter(ai => ai.status !== 'Completed').length,
-    },
-    {
-      id: 'stakeholders' as ViewType,
-      label: 'Stakeholders',
-      icon: Users,
-      badge: stakeholders.length,
-    },
-    {
-      id: 'forecast' as ViewType,
-      label: 'Forecast',
-      icon: LineChart,
-      badge: null
-    },
-    {
-      id: 'executive' as ViewType,
-      label: 'Reports',
-      icon: BarChart3,
-      badge: null
-    },
-    {
-      id: 'performance-evaluation' as ViewType,
-      label: 'Performance Evaluation',
-      icon: ClipboardCheck,
-      badge: null
-    },
-    {
-      id: 'notifications' as ViewType,
-      label: 'Notifications',
-      icon: Bell,
-      badge: unreadNotificationCount > 0 ? unreadNotificationCount : null
-    },
-    {
-      id: 'audit-log' as ViewType,
-      label: 'Audit Logs',
-      icon: ShieldCheck,
-      badge: null
-    },
-    {
-      id: 'administration' as ViewType,
-      label: 'Administration',
-      icon: Settings,
-      badge: null
-    }
   ];
 
   return (
@@ -144,56 +160,67 @@ export const Sidebar: React.FC = () => {
       <nav className={`flex-1 space-y-1 overflow-y-auto no-scrollbar py-4 ${
         sidebarCollapsed ? 'px-2' : 'px-4'
       }`}>
-        {menuItems.map(item => {
-          const isActive = currentView === item.id || 
-            (item.id === 'accounts' && currentView === 'account-details') ||
-            (item.id === 'opportunities' && currentView === 'opportunity-details');
-          const Icon = item.icon;
-          
-          return (
-            <button
-              key={item.id}
-              onClick={() => {
-                setCameFromDashboard(false);
-                if (item.id === 'opportunities') {
-                  setSelectedStage('All');
-                }
-                setView(item.id);
-              }}
-              title={item.label}
-              className={`flex items-center rounded-lg text-sm font-medium transition-all duration-150 group cursor-pointer ${
-                sidebarCollapsed 
-                  ? 'justify-center w-10 h-10 mx-auto px-0' 
-                  : 'w-full justify-between px-3 py-2'
-              } ${
-                isActive
-                  ? 'bg-slate-800 text-white font-semibold'
-                  : 'text-slate-400 hover:bg-slate-800/50 hover:text-white'
-              }`}
-            >
-              <div className={`flex items-center ${sidebarCollapsed ? 'space-x-0' : 'space-x-3'}`}>
-                <Icon
-                  className={`w-4 h-4 transition-colors shrink-0 ${
-                    isActive ? 'text-white' : 'text-slate-500 group-hover:text-slate-300'
-                  }`}
-                />
-                {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
+        {sections.map((section, sectionIndex) => (
+          <div key={section.label} className={sectionIndex > 0 ? 'pt-3 mt-3 border-t border-slate-800/60' : ''}>
+            {!sidebarCollapsed && (
+              <div className="px-3 pb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                {section.label}
               </div>
-              
-              {!sidebarCollapsed && item.badge !== null && (
-                <span
-                  className={`text-[11px] px-2 py-0.5 rounded-full font-bold transition-all shrink-0 ${
-                    isActive
-                      ? 'bg-slate-700 text-white'
-                      : 'bg-slate-800 text-slate-400 group-hover:bg-slate-700 group-hover:text-white'
-                  }`}
-                >
-                  {item.badge}
-                </span>
-              )}
-            </button>
-          );
-        })}
+            )}
+            <div className="space-y-1">
+              {section.items.map(item => {
+                const isActive = currentView === item.id ||
+                  (item.id === 'accounts' && currentView === 'account-details') ||
+                  (item.id === 'opportunities' && currentView === 'opportunity-details');
+                const Icon = item.icon;
+
+                return (
+                  <button
+                    key={item.id}
+                    onClick={() => {
+                      setCameFromDashboard(false);
+                      if (item.id === 'opportunities') {
+                        setSelectedStage('All');
+                      }
+                      setView(item.id);
+                    }}
+                    title={item.label}
+                    className={`flex items-center rounded-lg text-sm font-medium transition-all duration-150 group cursor-pointer ${
+                      sidebarCollapsed
+                        ? 'justify-center w-10 h-10 mx-auto px-0'
+                        : 'w-full justify-between px-3 py-2'
+                    } ${
+                      isActive
+                        ? 'bg-slate-800 text-white font-semibold'
+                        : 'text-slate-400 hover:bg-slate-800/50 hover:text-white'
+                    }`}
+                  >
+                    <div className={`flex items-center ${sidebarCollapsed ? 'space-x-0' : 'space-x-3'}`}>
+                      <Icon
+                        className={`w-4 h-4 transition-colors shrink-0 ${
+                          isActive ? 'text-white' : 'text-slate-500 group-hover:text-slate-300'
+                        }`}
+                      />
+                      {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
+                    </div>
+
+                    {!sidebarCollapsed && item.badge !== null && (
+                      <span
+                        className={`text-[11px] px-2 py-0.5 rounded-full font-bold transition-all shrink-0 ${
+                          isActive
+                            ? 'bg-slate-700 text-white'
+                            : 'bg-slate-800 text-slate-400 group-hover:bg-slate-700 group-hover:text-white'
+                        }`}
+                      >
+                        {item.badge}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </nav>
     </aside>
   );

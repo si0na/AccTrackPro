@@ -11,7 +11,7 @@ import { Pagination, Paginated, extractTotal } from '../../common/utils/paginati
 // periods are derived from dates and never stored.
 const KNOWN = new Set([
   'id','name','type','health','owner','ownerId','revenue','industry','since',
-  'website','phone','email','address','description',
+  'website','phone','email','address','location','description',
   'financial_year','quarter','financialYear',
 ]);
 
@@ -104,15 +104,15 @@ export class AccountsService {
 
     const { rows } = await this.db.query(
       `INSERT INTO accounts
-         (id, name, type, health, owner_id, owner, revenue, industry, since, website, phone, email, address, description, custom_data)
-       VALUES (gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+         (id, name, type, health, owner_id, owner, revenue, industry, since, website, phone, email, address, location, description, custom_data)
+       VALUES (gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
        RETURNING *`,
       [
         name, data.type, data.health,
         data.ownerId ?? null, ownerDisplayName,
         data.revenue ?? 0, data.industry ?? '', data.since ?? '',
         data.website ?? '', data.phone ?? '', data.email ?? '',
-        data.address ?? '', data.description ?? '',
+        data.address ?? '', data.location ?? '', data.description ?? '',
         JSON.stringify(cd),
       ],
     ).catch((err) => { throw this.mapNameConflict(err, name); });
@@ -165,15 +165,15 @@ export class AccountsService {
     await this.db.query(
       `UPDATE accounts SET
          name=$1, type=$2, health=$3, owner_id=$4, owner=$5, revenue=$6, industry=$7,
-         since=$8, website=$9, phone=$10, email=$11, address=$12,
-         description=$13, custom_data=$14, updated_at=NOW()
-       WHERE id=$15 AND is_deleted=FALSE`,
+         since=$8, website=$9, phone=$10, email=$11, address=$12, location=$13,
+         description=$14, custom_data=$15, updated_at=NOW()
+       WHERE id=$16 AND is_deleted=FALSE`,
       [
         name, data.type, data.health,
         effectiveOwnerId, ownerDisplayName || existing.owner,
         data.revenue ?? 0, data.industry ?? '', since,
         data.website ?? '', data.phone ?? '', data.email ?? '',
-        data.address ?? '', data.description ?? '',
+        data.address ?? '', data.location ?? '', data.description ?? '',
         JSON.stringify(cd), id,
       ],
     ).catch((err) => { throw this.mapNameConflict(err, name); });
