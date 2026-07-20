@@ -16,6 +16,7 @@ import { AuditLogView } from '@/features/reports/components/AuditLogView';
 import { PerformanceEvaluationView } from '@/features/reports/components/PerformanceEvaluationView';
 import { AlertsAndNotificationsView } from '@/features/notifications/components/AlertsAndNotificationsView';
 import { AdministrationPage } from '@/features/administration/components/AdministrationPage';
+import { ImportExportLauncher } from '@/features/import-export';
 import { LoginPage } from '@/features/auth/components/LoginPage';
 import { SignUpPage } from '@/features/auth/components/SignUpPage';
 import { ForgotPasswordPage } from '@/features/auth/components/ForgotPasswordPage';
@@ -116,6 +117,7 @@ const InnerLayout: React.FC = () => {
         <header className="h-16 shrink-0 bg-white border-b border-slate-200/80 px-6 flex items-center justify-end">
           {/* Actions */}
           <div className="flex items-center space-x-4">
+            <ImportExportLauncher />
             <button
               onClick={() => setView('notifications')}
               className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 relative cursor-pointer"

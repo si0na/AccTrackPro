@@ -56,7 +56,7 @@ export interface ForecastParams {
  *
  *  Pipeline Value    = SUM(value)                 — nominal / face value of all active opportunities
  *  Forecast Revenue  = SUM(value × probability/100) — probability-weighted expected revenue
- *  Committed Forecast= weighted sum where probability ≥ 70 OR stage IN ('Negotiation','Won')
+ *  Committed Forecast= weighted sum where probability ≥ 70 OR stage IN ('Negotiation','Verbal Agreement','Won')
  *                      These are deals the rep is confident will close this period.
  *  Best Case Forecast= SUM(value) for stage NOT IN ('Lead')
  *                      Maximum achievable if every qualified-and-beyond opportunity closes.
@@ -128,7 +128,7 @@ export class AnalyticsService {
         COALESCE(SUM(o.value),                                      0)::NUMERIC AS pipeline_value,
         COALESCE(SUM(o.value * o.probability / 100.0),              0)::NUMERIC AS forecast_revenue,
         COALESCE(SUM(
-          CASE WHEN o.probability >= 70 OR o.stage IN ('Negotiation','Won')
+          CASE WHEN o.probability >= 70 OR o.stage IN ('Negotiation','Verbal Agreement','Won')
                THEN o.value * o.probability / 100.0 END
         ),                                                          0)::NUMERIC AS committed_forecast,
         COALESCE(SUM(
@@ -189,8 +189,9 @@ export class AnalyticsService {
         WHEN 'Qualified'   THEN 2
         WHEN 'Proposal'    THEN 3
         WHEN 'Negotiation' THEN 4
-        WHEN 'Won'         THEN 5
-        ELSE 6
+        WHEN 'Verbal Agreement' THEN 5
+        WHEN 'Won'         THEN 6
+        ELSE 7
       END
     `;
 

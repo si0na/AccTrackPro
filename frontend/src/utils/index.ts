@@ -1,4 +1,5 @@
 import type { ActionItemStatus, OpportunityStage } from '@/types';
+import { LOCATION_OPTIONS, LOCATION_ALIASES } from '@/constants';
 
 export type SortDirection = 'asc' | 'desc';
 
@@ -94,4 +95,36 @@ export function isDueThisWeek(dateStr: string): boolean {
   nextMonday.setDate(monday.getDate() + 7);
 
   return due >= monday && due < nextMonday;
+}
+
+/**
+ * Maps a legacy free-text "Location" value onto the predefined
+ * {@link LOCATION_OPTIONS} country list: exact match, then known alias
+ * (e.g. "USA" → "United States"), then a country name found as a substring
+ * (e.g. "San Francisco, CA, USA"). Returns '' when nothing maps, so the
+ * dropdown falls back to unselected rather than an invalid value.
+ */
+export function mapLocationToOption(raw: string | undefined | null): string {
+  const value = (raw ?? '').trim();
+  if (!value) return '';
+  const lower = value.toLowerCase();
+  const exact = LOCATION_OPTIONS.find((o) => o.toLowerCase() === lower);
+  if (exact) return exact;
+  if (LOCATION_ALIASES[lower]) return LOCATION_ALIASES[lower];
+  const alias = Object.keys(LOCATION_ALIASES).find((key) => lower.includes(key));
+  if (alias) return LOCATION_ALIASES[alias];
+  const bySubstring = LOCATION_OPTIONS.find((o) => lower.includes(o.toLowerCase()));
+  if (bySubstring) return bySubstring;
+  return '';
+}
+
+/**
+ * Year options for the "Customer Since" selector: current year down to 2000,
+ * recomputed on every call so next year's value appears with no code change.
+ */
+export function getCustomerSinceYearOptions(): string[] {
+  const currentYear = new Date().getFullYear();
+  const years: string[] = [];
+  for (let year = currentYear; year >= 2000; year--) years.push(String(year));
+  return years;
 }

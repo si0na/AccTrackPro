@@ -3,6 +3,7 @@ import * as dotenv from 'dotenv';
 dotenv.config();
 
 import { NestFactory } from '@nestjs/core';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { ValidationPipe, RequestMethod } from '@nestjs/common';
 import helmet from 'helmet';
@@ -28,12 +29,18 @@ async function bootstrap() {
   }
   logger.log('Environment validation passed', 'EnvValidation');
 
-  const app = await NestFactory.create(AppModule, {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     logger,
     // Buffer NestJS internal logs (RoutesResolver, InstanceLoader, etc.) until
     // the logger is active so they are written in structured JSON/text format.
     bufferLogs: true,
   });
+
+  // Raise the JSON body limit above the 100kb Express default so bulk-import
+  // batches (arrays of records) are accepted. The import client still chunks
+  // large files into batches, but a single batch of rich rows can exceed 100kb.
+  app.useBodyParser('json', { limit: '15mb' });
+  app.useBodyParser('urlencoded', { limit: '15mb', extended: true });
 
   // ── Security headers (Helmet) ──────────────────────────────────────────────
   // CSP disabled: pure REST API, no HTML served from this process

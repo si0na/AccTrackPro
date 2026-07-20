@@ -3,7 +3,7 @@
 export type AccountType = 'Strategic' | 'Non Strategic' | 'New';
 export type AccountHealth = 'Green' | 'Amber' | 'Red';
 export type OpportunityStage =
-  | 'Lead' | 'Qualified' | 'Proposal' | 'Negotiation' | 'Won'
+  | 'Lead' | 'Qualified' | 'Proposal' | 'Negotiation' | 'Verbal Agreement' | 'Won'
   | 'Blocked' | 'Delayed' | 'Lost';
 export type OpportunityType = 'Growth' | 'Pursuit' | 'Whitespace';
 export type ServiceLine =
@@ -52,6 +52,10 @@ export interface Opportunity {
   risksAndDependencies: string;
   /** Why the deal was Won or Lost; required when the stage transitions to a closed state. */
   closeReason: string;
+  /** Why the opportunity cannot currently progress; only meaningful while stage is 'Blocked'. Separate from risksAndDependencies. */
+  blockedReason?: string;
+  /** Why progress has been postponed; only meaningful while stage is 'Delayed'. Separate from risksAndDependencies. */
+  delayedReason?: string;
   /** When the deal first reached a closed stage (Won/Lost); cleared if reopened. */
   closedAt?: string;
   tags: string[];

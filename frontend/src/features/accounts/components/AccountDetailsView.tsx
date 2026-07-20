@@ -39,6 +39,7 @@ import {
   PhoneInput,
   PRIORITY_COLORS,
   RELATIONSHIP_COLORS,
+  SearchableSelect,
   SearchBar,
   SortableHeader,
   STAGE_COLORS,
@@ -55,8 +56,16 @@ import {
   ExpandableTextCell,
 } from '@/components/ui';
 import { StakeholderFormModal } from '@/features/stakeholders/components/StakeholderFormModal';
-import { ACCOUNT_TYPE_OPTIONS, ACCOUNT_HEALTH_OPTIONS } from '@/constants';
-import { compareForSort, deriveOppStatus, getTodayISODate, isOpenActionItemStatus, SortDirection } from '@/utils';
+import { ACCOUNT_TYPE_OPTIONS, ACCOUNT_HEALTH_OPTIONS, LOCATION_OPTIONS, STAGE_DEFAULT_PROBABILITY } from '@/constants';
+import {
+  compareForSort,
+  deriveOppStatus,
+  getCustomerSinceYearOptions,
+  getTodayISODate,
+  isOpenActionItemStatus,
+  mapLocationToOption,
+  SortDirection,
+} from '@/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowLeft,
@@ -158,7 +167,7 @@ export const AccountDetailsView: React.FC = () => {
     accountId: '',
     stage: 'Lead',
     value: 0,
-    probability: 0,
+    probability: STAGE_DEFAULT_PROBABILITY.Lead ?? 0,
     closeDate: '',
     description: '',
     startDate: '',
@@ -297,7 +306,7 @@ export const AccountDetailsView: React.FC = () => {
       accountId: account.id,
       stage: 'Lead',
       value: 0,
-      probability: 0,
+      probability: STAGE_DEFAULT_PROBABILITY.Lead ?? 0,
       owner: '',
       closeDate: '',
       description: '',
@@ -454,7 +463,7 @@ export const AccountDetailsView: React.FC = () => {
             <Button
               variant="warning"
               icon={<Pencil className="w-3.5 h-3.5" />}
-              onClick={() => { setAccountDraft({ ...account }); setIsEditingAccount(true); }}
+              onClick={() => { setAccountDraft({ ...account, location: mapLocationToOption(account.location) }); setIsEditingAccount(true); }}
             >
               Edit Account
             </Button>
@@ -639,7 +648,7 @@ export const AccountDetailsView: React.FC = () => {
                 ) : (
                   <button
                     onClick={() => {
-                      setContactDraft({ website: account.website || '', phone: account.phone || '', email: account.email || '', address: account.address || '', location: account.location || '' });
+                      setContactDraft({ website: account.website || '', phone: account.phone || '', email: account.email || '', address: account.address || '', location: mapLocationToOption(account.location) });
                       setIsEditingContact(true);
                     }}
                     className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-blue-600 font-bold transition-colors cursor-pointer"
@@ -701,12 +710,12 @@ export const AccountDetailsView: React.FC = () => {
                         <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
                           <Navigation className="w-3 h-3" /> Location
                         </label>
-                        <input
-                          type="text"
+                        <SearchableSelect
                           value={contactDraft.location}
-                          onChange={(e) => setContactDraft({ ...contactDraft, location: e.target.value })}
-                          placeholder="e.g., San Francisco, CA"
-                          className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-slate-800"
+                          onChange={(location) => setContactDraft({ ...contactDraft, location })}
+                          options={LOCATION_OPTIONS}
+                          placeholder="Search countries…"
+                          aria-label="Account location"
                         />
                       </div>
                     </div>
@@ -1225,10 +1234,14 @@ export const AccountDetailsView: React.FC = () => {
                           <TableCell className="text-slate-500 font-semibold">{stk.department || '—'}</TableCell>
                           <TableCell className="text-slate-500 font-semibold">{stk.designation}</TableCell>
                           <TableCell align="center">
-                            <StatusBadge value={stk.influence} colorMap={INFLUENCE_COLORS} shape="rounded" />
+                            {stk.stakeholderType === 'SERVICE_PROVIDER'
+                              ? <span className="text-slate-300">—</span>
+                              : <StatusBadge value={stk.influence} colorMap={INFLUENCE_COLORS} shape="rounded" />}
                           </TableCell>
                           <TableCell align="center">
-                            <StatusBadge value={stk.relationship} colorMap={RELATIONSHIP_COLORS} />
+                            {stk.stakeholderType === 'SERVICE_PROVIDER'
+                              ? <span className="text-slate-300">—</span>
+                              : <StatusBadge value={stk.relationship} colorMap={RELATIONSHIP_COLORS} />}
                           </TableCell>
                           <TableCell className="select-all text-slate-500 hover:text-blue-500 transition-colors">
                             <a href={`mailto:${stk.email}`} className="flex items-center space-x-1 font-semibold">
@@ -1469,12 +1482,13 @@ export const AccountDetailsView: React.FC = () => {
                   />
                 </FormField>
                 <FormField label="Client Since">
-                  <input
-                    type="text"
+                  <SearchableSelect
                     value={accountDraft.since || ''}
-                    onChange={(e) => setAccountDraft({ ...accountDraft, since: e.target.value })}
-                    placeholder="e.g., 2020"
-                    className={INPUT_CLS_AMBER}
+                    onChange={(since) => setAccountDraft({ ...accountDraft, since })}
+                    options={getCustomerSinceYearOptions()}
+                    placeholder="Select year…"
+                    tone="amber"
+                    aria-label="Customer since year"
                   />
                 </FormField>
               </FormGrid>
@@ -1507,12 +1521,13 @@ export const AccountDetailsView: React.FC = () => {
                   />
                 </FormField>
                 <FormField label="Location">
-                  <input
-                    type="text"
+                  <SearchableSelect
                     value={accountDraft.location || ''}
-                    onChange={(e) => setAccountDraft({ ...accountDraft, location: e.target.value })}
-                    placeholder="e.g., San Francisco, CA"
-                    className={INPUT_CLS_AMBER}
+                    onChange={(location) => setAccountDraft({ ...accountDraft, location })}
+                    options={LOCATION_OPTIONS}
+                    placeholder="Search countries…"
+                    tone="amber"
+                    aria-label="Account location"
                   />
                 </FormField>
                 <FormField label="Address" wide>

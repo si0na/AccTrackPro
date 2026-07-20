@@ -5,6 +5,10 @@ import { NotificationEventBus } from '../../common/events/notification-event-bus
 import { Opportunity } from '../../types';
 import { extractCustomData } from '../../common/utils/db-mapping.util';
 import { Pagination, Paginated, extractTotal } from '../../common/utils/pagination.util';
+import { validateDto } from '../../common/utils/validate-dto.util';
+import { CreateOpportunityDto } from './dto/opportunity.dto';
+import { OPPORTUNITY_FIELDS, opportunityPostValidate } from '../import-export/import-field-schemas';
+import { BulkModuleAdapter } from '../import-export/bulk-adapter';
 
 // 'financialYear'/'quarter' remain listed so payloads from older clients are
 // stripped instead of leaking into custom_data — fiscal periods are derived
@@ -13,7 +17,7 @@ const KNOWN = new Set([
   'id','name','accountId','accountName','stage','value','probability','ownerId',
   'closeDate','startDate','endDate','crmValue','description','nextStep',
   'risksAndDependencies',
-  'closeReason','closedAt',
+  'closeReason','blockedReason','delayedReason','closedAt',
   'tags','team','financialYear','quarter',
   'clientStakeholderId','clientStakeholderName','clientStakeholderDesignation',
   'serviceProviderStakeholderId','serviceProviderStakeholderName','serviceProviderStakeholderDesignation',
@@ -28,7 +32,7 @@ function rowToOpportunity(row: any, derive: (date: string) => { financialYear: s
     custom_data, is_deleted, created_at, updated_at,
     account_id, account_name, close_date, start_date, end_date, crm_value, next_step,
     risks_and_dependencies,
-    close_reason, closed_at,
+    close_reason, blocked_reason, delayed_reason, closed_at,
     owner_id,
     client_stakeholder_id, client_stakeholder_name, client_stakeholder_designation,
     service_provider_stakeholder_id, service_provider_stakeholder_name, service_provider_stakeholder_designation,
@@ -47,6 +51,8 @@ function rowToOpportunity(row: any, derive: (date: string) => { financialYear: s
     nextStep:      next_step,
     risksAndDependencies: risks_and_dependencies ?? '',
     closeReason:   close_reason ?? '',
+    blockedReason: blocked_reason ?? '',
+    delayedReason: delayed_reason ?? '',
     closedAt:      closed_at ?? undefined,
     value:         Number(base.value),
     probability:   Number(base.probability),
@@ -85,30 +91,13 @@ function assertDateOrder(startDate?: string, endDate?: string): void {
   }
 }
 
-const STAGE_ORDER = ['Lead', 'Qualified', 'Proposal', 'Negotiation', 'Won'];
-
 /**
- * Stage-progression requirements: advancing through the pipeline requires the
- * business information a deal at that maturity should have. Applied whenever a
- * deal is created at, or moved to, the given stage.
- *  - Qualified and beyond: an expected close date
- *  - Proposal and beyond:  a deal value greater than zero
- *  - Negotiation and beyond: a next step or description of the deal
+ * Pipeline stage reflects current sales progress only. Moving an opportunity
+ * between stages is never blocked by field-completeness checks — deal value,
+ * expected close date, next step and description can be filled in at any time,
+ * independent of the stage. Data-integrity rules that validate a *provided*
+ * value (date ordering, past-date, formats, ranges) still apply below.
  */
-function assertStageRequirements(data: any, stage: string): void {
-  const idx = STAGE_ORDER.indexOf(stage);
-  const missing: string[] = [];
-  if (idx >= 1 && !String(data.closeDate ?? '').trim()) missing.push('an expected close date');
-  if (idx >= 2 && !(Number(data.value) > 0)) missing.push('a deal value greater than zero');
-  if (idx >= 3 && !String(data.nextStep ?? '').trim() && !String(data.description ?? '').trim()) {
-    missing.push('a next step or description');
-  }
-  if (missing.length) {
-    throw new BadRequestException(
-      `Moving to the ${stage} stage requires ${missing.join(', ')}.`,
-    );
-  }
-}
 
 /** Today as a local ISO date string (matches the ISO dates stored on deals). */
 function todayISO(): string {
@@ -139,23 +128,35 @@ function assertCloseDateValid(
 }
 
 /**
- * Win/loss capture: closing a deal (stage becomes Won or Lost) requires a
- * reason so pipeline reviews can learn from the outcome.
+ * Win/loss capture: closing a deal (stage becomes Won or Lost) records a
+ * reason so pipeline reviews can learn from the outcome. Both the win and
+ * loss reasons are optional and captured when available.
  */
 function resolveCloseReason(data: any, stage: string, existing?: { stage: string; closeReason?: string }): string {
   const provided = String(data.closeReason ?? '').trim();
   if (!CLOSED_STAGES.has(stage)) return ''; // reopened deals shed their close reason
-  const becameClosed = !existing || existing.stage !== stage;
   const carried = existing?.stage === stage ? (existing.closeReason ?? '') : '';
-  const reason = provided || carried;
-  if (becameClosed && !reason) {
-    throw new BadRequestException(
-      stage === 'Won'
-        ? 'Please provide a win reason when marking this opportunity as Won'
-        : 'Please provide a loss reason when marking this opportunity as Lost',
-    );
-  }
-  return reason;
+  return provided || carried;
+}
+
+/**
+ * Stage-scoped reason capture for the operational Blocked / Delayed states.
+ * A distinct business concept from both risksAndDependencies (ongoing risks)
+ * and closeReason (win/loss). The reason only lives while the opportunity is
+ * in its matching stage: it is cleared the moment the stage moves elsewhere,
+ * and carried forward when the stage is unchanged and no new value is supplied.
+ * Returns null (not '') so cleared reasons read back as absent from the
+ * nullable column. Both are optional — no value is ever required.
+ */
+function resolveStageReason(
+  provided: string | undefined,
+  targetStage: string,
+  stage: string,
+  carriedValue?: string,
+): string | null {
+  if (stage !== targetStage) return null;
+  const value = String(provided ?? '').trim();
+  return value || (carriedValue ?? '') || null;
 }
 
 @Injectable()
@@ -167,6 +168,46 @@ export class OpportunitiesService {
     private readonly filter: FilterContextService,
     private readonly bus: NotificationEventBus,
   ) {}
+
+  /**
+   * Bulk adapter used by the Global Import/Export service. Each opportunity row
+   * is validated against CreateOpportunityDto and created/updated via the
+   * standard paths, so account/stakeholder relational checks, date rules, stage
+   * logic, custom_data, audit activity and notifications all apply per row.
+   * Duplicates are matched by (name, account) within the requesting user's
+   * scope. The Account reference (name → id, incl. a parent defined in the same
+   * workbook) is resolved centrally by the global service before these hooks run.
+   */
+  bulkAdapter(userId: string): BulkModuleAdapter {
+    return {
+      moduleKey: 'opportunities',
+      fields: OPPORTUNITY_FIELDS,
+      postValidate: (row) => opportunityPostValidate(row),
+      validate: (row) => validateDto(CreateOpportunityDto, row),
+      naturalKey: (row) =>
+        row.accountId && row.name ? `${row.accountId}::${String(row.name).trim().toLowerCase()}` : null,
+      findExistingId: (row) => this.findActiveByNameAndAccount(row.name, row.accountId, userId),
+      create: (row) => this.create({ ...row, ownerId: userId }),
+      update: (id, row) => this.update(id, row, userId),
+    };
+  }
+
+  private async findActiveByNameAndAccount(
+    name?: string,
+    accountId?: string,
+    ownerId?: string,
+  ): Promise<string | null> {
+    const n = String(name ?? '').trim();
+    if (!n || !accountId) return null;
+    const { rows } = await this.db.query(
+      `SELECT id FROM opportunities
+       WHERE LOWER(TRIM(name)) = LOWER($1) AND account_id = $2 AND is_deleted = FALSE
+         AND ($3::TEXT IS NULL OR owner_id = $3)
+       LIMIT 1`,
+      [n, accountId, ownerId ?? null],
+    );
+    return rows[0]?.id ?? null;
+  }
 
   /** Row mapper that derives financialYear/quarter labels from close_date. */
   private async mapper(ctx?: FiscalContext): Promise<(row: any) => Opportunity> {
@@ -237,9 +278,10 @@ export class OpportunitiesService {
 
     const stage = data.stage || 'Lead';
     const cd    = extractCustomData(data, KNOWN);
-    assertStageRequirements(data, stage);
     assertCloseDateValid(data.closeDate, data.startDate, stage);
     const closeReason = resolveCloseReason(data, stage);
+    const blockedReason = resolveStageReason(data.blockedReason, 'Blocked', stage);
+    const delayedReason = resolveStageReason(data.delayedReason, 'Delayed', stage);
     const closedAt = CLOSED_STAGES.has(stage) ? new Date() : null;
 
     const { rows } = await this.db.query(
@@ -247,10 +289,10 @@ export class OpportunitiesService {
          (id, name, account_id, stage, value, probability, owner_id,
           close_date, start_date, end_date, crm_value, description, next_step,
           risks_and_dependencies,
-          close_reason, closed_at, tags, team, custom_data,
+          close_reason, blocked_reason, delayed_reason, closed_at, tags, team, custom_data,
           client_stakeholder_id, service_provider_stakeholder_id,
           aop_available, aop_year, opportunity_type, service_line)
-       VALUES (gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24)
+       VALUES (gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
        RETURNING id`,
       [
         data.name, data.accountId, stage,
@@ -259,7 +301,7 @@ export class OpportunitiesService {
         data.closeDate ?? '', data.startDate ?? '', data.endDate ?? '',
         data.crmValue ?? 0, data.description ?? '', data.nextStep ?? '',
         data.risksAndDependencies ?? '',
-        closeReason, closedAt,
+        closeReason, blockedReason, delayedReason, closedAt,
         data.tags ?? [], data.team ?? [], JSON.stringify(cd),
         data.clientStakeholderId ?? null, data.serviceProviderStakeholderId ?? null,
         data.aopAvailable ?? false, data.aopAvailable ? (data.aopYear ?? null) : null,
@@ -302,9 +344,16 @@ export class OpportunitiesService {
     await this.assertStakeholderAssignment(data.serviceProviderStakeholderId, data.accountId, 'SERVICE_PROVIDER', 'service provider stakeholder');
     const cd    = extractCustomData(data, KNOWN);
     const stage = data.stage ?? existing.stage;
-    if (stage !== existing.stage) assertStageRequirements(data, stage);
     assertCloseDateValid(data.closeDate, data.startDate, stage, existing.closeDate);
     const closeReason = resolveCloseReason(data, stage, existing);
+    const blockedReason = resolveStageReason(
+      data.blockedReason, 'Blocked', stage,
+      existing.stage === 'Blocked' ? existing.blockedReason : undefined,
+    );
+    const delayedReason = resolveStageReason(
+      data.delayedReason, 'Delayed', stage,
+      existing.stage === 'Delayed' ? existing.delayedReason : undefined,
+    );
     const nowClosed = CLOSED_STAGES.has(stage);
     // closed_at marks when the deal first reached a closed stage; it survives
     // a Won<->Lost correction and is cleared when the deal reopens.
@@ -328,14 +377,15 @@ export class OpportunitiesService {
          name=$1, account_id=$2, stage=$3, value=$4, probability=$5,
          owner_id=$6,
          close_date=$7, start_date=$8, end_date=$9, crm_value=$10,
-         description=$11, next_step=$12, risks_and_dependencies=$13, close_reason=$14, closed_at=$15,
-         tags=$16, team=$17,
-         custom_data=$18,
-         client_stakeholder_id=$19, service_provider_stakeholder_id=$20,
-         aop_available=$21, aop_year=$22, opportunity_type=$23,
-         service_line=$24,
+         description=$11, next_step=$12, risks_and_dependencies=$13, close_reason=$14,
+         blocked_reason=$15, delayed_reason=$16, closed_at=$17,
+         tags=$18, team=$19,
+         custom_data=$20,
+         client_stakeholder_id=$21, service_provider_stakeholder_id=$22,
+         aop_available=$23, aop_year=$24, opportunity_type=$25,
+         service_line=$26,
          updated_at=NOW()
-       WHERE id=$25 AND is_deleted=FALSE`,
+       WHERE id=$27 AND is_deleted=FALSE`,
       [
         data.name, data.accountId, stage,
         data.value ?? existing.value ?? 0, data.probability ?? existing.probability ?? 0,
@@ -343,7 +393,7 @@ export class OpportunitiesService {
         data.closeDate ?? '', data.startDate ?? '', data.endDate ?? '',
         data.crmValue ?? 0, data.description ?? '', data.nextStep ?? '',
         data.risksAndDependencies ?? '',
-        closeReason, closedAt,
+        closeReason, blockedReason, delayedReason, closedAt,
         data.tags ?? [], data.team ?? [], JSON.stringify(cd),
         data.clientStakeholderId ?? null, data.serviceProviderStakeholderId ?? null,
         aopAvailable, aopYear, opportunityType,

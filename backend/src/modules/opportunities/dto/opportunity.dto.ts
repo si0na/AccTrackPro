@@ -11,7 +11,7 @@ export class CreateOpportunityDto {
   @IsString() @IsNotEmpty({ message: 'accountId is required' })
   accountId!: string;
 
-  @IsOptional() @IsIn(['Lead', 'Qualified', 'Proposal', 'Negotiation', 'Won', 'Blocked', 'Delayed', 'Lost'])
+  @IsOptional() @IsIn(['Lead', 'Qualified', 'Proposal', 'Negotiation', 'Verbal Agreement', 'Won', 'Blocked', 'Delayed', 'Lost'])
   stage?: string;
 
   @IsNumber() @IsOptional() @Min(0, { message: 'Value cannot be negative' })
@@ -23,6 +23,12 @@ export class CreateOpportunityDto {
 
   @IsString() @IsOptional() @MaxLength(1000)
   closeReason?: string;
+
+  @IsString() @IsOptional() @MaxLength(1000)
+  blockedReason?: string;
+
+  @IsString() @IsOptional() @MaxLength(1000)
+  delayedReason?: string;
 
   @EmptyToUndefined()
   @IsOptional() @Matches(ISO_DATE_RE, { message: `closeDate ${ISO_DATE_MSG}` })

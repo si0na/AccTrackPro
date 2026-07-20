@@ -35,6 +35,83 @@ export interface Paginated<T> {
   pageSize: number;
 }
 
+/** Bulk-import duplicate handling — mirrors the backend DuplicateMode. */
+export type DuplicateMode = 'skip' | 'update' | 'create-new';
+
+export interface BulkRowResult {
+  index: number;
+  status: 'created' | 'updated' | 'skipped' | 'failed';
+  id?: string;
+  message?: string;
+}
+
+export interface BulkImportOutcome {
+  total: number;
+  created: number;
+  updated: number;
+  skipped: number;
+  failed: number;
+  results: BulkRowResult[];
+}
+
+/** Per-row verdict returned by the backend dry-run validation endpoint. */
+export interface ValidatedImportRow {
+  index: number;
+  rowNumber: number;
+  status: 'valid' | 'invalid' | 'duplicate';
+  errors: string[];
+  existsInSystem: boolean;
+  fileDupGroup: string | null;
+  payload: Record<string, any>;
+  refNames: Record<string, string>;
+}
+
+/** Aggregate result of a bulk validation dry-run (drives the import preview grid). */
+export interface BulkValidationResult {
+  rows: ValidatedImportRow[];
+  total: number;
+  valid: number;
+  invalid: number;
+  duplicatesInFile: number;
+  duplicatesExisting: number;
+  importable: number;
+  missingRequiredColumns: string[];
+  unknownColumns: string[];
+}
+
+/** The four modules that share the single Import/Export workbook. */
+export type IEModuleKey = 'accounts' | 'stakeholders' | 'opportunities' | 'actionItems';
+
+/** One parsed worksheet posted for validation. */
+export interface WorkbookSheet {
+  rows: Record<string, any>[];
+  headers: string[];
+}
+export type WorkbookSheets = Partial<Record<IEModuleKey, WorkbookSheet>>;
+/** Per-module dry-run verdicts returned by POST /import-export/validate. */
+export type WorkbookValidation = Partial<Record<IEModuleKey, BulkValidationResult>>;
+/** Kept-row payloads per module, posted to POST /import-export/import. */
+export type WorkbookImportRequest = Partial<Record<IEModuleKey, Record<string, any>[]>>;
+/** Per-module commit outcomes returned by POST /import-export/import. */
+export type WorkbookImportResult = Partial<Record<IEModuleKey, BulkImportOutcome>>;
+
+/** A single row of the Import/Export audit trail. */
+export interface ImportExportAuditRow {
+  id: string;
+  userId?: string;
+  userName?: string;
+  module: string;
+  action: 'import' | 'export';
+  fileFormat?: string;
+  totalRecords: number;
+  createdRecords: number;
+  updatedRecords: number;
+  skippedRecords: number;
+  failedRecords: number;
+  status: string;
+  createdAt: string;
+}
+
 export const accountsApi = {
   getAll: (f?: OwnerFilter) => apiClient.get<Account[]>('/accounts', { params: f }).then((r) => r.data),
   getDeactivated: (f?: OwnerFilter) => apiClient.get<Account[]>('/accounts/deactivated', { params: f }).then((r) => r.data),
@@ -68,6 +145,25 @@ export const stakeholdersApi = {
   create: (data: Omit<Stakeholder, 'id'>) => apiClient.post<Stakeholder>('/stakeholders', data).then((r) => r.data),
   update: (id: string, data: Stakeholder) => apiClient.put<Stakeholder>(`/stakeholders/${id}`, data).then((r) => r.data),
   delete: (id: string) => apiClient.delete<{ success: boolean }>(`/stakeholders/${id}`).then((r) => r.data),
+};
+
+/**
+ * Global Import/Export — one workbook, four worksheets. The client parses the
+ * .xlsx into per-module rows; the backend validates every populated worksheet
+ * (in dependency order, resolving cross-sheet parents), then commits the kept
+ * rows. Exports are generated client-side and reported here for the audit trail.
+ */
+export const importExportApi = {
+  validate: (sheets: WorkbookSheets) =>
+    apiClient.post<WorkbookValidation>('/import-export/validate', { sheets }).then((r) => r.data),
+  importWorkbook: (modules: WorkbookImportRequest, duplicateMode: DuplicateMode = 'skip') =>
+    apiClient.post<WorkbookImportResult>('/import-export/import', { modules, duplicateMode }).then((r) => r.data),
+  logExport: (modules: { module: IEModuleKey; count: number }[]) =>
+    apiClient
+      .post<{ success: boolean }>('/import-export/export-log', { modules })
+      .then((r) => r.data)
+      .catch(() => ({ success: false })), // audit logging must never block the download
+  getAudit: () => apiClient.get<ImportExportAuditRow[]>('/import-export/audit').then((r) => r.data),
 };
 
 export const activitiesApi = {

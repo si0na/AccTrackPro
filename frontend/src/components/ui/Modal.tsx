@@ -19,6 +19,14 @@ const FOCUSABLE =
   'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 /**
+ * Stack of currently-open modal ids. Only the top-most modal reacts to Escape
+ * and traps Tab, so when a dialog stacks another on top of it — e.g. a form
+ * modal opening its own "Discard changes?" confirmation — a single Escape
+ * dismisses only the top dialog instead of firing every open modal's handler.
+ */
+const modalStack: string[] = [];
+
+/**
  * Accessible modal shell shared by every dialog in the app: dimmed overlay,
  * white rounded panel, tinted header with icon + title + close button.
  * Handles Escape-to-close, focus trapping, focus restoration, and ARIA wiring
@@ -48,12 +56,18 @@ export const Modal: React.FC<ModalProps> = ({
     if (!isOpen) return;
     const previouslyFocused = document.activeElement as HTMLElement | null;
 
+    // Register on the modal stack so only the top-most dialog handles keys.
+    modalStack.push(titleId);
+
     // Move focus into the dialog (first focusable element, else the panel).
     const panel = panelRef.current;
     const first = panel?.querySelector<HTMLElement>(FOCUSABLE);
     (first ?? panel)?.focus();
 
+    const isTopMost = () => modalStack[modalStack.length - 1] === titleId;
+
     const onKeyDown = (e: KeyboardEvent) => {
+      if (!isTopMost()) return;
       if (e.key === 'Escape') {
         e.stopPropagation();
         onCloseRef.current();
@@ -77,6 +91,8 @@ export const Modal: React.FC<ModalProps> = ({
     document.addEventListener('keydown', onKeyDown);
     return () => {
       document.removeEventListener('keydown', onKeyDown);
+      const idx = modalStack.lastIndexOf(titleId);
+      if (idx !== -1) modalStack.splice(idx, 1);
       previouslyFocused?.focus?.();
     };
   }, [isOpen]);
@@ -120,7 +136,7 @@ export const Modal: React.FC<ModalProps> = ({
             <X className="w-4 h-4" />
           </button>
         </div>
-        <div className="overflow-y-auto custom-scrollbar">{children}</div>
+        <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar">{children}</div>
       </div>
     </div>
   );

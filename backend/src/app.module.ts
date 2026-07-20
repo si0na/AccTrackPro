@@ -21,6 +21,7 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { HealthModule } from './modules/health/health.module';
 import { PerformanceEvaluationsModule } from './modules/performance-evaluations/performance-evaluations.module';
 import { EmployeeMasterModule } from './modules/employee-master/employee-master.module';
+import { ImportExportModule } from './modules/import-export/import-export.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { EmployeeMasterModule } from './modules/employee-master/employee-master.
     }]),
     DatabaseModule,
     CommonModule,
+    ImportExportModule,
     NotificationsModule,
     AlertsModule,
     AuthModule,

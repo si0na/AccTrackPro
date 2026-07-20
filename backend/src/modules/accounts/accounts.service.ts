@@ -5,6 +5,10 @@ import { NotificationEventBus } from '../../common/events/notification-event-bus
 import { Account } from '../../types';
 import { resolveOwnerName, extractCustomData } from '../../common/utils/db-mapping.util';
 import { Pagination, Paginated, extractTotal } from '../../common/utils/pagination.util';
+import { validateDto } from '../../common/utils/validate-dto.util';
+import { CreateAccountDto } from './dto/account.dto';
+import { ACCOUNT_FIELDS } from '../import-export/import-field-schemas';
+import { BulkModuleAdapter } from '../import-export/bulk-adapter';
 
 // 'financial_year'/'quarter'/'financialYear' remain listed so payloads from
 // older clients are stripped instead of leaking into custom_data — fiscal
@@ -43,6 +47,36 @@ export class AccountsService {
     private readonly filter: FilterContextService,
     private readonly bus: NotificationEventBus,
   ) {}
+
+  /**
+   * Bulk adapter used by the Global Import/Export service. Each account row is
+   * validated against CreateAccountDto and created/updated via the standard
+   * create()/update() paths, so account name uniqueness, custom_data, audit
+   * activity and notifications all apply per row. Duplicates are matched by
+   * active account name (global, case-insensitive) per the uq_acc_name_active
+   * index. Accounts have no parent references, so the workbook is the source.
+   */
+  bulkAdapter(userId: string): BulkModuleAdapter {
+    return {
+      moduleKey: 'accounts',
+      fields: ACCOUNT_FIELDS,
+      validate: (row) => validateDto(CreateAccountDto, row),
+      naturalKey: (row) => (row.name ? String(row.name).trim().toLowerCase() : null),
+      findExistingId: (row) => this.findActiveByName(row.name),
+      create: (row) => this.create({ ...row, ownerId: userId }),
+      update: (id, row) => this.update(id, row, userId),
+    };
+  }
+
+  private async findActiveByName(name?: string): Promise<string | null> {
+    const n = String(name ?? '').trim();
+    if (!n) return null;
+    const { rows } = await this.db.query(
+      `SELECT id FROM accounts WHERE LOWER(TRIM(name)) = LOWER($1) AND is_deleted = FALSE LIMIT 1`,
+      [n],
+    );
+    return rows[0]?.id ?? null;
+  }
 
   // Accounts are long-term customers — never filtered by fiscal period.
   // Only owner scoping applies; any financialYear/quarter params are ignored.

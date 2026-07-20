@@ -27,7 +27,7 @@ import { DocumentsPanel } from '@/components/documents/DocumentsPanel';
 import { InlineEditModal } from '@/components/InlineEditModal';
 import { CustomColumnFields } from '@/components/CustomColumnFields';
 import { OpportunityPipelineProgress } from './OpportunityPipelineProgress';
-import { ACTION_ITEM_STATUS_OPTIONS, OPPORTUNITY_STAGE_OPTIONS } from '@/constants';
+import { ACTION_ITEM_STATUS_OPTIONS, OPPORTUNITY_STAGE_OPTIONS, stageChangePatch } from '@/constants';
 import {
   ACTION_STATUS_COLORS,
   BackButton,
@@ -157,6 +157,13 @@ export const OpportunityDetailsView: React.FC = () => {
   const [closeReasonDraft, setCloseReasonDraft] = useState('');
   const [isClosingOpp, setIsClosingOpp] = useState(false);
 
+  // Blocked/Delayed reason dialog — mirrors the Won/Lost close-out experience but
+  // captures an *optional* reason into a dedicated field (blockedReason /
+  // delayedReason), kept separate from Risks & Dependencies.
+  const [stageReasonDialog, setStageReasonDialog] = useState<{ stage: 'Blocked' | 'Delayed' } | null>(null);
+  const [stageReasonDraft, setStageReasonDraft] = useState('');
+  const [isSavingStageReason, setIsSavingStageReason] = useState(false);
+
   // Edit Opportunity Modal state — shares InlineEditModal with the
   // Opportunities page and Account Detail view so all three entry points
   // render an identical edit experience.
@@ -238,7 +245,7 @@ export const OpportunityDetailsView: React.FC = () => {
   const oppActions = actionItems.filter(ai => ai.opportunityId === opp.id);
   const oppComments = comments.filter(c => c.targetType === 'opportunity' && c.targetId === opp.id);
 
-  const stages: OpportunityStage[] = ['Lead', 'Qualified', 'Proposal', 'Negotiation', 'Won'];
+  const stages: OpportunityStage[] = ['Lead', 'Qualified', 'Proposal', 'Negotiation', 'Verbal Agreement', 'Won'];
   const currentStageIdx = stages.indexOf(opp.stage);
 
   const formatCur = (val: number) =>
@@ -484,11 +491,15 @@ export const OpportunityDetailsView: React.FC = () => {
                       onChange={(e) => {
                         const stage = e.target.value as OpportunityStage;
                         if (stage === 'Won' || stage === 'Lost') {
-                          // Winning/losing the deal requires a reason — captured in the close-out dialog.
+                          // Winning/losing the deal captures a win/loss reason in the close-out dialog.
                           setCloseReasonDraft(opp.closeReason || '');
                           setCloseDialog({ outcome: stage, stage });
+                        } else if (stage === 'Blocked' || stage === 'Delayed') {
+                          // Blocked/Delayed capture an optional reason in a dedicated dialog.
+                          setStageReasonDraft((stage === 'Blocked' ? opp.blockedReason : opp.delayedReason) || '');
+                          setStageReasonDialog({ stage });
                         } else {
-                          updateOpportunity({ ...opp, stage });
+                          updateOpportunity({ ...opp, ...stageChangePatch(stage) });
                         }
                       }}
                       className="text-xs border border-slate-200 rounded-lg p-2 bg-white font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
@@ -502,7 +513,13 @@ export const OpportunityDetailsView: React.FC = () => {
               }
               padding="compact"
             >
-              <OpportunityPipelineProgress stage={opp.stage} />
+              <OpportunityPipelineProgress
+                stage={opp.stage}
+                probability={opp.probability}
+                closeReason={opp.closeReason}
+                blockedReason={opp.blockedReason}
+                delayedReason={opp.delayedReason}
+              />
             </Card>
 
             {/* Opportunity Details & Scope — grouped into clearly separated sections;
@@ -1131,12 +1148,16 @@ export const OpportunityDetailsView: React.FC = () => {
         onClose={() => setCloseDialog(null)}
         onSubmit={async (e) => {
           e.preventDefault();
-          if (!closeReasonDraft.trim() || !closeDialog) return;
+          if (!closeDialog) return;
+          // The win/loss reason is optional — captured when provided.
           setIsClosingOpp(true);
           try {
             await updateOpportunity({
               ...opp,
-              stage: closeDialog.stage,
+              // The close target is the chosen outcome (Won/Lost) regardless of
+              // entry point; deriving the stage + default probability from it
+              // keeps the header "Mark Lost" and the stage dropdown consistent.
+              ...stageChangePatch(closeDialog.outcome),
               closeReason: closeReasonDraft.trim(),
             });
             setCloseDialog(null);
@@ -1151,11 +1172,10 @@ export const OpportunityDetailsView: React.FC = () => {
       >
         <div className="space-y-2">
           <label className="text-label font-semibold text-slate-600 uppercase tracking-wide block">
-            {closeDialog?.outcome === 'Won' ? 'Win Reason' : 'Loss Reason'} <span className="text-red-500">*</span>
+            {closeDialog?.outcome === 'Won' ? 'Win Reason' : 'Loss Reason'}
           </label>
           <textarea
             autoFocus
-            required
             rows={3}
             value={closeReasonDraft}
             onChange={(e) => setCloseReasonDraft(e.target.value)}
@@ -1166,6 +1186,54 @@ export const OpportunityDetailsView: React.FC = () => {
           />
           <p className="text-[10px] text-slate-400 font-medium">
             Recorded on the opportunity for win/loss analysis.
+          </p>
+        </div>
+      </FormModal>
+
+      {/* Blocked/Delayed reason dialog — optional reason, kept independent of
+          Risks & Dependencies. Same UX pattern as the Won/Lost close-out. */}
+      <FormModal
+        isOpen={!!stageReasonDialog}
+        title={stageReasonDialog?.stage === 'Blocked' ? 'Mark Opportunity as Blocked' : 'Mark Opportunity as Delayed'}
+        onClose={() => setStageReasonDialog(null)}
+        onSubmit={async (e) => {
+          e.preventDefault();
+          if (!stageReasonDialog) return;
+          setIsSavingStageReason(true);
+          try {
+            await updateOpportunity({
+              ...opp,
+              stage: stageReasonDialog.stage,
+              ...(stageReasonDialog.stage === 'Blocked'
+                ? { blockedReason: stageReasonDraft.trim() }
+                : { delayedReason: stageReasonDraft.trim() }),
+            });
+            setStageReasonDialog(null);
+          } finally {
+            setIsSavingStageReason(false);
+          }
+        }}
+        submitLabel={isSavingStageReason ? 'Saving…' : `Mark ${stageReasonDialog?.stage ?? ''}`}
+        submitVariant="warning"
+        isSubmitting={isSavingStageReason}
+        maxWidth="max-w-md"
+      >
+        <div className="space-y-2">
+          <label className="text-label font-semibold text-slate-600 uppercase tracking-wide block">
+            {stageReasonDialog?.stage === 'Blocked' ? 'Blocked Reason' : 'Delayed Reason'}
+          </label>
+          <textarea
+            autoFocus
+            rows={3}
+            value={stageReasonDraft}
+            onChange={(e) => setStageReasonDraft(e.target.value)}
+            placeholder={stageReasonDialog?.stage === 'Blocked'
+              ? 'Describe why this opportunity is currently blocked...'
+              : 'Describe why this opportunity has been delayed...'}
+            className={`${INPUT_CLS} resize-none`}
+          />
+          <p className="text-[10px] text-slate-400 font-medium">
+            Optional — separate from Risks &amp; Dependencies.
           </p>
         </div>
       </FormModal>

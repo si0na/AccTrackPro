@@ -6,7 +6,7 @@
 import React from 'react';
 import { TrendingUp } from 'lucide-react';
 import type { Account, ColumnConfig, CustomColumn, Opportunity, OpportunityStage, Stakeholder } from '@/types';
-import { OPPORTUNITY_STAGE_OPTIONS } from '@/constants';
+import { OPPORTUNITY_STAGE_OPTIONS, stageChangePatch } from '@/constants';
 import { NumberInput } from '@/components/NumberInput';
 import { AopYearFields } from '@/components/AopYearFields';
 import { StakeholderAssignmentFields } from '@/components/StakeholderAssignmentFields';
@@ -115,7 +115,7 @@ export const OpportunityFormModal: React.FC<OpportunityFormModalProps> = ({
           <FormField label="Stage">
             <select
               value={value.stage}
-              onChange={(e) => onChange({ stage: e.target.value as OpportunityStage })}
+              onChange={(e) => onChange(stageChangePatch(e.target.value as OpportunityStage))}
               className={SELECT_CLS}
             >
               {OPPORTUNITY_STAGE_OPTIONS.map((s) => (
@@ -141,18 +141,45 @@ export const OpportunityFormModal: React.FC<OpportunityFormModalProps> = ({
           />
         </FormGrid>
 
-        {/* Win/Loss reason — required when the deal is created already closed */}
+        {/* Win/Loss reason — optional; captured when available for win/loss analysis */}
         {(value.stage === 'Won' || value.stage === 'Lost') && (
           <FormGrid className="mt-4">
-            <FormField label={value.stage === 'Won' ? 'Win Reason' : 'Loss Reason'} required wide>
+            <FormField label={value.stage === 'Won' ? 'Win Reason' : 'Loss Reason'} wide>
               <textarea
-                required
                 rows={2}
                 value={value.closeReason ?? ''}
                 onChange={(e) => onChange({ closeReason: e.target.value })}
                 placeholder={value.stage === 'Won'
                   ? 'e.g., Strong technical fit and competitive pricing'
                   : 'e.g., Lost to competitor on price'}
+                className={`${INPUT_CLS} resize-none`}
+              />
+            </FormField>
+          </FormGrid>
+        )}
+
+        {/* Blocked/Delayed reason — optional; a distinct concept from Risks & Dependencies */}
+        {value.stage === 'Blocked' && (
+          <FormGrid className="mt-4">
+            <FormField label="Blocked Reason" wide>
+              <textarea
+                rows={2}
+                value={value.blockedReason ?? ''}
+                onChange={(e) => onChange({ blockedReason: e.target.value })}
+                placeholder="Describe why this opportunity is currently blocked..."
+                className={`${INPUT_CLS} resize-none`}
+              />
+            </FormField>
+          </FormGrid>
+        )}
+        {value.stage === 'Delayed' && (
+          <FormGrid className="mt-4">
+            <FormField label="Delayed Reason" wide>
+              <textarea
+                rows={2}
+                value={value.delayedReason ?? ''}
+                onChange={(e) => onChange({ delayedReason: e.target.value })}
+                placeholder="Describe why this opportunity has been delayed..."
                 className={`${INPUT_CLS} resize-none`}
               />
             </FormField>

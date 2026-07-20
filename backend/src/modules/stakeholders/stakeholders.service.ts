@@ -3,6 +3,10 @@ import { DatabaseService } from '../../database/database.service';
 import { FilterContextService, FilterParams } from '../../common/services/filter-context.service';
 import { NotificationEventBus } from '../../common/events/notification-event-bus.service';
 import { Stakeholder } from '../../types';
+import { validateDto } from '../../common/utils/validate-dto.util';
+import { CreateStakeholderDto } from './dto/stakeholder.dto';
+import { STAKEHOLDER_FIELDS } from '../import-export/import-field-schemas';
+import { BulkModuleAdapter } from '../import-export/bulk-adapter';
 
 function rowToStakeholder(row: any): Stakeholder {
   const { is_deleted, created_at, updated_at, account_id, account_name, stakeholder_type, ...base } = row;
@@ -23,6 +27,46 @@ export class StakeholdersService {
     private readonly filter: FilterContextService,
     private readonly bus: NotificationEventBus,
   ) {}
+
+  /**
+   * Bulk adapter used by the Global Import/Export service. Each stakeholder row
+   * is validated against CreateStakeholderDto and created/updated via the
+   * standard paths, so account relational checks, per-account email uniqueness,
+   * audit activity and notifications all apply per row. Duplicates are matched
+   * by email within the account (case-insensitive), scoped to the requesting
+   * user's accounts. The Account reference (name → id, incl. a parent defined in
+   * the same workbook) is resolved centrally by the global service beforehand.
+   */
+  bulkAdapter(userId: string): BulkModuleAdapter {
+    return {
+      moduleKey: 'stakeholders',
+      fields: STAKEHOLDER_FIELDS,
+      validate: (row) => validateDto(CreateStakeholderDto, row),
+      naturalKey: (row) =>
+        row.accountId && row.email ? `${row.accountId}::${String(row.email).trim().toLowerCase()}` : null,
+      findExistingId: (row) => this.findActiveByEmail(row.accountId, row.email, userId),
+      create: (row) => this.create(row, userId),
+      update: (id, row) => this.update(id, row, userId),
+    };
+  }
+
+  private async findActiveByEmail(
+    accountId?: string,
+    email?: string,
+    ownerId?: string,
+  ): Promise<string | null> {
+    const e = String(email ?? '').trim().toLowerCase();
+    if (!accountId || !e) return null;
+    const { rows } = await this.db.query(
+      `SELECT s.id FROM stakeholders s
+       INNER JOIN accounts a ON s.account_id = a.id
+       WHERE s.account_id = $1 AND LOWER(s.email) = $2 AND s.is_deleted = FALSE
+         AND ($3::TEXT IS NULL OR a.owner_id = $3)
+       LIMIT 1`,
+      [accountId, e, ownerId ?? null],
+    );
+    return rows[0]?.id ?? null;
+  }
 
   /** Returns the UUID of the account's owner (owner_id FK). */
   private async accountOwner(accountId: string): Promise<string | null> {

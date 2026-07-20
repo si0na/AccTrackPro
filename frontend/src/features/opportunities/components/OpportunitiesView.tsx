@@ -13,7 +13,7 @@ import { OpportunityFormModal } from '@/features/opportunities/components/Opport
 import { renderOpportunityCell } from '@/features/opportunities/components/OpportunityTableCells';
 import { InlineEditModal } from '@/components/InlineEditModal';
 import { LoadingState } from '@/components/common/LoadingState';
-import { OPPORTUNITY_STAGE_OPTIONS } from '@/constants';
+import { OPPORTUNITY_STAGE_OPTIONS, STAGE_DEFAULT_PROBABILITY } from '@/constants';
 import { compareForSort, deriveOppStatus, SortDirection } from '@/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -139,7 +139,7 @@ export const OpportunitiesView: React.FC = () => {
     stage: 'Lead',
     value: 0,
     crmValue: 0,
-    probability: 0,
+    probability: STAGE_DEFAULT_PROBABILITY.Lead ?? 0,
     closeDate: '',
     description: '',
     startDate: '',
@@ -194,7 +194,7 @@ export const OpportunitiesView: React.FC = () => {
       stage: 'Lead',
       value: 0,
       crmValue: 0,
-      probability: 0,
+      probability: STAGE_DEFAULT_PROBABILITY.Lead ?? 0,
       owner: '',
       closeDate: '',
       description: '',
