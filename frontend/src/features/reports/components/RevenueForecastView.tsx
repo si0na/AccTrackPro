@@ -122,7 +122,7 @@ export const RevenueForecastView: React.FC = () => {
       : '0%';
 
     // Pipeline by stage — weighted forecast and raw pipeline per stage
-    const stages = ['Lead', 'Qualified', 'Proposal', 'Negotiation', 'Won', 'Blocked', 'Delayed', 'Lost'];
+    const stages = ['Lead', 'Qualified', 'Proposal', 'Negotiation', 'Verbal Agreement', 'Won', 'Blocked', 'Delayed', 'Lost'];
     const stageRows = stages.map(stage => {
       const stageOpps = filteredOpps.filter(o => o.stage === stage);
       const rawPipeline = stageOpps.reduce((s, o) => s + o.value, 0);

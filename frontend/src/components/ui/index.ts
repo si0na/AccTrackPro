@@ -100,3 +100,9 @@ export type { TextPreviewCellProps } from './TextPreviewCell';
 
 export { ExpandableTextCell } from './ExpandableTextCell';
 export type { ExpandableTextCellProps } from './ExpandableTextCell';
+
+export { SearchableSelect } from './SearchableSelect';
+export type { SearchableSelectProps } from './SearchableSelect';
+
+export { InlineCreateField } from './InlineCreateField';
+export type { InlineCreateFieldProps } from './InlineCreateField';

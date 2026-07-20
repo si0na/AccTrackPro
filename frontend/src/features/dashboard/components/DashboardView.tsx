@@ -5,6 +5,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
+import { OPPORTUNITY_STAGE_STYLE } from '@/constants';
 import { deriveOppStatus, isDueThisWeek, isOpenActionItemStatus } from '@/utils';
 import {
   Building2,
@@ -39,18 +40,21 @@ import {
 } from '@/components/ui';
 
 // Every valid `stage` value, shown as its own bar in the pipeline below.
-const STAGE_ORDER = ['Lead', 'Qualified', 'Proposal', 'Negotiation', 'Won', 'Blocked', 'Delayed', 'Lost'] as const;
+const STAGE_ORDER = ['Lead', 'Qualified', 'Proposal', 'Negotiation', 'Verbal Agreement', 'Won', 'Blocked', 'Delayed', 'Lost'] as const;
 
-// One distinct color per stage, driving the row's icon avatar and bar fill.
-const STAGE_STYLE: Record<(typeof STAGE_ORDER)[number], { bar: string; iconBg: string; iconText: string; description: string }> = {
-  Lead:        { bar: 'bg-blue-600',    iconBg: 'bg-blue-100',    iconText: 'text-blue-600',    description: 'New inquiries' },
-  Qualified:   { bar: 'bg-indigo-500',  iconBg: 'bg-indigo-100',  iconText: 'text-indigo-600',  description: 'Qualified leads' },
-  Proposal:    { bar: 'bg-violet-500',  iconBg: 'bg-violet-100',  iconText: 'text-violet-600',  description: 'Proposal presented' },
-  Negotiation: { bar: 'bg-rose-500',    iconBg: 'bg-rose-100',    iconText: 'text-rose-600',    description: 'Under negotiation' },
-  Won:         { bar: 'bg-emerald-500', iconBg: 'bg-emerald-100', iconText: 'text-emerald-600', description: 'Successfully closed' },
-  Blocked:     { bar: 'bg-orange-500',  iconBg: 'bg-orange-100',  iconText: 'text-orange-600',  description: 'Currently blocked' },
-  Delayed:     { bar: 'bg-amber-500',   iconBg: 'bg-amber-100',   iconText: 'text-amber-600',   description: 'Delayed opportunities' },
-  Lost:        { bar: 'bg-red-500',     iconBg: 'bg-red-100',     iconText: 'text-red-600',     description: 'Unsuccessful' },
+// Per-stage descriptions for the pipeline rows. Colours come from the shared
+// OPPORTUNITY_STAGE_STYLE token so the Dashboard and Reports pipelines stay in
+// lockstep (icon avatar + bar fill identical for the same stage everywhere).
+const STAGE_DESCRIPTION: Record<(typeof STAGE_ORDER)[number], string> = {
+  Lead:               'New inquiries',
+  Qualified:          'Qualified leads',
+  Proposal:           'Proposal presented',
+  Negotiation:        'Under negotiation',
+  'Verbal Agreement': 'Verbally agreed',
+  Won:                'Successfully closed',
+  Blocked:            'Currently blocked',
+  Delayed:            'Delayed opportunities',
+  Lost:               'Unsuccessful',
 };
 
 // Every bar gets a floor width so a small-but-nonzero count still renders a
@@ -150,15 +154,15 @@ export const DashboardView: React.FC = () => {
   const funnelStages = STAGE_ORDER.map((stage, i) => ({
     key: stage,
     label: stage,
-    description: STAGE_STYLE[stage].description,
+    description: STAGE_DESCRIPTION[stage],
     count: stageCounts[i],
     value: stageValues[i],
     // 0 opportunities → 0% width (no fill). Otherwise proportional, with a
     // floor so a small-but-nonzero bar stays visible.
     pct: stageCounts[i] === 0 ? 0 : Math.min(100, Math.max(MIN_BAR_PCT, (stageCounts[i] / maxStageCount) * 100)),
-    fill: STAGE_STYLE[stage].bar,
-    iconBg: STAGE_STYLE[stage].iconBg,
-    iconText: STAGE_STYLE[stage].iconText,
+    fill: OPPORTUNITY_STAGE_STYLE[stage].bar,
+    iconBg: OPPORTUNITY_STAGE_STYLE[stage].iconBg,
+    iconText: OPPORTUNITY_STAGE_STYLE[stage].iconText,
     onClick: () => {
       setSelectedStage(stage);
       setDashboardStageHighlight(stage);
@@ -315,15 +319,6 @@ export const DashboardView: React.FC = () => {
           <Card
             title="Opportunity Pipeline"
             subtitle="Track your opportunities across every stage of the sales process."
-            actions={
-              <button
-                type="button"
-                onClick={() => setView('opportunities', { fromDashboard: true })}
-                className="text-xs font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 rounded"
-              >
-                View Pipeline Report <ChevronRight className="w-3.5 h-3.5" />
-              </button>
-            }
             className="flex-1 flex flex-col"
             bodyClassName="flex-1 flex flex-col min-h-0"
           >

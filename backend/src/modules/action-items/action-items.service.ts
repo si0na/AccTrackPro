@@ -5,6 +5,10 @@ import { NotificationEventBus } from '../../common/events/notification-event-bus
 import { ActionItem } from '../../types';
 import { resolveOwnerName, extractCustomData } from '../../common/utils/db-mapping.util';
 import { Pagination, Paginated, extractTotal } from '../../common/utils/pagination.util';
+import { validateDto } from '../../common/utils/validate-dto.util';
+import { CreateActionItemDto } from './dto/action-item.dto';
+import { ACTION_ITEM_FIELDS } from '../import-export/import-field-schemas';
+import { BulkModuleAdapter } from '../import-export/bulk-adapter';
 
 // 'financialYear'/'quarter' remain listed so payloads from older clients are
 // stripped instead of leaking into custom_data — fiscal periods are derived
@@ -61,6 +65,45 @@ export class ActionItemsService {
     private readonly filter: FilterContextService,
     private readonly bus: NotificationEventBus,
   ) {}
+
+  /**
+   * Bulk adapter used by the Global Import/Export service. Each action-item row
+   * is validated against CreateActionItemDto and created/updated via the
+   * standard paths, so account/opportunity relational checks, custom_data, audit
+   * activity and notifications all apply per row. Duplicates are matched by
+   * (title, account) within the requesting user's scope. The Account and
+   * optional Opportunity references (incl. parents defined in the same workbook)
+   * are resolved centrally by the global service before these hooks run.
+   */
+  bulkAdapter(userId: string): BulkModuleAdapter {
+    return {
+      moduleKey: 'actionItems',
+      fields: ACTION_ITEM_FIELDS,
+      validate: (row) => validateDto(CreateActionItemDto, row),
+      naturalKey: (row) =>
+        row.accountId && row.title ? `${row.accountId}::${String(row.title).trim().toLowerCase()}` : null,
+      findExistingId: (row) => this.findActiveByTitleAndAccount(row.title, row.accountId, userId),
+      create: (row) => this.create({ ...row, ownerId: userId }),
+      update: (id, row) => this.update(id, row, userId),
+    };
+  }
+
+  private async findActiveByTitleAndAccount(
+    title?: string,
+    accountId?: string,
+    ownerId?: string,
+  ): Promise<string | null> {
+    const t = String(title ?? '').trim();
+    if (!t || !accountId) return null;
+    const { rows } = await this.db.query(
+      `SELECT id FROM action_items
+       WHERE LOWER(TRIM(title)) = LOWER($1) AND account_id = $2 AND is_deleted = FALSE
+         AND ($3::TEXT IS NULL OR owner_id = $3)
+       LIMIT 1`,
+      [t, accountId, ownerId ?? null],
+    );
+    return rows[0]?.id ?? null;
+  }
 
   /** Row mapper that derives financialYear/quarter labels from due_date. */
   private async mapper(ctx?: FiscalContext): Promise<(row: any) => ActionItem> {

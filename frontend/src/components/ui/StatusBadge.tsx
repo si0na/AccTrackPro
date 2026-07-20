@@ -61,6 +61,7 @@ export const ACCOUNT_TYPE_COLORS: Record<AccountType, string> = {
 
 export const STAGE_COLORS: Record<OpportunityStage, string> = {
   Won: 'bg-green-100 text-green-700',
+  'Verbal Agreement': 'bg-teal-100 text-teal-700',
   Negotiation: 'bg-blue-100 text-blue-700',
   Proposal: 'bg-purple-100 text-purple-700',
   Qualified: 'bg-yellow-100 text-yellow-700',

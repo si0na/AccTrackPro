@@ -2,5 +2,5 @@ import { Module } from '@nestjs/common';
 import { ActionItemsController } from './action-items.controller';
 import { ActionItemsService } from './action-items.service';
 
-@Module({ controllers: [ActionItemsController], providers: [ActionItemsService] })
+@Module({ controllers: [ActionItemsController], providers: [ActionItemsService], exports: [ActionItemsService] })
 export class ActionItemsModule {}

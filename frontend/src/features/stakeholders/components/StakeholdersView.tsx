@@ -142,9 +142,11 @@ export const StakeholdersView: React.FC = () => {
         title="Stakeholders Directory"
         subtitle="Keep record of client executives, their corporate influence, and relationship health."
         actions={
-          <Button size="md" icon={<Plus className="w-4 h-4" />} onClick={() => setIsModalOpen(true)}>
-            Add Stakeholder
-          </Button>
+          <>
+            <Button size="md" icon={<Plus className="w-4 h-4" />} onClick={() => setIsModalOpen(true)}>
+              Add Stakeholder
+            </Button>
+          </>
         }
       />
 
@@ -230,10 +232,14 @@ export const StakeholdersView: React.FC = () => {
                       <TableCell className="text-slate-500 font-semibold">{s.department || '—'}</TableCell>
                       <TableCell className="text-slate-500 font-semibold">{s.designation}</TableCell>
                       <TableCell align="center">
-                        <StatusBadge value={s.influence} colorMap={INFLUENCE_COLORS} shape="rounded" />
+                        {s.stakeholderType === 'SERVICE_PROVIDER'
+                          ? <span className="text-slate-300">—</span>
+                          : <StatusBadge value={s.influence} colorMap={INFLUENCE_COLORS} shape="rounded" />}
                       </TableCell>
                       <TableCell align="center">
-                        <StatusBadge value={s.relationship} colorMap={RELATIONSHIP_COLORS} />
+                        {s.stakeholderType === 'SERVICE_PROVIDER'
+                          ? <span className="text-slate-300">—</span>
+                          : <StatusBadge value={s.relationship} colorMap={RELATIONSHIP_COLORS} />}
                       </TableCell>
                       <TableCell className="select-all text-slate-500 hover:text-blue-500 transition-colors">
                         <a href={`mailto:${s.email}`} className="flex items-center space-x-1 font-semibold">
@@ -320,10 +326,14 @@ export const StakeholdersView: React.FC = () => {
                     <TableCell className="text-slate-400">{s.department || '—'}</TableCell>
                     <TableCell className="text-slate-400">{s.designation}</TableCell>
                     <TableCell align="center">
-                      <StatusBadge value={s.influence} colorMap={INFLUENCE_COLORS} shape="rounded" muted />
+                      {s.stakeholderType === 'SERVICE_PROVIDER'
+                        ? <span className="text-slate-300">—</span>
+                        : <StatusBadge value={s.influence} colorMap={INFLUENCE_COLORS} shape="rounded" muted />}
                     </TableCell>
                     <TableCell align="center">
-                      <StatusBadge value={s.relationship} colorMap={RELATIONSHIP_COLORS} muted />
+                      {s.stakeholderType === 'SERVICE_PROVIDER'
+                        ? <span className="text-slate-300">—</span>
+                        : <StatusBadge value={s.relationship} colorMap={RELATIONSHIP_COLORS} muted />}
                     </TableCell>
                     <TableCell className="text-slate-400 text-[10px] font-mono">{s.email}</TableCell>
                   </TableRow>

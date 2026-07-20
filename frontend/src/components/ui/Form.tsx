@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Modal, ModalFooter } from './Modal';
 import { Button } from './Button';
+import { ConfirmDialog } from './ConfirmDialog';
 
 /** Standard text/select/date input classes for form controls. */
 export const INPUT_CLS =
@@ -105,6 +106,14 @@ export interface FormModalProps {
  * Standard create/edit dialog: accessible Modal + <form> + scrollable body +
  * Cancel/Submit footer. Every module's create and edit dialogs share this
  * layout so forms look and behave identically.
+ *
+ * Every close path that abandons the form — Escape, the header X, an overlay
+ * click, and the footer Cancel — routes through {@link requestClose}. When the
+ * user has edited any field, a "Discard changes?" confirmation is shown first
+ * so accidental key/click presses can't silently lose unsaved work; an
+ * untouched form still closes immediately. Submitting (which calls the parent's
+ * onClose directly) is unaffected. Because this lives in the shared FormModal,
+ * every current and future form dialog inherits the behaviour automatically.
  */
 export const FormModal: React.FC<FormModalProps> = ({
   isOpen,
@@ -118,18 +127,90 @@ export const FormModal: React.FC<FormModalProps> = ({
   submitVariant = 'primary',
   maxWidth = 'max-w-lg',
   children,
-}) => (
-  <Modal isOpen={isOpen} title={title} icon={icon} onClose={onClose} maxWidth={maxWidth}>
-    <form onSubmit={onSubmit} className="flex flex-col">
-      <div className="p-6 sm:p-7 space-y-5 text-xs">{children}</div>
-      <ModalFooter>
-        <Button variant="secondary" onClick={onClose} disabled={isSubmitting}>
-          {cancelLabel}
-        </Button>
-        <Button type="submit" variant={submitVariant} disabled={isSubmitting}>
-          {isSubmitting ? 'Saving…' : submitLabel}
-        </Button>
-      </ModalFooter>
-    </form>
-  </Modal>
-);
+}) => {
+  // A real user edit (typing, toggling, selecting) bubbles a native input/
+  // change event up to the <form>; a programmatic reseed of the draft on open
+  // does not. So this ref flips to true only on genuine user modification —
+  // added, edited, or cleared values alike — never from the form being
+  // populated. Kept in a ref (not state) so marking dirty never re-renders.
+  const dirtyRef = useRef(false);
+  const [showDiscard, setShowDiscard] = useState(false);
+
+  // Reset per open/close so a reused instance never carries dirty state or a
+  // stale confirmation across separate open sessions.
+  useEffect(() => {
+    dirtyRef.current = false;
+    setShowDiscard(false);
+  }, [isOpen]);
+
+  const markDirty = () => {
+    dirtyRef.current = true;
+  };
+
+  // Escape, the X button, overlay clicks, and footer Cancel all funnel here so
+  // every abandon-the-form action behaves identically: confirm when dirty,
+  // close immediately when clean.
+  const requestClose = () => {
+    if (dirtyRef.current) setShowDiscard(true);
+    else onClose();
+  };
+
+  const discardAndClose = () => {
+    setShowDiscard(false);
+    onClose();
+  };
+
+  // A FormModal can be nested inside another form's React tree — e.g. the inline
+  // "Create Stakeholder" dialog opened from within the Opportunity form. That
+  // child dialog is portaled out of the parent's DOM, but React still bubbles
+  // its synthetic `submit` (and input/change) events up the *component* tree to
+  // the ancestor <form>. Without stopping propagation here, submitting the child
+  // would also fire the parent form's onSubmit — silently creating the parent
+  // record. Stop these events at the form boundary so each FormModal owns its
+  // own submit/dirty state. Harmless (a no-op) for top-level, non-nested modals.
+  const handleSubmit = (e: React.FormEvent) => {
+    e.stopPropagation();
+    onSubmit(e);
+  };
+  const handleDirty = (e: React.FormEvent) => {
+    e.stopPropagation();
+    markDirty();
+  };
+
+  return (
+    <>
+      <Modal isOpen={isOpen} title={title} icon={icon} onClose={requestClose} maxWidth={maxWidth}>
+        <form
+          onSubmit={handleSubmit}
+          onInput={handleDirty}
+          onChange={handleDirty}
+          className="flex flex-col h-full min-h-0"
+        >
+          <div className="flex-1 min-h-0 overflow-y-auto custom-scrollbar p-6 sm:p-7 space-y-5 text-xs">{children}</div>
+          <ModalFooter className="shrink-0">
+            <Button variant="secondary" onClick={requestClose} disabled={isSubmitting}>
+              {cancelLabel}
+            </Button>
+            <Button type="submit" variant={submitVariant} disabled={isSubmitting}>
+              {isSubmitting ? 'Saving…' : submitLabel}
+            </Button>
+          </ModalFooter>
+        </form>
+      </Modal>
+
+      {/* Discard-changes guard — reuses the app-wide confirmation dialog.
+          Cancel (focused by default) returns to the form with all data intact;
+          Discard Changes (destructive) closes the underlying form. */}
+      <ConfirmDialog
+        isOpen={showDiscard}
+        title="Discard Changes?"
+        message="You have unsaved changes. Are you sure you want to close this window? Any unsaved changes will be lost."
+        confirmLabel="Discard Changes"
+        cancelLabel="Cancel"
+        tone="danger"
+        onConfirm={discardAndClose}
+        onCancel={() => setShowDiscard(false)}
+      />
+    </>
+  );
+};

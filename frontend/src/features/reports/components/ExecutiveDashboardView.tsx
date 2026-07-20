@@ -8,6 +8,8 @@ import { useCRM } from '@/contexts/CRMContext';
 import { PeriodSelector } from './PeriodSelector';
 import { exportReportToPdf, exportCurrency, buildExportFileName } from '@/utils/exportReport';
 import { deriveOppStatus, isOpenActionItemStatus } from '@/utils';
+import { OPPORTUNITY_STAGE_STYLE } from '@/constants';
+import type { OpportunityStage } from '@/types';
 import {
   Download,
   ArrowUpRight,
@@ -121,26 +123,17 @@ export const ExecutiveDashboardView: React.FC = () => {
     }
   ];
 
-  // 2. Pipeline by Stage
-  const stages = ['Lead', 'Qualified', 'Proposal', 'Negotiation', 'Won', 'Blocked', 'Delayed', 'Lost'];
-  const colors = [
-    'bg-blue-500',
-    'bg-indigo-500',
-    'bg-purple-500',
-    'bg-pink-500',
-    'bg-emerald-500',
-    'bg-orange-500',
-    'bg-amber-500',
-    'bg-red-500',
-  ];
-  const stageData = stages.map((stage, i) => {
+  // 2. Pipeline by Stage — colours come from the shared OPPORTUNITY_STAGE_STYLE
+  // token so this pipeline stays identical to the Dashboard pipeline.
+  const stages: OpportunityStage[] = ['Lead', 'Qualified', 'Proposal', 'Negotiation', 'Verbal Agreement', 'Won', 'Blocked', 'Delayed', 'Lost'];
+  const stageData = stages.map((stage) => {
     const value = filteredOpps.filter(o => o.stage === stage).reduce((sum, o) => sum + o.value, 0);
     const pct = totalPipelineValue > 0 ? Math.round((value / totalPipelineValue) * 100) : 0;
     return {
       stage,
       val: formatCurrency(value),
       pct,
-      color: colors[i]
+      color: OPPORTUNITY_STAGE_STYLE[stage].bar
     };
   });
 

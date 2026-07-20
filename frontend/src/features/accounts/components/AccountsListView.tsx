@@ -10,8 +10,8 @@ import { Plus, Building2, Settings2, HeartPulse, X } from 'lucide-react';
 import { CustomizeColumnsSidebar } from '@/components/table/CustomizeColumnsSidebar';
 import { InlineEditModal } from '@/components/InlineEditModal';
 import { LoadingState } from '@/components/common/LoadingState';
-import { compareForSort, SortDirection } from '@/utils';
-import { ACCOUNT_TYPE_OPTIONS, ACCOUNT_HEALTH_OPTIONS } from '@/constants';
+import { compareForSort, getCustomerSinceYearOptions, mapLocationToOption, SortDirection } from '@/utils';
+import { ACCOUNT_TYPE_OPTIONS, ACCOUNT_HEALTH_OPTIONS, LOCATION_OPTIONS } from '@/constants';
 import {
   ACCOUNT_TYPE_COLORS,
   BackButton,
@@ -33,6 +33,7 @@ import {
   Pagination,
   RestoreButton,
   RestoreDialog,
+  SearchableSelect,
   SearchBar,
   SELECT_CLS,
   SortableHeader,
@@ -479,7 +480,7 @@ export const AccountsListView: React.FC = () => {
                       <TableActions
                         entityLabel={`account ${acc.name}`}
                         onView={() => handleRowClick(acc.id)}
-                        onEdit={() => { setEditingAccount({ ...acc }); setIsEditModalOpen(true); }}
+                        onEdit={() => { setEditingAccount({ ...acc, location: mapLocationToOption(acc.location) }); setIsEditModalOpen(true); }}
                         onDelete={() => setDeleteTarget({ id: acc.id, label: acc.name })}
                       />
                     </TableCell>
@@ -661,22 +662,22 @@ export const AccountsListView: React.FC = () => {
               </FormField>
 
               <FormField label="Customer Since (Optional)">
-                <input
-                  type="text"
+                <SearchableSelect
                   value={newAccount.since || ''}
-                  onChange={(e) => setNewAccount({ ...newAccount, since: e.target.value })}
-                  placeholder="e.g., 2020"
-                  className={INPUT_CLS}
+                  onChange={(since) => setNewAccount({ ...newAccount, since })}
+                  options={getCustomerSinceYearOptions()}
+                  placeholder="Select year…"
+                  aria-label="Customer since year"
                 />
               </FormField>
 
               <FormField label="Location (Optional)">
-                <input
-                  type="text"
+                <SearchableSelect
                   value={newAccount.location || ''}
-                  onChange={(e) => setNewAccount({ ...newAccount, location: e.target.value })}
-                  placeholder="e.g., San Francisco, CA"
-                  className={INPUT_CLS}
+                  onChange={(location) => setNewAccount({ ...newAccount, location })}
+                  options={LOCATION_OPTIONS}
+                  placeholder="Search countries…"
+                  aria-label="Account location"
                 />
               </FormField>
             </FormGrid>

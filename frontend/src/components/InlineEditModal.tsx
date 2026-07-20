@@ -1,9 +1,11 @@
 import React, { useMemo } from 'react';
 import { Pencil } from 'lucide-react';
-import { FormField, FormGrid, FormModal, FormSection, INPUT_CLS_AMBER } from '@/components/ui';
+import { FormField, FormGrid, FormModal, FormSection, INPUT_CLS_AMBER, SearchableSelect } from '@/components/ui';
 import { NumberInput } from '@/components/NumberInput';
 import { AopYearFields } from '@/components/AopYearFields';
-import { ACTION_ITEM_STATUS_OPTIONS, OPPORTUNITY_STAGE_OPTIONS, OPPORTUNITY_TYPE_OPTIONS, SERVICE_LINE_OPTIONS, ACCOUNT_TYPE_OPTIONS, ACCOUNT_HEALTH_OPTIONS } from '@/constants';
+import { StakeholderAssignmentFields } from '@/components/StakeholderAssignmentFields';
+import { getCustomerSinceYearOptions } from '@/utils';
+import { ACTION_ITEM_STATUS_OPTIONS, OPPORTUNITY_STAGE_OPTIONS, OPPORTUNITY_TYPE_OPTIONS, SERVICE_LINE_OPTIONS, ACCOUNT_TYPE_OPTIONS, ACCOUNT_HEALTH_OPTIONS, LOCATION_OPTIONS, stageChangePatch } from '@/constants';
 import type {
   Account,
   Opportunity,
@@ -142,11 +144,25 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
 
       case 'location':
         return (
-          <input
-            type="text"
+          <SearchableSelect
             value={val ?? ''}
-            onChange={(e) => onChange({ location: e.target.value })}
-            className={inputCls}
+            onChange={(location) => onChange({ location })}
+            options={LOCATION_OPTIONS}
+            placeholder="Search countries…"
+            tone="amber"
+            aria-label="Account location"
+          />
+        );
+
+      case 'since':
+        return (
+          <SearchableSelect
+            value={val ?? ''}
+            onChange={(since) => onChange({ since })}
+            options={getCustomerSinceYearOptions()}
+            placeholder="Select year…"
+            tone="amber"
+            aria-label="Customer since year"
           />
         );
 
@@ -227,29 +243,16 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
         );
       }
 
-      case 'clientStakeholderId':
-      case 'serviceProviderStakeholderId': {
-        const expectedType = key === 'clientStakeholderId' ? 'CLIENT' : 'SERVICE_PROVIDER';
-        const options = stakeholders.filter((s) => s.accountId === entity.accountId && s.stakeholderType === expectedType);
-        return (
-          <select
-            value={val ?? ''}
-            onChange={(e) => onChange({ [key]: e.target.value || undefined })}
-            className={`${inputCls} bg-white`}
-          >
-            <option value="">— None —</option>
-            {options.map((s) => (
-              <option key={s.id} value={s.id}>{s.name} ({s.designation})</option>
-            ))}
-          </select>
-        );
-      }
+      // Client/Service-Provider stakeholder assignment is rendered by the shared
+      // StakeholderAssignmentFields component (which also carries the inline
+      // "+ New Stakeholder" action) in the opportunity Stakeholders section
+      // below — it is never routed through renderInput.
 
       case 'stage':
         return (
           <select
             value={val ?? 'Lead'}
-            onChange={(e) => onChange({ stage: e.target.value as OpportunityStage })}
+            onChange={(e) => onChange(stageChangePatch(e.target.value as OpportunityStage))}
             className={`${inputCls} bg-white`}
           >
             {OPPORTUNITY_STAGE_OPTIONS.map((s) => (
@@ -261,7 +264,6 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
       case 'value':
         return (
           <NumberInput
-            required
             min={0}
             value={val}
             onValueChange={(v) => onChange({ value: v, crmValue: Math.round(v * 0.9) })}
@@ -503,18 +505,46 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
               </FormField>
             </FormGrid>
 
-            {/* Closing a deal requires a win/loss reason (enforced server-side too). */}
+            {/* Closing a deal captures an optional win/loss reason for analysis. */}
             {(entity.stage === 'Won' || entity.stage === 'Lost') && (
               <FormGrid>
-                <FormField label={entity.stage === 'Won' ? 'Win Reason' : 'Loss Reason'} required wide>
+                <FormField label={entity.stage === 'Won' ? 'Win Reason' : 'Loss Reason'} wide>
                   <textarea
-                    required
                     value={entity.closeReason ?? ''}
                     rows={2}
                     onChange={(e) => onChange({ closeReason: e.target.value })}
                     placeholder={entity.stage === 'Won'
                       ? 'e.g., Strong technical fit and competitive pricing'
                       : 'e.g., Lost to competitor on price'}
+                    className={`${inputCls} resize-none`}
+                  />
+                </FormField>
+              </FormGrid>
+            )}
+
+            {/* Blocked/Delayed capture an optional reason — a distinct concept
+                from Risks & Dependencies. */}
+            {entity.stage === 'Blocked' && (
+              <FormGrid>
+                <FormField label="Blocked Reason" wide>
+                  <textarea
+                    value={entity.blockedReason ?? ''}
+                    rows={2}
+                    onChange={(e) => onChange({ blockedReason: e.target.value })}
+                    placeholder="Describe why this opportunity is currently blocked..."
+                    className={`${inputCls} resize-none`}
+                  />
+                </FormField>
+              </FormGrid>
+            )}
+            {entity.stage === 'Delayed' && (
+              <FormGrid>
+                <FormField label="Delayed Reason" wide>
+                  <textarea
+                    value={entity.delayedReason ?? ''}
+                    rows={2}
+                    onChange={(e) => onChange({ delayedReason: e.target.value })}
+                    placeholder="Describe why this opportunity has been delayed..."
                     className={`${inputCls} resize-none`}
                   />
                 </FormField>
@@ -538,12 +568,21 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
 
           <FormSection title="Stakeholders">
             <FormGrid>
-              <FormField label="Client Stakeholder">
-                {renderInput(editCol('clientStakeholderId', 'Client Stakeholder'))}
-              </FormField>
-              <FormField label="Service Provider Stakeholder">
-                {renderInput(editCol('serviceProviderStakeholderId', 'Service Provider Stakeholder'))}
-              </FormField>
+              {/* Same shared assignment fields as the Create Opportunity dialog,
+                  so the inline "+ New Stakeholder" workflow (account + type
+                  pre-filled and locked, form preserved, new record auto-selected)
+                  is identical across every Opportunity create/edit entry point.
+                  `tone="amber"` matches the surrounding edit-modal inputs. */}
+              <StakeholderAssignmentFields
+                accountId={entity.accountId}
+                stakeholders={stakeholders}
+                value={{
+                  clientStakeholderId: entity.clientStakeholderId,
+                  serviceProviderStakeholderId: entity.serviceProviderStakeholderId,
+                }}
+                onChange={onChange}
+                tone="amber"
+              />
             </FormGrid>
           </FormSection>
 
