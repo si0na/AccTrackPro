@@ -188,7 +188,7 @@ export const OpportunityFormModal: React.FC<OpportunityFormModalProps> = ({
       </FormSection>
 
       <FormSection title="Timeline & Value">
-        <FormGrid columns={3}>
+        <FormGrid columns={2}>
           <FormField label="Deal Value ($)">
             <NumberInput
               min={0}
@@ -198,22 +198,47 @@ export const OpportunityFormModal: React.FC<OpportunityFormModalProps> = ({
               className={INPUT_CLS}
             />
           </FormField>
+        </FormGrid>
+      </FormSection>
 
-          <FormField label="Start Date">
+      <FormSection title="Allocation Period">
+        <FormGrid columns={2}>
+          <FormField label="Allocation Start Date">
             <input
               type="date"
-              value={value.startDate}
-              onChange={(e) => onChange({ startDate: e.target.value })}
+              value={value.allocationStartDate}
+              onChange={(e) => onChange({ allocationStartDate: e.target.value })}
               className={`${INPUT_CLS} font-mono`}
             />
           </FormField>
 
-          <FormField label="Expected Close Date">
+          <FormField label="Allocation End Date">
             <input
               type="date"
-              min={new Date().toLocaleDateString('en-CA')}
-              value={value.closeDate}
-              onChange={(e) => onChange({ closeDate: e.target.value })}
+              value={value.allocationEndDate}
+              onChange={(e) => onChange({ allocationEndDate: e.target.value })}
+              className={`${INPUT_CLS} font-mono`}
+            />
+          </FormField>
+        </FormGrid>
+      </FormSection>
+
+      <FormSection title="Deal Period (Optional)">
+        <FormGrid columns={2}>
+          <FormField label="Deal Start Date">
+            <input
+              type="date"
+              value={value.dealStartDate ?? ''}
+              onChange={(e) => onChange({ dealStartDate: e.target.value || undefined })}
+              className={`${INPUT_CLS} font-mono`}
+            />
+          </FormField>
+
+          <FormField label="Deal Close Date">
+            <input
+              type="date"
+              value={value.dealCloseDate ?? ''}
+              onChange={(e) => onChange({ dealCloseDate: e.target.value || undefined })}
               className={`${INPUT_CLS} font-mono`}
             />
           </FormField>

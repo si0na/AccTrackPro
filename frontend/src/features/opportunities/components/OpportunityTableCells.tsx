@@ -66,12 +66,20 @@ export const renderOpportunityCell = (
     );
   }
 
-  if (col.key === 'startDate') {
-    return <span className="text-slate-500 font-mono font-medium whitespace-nowrap">{opp.startDate || 'N/A'}</span>;
+  if (col.key === 'allocationStartDate') {
+    return <span className="text-slate-500 font-mono font-medium whitespace-nowrap">{opp.allocationStartDate || 'N/A'}</span>;
   }
 
-  if (col.key === 'closeDate') {
-    return <span className="text-slate-500 font-mono font-medium">{opp.closeDate}</span>;
+  if (col.key === 'allocationEndDate') {
+    return <span className="text-slate-500 font-mono font-medium whitespace-nowrap">{opp.allocationEndDate || 'N/A'}</span>;
+  }
+
+  if (col.key === 'dealStartDate') {
+    return <span className="text-slate-500 font-mono font-medium whitespace-nowrap">{opp.dealStartDate || 'N/A'}</span>;
+  }
+
+  if (col.key === 'dealCloseDate') {
+    return <span className="text-slate-500 font-mono font-medium whitespace-nowrap">{opp.dealCloseDate || 'N/A'}</span>;
   }
 
   if (col.key === 'opportunityType') {

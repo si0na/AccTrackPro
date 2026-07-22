@@ -379,7 +379,7 @@ export const OpportunityDetailsView: React.FC = () => {
           },
           { icon: <DollarSign className="w-4 h-4" />, label: 'CRM Value', mono: true, value: formatCur(opp.crmValue) },
           { icon: <TrendingUp className="w-4 h-4" />, label: 'Probability', mono: true, value: `${opp.probability}%` },
-          { icon: <Calendar className="w-4 h-4" />, label: 'Expected Close Date', mono: true, value: opp.closeDate || 'N/A' },
+          { icon: <Calendar className="w-4 h-4" />, label: 'Allocation End Date', mono: true, value: opp.allocationEndDate || 'N/A' },
         ]}
         attributesClassName="grid-cols-2 lg:grid-cols-4"
       />
@@ -526,22 +526,46 @@ export const OpportunityDetailsView: React.FC = () => {
                 account/value/probability/owner already surface in the header and KPI
                 cards above, so this card focuses on the detail that lives only here. */}
               <Card title="Opportunity Details & Scope" bodyClassName="space-y-6">
-                <FormSection title="Timeline">
+                <FormSection title="Allocation Period">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div>
+                      <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1">Allocation Start Date</span>
+                      <span className="text-sm text-slate-800 font-mono font-semibold flex items-center">
+                        <Calendar className="w-3.5 h-3.5 text-slate-400 mr-1.5" aria-hidden="true" />
+                        {opp.allocationStartDate || 'N/A'}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1">Allocation End Date</span>
+                      <span className="text-sm text-slate-800 font-mono font-semibold flex items-center">
+                        <Calendar className="w-3.5 h-3.5 text-slate-400 mr-1.5" aria-hidden="true" />
+                        {opp.allocationEndDate || 'N/A'}
+                      </span>
+                    </div>
+                  </div>
+                </FormSection>
+
+                <FormSection title="Deal Timeline">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                     <div>
-                      <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1">Start Date</span>
+                      <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1">Deal Start Date</span>
                       <span className="text-sm text-slate-800 font-mono font-semibold flex items-center">
                         <Calendar className="w-3.5 h-3.5 text-slate-400 mr-1.5" aria-hidden="true" />
-                        {opp.startDate || 'N/A'}
+                        {opp.dealStartDate || 'N/A'}
                       </span>
                     </div>
                     <div>
-                      <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1">Expected Close Date</span>
+                      <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1">Deal Close Date</span>
                       <span className="text-sm text-slate-800 font-mono font-semibold flex items-center">
                         <Calendar className="w-3.5 h-3.5 text-slate-400 mr-1.5" aria-hidden="true" />
-                        {opp.closeDate}
+                        {opp.dealCloseDate || 'N/A'}
                       </span>
                     </div>
+                  </div>
+                </FormSection>
+
+                <FormSection title="Value">
+                  <div className="grid grid-cols-1 md:grid-cols-1 gap-5">
                     <div>
                       <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1">SLA Target Value</span>
                       <span className="text-sm text-slate-800 font-mono font-semibold">{formatCur(opp.value)}</span>

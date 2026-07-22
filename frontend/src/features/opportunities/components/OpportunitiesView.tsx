@@ -71,8 +71,8 @@ export const OpportunitiesView: React.FC = () => {
   // Module-specific filter states (operational — never fiscal-period-based)
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedAccountFilter, setSelectedAccountFilter] = useState<string>('All');
-  const [closeDateFrom, setCloseDateFrom] = useState<string>('');
-  const [closeDateTo, setCloseDateTo] = useState<string>('');
+  const [allocationEndDateFrom, setAllocationEndDateFrom] = useState<string>('');
+  const [allocationEndDateTo, setAllocationEndDateTo] = useState<string>('');
   const [minProbability, setMinProbability] = useState<string>('All');
 
   // Client-side pagination over the already-filtered rows
@@ -140,10 +140,11 @@ export const OpportunitiesView: React.FC = () => {
     value: 0,
     crmValue: 0,
     probability: STAGE_DEFAULT_PROBABILITY.Lead ?? 0,
-    closeDate: '',
     description: '',
-    startDate: '',
-    endDate: '',
+    allocationStartDate: '',
+    allocationEndDate: '',
+    dealStartDate: undefined,
+    dealCloseDate: undefined,
     nextStep: '',
     risksAndDependencies: '',
     tags: [],
@@ -164,11 +165,11 @@ export const OpportunitiesView: React.FC = () => {
     const matchesStage   = selectedStage === 'All' || o.stage === selectedStage;
     const matchesAccount = selectedAccountFilter === 'All' || o.accountId === selectedAccountFilter;
     const matchesDashboardStatus = dashboardOppStatusFilter === 'All' || deriveOppStatus(o.stage) === dashboardOppStatusFilter;
-    const matchesCloseFrom = !closeDateFrom || (o.closeDate && o.closeDate >= closeDateFrom);
-    const matchesCloseTo   = !closeDateTo   || (o.closeDate && o.closeDate <= closeDateTo);
+    const matchesAllocationEndFrom = !allocationEndDateFrom || (o.allocationEndDate && o.allocationEndDate >= allocationEndDateFrom);
+    const matchesAllocationEndTo   = !allocationEndDateTo   || (o.allocationEndDate && o.allocationEndDate <= allocationEndDateTo);
     const matchesProbability = minProbability === 'All' || o.probability >= parseInt(minProbability, 10);
     return matchesSearch && matchesStage && matchesAccount &&
-           matchesDashboardStatus && matchesCloseFrom && matchesCloseTo && matchesProbability;
+           matchesDashboardStatus && matchesAllocationEndFrom && matchesAllocationEndTo && matchesProbability;
   });
 
   const sortedOpps = [...filteredOpps].sort((a, b) =>
@@ -195,11 +196,11 @@ export const OpportunitiesView: React.FC = () => {
       value: 0,
       crmValue: 0,
       probability: STAGE_DEFAULT_PROBABILITY.Lead ?? 0,
-      owner: '',
-      closeDate: '',
       description: '',
-      startDate: '',
-      endDate: '',
+      allocationStartDate: '',
+      allocationEndDate: '',
+      dealStartDate: undefined,
+      dealCloseDate: undefined,
       nextStep: '',
       risksAndDependencies: '',
       tags: [],
@@ -355,24 +356,24 @@ export const OpportunitiesView: React.FC = () => {
           ]}
         />
 
-        {/* Expected Close Date range */}
+        {/* Allocation End Date range */}
         <div className="flex items-center gap-2">
-          <label className="text-[10px] font-bold text-slate-400 uppercase whitespace-nowrap">Close from</label>
+          <label className="text-[10px] font-bold text-slate-400 uppercase whitespace-nowrap">Alloc End from</label>
           <input
             type="date"
-            value={closeDateFrom}
-            onChange={(e) => setCloseDateFrom(e.target.value)}
-            aria-label="Close date from"
+            value={allocationEndDateFrom}
+            onChange={(e) => setAllocationEndDateFrom(e.target.value)}
+            aria-label="Allocation end date from"
             className={`${INPUT_CLS} font-mono`}
           />
         </div>
         <div className="flex items-center gap-2">
-          <label className="text-[10px] font-bold text-slate-400 uppercase whitespace-nowrap">Close to</label>
+          <label className="text-[10px] font-bold text-slate-400 uppercase whitespace-nowrap">Alloc End to</label>
           <input
             type="date"
-            value={closeDateTo}
-            onChange={(e) => setCloseDateTo(e.target.value)}
-            aria-label="Close date to"
+            value={allocationEndDateTo}
+            onChange={(e) => setAllocationEndDateTo(e.target.value)}
+            aria-label="Allocation end date to"
             className={`${INPUT_CLS} font-mono`}
           />
         </div>

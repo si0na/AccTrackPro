@@ -18,7 +18,7 @@ export const RevenueForecastView: React.FC = () => {
   const fyLabel = selectedYear !== 'All' ? selectedYear : null;
 
   // Reporting model: fiscal period comes from the backend-derived labels
-  // (computed from each opportunity's Expected Close Date via the configured
+  // (computed from each opportunity's Allocation End Date via the configured
   // Financial Calendar). Closed-lost deals never contribute to forecasts.
   const filteredOpps = opportunities.filter(o => {
     if (o.stage === 'Lost') return false;
@@ -186,7 +186,7 @@ export const RevenueForecastView: React.FC = () => {
         },
         {
           title: 'Opportunity Detail',
-          headers: ['Opportunity', 'Account', 'Stage', 'Close Date', 'Raw Value', 'Probability', 'Weighted Forecast', 'Financial Year', 'Quarter'],
+          headers: ['Opportunity', 'Account', 'Stage', 'Allocation End Date', 'Raw Value', 'Probability', 'Weighted Forecast', 'Financial Year', 'Quarter'],
           rows: filteredOpps
             .slice()
             .sort((a, b) => (b.value * b.probability) - (a.value * a.probability))
@@ -194,7 +194,7 @@ export const RevenueForecastView: React.FC = () => {
               o.name,
               accounts.find(a => a.id === o.accountId)?.name || '—',
               o.stage,
-              o.closeDate || '—',
+              o.allocationEndDate || '—',
               exportCurrency(o.value),
               `${o.probability}%`,
               exportCurrency(o.value * (o.probability / 100)),
@@ -225,7 +225,7 @@ export const RevenueForecastView: React.FC = () => {
       />
 
       <FilterBar>
-        {/* Reporting-period selector — fiscal period derived from Expected Close Dates */}
+        {/* Reporting-period selector — fiscal period derived from Allocation End Dates */}
         <PeriodSelector />
 
         <FilterSelect

@@ -35,12 +35,20 @@ export class CreateOpportunityDto {
   closeDate?: string;
 
   @EmptyToUndefined()
-  @IsOptional() @Matches(ISO_DATE_RE, { message: `startDate ${ISO_DATE_MSG}` })
-  startDate?: string;
+  @IsOptional() @Matches(ISO_DATE_RE, { message: `allocationStartDate ${ISO_DATE_MSG}` })
+  allocationStartDate?: string;
 
   @EmptyToUndefined()
-  @IsOptional() @Matches(ISO_DATE_RE, { message: `endDate ${ISO_DATE_MSG}` })
-  endDate?: string;
+  @IsOptional() @Matches(ISO_DATE_RE, { message: `allocationEndDate ${ISO_DATE_MSG}` })
+  allocationEndDate?: string;
+
+  @EmptyToUndefined()
+  @IsOptional() @Matches(ISO_DATE_RE, { message: `dealStartDate ${ISO_DATE_MSG}` })
+  dealStartDate?: string;
+
+  @EmptyToUndefined()
+  @IsOptional() @Matches(ISO_DATE_RE, { message: `dealCloseDate ${ISO_DATE_MSG}` })
+  dealCloseDate?: string;
 
   @IsNumber() @IsOptional() @Min(0, { message: 'CRM value cannot be negative' })
   crmValue?: number;
@@ -71,8 +79,8 @@ export class CreateOpportunityDto {
   @Matches(AOP_YEAR_RE, { message: AOP_YEAR_MSG })
   aopYear?: string;
 
-  @IsOptional() @IsIn(['Growth', 'Pursuit', 'Whitespace'], {
-    message: 'Opportunity Type must be Growth, Pursuit, or Whitespace',
+  @IsOptional() @IsIn(['Growth', 'Pursuit', 'Whitespace', 'New', 'Extension'], {
+    message: 'Opportunity Type must be one of: Growth, Pursuit, Whitespace, New, or Extension',
   })
   opportunityType?: string;
 

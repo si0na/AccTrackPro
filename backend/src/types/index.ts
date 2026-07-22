@@ -5,7 +5,7 @@ export type AccountHealth = 'Green' | 'Amber' | 'Red';
 export type OpportunityStage =
   | 'Lead' | 'Qualified' | 'Proposal' | 'Negotiation' | 'Verbal Agreement' | 'Won'
   | 'Blocked' | 'Delayed' | 'Lost';
-export type OpportunityType = 'Growth' | 'Pursuit' | 'Whitespace';
+export type OpportunityType = 'Growth' | 'Pursuit' | 'Whitespace' | 'New' | 'Extension';
 export type ServiceLine =
   | 'Data' | 'AI' | 'Cloud' | 'Application Development' | 'Application Support'
   | 'Infrastructure' | 'Cyber Security' | 'SharePoint';
@@ -44,8 +44,10 @@ export interface Opportunity {
   probability: number;
   closeDate: string;
   description: string;
-  startDate: string;
-  endDate: string;
+  allocationStartDate: string;
+  allocationEndDate: string;
+  dealStartDate?: string;
+  dealCloseDate?: string;
   crmValue: number;
   nextStep: string;
   /** Known risks or blocking dependencies for this opportunity. */

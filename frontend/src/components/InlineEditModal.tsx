@@ -283,9 +283,10 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
           />
         );
 
-      case 'closeDate':
-      case 'startDate':
-      case 'endDate':
+      case 'allocationStartDate':
+      case 'allocationEndDate':
+      case 'dealStartDate':
+      case 'dealCloseDate':
       case 'dueDate':
       case 'openDate':
         return (
@@ -553,15 +554,31 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
           </FormSection>
 
           <FormSection title="Timeline & Value">
-            <FormGrid columns={3}>
+            <FormGrid columns={2}>
               <FormField label="Deal Value ($)">
                 {renderInput(editCol('value', 'Deal Value ($)', 'number'))}
               </FormField>
-              <FormField label="Start Date">
-                {renderInput(editCol('startDate', 'Start Date', 'date'))}
+            </FormGrid>
+          </FormSection>
+
+          <FormSection title="Allocation Period">
+            <FormGrid columns={2}>
+              <FormField label="Allocation Start Date">
+                {renderInput(editCol('allocationStartDate', 'Allocation Start Date', 'date'))}
               </FormField>
-              <FormField label="Expected Close Date">
-                {renderInput(editCol('closeDate', 'Expected Close Date', 'date'))}
+              <FormField label="Allocation End Date">
+                {renderInput(editCol('allocationEndDate', 'Allocation End Date', 'date'))}
+              </FormField>
+            </FormGrid>
+          </FormSection>
+
+          <FormSection title="Deal Period (Optional)">
+            <FormGrid columns={2}>
+              <FormField label="Deal Start Date">
+                {renderInput(editCol('dealStartDate', 'Deal Start Date', 'date'))}
+              </FormField>
+              <FormField label="Deal Close Date">
+                {renderInput(editCol('dealCloseDate', 'Deal Close Date', 'date'))}
               </FormField>
             </FormGrid>
           </FormSection>

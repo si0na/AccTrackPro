@@ -15,7 +15,7 @@ import { BulkModuleAdapter } from '../import-export/bulk-adapter';
 // from closeDate and never stored.
 const KNOWN = new Set([
   'id','name','accountId','accountName','stage','value','probability','ownerId',
-  'closeDate','startDate','endDate','crmValue','description','nextStep',
+  'closeDate','allocationStartDate','allocationEndDate','dealStartDate','dealCloseDate','crmValue','description','nextStep',
   'risksAndDependencies',
   'closeReason','blockedReason','delayedReason','closedAt',
   'tags','team','financialYear','quarter',
@@ -30,7 +30,7 @@ const CLOSED_STAGES = new Set(['Won', 'Lost']);
 function rowToOpportunity(row: any, derive: (date: string) => { financialYear: string; quarter: string }): Opportunity {
   const {
     custom_data, is_deleted, created_at, updated_at,
-    account_id, account_name, close_date, start_date, end_date, crm_value, next_step,
+    account_id, account_name, close_date, allocation_start_date, allocation_end_date, deal_start_date, deal_close_date, crm_value, next_step,
     risks_and_dependencies,
     close_reason, blocked_reason, delayed_reason, closed_at,
     owner_id,
@@ -45,8 +45,10 @@ function rowToOpportunity(row: any, derive: (date: string) => { financialYear: s
     accountName:   account_name ?? undefined,
     ownerId:       owner_id   ?? undefined,
     closeDate:     close_date,
-    startDate:     start_date,
-    endDate:       end_date,
+    allocationStartDate: allocation_start_date,
+    allocationEndDate:   allocation_end_date,
+    dealStartDate:       deal_start_date ?? undefined,
+    dealCloseDate:       deal_close_date ?? undefined,
     crmValue:      Number(crm_value),
     nextStep:      next_step,
     risksAndDependencies: risks_and_dependencies ?? '',
@@ -85,9 +87,12 @@ const OPP_SELECT = `
 `;
 
 /** Business rule: when both dates are present, end date cannot precede start date. */
-function assertDateOrder(startDate?: string, endDate?: string): void {
-  if (startDate && endDate && endDate < startDate) {
-    throw new BadRequestException('End date cannot be earlier than the start date');
+function assertDateOrder(allocationStartDate?: string, allocationEndDate?: string, dealStartDate?: string, dealCloseDate?: string): void {
+  if (allocationStartDate && allocationEndDate && allocationEndDate < allocationStartDate) {
+    throw new BadRequestException('Allocation End Date cannot be earlier than Allocation Start Date');
+  }
+  if (dealStartDate && dealCloseDate && dealCloseDate < dealStartDate) {
+    throw new BadRequestException('Deal Close Date cannot be earlier than Deal Start Date');
   }
 }
 
@@ -106,20 +111,20 @@ function todayISO(): string {
 }
 
 /**
- * Expected close dates: cannot precede the start date and — for a deal that is
+ * Expected close dates: cannot precede the allocation start date and — for a deal that is
  * still open — cannot already be in the past. The past-date rule only applies
  * when the close date is being set or changed, so existing historical records
  * remain editable.
  */
 function assertCloseDateValid(
   closeDate: string | undefined,
-  startDate: string | undefined,
+  allocationStartDate: string | undefined,
   stage: string,
   previousCloseDate?: string,
 ): void {
   if (!closeDate) return;
-  if (startDate && closeDate < startDate) {
-    throw new BadRequestException('Expected close date cannot be earlier than the start date');
+  if (allocationStartDate && closeDate < allocationStartDate) {
+    throw new BadRequestException('Expected close date cannot be earlier than the Allocation Start Date');
   }
   const changed = previousCloseDate === undefined || closeDate !== previousCloseDate;
   if (!CLOSED_STAGES.has(stage) && changed && closeDate < todayISO()) {
@@ -272,13 +277,13 @@ export class OpportunitiesService {
     }
 
     await this.assertAccountExists(data.accountId, data.ownerId);
-    assertDateOrder(data.startDate, data.endDate);
+    assertDateOrder(data.allocationStartDate, data.allocationEndDate, data.dealStartDate, data.dealCloseDate);
     await this.assertStakeholderAssignment(data.clientStakeholderId, data.accountId, 'CLIENT', 'client stakeholder');
     await this.assertStakeholderAssignment(data.serviceProviderStakeholderId, data.accountId, 'SERVICE_PROVIDER', 'service provider stakeholder');
 
     const stage = data.stage || 'Lead';
     const cd    = extractCustomData(data, KNOWN);
-    assertCloseDateValid(data.closeDate, data.startDate, stage);
+    assertCloseDateValid(data.closeDate, data.allocationStartDate, stage);
     const closeReason = resolveCloseReason(data, stage);
     const blockedReason = resolveStageReason(data.blockedReason, 'Blocked', stage);
     const delayedReason = resolveStageReason(data.delayedReason, 'Delayed', stage);
@@ -287,18 +292,18 @@ export class OpportunitiesService {
     const { rows } = await this.db.query(
       `INSERT INTO opportunities
          (id, name, account_id, stage, value, probability, owner_id,
-          close_date, start_date, end_date, crm_value, description, next_step,
+          close_date, allocation_start_date, allocation_end_date, deal_start_date, deal_close_date, crm_value, description, next_step,
           risks_and_dependencies,
           close_reason, blocked_reason, delayed_reason, closed_at, tags, team, custom_data,
           client_stakeholder_id, service_provider_stakeholder_id,
           aop_available, aop_year, opportunity_type, service_line)
-       VALUES (gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
+       VALUES (gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28)
        RETURNING id`,
       [
         data.name, data.accountId, stage,
         data.value ?? 0, data.probability ?? 0,
         data.ownerId ?? null,
-        data.closeDate ?? '', data.startDate ?? '', data.endDate ?? '',
+        data.closeDate ?? '', data.allocationStartDate ?? '', data.allocationEndDate ?? '', data.dealStartDate ?? null, data.dealCloseDate ?? null,
         data.crmValue ?? 0, data.description ?? '', data.nextStep ?? '',
         data.risksAndDependencies ?? '',
         closeReason, blockedReason, delayedReason, closedAt,
@@ -339,12 +344,12 @@ export class OpportunitiesService {
     if (data.accountId && data.accountId !== existing.accountId) {
       await this.assertAccountExists(data.accountId, requestingUserId);
     }
-    assertDateOrder(data.startDate, data.endDate);
+    assertDateOrder(data.allocationStartDate, data.allocationEndDate, data.dealStartDate, data.dealCloseDate);
     await this.assertStakeholderAssignment(data.clientStakeholderId, data.accountId, 'CLIENT', 'client stakeholder');
     await this.assertStakeholderAssignment(data.serviceProviderStakeholderId, data.accountId, 'SERVICE_PROVIDER', 'service provider stakeholder');
     const cd    = extractCustomData(data, KNOWN);
     const stage = data.stage ?? existing.stage;
-    assertCloseDateValid(data.closeDate, data.startDate, stage, existing.closeDate);
+    assertCloseDateValid(data.closeDate, data.allocationStartDate, stage, existing.closeDate);
     const closeReason = resolveCloseReason(data, stage, existing);
     const blockedReason = resolveStageReason(
       data.blockedReason, 'Blocked', stage,
@@ -376,21 +381,21 @@ export class OpportunitiesService {
       `UPDATE opportunities SET
          name=$1, account_id=$2, stage=$3, value=$4, probability=$5,
          owner_id=$6,
-         close_date=$7, start_date=$8, end_date=$9, crm_value=$10,
-         description=$11, next_step=$12, risks_and_dependencies=$13, close_reason=$14,
-         blocked_reason=$15, delayed_reason=$16, closed_at=$17,
-         tags=$18, team=$19,
-         custom_data=$20,
-         client_stakeholder_id=$21, service_provider_stakeholder_id=$22,
-         aop_available=$23, aop_year=$24, opportunity_type=$25,
-         service_line=$26,
+         close_date=$7, allocation_start_date=$8, allocation_end_date=$9, deal_start_date=$10, deal_close_date=$11, crm_value=$12,
+         description=$13, next_step=$14, risks_and_dependencies=$15, close_reason=$16,
+         blocked_reason=$17, delayed_reason=$18, closed_at=$19,
+         tags=$20, team=$21,
+         custom_data=$22,
+         client_stakeholder_id=$23, service_provider_stakeholder_id=$24,
+         aop_available=$25, aop_year=$26, opportunity_type=$27,
+         service_line=$28,
          updated_at=NOW()
-       WHERE id=$27 AND is_deleted=FALSE`,
+       WHERE id=$29 AND is_deleted=FALSE`,
       [
         data.name, data.accountId, stage,
         data.value ?? existing.value ?? 0, data.probability ?? existing.probability ?? 0,
         effectiveOwnerId,
-        data.closeDate ?? '', data.startDate ?? '', data.endDate ?? '',
+        data.closeDate ?? '', data.allocationStartDate ?? '', data.allocationEndDate ?? '', data.dealStartDate ?? null, data.dealCloseDate ?? null,
         data.crmValue ?? 0, data.description ?? '', data.nextStep ?? '',
         data.risksAndDependencies ?? '',
         closeReason, blockedReason, delayedReason, closedAt,
