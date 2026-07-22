@@ -99,7 +99,7 @@ function assertDateOrder(allocationStartDate?: string, allocationEndDate?: strin
 /**
  * Pipeline stage reflects current sales progress only. Moving an opportunity
  * between stages is never blocked by field-completeness checks — deal value,
- * expected close date, next step and description can be filled in at any time,
+ * allocation end date, next step and description can be filled in at any time,
  * independent of the stage. Data-integrity rules that validate a *provided*
  * value (date ordering, past-date, formats, ranges) still apply below.
  */
@@ -111,9 +111,9 @@ function todayISO(): string {
 }
 
 /**
- * Expected close dates: cannot precede the allocation start date and — for a deal that is
+ * Allocation end dates: cannot precede the allocation start date and — for a deal that is
  * still open — cannot already be in the past. The past-date rule only applies
- * when the close date is being set or changed, so existing historical records
+ * when the allocation end date is being set or changed, so existing historical records
  * remain editable.
  */
 function assertCloseDateValid(
@@ -124,11 +124,11 @@ function assertCloseDateValid(
 ): void {
   if (!closeDate) return;
   if (allocationStartDate && closeDate < allocationStartDate) {
-    throw new BadRequestException('Expected close date cannot be earlier than the Allocation Start Date');
+    throw new BadRequestException('Allocation End Date cannot be earlier than the Allocation Start Date');
   }
   const changed = previousCloseDate === undefined || closeDate !== previousCloseDate;
   if (!CLOSED_STAGES.has(stage) && changed && closeDate < todayISO()) {
-    throw new BadRequestException('Expected close date cannot be in the past for an open opportunity');
+    throw new BadRequestException('Allocation End Date cannot be in the past for an open opportunity');
   }
 }
 
