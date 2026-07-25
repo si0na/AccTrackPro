@@ -40,11 +40,16 @@ export const norm = (v: unknown): string => String(v ?? '').trim().toLowerCase()
 
 export const pendingAccountId = (name: string): string => `${PENDING}account::${norm(name)}`;
 export const pendingOpportunityId = (name: string): string => `${PENDING}opportunity::${norm(name)}`;
+// Like opportunities, the accountId scoping lives only in the ParentIndex Map
+// key (`${accountId}::${lcName}`), never inside the marker string itself —
+// embedding it here would nest a second "PENDING::" marker (when the account
+// is ALSO new in the same workbook) and break the naive `::`-split parser below.
+export const pendingStakeholderId = (name: string): string => `${PENDING}stakeholder::${norm(name)}`;
 
 export const isPendingId = (v: unknown): v is string =>
   typeof v === 'string' && v.startsWith(PENDING);
 
-/** Extracts the kind ('account' | 'opportunity') and normalized name from a marker. */
+/** Extracts the kind ('account' | 'opportunity' | 'stakeholder') and normalized name from a marker. */
 export function parsePendingId(v: string): { kind: string; name: string } {
   const parts = v.slice(PENDING.length).split('::');
   return { kind: parts[0] ?? '', name: parts[1] ?? '' };

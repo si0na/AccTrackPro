@@ -5,9 +5,10 @@
 
 import React from 'react';
 import { CheckSquare } from 'lucide-react';
-import type { Account, ActionItem, ActionItemStatus, ColumnConfig, CustomColumn, Opportunity, PriorityLevel } from '@/types';
+import type { Account, ActionItem, ActionItemStatus, ColumnConfig, CustomColumn, Opportunity, PriorityLevel, Stakeholder } from '@/types';
 import { ACTION_ITEM_STATUS_OPTIONS } from '@/constants';
 import { CustomColumnFields } from '@/components/CustomColumnFields';
+import { ActionItemOwnerField } from '@/components/ActionItemOwnerField';
 import {
   FormField,
   FormGrid,
@@ -29,10 +30,13 @@ export interface ActionItemFormModalProps {
   onChange: (patch: Partial<ActionItemDraft>) => void;
   accounts: Account[];
   opportunities: Opportunity[];
+  stakeholders: Stakeholder[];
   actionItemColumns: CustomColumn[];
   actionItemsColumnConfig: ColumnConfig[];
   /** Fixes the account association (used inside Account Details, where the account is already known). */
   lockedAccount?: { id: string; name: string };
+  /** Fixes the project association (used inside Project Details, where the project — and its account — are already known). */
+  lockedProject?: { id: string; name: string };
 }
 
 /**
@@ -50,9 +54,11 @@ export const ActionItemFormModal: React.FC<ActionItemFormModalProps> = ({
   onChange,
   accounts,
   opportunities,
+  stakeholders,
   actionItemColumns,
   actionItemsColumnConfig,
   lockedAccount,
+  lockedProject,
 }) => (
   <FormModal
     isOpen={isOpen}
@@ -78,13 +84,12 @@ export const ActionItemFormModal: React.FC<ActionItemFormModalProps> = ({
             />
           </FormField>
 
-          <FormField label="Task Owner">
-            <input
-              type="text"
-              value={value.owner}
-              onChange={(e) => onChange({ owner: e.target.value })}
-              placeholder="e.g., John Smith"
-              className={INPUT_CLS}
+          <FormField label="Task Owner" required>
+            <ActionItemOwnerField
+              accountId={lockedAccount?.id ?? value.accountId}
+              stakeholders={stakeholders}
+              value={value.ownerStakeholderId}
+              onChange={(ownerStakeholderId) => onChange({ ownerStakeholderId })}
             />
           </FormField>
 
@@ -128,6 +133,18 @@ export const ActionItemFormModal: React.FC<ActionItemFormModalProps> = ({
                 ))}
             </select>
           </FormField>
+
+          {lockedProject && (
+            <FormField label="Linked Project">
+              <input
+                type="text"
+                value={lockedProject.name}
+                disabled
+                aria-readonly="true"
+                className={`${INPUT_CLS} bg-slate-50 text-slate-500 cursor-not-allowed`}
+              />
+            </FormField>
+          )}
         </FormGrid>
       </FormSection>
 

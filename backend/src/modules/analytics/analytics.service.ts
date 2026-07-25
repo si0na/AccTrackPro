@@ -10,6 +10,8 @@ export interface ForecastSummary {
   forecastRevenue: number;
   committedForecast: number;
   bestCaseForecast: number;
+  /** Sum of persisted actual revenue (opportunity_forecasts.actual_value) across the filtered set. */
+  actualRevenue: number;
   opportunityCount: number;
   winCount: number;
   avgDealSize: number;
@@ -64,9 +66,10 @@ export interface ForecastParams {
  * byQuarter always covers all four quarters of the selected FY (quarter filter is intentionally
  * excluded from that sub-query so the trend chart always shows the full year for context).
  *
- * Fiscal periods are derived from o.close_date using the configured Financial
- * Calendar — FY/quarter filters are translated into close-date ranges, and the
- * quarterly breakdown groups by a quarter label computed from the close date.
+ * Fiscal periods are derived from o.allocation_end_date using the configured
+ * Financial Calendar — FY/quarter filters are translated into allocation-end-date
+ * ranges, and the quarterly breakdown groups by a quarter label computed from
+ * the allocation end date.
  */
 @Injectable()
 export class AnalyticsService {
@@ -93,7 +96,7 @@ export class AnalyticsService {
     const ctx = await this.filter.getFiscalContext();
 
     // Full filter — applied to KPIs, byAccount, byStage
-    const fullPeriod = this.filter.buildPeriodConditions('o.close_date', f, ctx, 1);
+    const fullPeriod = this.filter.buildPeriodConditions('o.allocation_end_date', f, ctx, 1);
     const fullConds: string[] = [...fullPeriod.conditions];
     const fullVals: any[] = [...fullPeriod.params];
     let pi = fullPeriod.nextIdx;
@@ -103,7 +106,7 @@ export class AnalyticsService {
 
     // FY-only filter — applied to byQuarter so the chart always shows all four quarters
     const fyOnly = { ...f, quarter: null };
-    const fyPeriod = this.filter.buildPeriodConditions('o.close_date', fyOnly, ctx, 1);
+    const fyPeriod = this.filter.buildPeriodConditions('o.allocation_end_date', fyOnly, ctx, 1);
     const fyConds: string[] = [...fyPeriod.conditions];
     const fyVals: any[] = [...fyPeriod.params];
     let fi = fyPeriod.nextIdx;
@@ -111,14 +114,18 @@ export class AnalyticsService {
     if (accountId) { fyConds.push(`o.account_id = $${fi++}`); fyVals.push(accountId); }
     const fyWhere = fyConds.length ? `AND ${fyConds.join(' AND ')}` : '';
 
-    // Quarter label derived from the close date (FY calendar snapshot when a
-    // configured FY is selected, global calendar otherwise).
-    const quarterExpr = this.filter.quarterLabelExpr('o.close_date', ctx, f.fy);
+    // Quarter label derived from the allocation end date (FY calendar snapshot
+    // when a configured FY is selected, global calendar otherwise).
+    const quarterExpr = this.filter.quarterLabelExpr('o.allocation_end_date', ctx, f.fy);
 
     // Closed-lost deals never contribute to pipeline or forecast figures.
+    // The opportunity_forecasts LEFT JOIN is 1:1 (unique opportunity_id), so it
+    // never inflates the value/probability SUMs below — it only makes the
+    // persisted actual revenue available to the KPI query.
     const baseJoin = `
       FROM opportunities o
       INNER JOIN accounts a ON o.account_id = a.id AND a.is_deleted = FALSE
+      LEFT  JOIN opportunity_forecasts fc ON fc.opportunity_id = o.id
       WHERE o.is_deleted = FALSE AND o.stage <> 'Lost'
     `;
 
@@ -135,6 +142,7 @@ export class AnalyticsService {
           CASE WHEN o.stage NOT IN ('Lead')
                THEN o.value END
         ),                                                          0)::NUMERIC AS best_case_forecast,
+        COALESCE(SUM(fc.actual_value),                             0)::NUMERIC AS actual_revenue,
         COUNT(*)                                                                  AS opportunity_count,
         COUNT(CASE WHEN o.stage = 'Won' THEN 1 END)                              AS win_count,
         COALESCE(AVG(o.value),                                      0)::NUMERIC AS avg_deal_size
@@ -142,13 +150,14 @@ export class AnalyticsService {
     `;
 
     // ── Quarterly breakdown (quarter filter excluded intentionally) ───────────
-    // The quarter of each opportunity is derived from its close date; rows
-    // without a valid close date carry no quarter and are excluded here.
+    // The quarter of each opportunity is derived from its allocation end date;
+    // rows without a valid allocation end date carry no quarter and are
+    // excluded here.
     const qtrSql = `
       WITH fy_opps AS (
         SELECT ${quarterExpr} AS quarter, o.value, o.probability
         ${baseJoin}
-          AND o.close_date ~ '^\\d{4}-\\d{2}-\\d{2}'
+          AND o.allocation_end_date ~ '^\\d{4}-\\d{2}-\\d{2}'
           ${fyWhere}
       )
       SELECT
@@ -209,6 +218,7 @@ export class AnalyticsService {
         forecastRevenue:   Number(k.forecast_revenue),
         committedForecast: Number(k.committed_forecast),
         bestCaseForecast:  Number(k.best_case_forecast),
+        actualRevenue:     Number(k.actual_revenue),
         opportunityCount:  Number(k.opportunity_count),
         winCount:          Number(k.win_count),
         avgDealSize:       Number(k.avg_deal_size),

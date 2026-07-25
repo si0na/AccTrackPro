@@ -7,6 +7,7 @@ function allowedText(f: ImportFieldDef): string {
   if (f.options) return f.options.join(' | ');
   if (f.reference === 'account') return 'Account name (this workbook or existing)';
   if (f.reference === 'opportunity') return 'Opportunity name within the account (optional)';
+  if (f.reference === 'stakeholder') return 'Stakeholder name on the account (this workbook or existing)';
   switch (f.type) {
     case 'boolean': return 'Yes | No';
     case 'date': return 'YYYY-MM-DD';

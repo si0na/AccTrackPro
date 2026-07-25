@@ -2,7 +2,9 @@ import {
   IsString, IsNumber, IsOptional, IsArray, IsIn, IsBoolean, ValidateIf,
   IsNotEmpty, Min, Max, MaxLength, Matches,
 } from 'class-validator';
-import { EmptyToUndefined, ISO_DATE_RE, ISO_DATE_MSG, AOP_YEAR_RE, AOP_YEAR_MSG } from '../../../common/utils/dto-transforms.util';
+import {
+  EmptyToUndefined, ISO_DATE_RE, ISO_DATE_MSG, AOP_YEAR_RE, AOP_YEAR_MSG, SERVICE_LINE_OPTIONS,
+} from '../../../common/utils/dto-transforms.util';
 
 export class CreateOpportunityDto {
   @IsString() @IsNotEmpty({ message: 'Opportunity name is required' }) @MaxLength(200)
@@ -29,10 +31,6 @@ export class CreateOpportunityDto {
 
   @IsString() @IsOptional() @MaxLength(1000)
   delayedReason?: string;
-
-  @EmptyToUndefined()
-  @IsOptional() @Matches(ISO_DATE_RE, { message: `closeDate ${ISO_DATE_MSG}` })
-  closeDate?: string;
 
   @EmptyToUndefined()
   @IsOptional() @Matches(ISO_DATE_RE, { message: `allocationStartDate ${ISO_DATE_MSG}` })
@@ -85,11 +83,29 @@ export class CreateOpportunityDto {
   opportunityType?: string;
 
   @EmptyToUndefined()
-  @IsOptional() @IsIn(
-    ['Data', 'AI', 'Cloud', 'Application Development', 'Application Support', 'Infrastructure', 'Cyber Security', 'SharePoint'],
-    { message: 'Service Line must be one of the allowed values' },
-  )
+  @IsOptional() @IsIn(SERVICE_LINE_OPTIONS, { message: 'Service Line must be one of the allowed values' })
   serviceLine?: string;
+
+  @EmptyToUndefined()
+  @IsOptional() @IsIn(['Green', 'Amber', 'Red'], { message: 'Opportunity Health must be Green, Amber, or Red' })
+  opportunityHealth?: string;
+
+  @EmptyToUndefined()
+  @IsOptional() @IsIn(['T&E', 'Fixed Bid', 'Fixed Capacity', 'Managed Services'], {
+    message: 'Revenue Model must be one of the allowed values',
+  })
+  revenueModel?: string;
+
+  @IsString() @IsOptional() @MaxLength(200)
+  location?: string;
+
+  @IsNumber() @IsOptional() @Min(0, { message: 'Cost cannot be negative' })
+  @Max(9999999999999, { message: 'Cost exceeds the maximum supported amount' })
+  cost?: number;
+
+  @IsNumber() @IsOptional() @Min(0, { message: 'Gross Margin cannot be less than 0' })
+  @Max(100, { message: 'Gross Margin cannot exceed 100' })
+  grossMargin?: number;
 }
 
 export class UpdateOpportunityDto extends CreateOpportunityDto {

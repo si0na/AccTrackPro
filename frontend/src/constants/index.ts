@@ -8,6 +8,9 @@ export const VIEW_PATHS: Record<ViewType, string> = {
   'account-details': '/accounts/:id',
   opportunities: '/opportunities',
   'opportunity-details': '/opportunities/:id',
+  'opportunity-forecast': '/opportunities/:id/forecast',
+  projects: '/projects',
+  'project-details': '/projects/:id',
   actionItems: '/action-items',
   stakeholders: '/stakeholders',
   forecast: '/forecast',
@@ -24,9 +27,12 @@ export function resolveViewPath(
   view: ViewType,
   accountId?: string | null,
   opportunityId?: string | null,
+  projectId?: string | null,
 ): string {
   if (view === 'account-details' && accountId) return `/accounts/${accountId}`;
   if (view === 'opportunity-details' && opportunityId) return `/opportunities/${opportunityId}`;
+  if (view === 'opportunity-forecast' && opportunityId) return `/opportunities/${opportunityId}/forecast`;
+  if (view === 'project-details' && projectId) return `/projects/${projectId}`;
   return VIEW_PATHS[view] ?? '/';
 }
 
@@ -34,6 +40,7 @@ export const PRESET_USER_NAMES = ['John Smith', 'Sarah Johnson', 'Mike Brown', '
 
 export const ACCOUNT_TYPE_OPTIONS = ['Strategic', 'Non Strategic', 'New'] as const;
 export const ACCOUNT_HEALTH_OPTIONS = ['Green', 'Amber', 'Red'] as const;
+export const PROJECT_HEALTH_OPTIONS = ['Green', 'Amber', 'Red'] as const;
 export const OPPORTUNITY_STAGE_OPTIONS = [
   'Lead', 'Qualified', 'Proposal', 'Negotiation', 'Verbal Agreement', 'Won', 'Blocked', 'Delayed', 'Lost',
 ] as const;
@@ -57,17 +64,17 @@ export const OPPORTUNITY_OUTCOME_OPTIONS = ['Open', 'Won', 'Lost'] as const;
  */
 export const OPPORTUNITY_STAGE_STYLE: Record<
   OpportunityStage,
-  { bar: string; iconBg: string; iconText: string }
+  { bar: string; iconBg: string; iconText: string; hex: string }
 > = {
-  Lead:               { bar: 'bg-blue-500',    iconBg: 'bg-blue-100',    iconText: 'text-blue-600' },
-  Qualified:          { bar: 'bg-indigo-500',  iconBg: 'bg-indigo-100',  iconText: 'text-indigo-600' },
-  Proposal:           { bar: 'bg-purple-500',  iconBg: 'bg-purple-100',  iconText: 'text-purple-600' },
-  Negotiation:        { bar: 'bg-pink-500',    iconBg: 'bg-pink-100',    iconText: 'text-pink-600' },
-  'Verbal Agreement': { bar: 'bg-teal-500',    iconBg: 'bg-teal-100',    iconText: 'text-teal-600' },
-  Won:                { bar: 'bg-emerald-500', iconBg: 'bg-emerald-100', iconText: 'text-emerald-600' },
-  Blocked:            { bar: 'bg-orange-500',  iconBg: 'bg-orange-100',  iconText: 'text-orange-600' },
-  Delayed:            { bar: 'bg-amber-500',   iconBg: 'bg-amber-100',   iconText: 'text-amber-600' },
-  Lost:               { bar: 'bg-red-500',     iconBg: 'bg-red-100',     iconText: 'text-red-600' },
+  Lead:               { bar: 'bg-blue-500',    iconBg: 'bg-blue-100',    iconText: 'text-blue-600',    hex: '#3b82f6' },
+  Qualified:          { bar: 'bg-indigo-500',  iconBg: 'bg-indigo-100',  iconText: 'text-indigo-600',  hex: '#6366f1' },
+  Proposal:           { bar: 'bg-purple-500',  iconBg: 'bg-purple-100',  iconText: 'text-purple-600',  hex: '#a855f7' },
+  Negotiation:        { bar: 'bg-pink-500',    iconBg: 'bg-pink-100',    iconText: 'text-pink-600',    hex: '#ec4899' },
+  'Verbal Agreement': { bar: 'bg-teal-500',    iconBg: 'bg-teal-100',    iconText: 'text-teal-600',    hex: '#14b8a6' },
+  Won:                { bar: 'bg-emerald-500', iconBg: 'bg-emerald-100', iconText: 'text-emerald-600', hex: '#10b981' },
+  Blocked:            { bar: 'bg-orange-500',  iconBg: 'bg-orange-100',  iconText: 'text-orange-600',  hex: '#f97316' },
+  Delayed:            { bar: 'bg-amber-500',   iconBg: 'bg-amber-100',   iconText: 'text-amber-600',   hex: '#f59e0b' },
+  Lost:               { bar: 'bg-red-500',     iconBg: 'bg-red-100',     iconText: 'text-red-600',     hex: '#ef4444' },
 };
 
 /**
@@ -101,11 +108,46 @@ export function stageChangePatch(
   return probability === undefined ? { stage } : { stage, probability };
 }
 export const ACTION_ITEM_STATUS_OPTIONS = ['To Do', 'In Progress', 'Blocked', 'Completed', 'Cancelled'] as const;
-export const OPPORTUNITY_TYPE_OPTIONS = ['Growth', 'Pursuit', 'Whitespace'] as const;
+export const OPPORTUNITY_TYPE_OPTIONS = ['Growth', 'Pursuit', 'Whitespace', 'New', 'Extension'] as const;
+
+/** First selectable AOP (Annual Operating Plan) fiscal year — "2026-2027". */
+export const AOP_YEAR_START = 2026;
+
+/**
+ * How many fiscal years beyond the current one to keep in the dropdown. Large
+ * enough to be effectively unlimited (covers a century+ of future years) while
+ * staying a finite, computable list — no hardcoded end year is ever reached.
+ */
+const AOP_YEAR_LOOKAHEAD = 100;
+
+/**
+ * Generates the selectable AOP fiscal-year range ("YYYY-YYYY") starting at
+ * {@link AOP_YEAR_START} and extending {@link AOP_YEAR_LOOKAHEAD} years past
+ * whichever is later — today's year or the start year — so the list always
+ * reaches well into the future without a hardcoded end date.
+ */
+export function generateAopYearOptions(today: Date = new Date()): string[] {
+  const endYear = Math.max(today.getFullYear(), AOP_YEAR_START) + AOP_YEAR_LOOKAHEAD;
+  const options: string[] = [];
+  for (let year = AOP_YEAR_START; year <= endYear; year++) {
+    options.push(`${year}-${year + 1}`);
+  }
+  return options;
+}
+
+export const AOP_YEAR_OPTIONS = generateAopYearOptions();
+
+/** Default AOP Year for newly created opportunities. */
+export const DEFAULT_AOP_YEAR = AOP_YEAR_OPTIONS[0];
 export const SERVICE_LINE_OPTIONS = [
   'Data', 'AI', 'Cloud', 'Application Development', 'Application Support',
   'Infrastructure', 'Cyber Security', 'SharePoint',
+  'Consulting', 'UI/UX', 'Digital', 'Database', 'Testing',
+  'Project Management', 'Architecture', 'Packaged Applications',
 ] as const;
+
+export const OPPORTUNITY_HEALTH_OPTIONS = ['Green', 'Amber', 'Red'] as const;
+export const REVENUE_MODEL_OPTIONS = ['T&E', 'Fixed Bid', 'Fixed Capacity', 'Managed Services'] as const;
 
 /**
  * Predefined countries for the Account "Location" field, already alphabetical.

@@ -5,11 +5,12 @@
 
 import React from 'react';
 import { useCRM, ViewType } from '@/contexts/CRMContext';
-import { isOpenActionItemStatus } from '@/utils';
+import { isOpenActionItemStatus, matchesGlobalAccount } from '@/utils';
 import {
   LayoutDashboard,
   Building2,
   TrendingUp,
+  FolderKanban,
   CheckSquare,
   Users,
   LineChart,
@@ -29,16 +30,25 @@ export const Sidebar: React.FC = () => {
   const {
     currentView,
     setView,
-    accounts,
-    opportunities,
-    actionItems,
-    stakeholders,
+    accounts: allAccounts,
+    opportunities: allOpportunities,
+    projects: allProjects,
+    actionItems: allActionItems,
+    stakeholders: allStakeholders,
+    globalAccountId,
     unreadNotificationCount,
     setCameFromDashboard,
     setSelectedStage,
     sidebarCollapsed,
     setSidebarCollapsed,
   } = useCRM();
+
+  // Nav badges reflect the Global Account Selector, same as every other module.
+  const accounts = allAccounts.filter(a => matchesGlobalAccount(a.id, globalAccountId));
+  const opportunities = allOpportunities.filter(o => matchesGlobalAccount(o.accountId, globalAccountId));
+  const projects = allProjects.filter(p => matchesGlobalAccount(p.accountId, globalAccountId));
+  const actionItems = allActionItems.filter(ai => matchesGlobalAccount(ai.accountId, globalAccountId));
+  const stakeholders = allStakeholders.filter(s => matchesGlobalAccount(s.accountId, globalAccountId));
 
   const sections = [
     {
@@ -63,6 +73,12 @@ export const Sidebar: React.FC = () => {
           badge: opportunities.length,
         },
         {
+          id: 'projects' as ViewType,
+          label: 'Projects',
+          icon: FolderKanban,
+          badge: projects.length,
+        },
+        {
           id: 'actionItems' as ViewType,
           label: 'Action Items',
           icon: CheckSquare,
@@ -81,7 +97,7 @@ export const Sidebar: React.FC = () => {
       items: [
         {
           id: 'forecast' as ViewType,
-          label: 'Forecast',
+          label: 'Portfolio Forecast',
           icon: LineChart,
           badge: null
         },
@@ -171,7 +187,8 @@ export const Sidebar: React.FC = () => {
               {section.items.map(item => {
                 const isActive = currentView === item.id ||
                   (item.id === 'accounts' && currentView === 'account-details') ||
-                  (item.id === 'opportunities' && currentView === 'opportunity-details');
+                  (item.id === 'opportunities' && currentView === 'opportunity-details') ||
+                  (item.id === 'projects' && currentView === 'project-details');
                 const Icon = item.icon;
 
                 return (

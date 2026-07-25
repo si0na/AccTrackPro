@@ -191,7 +191,7 @@ export class FilterContextService {
 
   /**
    * Fiscal-period SQL conditions for an entity whose period is derived from a
-   * business date (opportunities.close_date, action_items.due_date, …).
+   * business date (opportunities.allocation_end_date, action_items.due_date, …).
    *
    * @param dateExpr    SQL expression yielding a 'YYYY-MM-DD' text value
    * @param filter      Normalized filter values

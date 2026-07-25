@@ -6,7 +6,7 @@
 import React from 'react';
 import { TrendingUp } from 'lucide-react';
 import type { Account, ColumnConfig, CustomColumn, Opportunity, OpportunityStage, Stakeholder } from '@/types';
-import { OPPORTUNITY_STAGE_OPTIONS, stageChangePatch } from '@/constants';
+import { OPPORTUNITY_STAGE_OPTIONS, stageChangePatch, LOCATION_OPTIONS } from '@/constants';
 import { NumberInput } from '@/components/NumberInput';
 import { AopYearFields } from '@/components/AopYearFields';
 import { StakeholderAssignmentFields } from '@/components/StakeholderAssignmentFields';
@@ -19,6 +19,7 @@ import {
   FormSection,
   INPUT_CLS,
   SELECT_CLS,
+  SearchableSelect,
 } from '@/components/ui';
 
 export type OpportunityDraft = Omit<Opportunity, 'id'>;
@@ -136,7 +137,12 @@ export const OpportunityFormModal: React.FC<OpportunityFormModalProps> = ({
           </FormField>
 
           <OpportunityClassificationFields
-            value={{ opportunityType: value.opportunityType, serviceLine: value.serviceLine }}
+            value={{
+              opportunityType: value.opportunityType,
+              serviceLine: value.serviceLine,
+              opportunityHealth: value.opportunityHealth,
+              revenueModel: value.revenueModel,
+            }}
             onChange={onChange}
           />
         </FormGrid>
@@ -195,6 +201,43 @@ export const OpportunityFormModal: React.FC<OpportunityFormModalProps> = ({
               value={value.value}
               onValueChange={(v) => onChange({ value: v, crmValue: Math.round(v * 0.9) })}
               placeholder="e.g. 50000"
+              className={INPUT_CLS}
+            />
+          </FormField>
+        </FormGrid>
+      </FormSection>
+
+      <FormSection title="Business Details">
+        <FormGrid columns={3}>
+          <FormField label="Location">
+            <SearchableSelect
+              value={value.location ?? ''}
+              onChange={(location) => onChange({ location })}
+              options={LOCATION_OPTIONS}
+              placeholder="Search countries…"
+              aria-label="Opportunity location"
+            />
+          </FormField>
+
+          <FormField label="Cost ($)">
+            <NumberInput
+              min={0}
+              step="0.01"
+              value={value.cost}
+              onValueChange={(v) => onChange({ cost: v })}
+              placeholder="e.g. 40000"
+              className={INPUT_CLS}
+            />
+          </FormField>
+
+          <FormField label="Gross Margin (%)">
+            <NumberInput
+              min={0}
+              max={100}
+              step="0.01"
+              value={value.grossMargin}
+              onValueChange={(v) => onChange({ grossMargin: v })}
+              placeholder="0–100"
               className={INPUT_CLS}
             />
           </FormField>

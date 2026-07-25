@@ -4,7 +4,9 @@ import type {
   Activity, Comment, ColumnConfig, CustomColumn, User, Document, FinancialYear,
   CRMNotification, Alert, ForecastData,
   AdminSystemOverview, AdminUser, FinancialCalendar, AdminSettings, FYQuarterDef,
-  PerformanceEvaluation, EmployeeMaster,
+  PerformanceEvaluation, EmployeeMaster, Project, ProjectTeamMember,
+  ProjectMilestone, ProjectRisk, ProjectAssumption, ProjectIssue, ProjectDependency,
+  OpportunityForecastResult, OpportunityForecastPayload,
 } from '@/types';
 
 /** Owner scoping only — for entities that are never fiscal-period-filtered. */
@@ -131,12 +133,99 @@ export const opportunitiesApi = {
   delete: (id: string) => apiClient.delete<{ success: boolean }>(`/opportunities/${id}`).then((r) => r.data),
 };
 
+export const opportunityForecastApi = {
+  /** GET /api/opportunity-forecast/:id — forecast + actuals + revision history for one opportunity. */
+  get: (opportunityId: string) =>
+    apiClient.get<OpportunityForecastResult>(`/opportunity-forecast/${opportunityId}`).then((r) => r.data),
+  /** PUT /api/opportunity-forecast/:id — upsert the forecast card (forecast + actuals). */
+  upsert: (opportunityId: string, data: OpportunityForecastPayload) =>
+    apiClient.put<OpportunityForecastResult>(`/opportunity-forecast/${opportunityId}`, data).then((r) => r.data),
+};
+
 export const actionItemsApi = {
   getAll: (f?: OwnerFilter) => apiClient.get<ActionItem[]>('/action-items', { params: f }).then((r) => r.data),
   getDeactivated: (f?: OwnerFilter) => apiClient.get<ActionItem[]>('/action-items/deactivated', { params: f }).then((r) => r.data),
   create: (data: Omit<ActionItem, 'id'>) => apiClient.post<ActionItem>('/action-items', data).then((r) => r.data),
   update: (id: string, data: ActionItem) => apiClient.put<ActionItem>(`/action-items/${id}`, data).then((r) => r.data),
   delete: (id: string) => apiClient.delete<{ success: boolean }>(`/action-items/${id}`).then((r) => r.data),
+};
+
+export const projectsApi = {
+  getAll: (f?: OwnerFilter) => apiClient.get<Project[]>('/projects', { params: f }).then((r) => r.data),
+  getDeactivated: (f?: OwnerFilter) => apiClient.get<Project[]>('/projects/deactivated', { params: f }).then((r) => r.data),
+  getById: (id: string) => apiClient.get<Project>(`/projects/${id}`).then((r) => r.data),
+  create: (data: Omit<Project, 'id'>) => apiClient.post<Project>('/projects', data).then((r) => r.data),
+  update: (id: string, data: Project) => apiClient.put<Project>(`/projects/${id}`, data).then((r) => r.data),
+  restore: (id: string) => apiClient.patch<Project>(`/projects/${id}/restore`).then((r) => r.data),
+  delete: (id: string) => apiClient.delete<{ success: boolean }>(`/projects/${id}`).then((r) => r.data),
+};
+
+export const projectTeamApi = {
+  getAll: (projectId: string) =>
+    apiClient.get<ProjectTeamMember[]>(`/projects/${projectId}/team`).then((r) => r.data),
+  create: (projectId: string, data: Omit<ProjectTeamMember, 'id' | 'projectId'>) =>
+    apiClient.post<ProjectTeamMember>(`/projects/${projectId}/team`, data).then((r) => r.data),
+  update: (projectId: string, id: string, data: Omit<ProjectTeamMember, 'id' | 'projectId'>) =>
+    apiClient.put<ProjectTeamMember>(`/projects/${projectId}/team/${id}`, data).then((r) => r.data),
+  delete: (projectId: string, id: string) =>
+    apiClient.delete<{ success: boolean }>(`/projects/${projectId}/team/${id}`).then((r) => r.data),
+};
+
+export const projectMilestonesApi = {
+  getAllForProject: (projectId: string) =>
+    apiClient.get<ProjectMilestone[]>(`/projects/${projectId}/milestones`).then((r) => r.data),
+  create: (projectId: string, data: Omit<ProjectMilestone, 'id' | 'projectId'>) =>
+    apiClient.post<ProjectMilestone>(`/projects/${projectId}/milestones`, data).then((r) => r.data),
+  // Update*Dto requires `id` in the body (validated but otherwise unused —
+  // the service updates the row addressed by the URL param), so it's sent here.
+  update: (projectId: string, id: string, data: Omit<ProjectMilestone, 'id' | 'projectId'>) =>
+    apiClient.put<ProjectMilestone>(`/projects/${projectId}/milestones/${id}`, { ...data, id }).then((r) => r.data),
+  delete: (projectId: string, id: string) =>
+    apiClient.delete<{ success: boolean }>(`/projects/${projectId}/milestones/${id}`).then((r) => r.data),
+};
+
+export const projectRisksApi = {
+  getAllForProject: (projectId: string) =>
+    apiClient.get<ProjectRisk[]>(`/projects/${projectId}/risks`).then((r) => r.data),
+  create: (projectId: string, data: Omit<ProjectRisk, 'id' | 'projectId' | 'ownerName'>) =>
+    apiClient.post<ProjectRisk>(`/projects/${projectId}/risks`, data).then((r) => r.data),
+  update: (projectId: string, id: string, data: Omit<ProjectRisk, 'id' | 'projectId' | 'ownerName'>) =>
+    apiClient.put<ProjectRisk>(`/projects/${projectId}/risks/${id}`, { ...data, id }).then((r) => r.data),
+  delete: (projectId: string, id: string) =>
+    apiClient.delete<{ success: boolean }>(`/projects/${projectId}/risks/${id}`).then((r) => r.data),
+};
+
+export const projectAssumptionsApi = {
+  getAllForProject: (projectId: string) =>
+    apiClient.get<ProjectAssumption[]>(`/projects/${projectId}/assumptions`).then((r) => r.data),
+  create: (projectId: string, data: Omit<ProjectAssumption, 'id' | 'projectId' | 'ownerName'>) =>
+    apiClient.post<ProjectAssumption>(`/projects/${projectId}/assumptions`, data).then((r) => r.data),
+  update: (projectId: string, id: string, data: Omit<ProjectAssumption, 'id' | 'projectId' | 'ownerName'>) =>
+    apiClient.put<ProjectAssumption>(`/projects/${projectId}/assumptions/${id}`, { ...data, id }).then((r) => r.data),
+  delete: (projectId: string, id: string) =>
+    apiClient.delete<{ success: boolean }>(`/projects/${projectId}/assumptions/${id}`).then((r) => r.data),
+};
+
+export const projectIssuesApi = {
+  getAllForProject: (projectId: string) =>
+    apiClient.get<ProjectIssue[]>(`/projects/${projectId}/issues`).then((r) => r.data),
+  create: (projectId: string, data: Omit<ProjectIssue, 'id' | 'projectId' | 'ownerName'>) =>
+    apiClient.post<ProjectIssue>(`/projects/${projectId}/issues`, data).then((r) => r.data),
+  update: (projectId: string, id: string, data: Omit<ProjectIssue, 'id' | 'projectId' | 'ownerName'>) =>
+    apiClient.put<ProjectIssue>(`/projects/${projectId}/issues/${id}`, { ...data, id }).then((r) => r.data),
+  delete: (projectId: string, id: string) =>
+    apiClient.delete<{ success: boolean }>(`/projects/${projectId}/issues/${id}`).then((r) => r.data),
+};
+
+export const projectDependenciesApi = {
+  getAllForProject: (projectId: string) =>
+    apiClient.get<ProjectDependency[]>(`/projects/${projectId}/dependencies`).then((r) => r.data),
+  create: (projectId: string, data: Omit<ProjectDependency, 'id' | 'projectId' | 'ownerName'>) =>
+    apiClient.post<ProjectDependency>(`/projects/${projectId}/dependencies`, data).then((r) => r.data),
+  update: (projectId: string, id: string, data: Omit<ProjectDependency, 'id' | 'projectId' | 'ownerName'>) =>
+    apiClient.put<ProjectDependency>(`/projects/${projectId}/dependencies/${id}`, { ...data, id }).then((r) => r.data),
+  delete: (projectId: string, id: string) =>
+    apiClient.delete<{ success: boolean }>(`/projects/${projectId}/dependencies/${id}`).then((r) => r.data),
 };
 
 export const stakeholdersApi = {

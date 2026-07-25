@@ -14,7 +14,12 @@ export class CreateActionItemDto {
   @IsString() @IsOptional()
   opportunityId?: string;
 
-  @IsString() @MaxLength(100) owner!: string;
+  @EmptyToUndefined()
+  @IsString() @IsOptional()
+  projectId?: string;
+
+  @IsString() @IsNotEmpty({ message: 'Owner is required' })
+  ownerStakeholderId!: string;
 
   @EmptyToUndefined()
   @IsOptional() @Matches(ISO_DATE_RE, { message: `openDate ${ISO_DATE_MSG}` })

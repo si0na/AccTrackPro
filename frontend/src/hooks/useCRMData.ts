@@ -1,14 +1,13 @@
 import { useState, useEffect } from 'react';
 import type {
   Account, Opportunity, ActionItem, Stakeholder, Activity, Comment,
-  CustomColumn, ColumnConfig, FinancialYear, FinancialCalendar, AdminSettings,
+  CustomColumn, ColumnConfig, FinancialYear, FinancialCalendar, AdminSettings, Project,
 } from '@/types';
 import type { OwnerFilter } from '@/api/crm.api';
-import { normalizeOwnerName } from '@/utils';
 import {
   accountsApi, opportunitiesApi, actionItemsApi, stakeholdersApi,
   activitiesApi, commentsApi, customColumnsApi, columnConfigsApi, financialYearsApi,
-  notificationsApi, administrationApi,
+  notificationsApi, administrationApi, projectsApi,
 } from '@/api/crm.api';
 
 const DEFAULT_ACCOUNTS_COLUMNS: ColumnConfig[] = [
@@ -33,6 +32,11 @@ const DEFAULT_OPPORTUNITIES_COLUMNS: ColumnConfig[] = [
   { key: 'opportunityType', name: 'Opportunity Type', isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
   { key: 'serviceLine', name: 'Service Line',     isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
   { key: 'risksAndDependencies', name: 'Risks & Dependencies', isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
+  { key: 'opportunityHealth', name: 'Opportunity Health', isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
+  { key: 'revenueModel', name: 'Revenue Model',   isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
+  { key: 'location',     name: 'Location',        isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
+  { key: 'cost',          name: 'Cost',            isStandard: true, isPinned: false, isDisplayed: true, type: 'number' },
+  { key: 'grossMargin',  name: 'Gross Margin (%)', isStandard: true, isPinned: false, isDisplayed: true, type: 'number' },
 ];
 
 const DEFAULT_ACTION_ITEMS_COLUMNS: ColumnConfig[] = [
@@ -127,6 +131,8 @@ export const useCRMData = (
   const [deactivatedAccounts, setDeactivatedAccounts] = useState<Account[]>([]);
   const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
   const [deactivatedOpportunities, setDeactivatedOpportunities] = useState<Opportunity[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [deactivatedProjects, setDeactivatedProjects] = useState<Project[]>([]);
   const [actionItems, setActionItems] = useState<ActionItem[]>([]);
   const [deactivatedActionItems, setDeactivatedActionItems] = useState<ActionItem[]>([]);
   const [stakeholders, setStakeholders] = useState<Stakeholder[]>([]);
@@ -176,6 +182,7 @@ export const useCRMData = (
         stkData, deactivatedStkData,
         actvData, commentsData,
         customCols, configs,
+        projectsData, deactivatedProjectsData,
       ] = await Promise.all([
         accountsApi.getAll(owner),
         accountsApi.getDeactivated(owner),
@@ -189,12 +196,16 @@ export const useCRMData = (
         commentsApi.getAll(),
         customColumnsApi.getAll(),
         columnConfigsApi.getAll(),
+        projectsApi.getAll(owner),
+        projectsApi.getDeactivated(owner),
       ]);
 
       setAccounts(accountsData);
       setDeactivatedAccounts(deactivatedData);
       setOpportunities(oppsData);
       setDeactivatedOpportunities(deactivatedOppsData);
+      setProjects(projectsData);
+      setDeactivatedProjects(deactivatedProjectsData);
       setActionItems(aiData);
       setDeactivatedActionItems(deactivatedAiData);
       setStakeholders(stkData);
@@ -328,6 +339,9 @@ export const useCRMData = (
     setOpportunities((prev) => [created, ...prev]);
     const f = buildOwnerFilter(currentUserId);
     activitiesApi.getAll(f).then(setActivities);
+    // A Won opportunity spawns a Project server-side — pull it into state so the
+    // Projects sidebar count, list, and stats reflect it without a manual refresh.
+    if (created.stage === 'Won') projectsApi.getAll(f).then(setProjects);
     scheduleCountRefresh();
     return created;
   };
@@ -338,6 +352,10 @@ export const useCRMData = (
     const fresh = await opportunitiesApi.getAll(f);
     setOpportunities(fresh);
     activitiesApi.getAll(f).then(setActivities);
+    // Marking an opportunity Won creates the linked Project server-side (idempotent).
+    // The PUT response carries only the opportunity, so refetch projects here to keep
+    // the Projects module (sidebar badge, list, stats) in sync in real time.
+    if (updated.stage === 'Won') projectsApi.getAll(f).then(setProjects);
   };
 
   const deleteOpportunity = async (id: string): Promise<void> => {
@@ -359,11 +377,50 @@ export const useCRMData = (
     return void restored;
   };
 
+  // ─── Project actions ────────────────────────────────────────────────────────
+  // Projects are normally derived server-side from a Won Opportunity — the UI
+  // never exposes a manual "New Project" action — but addProject is still
+  // provided for API completeness/consistency with every other entity.
+
+  const addProject = async (data: Omit<Project, 'id'>): Promise<Project> => {
+    const created = await projectsApi.create(data);
+    setProjects((prev) => [created, ...prev]);
+    const f = buildOwnerFilter(currentUserId);
+    activitiesApi.getAll(f).then(setActivities);
+    scheduleCountRefresh();
+    return created;
+  };
+
+  const updateProject = async (updated: Project): Promise<void> => {
+    const res = await projectsApi.update(updated.id, updated);
+    setProjects((prev) => prev.map((p) => (p.id === updated.id ? res : p)));
+    const f = buildOwnerFilter(currentUserId);
+    activitiesApi.getAll(f).then(setActivities);
+  };
+
+  const deleteProject = async (id: string): Promise<void> => {
+    const project = projects.find((p) => p.id === id);
+    await projectsApi.delete(id);
+    if (project) setDeactivatedProjects((prev) => [project, ...prev]);
+    setProjects((prev) => prev.filter((p) => p.id !== id));
+    const f = buildOwnerFilter(currentUserId);
+    activitiesApi.getAll(f).then(setActivities);
+  };
+
+  const restoreProject = async (id: string): Promise<void> => {
+    const restored = await projectsApi.restore(id);
+    setDeactivatedProjects((prev) => prev.filter((p) => p.id !== id));
+    const f = buildOwnerFilter(currentUserId);
+    await projectsApi.getAll(buildOwnerFilter(currentUserId)).then(setProjects);
+    activitiesApi.getAll(f).then(setActivities);
+    return void restored;
+  };
+
   // ─── Action item actions ───────────────────────────────────────────────────
 
   const addActionItem = async (data: Omit<ActionItem, 'id'>): Promise<ActionItem> => {
     // The fiscal period is derived server-side from the due date.
-    const created = await actionItemsApi.create({ ...data, owner: normalizeOwnerName(data.owner) });
+    const created = await actionItemsApi.create(data);
     setActionItems((prev) => [created, ...prev]);
     const f = buildOwnerFilter(currentUserId);
     activitiesApi.getAll(f).then(setActivities);
@@ -372,7 +429,7 @@ export const useCRMData = (
   };
 
   const updateActionItem = async (updated: ActionItem): Promise<void> => {
-    const res = await actionItemsApi.update(updated.id, { ...updated, owner: normalizeOwnerName(updated.owner) });
+    const res = await actionItemsApi.update(updated.id, updated);
     setActionItems((prev) => prev.map((a) => (a.id === updated.id ? res : a)));
     const f = buildOwnerFilter(currentUserId);
     activitiesApi.getAll(f).then(setActivities);
@@ -479,6 +536,8 @@ export const useCRMData = (
     deactivatedAccounts: withRevenue(deactivatedAccounts),
     opportunities,
     deactivatedOpportunities,
+    projects,
+    deactivatedProjects,
     actionItems,
     deactivatedActionItems,
     stakeholders,
@@ -496,6 +555,7 @@ export const useCRMData = (
     refreshData,
     addAccount, updateAccount, deleteAccount, restoreAccount,
     addOpportunity, updateOpportunity, deleteOpportunity, restoreOpportunity,
+    addProject, updateProject, deleteProject, restoreProject,
     addActionItem, updateActionItem, deleteActionItem,
     addStakeholder, updateStakeholder, deleteStakeholder,
     addComment, deleteComment,

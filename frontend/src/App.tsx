@@ -3,14 +3,17 @@ import { BrowserRouter, useNavigate } from 'react-router-dom';
 import { CRMProvider, useCRM } from '@/contexts/CRMContext';
 import { buildPath } from '@/routes';
 import { Sidebar } from '@/components/layout/Sidebar';
+import { GlobalAccountSelector } from '@/components/layout/GlobalAccountSelector';
 import { DashboardView } from '@/features/dashboard/components/DashboardView';
 import { AccountsListView } from '@/features/accounts/components/AccountsListView';
 import { AccountDetailsView } from '@/features/accounts/components/AccountDetailsView';
 import { OpportunitiesView } from '@/features/opportunities/components/OpportunitiesView';
 import { OpportunityDetailsView } from '@/features/opportunities/components/OpportunityDetailsView';
+import { OpportunityForecastView } from '@/features/opportunities/components/OpportunityForecastView';
+import { ProjectsListView } from '@/features/projects/components/ProjectsListView';
+import { ProjectDetailsView } from '@/features/projects/components/ProjectDetailsView';
 import { ActionItemsView } from '@/features/action-items/components/ActionItemsView';
 import { StakeholdersView } from '@/features/stakeholders/components/StakeholdersView';
-import { RevenueForecastView } from '@/features/reports/components/RevenueForecastView';
 import { ExecutiveDashboardView } from '@/features/reports/components/ExecutiveDashboardView';
 import { AuditLogView } from '@/features/reports/components/AuditLogView';
 import { PerformanceEvaluationView } from '@/features/reports/components/PerformanceEvaluationView';
@@ -32,7 +35,7 @@ const InnerLayout: React.FC = () => {
   const {
     currentView, setView,
     currentUser, isLoggedIn, authLoading, currentUserProfile, logout,
-    selectedAccountId, selectedOpportunityId,
+    selectedAccountId, selectedOpportunityId, selectedProjectId,
     updateProfilePicture,
     unreadNotificationCount,
   } = useCRM();
@@ -64,11 +67,11 @@ const InnerLayout: React.FC = () => {
 
   // Sync state → URL so browser history reflects the current view
   useEffect(() => {
-    const path = buildPath(currentView, selectedAccountId, selectedOpportunityId);
+    const path = buildPath(currentView, selectedAccountId, selectedOpportunityId, selectedProjectId);
     if (window.location.pathname !== path) {
       navigate(path, { replace: true });
     }
-  }, [currentView, selectedAccountId, selectedOpportunityId, navigate]);
+  }, [currentView, selectedAccountId, selectedOpportunityId, selectedProjectId, navigate]);
 
   if (authLoading) {
     return <FullPageLoading />;
@@ -113,8 +116,11 @@ const InnerLayout: React.FC = () => {
 
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Global header — the FY/Quarter reporting-period selector lives on
-            the reporting pages themselves (Forecast, Reports), not here. */}
-        <header className="h-16 shrink-0 bg-white border-b border-slate-200/80 px-6 flex items-center justify-end">
+            the reporting pages themselves (Forecast, Reports); the Account
+            scope selector below applies everywhere, so it lives here. */}
+        <header className="h-16 shrink-0 bg-white border-b border-slate-200/80 px-6 flex items-center justify-between">
+          <GlobalAccountSelector />
+
           {/* Actions */}
           <div className="flex items-center space-x-4">
             <ImportExportLauncher />
@@ -209,9 +215,12 @@ const InnerLayout: React.FC = () => {
           {currentView === 'account-details'        && <AccountDetailsView />}
           {currentView === 'opportunities'          && <OpportunitiesView />}
           {currentView === 'opportunity-details'    && <OpportunityDetailsView />}
+          {currentView === 'opportunity-forecast'   && <OpportunityForecastView mode="opportunity" />}
+          {currentView === 'projects'                && <ProjectsListView />}
+          {currentView === 'project-details'         && <ProjectDetailsView />}
           {currentView === 'actionItems'            && <ActionItemsView />}
           {currentView === 'stakeholders'           && <StakeholdersView />}
-          {currentView === 'forecast'               && <RevenueForecastView />}
+          {currentView === 'forecast'               && <OpportunityForecastView mode="portfolio" />}
           {currentView === 'executive'              && <ExecutiveDashboardView />}
           {currentView === 'reports'                && <ExecutiveDashboardView />}
           {currentView === 'audit-log'              && <AuditLogView />}

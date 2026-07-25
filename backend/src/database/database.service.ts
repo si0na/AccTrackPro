@@ -10,6 +10,11 @@ types.setTypeParser(types.builtins.INT2, (v) => parseInt(v, 10));
 types.setTypeParser(types.builtins.INT4, (v) => parseInt(v, 10));
 types.setTypeParser(types.builtins.INT8, (v) => parseInt(v, 10));
 
+// Keep DATE columns as plain 'YYYY-MM-DD' strings. pg's default parser turns them into
+// JS Date objects at local midnight, which then serialize to UTC ISO strings and shift
+// to the previous day whenever the server's local timezone is ahead of UTC.
+types.setTypeParser(types.builtins.DATE, (v) => v);
+
 @Injectable()
 export class DatabaseService implements OnModuleDestroy {
   private readonly logger = new Logger(DatabaseService.name);

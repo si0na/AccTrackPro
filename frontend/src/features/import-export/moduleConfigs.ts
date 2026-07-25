@@ -4,7 +4,11 @@ import {
   OPPORTUNITY_STAGE_OPTIONS,
   OPPORTUNITY_TYPE_OPTIONS,
   SERVICE_LINE_OPTIONS,
+  OPPORTUNITY_HEALTH_OPTIONS,
+  REVENUE_MODEL_OPTIONS,
   ACTION_ITEM_STATUS_OPTIONS,
+  AOP_YEAR_OPTIONS,
+  DEFAULT_AOP_YEAR,
 } from '@/constants';
 import { STAKEHOLDER_TYPE_LABELS } from '@/components/ui';
 import type { IEModuleKey, ModuleIEConfig, RefData } from './types';
@@ -71,7 +75,7 @@ const opportunitiesConfig: ModuleIEConfig = {
     { key: 'opportunityType', header: 'Opportunity Type', type: 'enum', options: OPPORTUNITY_TYPE_OPTIONS, required: true, example: 'Growth' },
     { key: 'serviceLine', header: 'Service Line', type: 'enum', options: SERVICE_LINE_OPTIONS, required: true, example: 'Cloud' },
     { key: 'aopAvailable', header: 'AOP Available', type: 'boolean', default: false, example: 'No' },
-    { key: 'aopYear', header: 'AOP Year', type: 'string', example: '2026-2027', hint: 'YYYY-YYYY; required when AOP Available is Yes' },
+    { key: 'aopYear', header: 'AOP Year', type: 'enum', options: AOP_YEAR_OPTIONS, example: DEFAULT_AOP_YEAR, hint: 'One of the predefined financial years; required when AOP Available is Yes' },
     { key: 'allocationStartDate', header: 'Allocation Start Date', type: 'date', example: '2026-01-15' },
     { key: 'allocationEndDate', header: 'Allocation End Date', type: 'date' },
     { key: 'dealStartDate', header: 'Deal Start Date', type: 'date' },
@@ -79,6 +83,11 @@ const opportunitiesConfig: ModuleIEConfig = {
     { key: 'nextStep', header: 'Next Step', type: 'string' },
     { key: 'risksAndDependencies', header: 'Risks & Dependencies', type: 'string' },
     { key: 'description', header: 'Description', type: 'string' },
+    { key: 'opportunityHealth', header: 'Opportunity Health', type: 'enum', options: OPPORTUNITY_HEALTH_OPTIONS, example: 'Green' },
+    { key: 'revenueModel', header: 'Revenue Model', type: 'enum', options: REVENUE_MODEL_OPTIONS, example: 'Fixed Bid' },
+    { key: 'location', header: 'Location', type: 'string', example: 'United States' },
+    { key: 'cost', header: 'Cost', type: 'number', example: '30000' },
+    { key: 'grossMargin', header: 'Gross Margin (%)', type: 'number', example: '25.5', hint: '0–100, decimals allowed' },
   ],
   exportColumns: [
     { key: 'name', header: 'Opportunity Name', value: (e) => e.name ?? '' },
@@ -100,6 +109,11 @@ const opportunitiesConfig: ModuleIEConfig = {
     { key: 'nextStep', header: 'Next Step', value: (e) => e.nextStep ?? '' },
     { key: 'risksAndDependencies', header: 'Risks & Dependencies', value: (e) => e.risksAndDependencies ?? '' },
     { key: 'description', header: 'Description', value: (e) => e.description ?? '' },
+    { key: 'opportunityHealth', header: 'Opportunity Health', value: (e) => e.opportunityHealth ?? '' },
+    { key: 'revenueModel', header: 'Revenue Model', value: (e) => e.revenueModel ?? '' },
+    { key: 'location', header: 'Location', value: (e) => e.location ?? '' },
+    { key: 'cost', header: 'Cost', value: (e) => e.cost ?? 0 },
+    { key: 'grossMargin', header: 'Gross Margin (%)', value: (e) => e.grossMargin ?? '' },
   ],
 };
 
@@ -146,7 +160,7 @@ const actionItemsConfig: ModuleIEConfig = {
   fields: [
     { key: 'title', header: 'Title', type: 'string', required: true, example: 'Follow up on proposal' },
     { key: 'accountId', header: 'Account', type: 'reference', reference: 'account', required: true, example: 'Acme Corporation', hint: 'Must match an account in the Accounts sheet or an existing account' },
-    { key: 'owner', header: 'Owner', type: 'string', required: true, example: 'John Smith' },
+    { key: 'ownerStakeholderId', header: 'Owner', type: 'reference', reference: 'stakeholder', required: true, example: 'John Smith', hint: 'Must match a Client or Service Provider stakeholder on the same account (Stakeholders sheet or existing)' },
     { key: 'priority', header: 'Priority', type: 'enum', options: PRIORITY, required: true, example: 'High' },
     { key: 'status', header: 'Status', type: 'enum', options: ACTION_ITEM_STATUS_OPTIONS, required: true, example: 'To Do' },
     { key: 'opportunityId', header: 'Opportunity', type: 'reference', reference: 'opportunity', hint: 'Optional; must belong to the same account (Opportunities sheet or existing)' },
@@ -159,7 +173,7 @@ const actionItemsConfig: ModuleIEConfig = {
   exportColumns: [
     { key: 'title', header: 'Title', value: (e) => e.title ?? '' },
     { key: 'accountId', header: 'Account', value: (e, ref) => e.accountName ?? accName(e.accountId, ref) },
-    { key: 'owner', header: 'Owner', value: (e) => e.owner ?? '' },
+    { key: 'owner', header: 'Owner', value: (e) => e.ownerName ?? e.owner ?? '' },
     { key: 'priority', header: 'Priority', value: (e) => e.priority ?? '' },
     { key: 'status', header: 'Status', value: (e) => e.status ?? '' },
     { key: 'opportunityId', header: 'Opportunity', value: (e, ref) => (e.opportunityId ? oppName(e.opportunityId, ref) : '') },

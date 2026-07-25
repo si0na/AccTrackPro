@@ -1,19 +1,29 @@
 /** CRM entity type definitions for the NestJS backend. */
 
+import { SERVICE_LINE_OPTIONS } from '../common/utils/dto-transforms.util';
+
 export type AccountType = 'Strategic' | 'Non Strategic' | 'New';
 export type AccountHealth = 'Green' | 'Amber' | 'Red';
 export type OpportunityStage =
   | 'Lead' | 'Qualified' | 'Proposal' | 'Negotiation' | 'Verbal Agreement' | 'Won'
   | 'Blocked' | 'Delayed' | 'Lost';
 export type OpportunityType = 'Growth' | 'Pursuit' | 'Whitespace' | 'New' | 'Extension';
-export type ServiceLine =
-  | 'Data' | 'AI' | 'Cloud' | 'Application Development' | 'Application Support'
-  | 'Infrastructure' | 'Cyber Security' | 'SharePoint';
+export type ServiceLine = (typeof SERVICE_LINE_OPTIONS)[number];
+export type OpportunityHealth = 'Green' | 'Amber' | 'Red';
+export type RevenueModel = 'T&E' | 'Fixed Bid' | 'Fixed Capacity' | 'Managed Services';
 export type PriorityLevel = 'High' | 'Medium' | 'Low';
 export type ActionItemStatus = 'To Do' | 'In Progress' | 'Blocked' | 'Completed' | 'Cancelled';
 export type InfluenceLevel = 'High' | 'Medium' | 'Low';
 export type RelationshipStatus = 'Strong' | 'Neutral' | 'Weak';
 export type StakeholderType = 'CLIENT' | 'SERVICE_PROVIDER';
+export type ProjectStatus = 'Active' | 'On Hold' | 'Completed' | 'Cancelled';
+export type ProjectMethodology = 'Agile' | 'Waterfall';
+export type ProjectHealth = 'Green' | 'Amber' | 'Red';
+export type MilestoneStatus = 'Not Started' | 'In Progress' | 'Completed' | 'Delayed';
+export type RiskStatus = 'Open' | 'Mitigated' | 'Closed' | 'Accepted';
+export type AssumptionValidationStatus = 'Unvalidated' | 'Validated' | 'Invalidated';
+export type IssueStatus = 'Open' | 'In Progress' | 'Resolved' | 'Closed';
+export type DependencyStatus = 'Open' | 'In Progress' | 'Resolved' | 'Closed';
 
 export interface Account {
   id: string;
@@ -42,7 +52,6 @@ export interface Opportunity {
   stage: OpportunityStage;
   value: number;
   probability: number;
-  closeDate: string;
   description: string;
   allocationStartDate: string;
   allocationEndDate: string;
@@ -62,9 +71,9 @@ export interface Opportunity {
   closedAt?: string;
   tags: string[];
   team: string[];
-  /** Derived (never stored): FY label computed from closeDate via the configured Financial Calendar. */
+  /** Derived (never stored): FY label computed from allocationEndDate via the configured Financial Calendar. */
   financialYear: string;
-  /** Derived (never stored): quarter computed from closeDate via the configured Financial Calendar. */
+  /** Derived (never stored): quarter computed from allocationEndDate via the configured Financial Calendar. */
   quarter: string;
   clientStakeholderId?: string;
   /** Joined display fields (server-side); valid even when not eagerly requested. */
@@ -79,7 +88,171 @@ export interface Opportunity {
   /** AOP year range in YYYY-YYYY format (e.g. "2026-2027"); only meaningful (and stored) when aopAvailable is true. */
   aopYear?: string | null;
   serviceLine?: ServiceLine;
+  opportunityHealth?: OpportunityHealth;
+  revenueModel?: RevenueModel;
+  location?: string;
+  cost?: number;
+  grossMargin?: number;
+  /** Linked Project id (joined server-side), populated once this opportunity has gone Won. Null when none exists. */
+  projectId?: string | null;
+  // Persisted forecast + actuals (joined from opportunity_forecasts). Read-only
+  // on this payload — edited via the dedicated opportunity-forecast endpoint.
+  forecastDate?: string;
+  forecastValue?: number;
+  actualDate?: string;
+  actualValue?: number;
+  forecastRemarks?: string;
+  forecastUpdatedAt?: string;
   [key: string]: any;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  description: string;
+  accountId: string;
+  /** Parent account display name (joined server-side). */
+  accountName?: string;
+  /** Originating Opportunity — every project traces back to exactly one Won opportunity. */
+  opportunityId: string;
+  /** Joined display field (server-side) for the originating opportunity. */
+  opportunityName?: string;
+  ownerId?: string;
+  /** Joined display field (server-side) for ownerId. */
+  ownerName?: string;
+  startDate?: string;
+  endDate?: string;
+  methodology: ProjectMethodology;
+  /** Service Provider Project Manager — FK to users. */
+  serviceProviderPmId?: string;
+  serviceProviderPmName?: string;
+  practiceLeadId?: string;
+  practiceLeadName?: string;
+  /** "Client Name" contact — FK to stakeholders. */
+  clientStakeholderId?: string;
+  clientStakeholderName?: string;
+  clientStakeholderDesignation?: string;
+  /** Client Project Manager — FK to stakeholders. */
+  clientPmStakeholderId?: string;
+  clientPmStakeholderName?: string;
+  clientPmStakeholderDesignation?: string;
+  status: ProjectStatus;
+  health: ProjectHealth;
+  asOnDate?: string;
+  plannedCompletionPct?: number;
+  actualCompletionPct?: number;
+  plannedEffortHours?: number;
+  actualEffortHours?: number;
+  plannedCost?: number;
+  actualCost?: number;
+  [key: string]: any;
+}
+
+export interface ProjectTeamMember {
+  id: string;
+  projectId: string;
+  role: string;
+  /** Free text — no FK to users, so external consultants/contractors can be entered. */
+  employeeName: string;
+  seniorityLevel?: string;
+  location?: string;
+  createdAt?: string;
+}
+
+export interface ProjectMilestone {
+  id: string;
+  projectId: string;
+  name: string;
+  /** Free text, e.g. "Sprint 3-4". */
+  sprints?: string;
+  plannedStart?: string;
+  plannedEnd?: string;
+  actualStart?: string;
+  actualEnd?: string;
+  status: MilestoneStatus;
+  remarks: string;
+  effortPlanned?: number;
+  effortSpent?: number;
+  costPlanned?: number;
+  costSpent?: number;
+  completionPct?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ProjectRisk {
+  id: string;
+  projectId: string;
+  priority: PriorityLevel;
+  description: string;
+  impact?: string;
+  likelihood?: string;
+  severity?: string;
+  /** FK to users. */
+  ownerId?: string;
+  /** Joined display field (server-side) for ownerId. */
+  ownerName?: string;
+  mitigationPlan: string;
+  status: RiskStatus;
+  targetResolutionDate?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ProjectAssumption {
+  id: string;
+  projectId: string;
+  priority: PriorityLevel;
+  description: string;
+  impactIfFalse?: string;
+  validationStatus: AssumptionValidationStatus;
+  /** FK to users. */
+  ownerId?: string;
+  /** Joined display field (server-side) for ownerId. */
+  ownerName?: string;
+  dateIdentified?: string;
+  targetValidationDate?: string;
+  remarks: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ProjectIssue {
+  id: string;
+  projectId: string;
+  priority: PriorityLevel;
+  description: string;
+  impact?: string;
+  /** FK to users. */
+  ownerId?: string;
+  /** Joined display field (server-side) for ownerId. */
+  ownerName?: string;
+  dateIdentified?: string;
+  status: IssueStatus;
+  resolutionPlan: string;
+  targetResolutionDate?: string;
+  remarks: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ProjectDependency {
+  id: string;
+  projectId: string;
+  priority: PriorityLevel;
+  description: string;
+  dependencyType?: string;
+  dependentTask?: string;
+  /** FK to users. */
+  ownerId?: string;
+  /** Joined display field (server-side) for ownerId. */
+  ownerName?: string;
+  externalParty?: string;
+  status: DependencyStatus;
+  targetResolutionDate?: string;
+  remarks: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface ActionItem {
@@ -89,7 +262,17 @@ export interface ActionItem {
   /** Parent account display name (joined server-side; valid even when the account is deactivated). */
   accountName?: string;
   opportunityId?: string;
-  owner: string;
+  /** Linked Project (optional) — populated once the parent Opportunity has gone Won. */
+  projectId?: string;
+  /** Joined display field (server-side) for the linked Project. */
+  projectName?: string;
+  /** Legacy free-text owner name — read-only fallback for rows a stakeholder backfill couldn't resolve. */
+  owner?: string;
+  ownerStakeholderId?: string;
+  /** Joined display fields (server-side); derived from the owner stakeholder. */
+  ownerName?: string;
+  ownerDesignation?: string;
+  ownerStakeholderType?: StakeholderType;
   /** When the task was opened; defaults to the creation date but is user-editable. */
   openDate: string;
   dueDate: string;

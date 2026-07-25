@@ -299,8 +299,8 @@ rather than nullable FK columns, preserving the existing API contract.
 | Convention | Example |
 |------------|---------|
 | Table names | `snake_case`, plural | `action_items` |
-| Column names | `snake_case` | `account_id`, `close_date` |
-| API response fields | `camelCase` (mapped in service row-mappers) | `accountId`, `closeDate` |
+| Column names | `snake_case` | `account_id`, `allocation_end_date` |
+| API response fields | `camelCase` (mapped in service row-mappers) | `accountId`, `allocationEndDate` |
 | PK | Always `id TEXT` | |
 | FK | `{table_singular}_id` | `account_id`, `opportunity_id` |
 | Timestamps | `created_at`, `updated_at` | |

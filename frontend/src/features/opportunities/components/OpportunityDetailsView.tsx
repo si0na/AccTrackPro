@@ -13,6 +13,9 @@ import {
   DollarSign,
   Edit2,
   FileText,
+  FolderKanban,
+  Info,
+  LineChart,
   MessageSquare,
   MoreVertical,
   Plus,
@@ -26,6 +29,7 @@ import { CustomizeColumnsSidebar } from '@/components/table/CustomizeColumnsSide
 import { DocumentsPanel } from '@/components/documents/DocumentsPanel';
 import { InlineEditModal } from '@/components/InlineEditModal';
 import { CustomColumnFields } from '@/components/CustomColumnFields';
+import { ActionItemOwnerField } from '@/components/ActionItemOwnerField';
 import { OpportunityPipelineProgress } from './OpportunityPipelineProgress';
 import { ACTION_ITEM_STATUS_OPTIONS, OPPORTUNITY_STAGE_OPTIONS, stageChangePatch } from '@/constants';
 import {
@@ -52,6 +56,7 @@ import {
   SortableHeader,
   STAGE_COLORS,
   StatusBadge,
+  HEALTH_COLORS,
   SummaryCard,
   Table,
   TableHead,
@@ -76,6 +81,7 @@ export const OpportunityDetailsView: React.FC = () => {
     setView,
     setSelectedAccountId,
     setSelectedOpportunityId,
+    setSelectedProjectId,
     setFocusedRecord,
     updateOpportunity,
     deleteOpportunity,
@@ -191,7 +197,7 @@ export const OpportunityDetailsView: React.FC = () => {
     title: '',
     accountId: '',
     opportunityId: '',
-    owner: '',
+    ownerStakeholderId: '',
     openDate: getTodayISODate(),
     dueDate: '',
     priority: 'Medium' as PriorityLevel,
@@ -203,7 +209,7 @@ export const OpportunityDetailsView: React.FC = () => {
 
   const handleCreateAddTask = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newAi.title.trim() || !opp) return;
+    if (!newAi.title.trim() || !newAi.ownerStakeholderId || !opp) return;
     addActionItem({
       ...newAi,
       accountId: opp.accountId,
@@ -267,14 +273,16 @@ export const OpportunityDetailsView: React.FC = () => {
     const q = aiSearch.trim().toLowerCase();
     const matchesSearch = !q
       || item.title.toLowerCase().includes(q)
-      || item.owner.toLowerCase().includes(q)
+      || (item.ownerName || item.owner || '').toLowerCase().includes(q)
       || (item.notes ?? '').toLowerCase().includes(q);
     const matchesStatus = aiStatusFilter === 'all' || item.status === aiStatusFilter;
     const matchesPriority = aiPriorityFilter === 'all' || item.priority === aiPriorityFilter;
     return matchesSearch && matchesStatus && matchesPriority;
   });
+  const getAiSortValue = (item: ActionItem, key: string) =>
+    key === 'owner' ? (item.ownerName || item.owner || '') : (item as any)[key];
   const sortedActions = aiSortField
-    ? [...filteredActions].sort((a, b) => compareForSort((a as any)[aiSortField], (b as any)[aiSortField], aiSortDirection))
+    ? [...filteredActions].sort((a, b) => compareForSort(getAiSortValue(a, aiSortField), getAiSortValue(b, aiSortField), aiSortDirection))
     : filteredActions;
   const totalActions = sortedActions.length;
   const pagedActions = sortedActions.slice((aiPage - 1) * aiPageSize, aiPage * aiPageSize);
@@ -313,50 +321,72 @@ export const OpportunityDetailsView: React.FC = () => {
         badges={<StatusBadge value={opp.stage} colorMap={STAGE_COLORS} />}
         actions={
           <>
-            {opp.stage !== 'Won' && opp.stage !== 'Lost' && (
-              <Button
-                variant="danger"
-                icon={<X className="w-3.5 h-3.5" aria-hidden="true" />}
-                onClick={() => {
-                  setCloseReasonDraft(opp.closeReason || '');
-                  setCloseDialog({ outcome: 'Lost', stage: opp.stage });
-                }}
-              >
-                Mark Lost
-              </Button>
-            )}
+            {/* Forecast is available for every stage (open, Won, or Lost). */}
             <Button
-              variant="primary"
-              icon={<Edit2 className="w-3.5 h-3.5" aria-hidden="true" />}
-              onClick={openOppEdit}
+              variant="secondary"
+              icon={<LineChart className="w-3.5 h-3.5" aria-hidden="true" />}
+              onClick={() => setView('opportunity-forecast')}
             >
-              Edit Opportunity
+              View Forecast
             </Button>
-            <div className="relative">
-              <button
-                onClick={() => setShowOppMenu(v => !v)}
-                className="p-2.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 cursor-pointer transition-colors"
-                title="More actions"
-              >
-                <MoreVertical className="w-4 h-4" />
-              </button>
-              {showOppMenu && (
-                <>
-                  <div className="fixed inset-0 z-10" onClick={() => setShowOppMenu(false)} />
-                  <div className="absolute right-0 top-full mt-1.5 w-48 bg-white border border-slate-200 rounded-lg shadow-lg z-20 py-1">
-                    <button
-                      onClick={() => {
-                        setShowOppMenu(false);
-                        setDeleteTarget({ type: 'opportunity', id: opp.id, label: opp.name });
-                      }}
-                      className="w-full text-left px-3.5 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 cursor-pointer transition-colors"
-                    >
-                      Deactivate Opportunity
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
+            {opp.stage === 'Won' ? (
+              opp.projectId && (
+                <Button
+                  variant="primary"
+                  icon={<FolderKanban className="w-3.5 h-3.5" aria-hidden="true" />}
+                  onClick={() => { setSelectedProjectId(opp.projectId!); setView('project-details'); }}
+                >
+                  Open Project
+                </Button>
+              )
+            ) : (
+              <>
+                {opp.stage !== 'Lost' && (
+                  <Button
+                    variant="danger"
+                    icon={<X className="w-3.5 h-3.5" aria-hidden="true" />}
+                    onClick={() => {
+                      setCloseReasonDraft(opp.closeReason || '');
+                      setCloseDialog({ outcome: 'Lost', stage: opp.stage });
+                    }}
+                  >
+                    Mark Lost
+                  </Button>
+                )}
+                <Button
+                  variant="primary"
+                  icon={<Edit2 className="w-3.5 h-3.5" aria-hidden="true" />}
+                  onClick={openOppEdit}
+                >
+                  Edit Opportunity
+                </Button>
+                <div className="relative">
+                  <button
+                    onClick={() => setShowOppMenu(v => !v)}
+                    className="p-2.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 cursor-pointer transition-colors"
+                    title="More actions"
+                  >
+                    <MoreVertical className="w-4 h-4" />
+                  </button>
+                  {showOppMenu && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setShowOppMenu(false)} />
+                      <div className="absolute right-0 top-full mt-1.5 w-48 bg-white border border-slate-200 rounded-lg shadow-lg z-20 py-1">
+                        <button
+                          onClick={() => {
+                            setShowOppMenu(false);
+                            setDeleteTarget({ type: 'opportunity', id: opp.id, label: opp.name });
+                          }}
+                          className="w-full text-left px-3.5 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 cursor-pointer transition-colors"
+                        >
+                          Deactivate Opportunity
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              </>
+            )}
           </>
         }
         attributes={[
@@ -384,8 +414,22 @@ export const OpportunityDetailsView: React.FC = () => {
         attributesClassName="grid-cols-2 lg:grid-cols-4"
       />
 
+      {/* Won opportunities are permanently read-only — the backend rejects any
+          further edit once a deal reaches Won, so ongoing work lives in the
+          linked Project instead. */}
+      {opp.stage === 'Won' && (
+        <div className="flex items-center gap-3 p-4 rounded-xl border bg-blue-50 border-blue-200">
+          <Info className="w-5 h-5 text-blue-600 shrink-0" aria-hidden="true" />
+          <p className="text-xs text-blue-800 font-semibold">
+            This opportunity is Won and read-only. Manage ongoing work in its Project.
+          </p>
+        </div>
+      )}
+
       {/* Closed-deal banner: outcome, when, and the captured win/loss reason.
-          Shown regardless of active tab since it's cross-cutting deal status. */}
+          Shown regardless of active tab since it's cross-cutting deal status.
+          Reopening is only offered for Lost — a Won deal is permanently
+          read-only server-side (see the banner above). */}
       {(opp.stage === 'Won' || opp.stage === 'Lost') && (
         <div className={`flex flex-wrap items-start justify-between gap-3 p-4 rounded-xl border ${
           opp.stage === 'Won' ? 'bg-emerald-50 border-emerald-200' : 'bg-red-50 border-red-200'
@@ -401,18 +445,20 @@ export const OpportunityDetailsView: React.FC = () => {
               </p>
             )}
           </div>
-          <Button
-            variant="secondary"
-            className="shrink-0"
-            onClick={() => updateOpportunity({
-              ...opp,
-              // A deal cannot stay Won/Lost while reopened — step it back to Negotiation.
-              stage: 'Negotiation',
-              closeReason: '',
-            })}
-          >
-            Reopen Deal
-          </Button>
+          {opp.stage === 'Lost' && (
+            <Button
+              variant="secondary"
+              className="shrink-0"
+              onClick={() => updateOpportunity({
+                ...opp,
+                // A deal cannot stay Lost while reopened — step it back to Negotiation.
+                stage: 'Negotiation',
+                closeReason: '',
+              })}
+            >
+              Reopen Deal
+            </Button>
+          )}
         </div>
       )}
 
@@ -488,6 +534,8 @@ export const OpportunityDetailsView: React.FC = () => {
                     <label className="text-label font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">Update Stage:</label>
                     <select
                       value={opp.stage}
+                      disabled={opp.stage === 'Won'}
+                      title={opp.stage === 'Won' ? 'Won opportunities are read-only — manage ongoing work in the linked Project.' : undefined}
                       onChange={(e) => {
                         const stage = e.target.value as OpportunityStage;
                         if (stage === 'Won' || stage === 'Lost') {
@@ -502,7 +550,7 @@ export const OpportunityDetailsView: React.FC = () => {
                           updateOpportunity({ ...opp, ...stageChangePatch(stage) });
                         }
                       }}
-                      className="text-xs border border-slate-200 rounded-lg p-2 bg-white font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                      className="text-xs border border-slate-200 rounded-lg p-2 bg-white font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {OPPORTUNITY_STAGE_OPTIONS.map(stg => (
                         <option key={stg} value={stg}>{stg}</option>
@@ -616,6 +664,35 @@ export const OpportunityDetailsView: React.FC = () => {
                       <p className="text-sm text-slate-800 font-semibold">
                         {opp.aopAvailable ? `Yes${opp.aopYear ? ` (${opp.aopYear})` : ''}` : 'No'}
                       </p>
+                    </div>
+                    <div>
+                      <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1">Opportunity Health</span>
+                      {opp.opportunityHealth ? (
+                        <StatusBadge value={opp.opportunityHealth} colorMap={HEALTH_COLORS} />
+                      ) : (
+                        <p className="text-sm text-slate-400 font-medium italic">Not set</p>
+                      )}
+                    </div>
+                    <div>
+                      <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1">Revenue Model</span>
+                      <p className="text-sm text-slate-800 font-semibold">{opp.revenueModel || <span className="text-slate-400 font-medium italic">Not set</span>}</p>
+                    </div>
+                  </div>
+                </FormSection>
+
+                <FormSection title="Business Details">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                    <div>
+                      <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1">Location</span>
+                      <p className="text-sm text-slate-800 font-semibold">{opp.location || <span className="text-slate-400 font-medium italic">Not set</span>}</p>
+                    </div>
+                    <div>
+                      <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1">Cost</span>
+                      <p className="text-sm text-slate-800 font-mono font-semibold">{opp.cost != null ? formatCur(opp.cost) : <span className="text-slate-400 font-medium italic font-sans">Not set</span>}</p>
+                    </div>
+                    <div>
+                      <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1">Gross Margin</span>
+                      <p className="text-sm text-slate-800 font-mono font-semibold">{opp.grossMargin != null ? `${opp.grossMargin}%` : <span className="text-slate-400 font-medium italic font-sans">Not set</span>}</p>
                     </div>
                   </div>
                 </FormSection>
@@ -782,7 +859,7 @@ export const OpportunityDetailsView: React.FC = () => {
                                   if (col.key === 'owner') {
                                     return (
                                       <TableCell key={col.key} className="text-slate-600 font-semibold">
-                                        {item.owner}
+                                        {item.ownerName || item.owner || '—'}
                                       </TableCell>
                                     );
                                   }
@@ -1053,13 +1130,12 @@ export const OpportunityDetailsView: React.FC = () => {
             />
           </FormField>
 
-          <FormField label="Task Owner">
-            <input
-              type="text"
-              value={newAi.owner}
-              onChange={(e) => setNewAi({ ...newAi, owner: e.target.value })}
-              placeholder="e.g., John Smith"
-              className={INPUT_CLS}
+          <FormField label="Task Owner" required>
+            <ActionItemOwnerField
+              accountId={opp?.accountId ?? ''}
+              stakeholders={stakeholders}
+              value={newAi.ownerStakeholderId}
+              onChange={(ownerStakeholderId) => setNewAi({ ...newAi, ownerStakeholderId })}
             />
           </FormField>
 

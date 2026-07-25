@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
 import { ActionItem, ActionItemStatus, PriorityLevel } from '@/types';
 import {
@@ -44,7 +44,7 @@ import { LoadingState } from '@/components/common/LoadingState';
 import { ActionItemFormModal } from '@/features/action-items/components/ActionItemFormModal';
 import { ActionItemCommentToggle, ActionItemCommentsExpandedRow } from '@/components/ActionItemComments';
 import { ACTION_ITEM_STATUS_OPTIONS } from '@/constants';
-import { compareForSort, getTodayISODate, isDueThisWeek, isOpenActionItemStatus, normalizeOwnerName, SortDirection } from '@/utils';
+import { compareForSort, getTodayISODate, isDueThisWeek, isOpenActionItemStatus, matchesGlobalAccount, SortDirection } from '@/utils';
 
 export const ActionItemsView: React.FC = () => {
   const {
@@ -73,6 +73,7 @@ export const ActionItemsView: React.FC = () => {
     setOpenActionItemsFilter,
     overdueActionItemsFilter,
     setOverdueActionItemsFilter,
+    globalAccountId: selectedAccountFilter,
     loading,
   } = useCRM();
 
@@ -97,7 +98,6 @@ export const ActionItemsView: React.FC = () => {
   // Module-specific filter states (operational — never fiscal-period-based)
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedOwner, setSelectedOwner] = useState<string>('All');
-  const [selectedAccountFilter, setSelectedAccountFilter] = useState<string>('All');
   const [selectedOpportunityFilter, setSelectedOpportunityFilter] = useState<string>('All');
   const [selectedStatus, setSelectedStatus] = useState<string>('All');
   const [selectedPriority, setSelectedPriority] = useState<string>('All');
@@ -108,16 +108,26 @@ export const ActionItemsView: React.FC = () => {
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
 
-  // Opportunity filter is dependent on the selected account — switching
-  // accounts invalidates any opportunity selection that no longer applies.
-  const handleAccountFilterChange = (value: string) => {
-    setSelectedAccountFilter(value);
+  // The Global Account Selector represents a workspace switch — clear
+  // page-specific state so the newly selected account starts from a clean view.
+  // The Opportunity filter is dependent on the account scope, so narrowing
+  // invalidates any opportunity selection that no longer applies.
+  useEffect(() => {
+    setSearchQuery('');
     setSelectedOpportunityFilter('All');
-  };
+    setExpandedItemId(null);
+    setPage(1);
+  }, [selectedAccountFilter]);
 
   const opportunityFilterOptions = selectedAccountFilter === 'All'
     ? opportunities
     : opportunities.filter(opp => opp.accountId === selectedAccountFilter);
+
+  // When a specific account is active in the Global Account Selector, new
+  // action items lock to it — same mechanism Account Details already uses.
+  const lockedAccount = selectedAccountFilter !== 'All'
+    ? { id: selectedAccountFilter, name: accounts.find(a => a.id === selectedAccountFilter)?.name ?? '' }
+    : undefined;
 
   // Column sort state
   const [sortField, setSortField] = useState<string>('title');
@@ -129,6 +139,7 @@ export const ActionItemsView: React.FC = () => {
   const getSortValue = (item: ActionItem, key: string) => {
     if (key === 'accountId') return resolveAccount(item.accountId)?.name || item.accountName || '';
     if (key === 'opportunityId') return opportunities.find(o => o.id === item.opportunityId)?.name || '';
+    if (key === 'owner') return item.ownerName || item.owner || '';
     return (item as any)[key];
   };
 
@@ -157,7 +168,7 @@ export const ActionItemsView: React.FC = () => {
     title: '',
     accountId: '',
     opportunityId: '',
-    owner: '',
+    ownerStakeholderId: '',
     openDate: getTodayISODate(),
     dueDate: '',
     priority: '' as PriorityLevel,
@@ -168,14 +179,19 @@ export const ActionItemsView: React.FC = () => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newAi, setNewAi] = useState<Omit<ActionItem, 'id'>>(EMPTY_ACTION_ITEM);
 
-  // Dedupe case-insensitively so legacy variants ("john"/"JOHN") yield one entry.
+  const handleOpenAddActionItem = () => {
+    setNewAi({ ...EMPTY_ACTION_ITEM, accountId: lockedAccount?.id ?? '' });
+    setIsAddModalOpen(true);
+  };
+
+  // Owners actually assigned in the current list — deduped by stakeholder id.
   const ownersList = Array.from(
     new Map(
       actionItems
-        .filter(ai => ai.owner?.trim())
-        .map(ai => [ai.owner.trim().toLowerCase(), normalizeOwnerName(ai.owner)]),
-    ).values(),
-  );
+        .filter(ai => ai.ownerStakeholderId)
+        .map(ai => [ai.ownerStakeholderId as string, ai.ownerName || ai.owner || 'Unknown']),
+    ).entries(),
+  ).map(([id, label]) => ({ id, label }));
 
   const todayStr = getTodayISODate();
 
@@ -189,11 +205,11 @@ export const ActionItemsView: React.FC = () => {
         ai.title.toLowerCase().includes(q) ||
         (ai.notes || '').toLowerCase().includes(q) ||
         (account?.name || '').toLowerCase().includes(q) ||
-        ai.owner.toLowerCase().includes(q);
+        (ai.ownerName || ai.owner || '').toLowerCase().includes(q);
       if (!matches) return false;
     }
-    if (selectedOwner !== 'All' && ai.owner.trim().toLowerCase() !== selectedOwner.toLowerCase()) return false;
-    if (selectedAccountFilter !== 'All' && ai.accountId !== selectedAccountFilter) return false;
+    if (selectedOwner !== 'All' && ai.ownerStakeholderId !== selectedOwner) return false;
+    if (!matchesGlobalAccount(ai.accountId, selectedAccountFilter)) return false;
     if (selectedOpportunityFilter !== 'All' && ai.opportunityId !== selectedOpportunityFilter) return false;
     if (selectedStatus !== 'All' && ai.status !== selectedStatus) return false;
     if (selectedPriority !== 'All' && ai.priority !== selectedPriority) return false;
@@ -225,11 +241,11 @@ export const ActionItemsView: React.FC = () => {
   // Create action item
   const handleCreateActionItem = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newAi.title.trim() || !newAi.accountId || !newAi.priority) return;
+    if (!newAi.title.trim() || !newAi.accountId || !newAi.priority || !newAi.ownerStakeholderId) return;
     try {
       await addActionItem(newAi);
       setIsAddModalOpen(false);
-      setNewAi(EMPTY_ACTION_ITEM);
+      setNewAi({ ...EMPTY_ACTION_ITEM, accountId: lockedAccount?.id ?? '' });
     } catch {
       // Failure toast raised centrally by the API client; keep the modal open.
     }
@@ -310,7 +326,7 @@ export const ActionItemsView: React.FC = () => {
             <Button
               size="md"
               icon={<Plus className="w-4 h-4" aria-hidden="true" />}
-              onClick={() => setIsAddModalOpen(true)}
+              onClick={handleOpenAddActionItem}
             >
               New Action Item
             </Button>
@@ -354,17 +370,6 @@ export const ActionItemsView: React.FC = () => {
         />
 
         <FilterSelect
-          label="Account"
-          hideLabel
-          value={selectedAccountFilter}
-          onChange={handleAccountFilterChange}
-          options={[
-            { value: 'All', label: 'All Accounts' },
-            ...accounts.map(acc => ({ value: acc.id, label: acc.name })),
-          ]}
-        />
-
-        <FilterSelect
           label="Opportunity"
           hideLabel
           value={selectedOpportunityFilter}
@@ -382,7 +387,7 @@ export const ActionItemsView: React.FC = () => {
           onChange={setSelectedOwner}
           options={[
             { value: 'All', label: 'All Owners' },
-            ...ownersList.map(owner => ({ value: owner, label: owner })),
+            ...ownersList.map(owner => ({ value: owner.id, label: owner.label })),
           ]}
         />
 
@@ -529,7 +534,7 @@ export const ActionItemsView: React.FC = () => {
                         if (col.key === 'owner') {
                           return (
                             <TableCell key={col.key} className="text-slate-600 font-semibold">
-                              {item.owner}
+                              {item.ownerName || item.owner || '—'}
                             </TableCell>
                           );
                         }
@@ -622,8 +627,10 @@ export const ActionItemsView: React.FC = () => {
         submitLabel="Create Action Item"
         value={newAi}
         onChange={(patch) => setNewAi({ ...newAi, ...patch })}
+        lockedAccount={lockedAccount}
         accounts={accounts}
         opportunities={opportunities}
+        stakeholders={stakeholders}
         actionItemColumns={actionItemColumns}
         actionItemsColumnConfig={actionItemsColumnConfig}
       />
@@ -664,7 +671,7 @@ export const ActionItemsView: React.FC = () => {
                   <TableRow key={item.id} className="opacity-70">
                     <TableCell className="font-semibold text-slate-600 line-through decoration-slate-300">{item.title}</TableCell>
                     <TableCell className="text-slate-500">{item.accountName || acc?.name || '—'}</TableCell>
-                    <TableCell>{item.owner}</TableCell>
+                    <TableCell>{item.ownerName || item.owner || '—'}</TableCell>
                     <TableCell>
                       <StatusBadge value={item.priority} colorMap={PRIORITY_COLORS} shape="rounded" muted />
                     </TableCell>

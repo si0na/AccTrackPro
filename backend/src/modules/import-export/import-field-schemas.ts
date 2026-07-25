@@ -7,20 +7,21 @@
  * create. Coercion + validation is driven from here by `runBulkValidate`.
  */
 import type { ImportFieldDef } from '../../common/utils/bulk-validate.util';
+import { AOP_YEAR_OPTIONS, SERVICE_LINE_OPTIONS } from '../../common/utils/dto-transforms.util';
 
 // Enum option sets — kept in step with the Create DTO `@IsIn(...)` lists.
 const ACCOUNT_TYPE = ['Strategic', 'Non Strategic', 'New'] as const;
 const ACCOUNT_HEALTH = ['Green', 'Amber', 'Red'] as const;
 const OPPORTUNITY_STAGE = ['Lead', 'Qualified', 'Proposal', 'Negotiation', 'Verbal Agreement', 'Won', 'Blocked', 'Delayed', 'Lost'] as const;
-const OPPORTUNITY_TYPE = ['Growth', 'Pursuit', 'Whitespace'] as const;
-const SERVICE_LINE = ['Data', 'AI', 'Cloud', 'Application Development', 'Application Support', 'Infrastructure', 'Cyber Security', 'SharePoint'] as const;
+const OPPORTUNITY_TYPE = ['Growth', 'Pursuit', 'Whitespace', 'New', 'Extension'] as const;
+const SERVICE_LINE = SERVICE_LINE_OPTIONS;
+const OPPORTUNITY_HEALTH = ['Green', 'Amber', 'Red'] as const;
+const REVENUE_MODEL = ['T&E', 'Fixed Bid', 'Fixed Capacity', 'Managed Services'] as const;
 const ACTION_ITEM_STATUS = ['To Do', 'In Progress', 'Blocked', 'Completed', 'Cancelled'] as const;
 const PRIORITY = ['High', 'Medium', 'Low'] as const;
 const INFLUENCE = ['High', 'Medium', 'Low'] as const;
 const RELATIONSHIP = ['Strong', 'Neutral', 'Weak'] as const;
 const STAKEHOLDER_TYPE = ['CLIENT', 'SERVICE_PROVIDER'] as const;
-
-const AOP_YEAR_RE = /^\d{4}-\d{4}$/;
 
 export type IEModuleKey = 'accounts' | 'opportunities' | 'stakeholders' | 'actionItems';
 
@@ -49,7 +50,7 @@ export const OPPORTUNITY_FIELDS: ImportFieldDef[] = [
   { key: 'opportunityType', header: 'Opportunity Type', type: 'enum', options: OPPORTUNITY_TYPE, required: true },
   { key: 'serviceLine', header: 'Service Line', type: 'enum', options: SERVICE_LINE, required: true },
   { key: 'aopAvailable', header: 'AOP Available', type: 'boolean', default: false },
-  { key: 'aopYear', header: 'AOP Year', type: 'string' },
+  { key: 'aopYear', header: 'AOP Year', type: 'enum', options: AOP_YEAR_OPTIONS },
   { key: 'allocationStartDate', header: 'Allocation Start Date', type: 'date' },
   { key: 'allocationEndDate', header: 'Allocation End Date', type: 'date' },
   { key: 'dealStartDate', header: 'Deal Start Date', type: 'date' },
@@ -57,16 +58,22 @@ export const OPPORTUNITY_FIELDS: ImportFieldDef[] = [
   { key: 'nextStep', header: 'Next Step', type: 'string' },
   { key: 'risksAndDependencies', header: 'Risks & Dependencies', type: 'string' },
   { key: 'description', header: 'Description', type: 'string' },
+  { key: 'opportunityHealth', header: 'Opportunity Health', type: 'enum', options: OPPORTUNITY_HEALTH },
+  { key: 'revenueModel', header: 'Revenue Model', type: 'enum', options: REVENUE_MODEL },
+  { key: 'location', header: 'Location', type: 'string' },
+  { key: 'cost', header: 'Cost', type: 'number' },
+  { key: 'grossMargin', header: 'Gross Margin (%)', type: 'number' },
 ];
 
-/** AOP-year business rule (mirrors the DTO's ValidateIf + the UI). */
+/**
+ * AOP-year business rule (mirrors the DTO's ValidateIf + the UI). Format and
+ * predefined-list membership are already enforced by the `enum` field
+ * coercion above — this only covers the cross-field "required when available" rule.
+ */
 export function opportunityPostValidate(payload: Record<string, any>): string[] {
   const errors: string[] = [];
-  if (payload.aopAvailable === true) {
-    if (!payload.aopYear) errors.push('AOP Year is required when AOP Available is Yes');
-    else if (!AOP_YEAR_RE.test(String(payload.aopYear))) errors.push('AOP Year must be in YYYY-YYYY format (e.g. 2026-2027)');
-  } else if (payload.aopYear && !AOP_YEAR_RE.test(String(payload.aopYear))) {
-    errors.push('AOP Year must be in YYYY-YYYY format (e.g. 2026-2027)');
+  if (payload.aopAvailable === true && !payload.aopYear) {
+    errors.push('AOP Year is required when AOP Available is Yes');
   }
   return errors;
 }
@@ -89,7 +96,7 @@ export const STAKEHOLDER_FIELDS: ImportFieldDef[] = [
 export const ACTION_ITEM_FIELDS: ImportFieldDef[] = [
   { key: 'title', header: 'Title', type: 'string', required: true },
   { key: 'accountId', header: 'Account', type: 'reference', reference: 'account', required: true },
-  { key: 'owner', header: 'Owner', type: 'string', required: true },
+  { key: 'ownerStakeholderId', header: 'Owner', type: 'reference', reference: 'stakeholder', required: true },
   { key: 'priority', header: 'Priority', type: 'enum', options: PRIORITY, required: true },
   { key: 'status', header: 'Status', type: 'enum', options: ACTION_ITEM_STATUS, required: true },
   { key: 'opportunityId', header: 'Opportunity', type: 'reference', reference: 'opportunity' },

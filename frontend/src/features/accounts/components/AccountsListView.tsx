@@ -3,14 +3,14 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
 import { Account, AccountType, AccountHealth } from '@/types';
 import { Plus, Building2, Settings2, HeartPulse, X } from 'lucide-react';
 import { CustomizeColumnsSidebar } from '@/components/table/CustomizeColumnsSidebar';
 import { InlineEditModal } from '@/components/InlineEditModal';
 import { LoadingState } from '@/components/common/LoadingState';
-import { compareForSort, getCustomerSinceYearOptions, mapLocationToOption, SortDirection } from '@/utils';
+import { compareForSort, getCustomerSinceYearOptions, mapLocationToOption, matchesGlobalAccount, SortDirection } from '@/utils';
 import { ACCOUNT_TYPE_OPTIONS, ACCOUNT_HEALTH_OPTIONS, LOCATION_OPTIONS } from '@/constants';
 import {
   ACCOUNT_TYPE_COLORS,
@@ -65,6 +65,7 @@ export const AccountsListView: React.FC = () => {
     navSource,
     selectedHealth,
     setSelectedHealth,
+    globalAccountId,
     currentUser,
     loading,
   } = useCRM();
@@ -96,6 +97,13 @@ export const AccountsListView: React.FC = () => {
   // Client-side pagination over the already-filtered rows (display only)
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+
+  // The Global Account Selector represents a workspace switch — clear
+  // page-specific state so the newly selected account starts from a clean view.
+  useEffect(() => {
+    setSearchQuery('');
+    setPage(1);
+  }, [globalAccountId]);
 
   // Column sort state — defaults to name asc, toggles direction on repeat clicks
   const [sortField, setSortField] = useState<string>('name');
@@ -146,11 +154,12 @@ export const AccountsListView: React.FC = () => {
     const matchesSearch = acc.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           acc.industry.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           (acc.location ?? '').toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesGlobalScope = matchesGlobalAccount(acc.id, globalAccountId);
     const matchesType     = selectedType   === 'All' || acc.type   === selectedType;
     const matchesHealth   = selectedHealth === 'All' || acc.health === selectedHealth;
     const matchesIndustry = selectedIndustry === 'All' || acc.industry?.trim() === selectedIndustry;
     const matchesLocation = selectedLocation === 'All' || acc.location?.trim() === selectedLocation;
-    return matchesSearch && matchesType && matchesHealth && matchesIndustry && matchesLocation;
+    return matchesSearch && matchesGlobalScope && matchesType && matchesHealth && matchesIndustry && matchesLocation;
   });
 
   const sortedAccounts = [...filteredAccounts].sort((a, b) =>

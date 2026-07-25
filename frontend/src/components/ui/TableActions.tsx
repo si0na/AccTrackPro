@@ -1,13 +1,14 @@
 import React from 'react';
 import { Eye, Pencil, Trash2, RotateCcw } from 'lucide-react';
 
-export type RowActionIntent = 'view' | 'edit' | 'delete' | 'download' | 'neutral';
+export type RowActionIntent = 'view' | 'edit' | 'delete' | 'download' | 'forecast' | 'neutral';
 
 const INTENT_CLS: Record<RowActionIntent, string> = {
   view: 'bg-blue-50 text-blue-600 hover:bg-blue-100',
   edit: 'bg-amber-50 text-amber-600 hover:bg-amber-100',
   delete: 'bg-red-50 text-red-500 hover:bg-red-100',
   download: 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100',
+  forecast: 'bg-purple-50 text-purple-600 hover:bg-purple-100',
   neutral: 'bg-slate-100 text-slate-500 hover:bg-slate-200',
 };
 

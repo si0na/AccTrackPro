@@ -6,6 +6,8 @@ import { CommonModule } from './common/common.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { AccountsModule } from './modules/accounts/accounts.module';
 import { OpportunitiesModule } from './modules/opportunities/opportunities.module';
+import { OpportunityForecastModule } from './modules/opportunity-forecast/opportunity-forecast.module';
+import { ProjectsModule } from './modules/projects/projects.module';
 import { ActionItemsModule } from './modules/action-items/action-items.module';
 import { StakeholdersModule } from './modules/stakeholders/stakeholders.module';
 import { ActivitiesModule } from './modules/activities/activities.module';
@@ -39,6 +41,8 @@ import { ImportExportModule } from './modules/import-export/import-export.module
     AuthModule,
     AccountsModule,
     OpportunitiesModule,
+    OpportunityForecastModule,
+    ProjectsModule,
     ActionItemsModule,
     StakeholdersModule,
     ActivitiesModule,

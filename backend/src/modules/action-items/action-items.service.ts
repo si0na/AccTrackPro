@@ -3,7 +3,7 @@ import { DatabaseService } from '../../database/database.service';
 import { FilterContextService, FilterParams, FiscalContext } from '../../common/services/filter-context.service';
 import { NotificationEventBus } from '../../common/events/notification-event-bus.service';
 import { ActionItem } from '../../types';
-import { resolveOwnerName, extractCustomData } from '../../common/utils/db-mapping.util';
+import { extractCustomData } from '../../common/utils/db-mapping.util';
 import { Pagination, Paginated, extractTotal } from '../../common/utils/pagination.util';
 import { validateDto } from '../../common/utils/validate-dto.util';
 import { CreateActionItemDto } from './dto/action-item.dto';
@@ -14,7 +14,8 @@ import { BulkModuleAdapter } from '../import-export/bulk-adapter';
 // stripped instead of leaking into custom_data — fiscal periods are derived
 // from dueDate and never stored.
 const KNOWN = new Set([
-  'id','title','accountId','accountName','opportunityId','owner','ownerId',
+  'id','title','accountId','accountName','opportunityId','projectId','projectName','owner','ownerId','ownerStakeholderId',
+  'ownerName','ownerDesignation','ownerStakeholderType',
   'openDate','dueDate','priority','status','notes','risksAndDependencies','completedDate',
   'financialYear','quarter',
 ]);
@@ -27,9 +28,10 @@ function todayIsoDate(): string {
 function rowToActionItem(row: any, derive: (date: string) => { financialYear: string; quarter: string }): ActionItem {
   const {
     custom_data, is_deleted, created_at, updated_at,
-    account_id, account_name, opportunity_id, open_date, due_date, completed_date,
+    account_id, account_name, opportunity_id, project_id, project_name, open_date, due_date, completed_date,
     risks_and_dependencies,
     owner_id, owner_name,
+    owner_stakeholder_id, stakeholder_owner_name, stakeholder_owner_designation, stakeholder_owner_type,
     ...base
   } = row;
   return {
@@ -37,8 +39,16 @@ function rowToActionItem(row: any, derive: (date: string) => { financialYear: st
     accountId:     account_id,
     accountName:   account_name ?? undefined,
     opportunityId: opportunity_id ?? undefined,
+    projectId:     project_id ?? undefined,
+    projectName:   project_name ?? undefined,
     ownerId:       owner_id   ?? undefined,
-    owner:         base.owner || owner_name || '',
+    // Legacy free-text fallback, shown only for historical rows a stakeholder
+    // backfill couldn't resolve (owner_stakeholder_id is NULL).
+    owner:                base.owner ?? undefined,
+    ownerStakeholderId:   owner_stakeholder_id ?? undefined,
+    ownerName:            stakeholder_owner_name ?? base.owner ?? '',
+    ownerDesignation:     stakeholder_owner_designation ?? undefined,
+    ownerStakeholderType: stakeholder_owner_type ?? undefined,
     openDate:      open_date,
     dueDate:       due_date,
     completedDate: completed_date ?? undefined,
@@ -50,10 +60,14 @@ function rowToActionItem(row: any, derive: (date: string) => { financialYear: st
 }
 
 const AI_SELECT = `
-  SELECT ai.*, u.name AS owner_name, a.name AS account_name
+  SELECT ai.*, u.name AS owner_name, a.name AS account_name, proj.name AS project_name,
+         os.name AS stakeholder_owner_name, os.designation AS stakeholder_owner_designation,
+         os.stakeholder_type AS stakeholder_owner_type
   FROM action_items ai
-  LEFT JOIN accounts a ON ai.account_id = a.id
-  LEFT JOIN users    u ON ai.owner_id   = u.id
+  LEFT JOIN accounts     a ON ai.account_id = a.id
+  LEFT JOIN users        u ON ai.owner_id   = u.id
+  LEFT JOIN projects     proj ON ai.project_id = proj.id
+  LEFT JOIN stakeholders os ON ai.owner_stakeholder_id = os.id AND os.is_deleted = FALSE
 `;
 
 @Injectable()
@@ -130,10 +144,14 @@ export class ActionItemsService {
     const qParams     = pg ? [...owner.params, pg.limit, pg.offset] : owner.params;
 
     const { rows } = await this.db.query(
-      `SELECT ai.*, u.name AS owner_name, a.name AS account_name${totalCol}
+      `SELECT ai.*, u.name AS owner_name, a.name AS account_name, proj.name AS project_name,
+              os.name AS stakeholder_owner_name, os.designation AS stakeholder_owner_designation,
+              os.stakeholder_type AS stakeholder_owner_type${totalCol}
        FROM action_items ai
-       INNER JOIN accounts a ON ai.account_id = a.id AND a.is_deleted = FALSE
-       LEFT  JOIN users    u ON ai.owner_id   = u.id
+       INNER JOIN accounts     a ON ai.account_id = a.id AND a.is_deleted = FALSE
+       LEFT  JOIN users        u ON ai.owner_id   = u.id
+       LEFT  JOIN projects     proj ON ai.project_id = proj.id
+       LEFT  JOIN stakeholders os ON ai.owner_stakeholder_id = os.id AND os.is_deleted = FALSE
        WHERE ${where}
        ORDER BY ai.created_at DESC${limitClause}`,
       qParams,
@@ -176,21 +194,19 @@ export class ActionItemsService {
       );
     }
 
-    await this.assertValidRelations(data.accountId, data.opportunityId, data.ownerId);
+    await this.assertValidRelations(data.accountId, data.opportunityId, data.projectId, data.ownerId);
+    await this.assertOwnerStakeholder(data.ownerStakeholderId, data.accountId);
 
-    const cd   = extractCustomData(data, KNOWN);
-    const ownerDisplayName = data.owner?.trim()
-      ? data.owner.trim()
-      : await resolveOwnerName(this.db, data.ownerId);
+    const cd = extractCustomData(data, KNOWN);
 
     const { rows } = await this.db.query(
       `INSERT INTO action_items
-         (id, title, account_id, opportunity_id, owner_id, owner, open_date, due_date, priority, status, notes, risks_and_dependencies, completed_date, custom_data)
-       VALUES (gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+         (id, title, account_id, opportunity_id, project_id, owner_id, owner_stakeholder_id, open_date, due_date, priority, status, notes, risks_and_dependencies, completed_date, custom_data)
+       VALUES (gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
        RETURNING id`,
       [
-        data.title, data.accountId, data.opportunityId ?? null,
-        data.ownerId ?? null, ownerDisplayName,
+        data.title, data.accountId, data.opportunityId ?? null, data.projectId ?? null,
+        data.ownerId ?? null, data.ownerStakeholderId,
         data.openDate || todayIsoDate(), data.dueDate ?? '', data.priority, data.status, data.notes ?? '',
         data.risksAndDependencies ?? '',
         data.completedDate ?? null, JSON.stringify(cd),
@@ -224,26 +240,26 @@ export class ActionItemsService {
    */
   async update(id: string, data: any, requestingUserId?: string): Promise<ActionItem> {
     const existing = await this.findOne(id, requestingUserId);
-    if (data.accountId !== existing.accountId || data.opportunityId !== existing.opportunityId) {
-      await this.assertValidRelations(data.accountId, data.opportunityId, requestingUserId);
+    if (data.accountId !== existing.accountId || data.opportunityId !== existing.opportunityId || data.projectId !== existing.projectId) {
+      await this.assertValidRelations(data.accountId, data.opportunityId, data.projectId, requestingUserId);
+    }
+    if (data.ownerStakeholderId !== existing.ownerStakeholderId || data.accountId !== existing.accountId) {
+      await this.assertOwnerStakeholder(data.ownerStakeholderId, data.accountId);
     }
     const cd = extractCustomData(data, KNOWN);
 
-    // Ownership (owner_id) is preserved from DB — never changed by a regular
-    // update. The owner *display name* is user-editable.
+    // Ownership (owner_id) is preserved from DB — never changed by a regular update.
     const effectiveOwnerId = existing.ownerId ?? null;
-    const ownerDisplayName =
-      typeof data.owner === 'string' && data.owner.trim() ? data.owner.trim() : existing.owner;
 
     await this.db.query(
       `UPDATE action_items SET
-         title=$1, account_id=$2, opportunity_id=$3, owner_id=$4, owner=$5, open_date=$6, due_date=$7,
-         priority=$8, status=$9, notes=$10, risks_and_dependencies=$11, completed_date=$12,
-         custom_data=$13, updated_at=NOW()
-       WHERE id=$14 AND is_deleted=FALSE`,
+         title=$1, account_id=$2, opportunity_id=$3, project_id=$4, owner_id=$5, owner_stakeholder_id=$6, open_date=$7, due_date=$8,
+         priority=$9, status=$10, notes=$11, risks_and_dependencies=$12, completed_date=$13,
+         custom_data=$14, updated_at=NOW()
+       WHERE id=$15 AND is_deleted=FALSE`,
       [
-        data.title, data.accountId, data.opportunityId ?? null,
-        effectiveOwnerId, ownerDisplayName,
+        data.title, data.accountId, data.opportunityId ?? null, data.projectId ?? null,
+        effectiveOwnerId, data.ownerStakeholderId,
         data.openDate || existing.openDate, data.dueDate ?? '', data.priority, data.status, data.notes ?? '',
         data.risksAndDependencies ?? '',
         data.completedDate ?? null, JSON.stringify(cd),
@@ -321,9 +337,15 @@ export class ActionItemsService {
 
   /**
    * Relational rules: the parent account must exist, be active, and belong to the
-   * requesting user; a linked opportunity (optional) must exist and belong to the same account.
+   * requesting user; a linked opportunity (optional) must exist and belong to the same account;
+   * a linked project (optional) must exist, be active, and belong to the same account.
    */
-  private async assertValidRelations(accountId: string, opportunityId?: string | null, ownerId?: string): Promise<void> {
+  private async assertValidRelations(
+    accountId: string,
+    opportunityId?: string | null,
+    projectId?: string | null,
+    ownerId?: string,
+  ): Promise<void> {
     const { rows: acct } = await this.db.query(
       `SELECT id FROM accounts WHERE id = $1 AND is_deleted = FALSE
        AND ($2::TEXT IS NULL OR owner_id = $2)`,
@@ -342,6 +364,27 @@ export class ActionItemsService {
         throw new BadRequestException('The linked opportunity belongs to a different account');
       }
     }
+
+    if (projectId) {
+      const { rows: proj } = await this.db.query(
+        `SELECT account_id FROM projects WHERE id = $1 AND is_deleted = FALSE
+         AND ($2::TEXT IS NULL OR owner_id = $2)`,
+        [projectId, ownerId ?? null],
+      );
+      if (!proj.length) throw new BadRequestException('The linked project does not exist');
+      if (proj[0].account_id !== accountId) {
+        throw new BadRequestException('The linked project belongs to a different account');
+      }
+    }
+  }
+
+  /** Owner must be an active stakeholder (Client or Service Provider) on the same account. */
+  private async assertOwnerStakeholder(stakeholderId: string, accountId: string): Promise<void> {
+    const { rows } = await this.db.query(
+      `SELECT id FROM stakeholders WHERE id = $1 AND account_id = $2 AND is_deleted = FALSE`,
+      [stakeholderId, accountId],
+    );
+    if (!rows.length) throw new BadRequestException('The selected Owner is not a stakeholder of this account');
   }
 
   private async log(text: string, accountId?: string, userId?: string): Promise<void> {

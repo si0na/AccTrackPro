@@ -31,6 +31,7 @@ interface ImportPreviewGridProps {
 function displayValue(row: WorkingImportRow, field: ImportFieldDef): string {
   if (field.reference === 'account') return String(row.refNames.account ?? row.raw[field.header] ?? '');
   if (field.reference === 'opportunity') return String(row.refNames.opportunity ?? row.raw[field.header] ?? '');
+  if (field.reference === 'stakeholder') return String(row.refNames.stakeholder ?? row.raw[field.header] ?? '');
   const v = row.payload[field.key] ?? row.raw[field.header];
   if (v === undefined || v === null) return '';
   if (typeof v === 'boolean') return v ? 'Yes' : 'No';
