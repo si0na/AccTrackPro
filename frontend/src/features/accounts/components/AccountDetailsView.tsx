@@ -168,10 +168,11 @@ export const AccountDetailsView: React.FC = () => {
     stage: 'Lead',
     value: 0,
     probability: STAGE_DEFAULT_PROBABILITY.Lead ?? 0,
-    closeDate: '',
     description: '',
-    startDate: '',
-    endDate: '',
+    allocationStartDate: '',
+    allocationEndDate: '',
+    dealStartDate: undefined,
+    dealCloseDate: undefined,
     crmValue: 0,
     nextStep: '',
     risksAndDependencies: '',
@@ -183,6 +184,11 @@ export const AccountDetailsView: React.FC = () => {
     aopAvailable: false,
     aopYear: null,
     serviceLine: undefined,
+    opportunityHealth: undefined,
+    revenueModel: undefined,
+    location: undefined,
+    cost: 0,
+    grossMargin: undefined,
   });
 
   // Add Action Item Modal State
@@ -191,7 +197,7 @@ export const AccountDetailsView: React.FC = () => {
     title: '',
     accountId: '',
     opportunityId: '',
-    owner: '',
+    ownerStakeholderId: '',
     openDate: getTodayISODate(),
     dueDate: '',
     priority: 'Medium',
@@ -307,11 +313,11 @@ export const AccountDetailsView: React.FC = () => {
       stage: 'Lead',
       value: 0,
       probability: STAGE_DEFAULT_PROBABILITY.Lead ?? 0,
-      owner: '',
-      closeDate: '',
       description: '',
-      startDate: '',
-      endDate: '',
+      allocationStartDate: '',
+      allocationEndDate: '',
+      dealStartDate: undefined,
+      dealCloseDate: undefined,
       crmValue: 0,
       nextStep: '',
       risksAndDependencies: '',
@@ -323,6 +329,11 @@ export const AccountDetailsView: React.FC = () => {
       aopAvailable: false,
       aopYear: null,
       serviceLine: undefined,
+      opportunityHealth: undefined,
+      revenueModel: undefined,
+      location: undefined,
+      cost: 0,
+      grossMargin: undefined,
     });
     setIsAddOppModalOpen(true);
   };
@@ -372,7 +383,7 @@ export const AccountDetailsView: React.FC = () => {
       title: '',
       accountId: account.id,
       opportunityId: '',
-      owner: '',
+      ownerStakeholderId: '',
       openDate: getTodayISODate(),
       dueDate: '',
       priority: 'Medium',
@@ -385,7 +396,7 @@ export const AccountDetailsView: React.FC = () => {
 
   const handleCreateActionItemForm = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newAi.title.trim()) return;
+    if (!newAi.title.trim() || !newAi.ownerStakeholderId) return;
     addActionItem(newAi);
     setIsAddAiModalOpen(false);
   };
@@ -512,9 +523,9 @@ export const AccountDetailsView: React.FC = () => {
       <DetailTabBar
         tabs={[
           { id: 'overview', label: 'Overview', icon: Briefcase, count: null },
+          { id: 'stakeholders', label: 'Stakeholders', icon: Users, count: accountStks.length },
           { id: 'opportunities', label: 'Opportunities', icon: DollarSign, count: visibleOpps.length },
           { id: 'action-items', label: 'Action Items', icon: CheckSquare, count: visibleActions.length },
-          { id: 'stakeholders', label: 'Stakeholders', icon: Users, count: accountStks.length },
           { id: 'comments', label: 'Comments', icon: MessageSquare, count: accountComments.length },
           { id: 'documents', label: 'Documents', icon: FileText, count: docCount > 0 ? docCount : null },
         ]}
@@ -1019,7 +1030,7 @@ export const AccountDetailsView: React.FC = () => {
                                 if (col.key === 'owner') {
                                   return (
                                     <TableCell key={col.key} className="text-slate-600 font-medium text-xs">
-                                      {item.owner}
+                                      {item.ownerName || item.owner || '—'}
                                     </TableCell>
                                   );
                                 }
@@ -1418,6 +1429,7 @@ export const AccountDetailsView: React.FC = () => {
           onChange={(patch) => setNewAi({ ...newAi, ...patch })}
           accounts={accounts}
           opportunities={opportunities}
+          stakeholders={stakeholders}
           actionItemColumns={actionItemColumns}
           actionItemsColumnConfig={actionItemsColumnConfig}
           lockedAccount={{ id: account.id, name: account.name }}

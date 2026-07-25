@@ -21,7 +21,7 @@ ALTER TABLE opportunities ADD COLUMN IF NOT EXISTS opportunity_type TEXT NOT NUL
 DO $opp_type$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'chk_opp_type') THEN
     ALTER TABLE opportunities ADD CONSTRAINT chk_opp_type
-      CHECK (opportunity_type IN ('Growth','Pursuit','Whitespace'));
+      CHECK (opportunity_type IN ('Growth','Pursuit','Whitespace','New','Extension'));
   END IF;
 END $opp_type$;
 

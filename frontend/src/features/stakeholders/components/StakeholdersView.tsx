@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
 import { Stakeholder } from '@/types';
 import { Plus, Mail, Phone, X, Users } from 'lucide-react';
@@ -34,7 +34,7 @@ import {
 } from '@/components/ui';
 import { StakeholderFormModal } from './StakeholderFormModal';
 import { LoadingState } from '@/components/common/LoadingState';
-import { compareForSort, SortDirection } from '@/utils';
+import { compareForSort, matchesGlobalAccount, SortDirection } from '@/utils';
 
 export const StakeholdersView: React.FC = () => {
   const {
@@ -50,6 +50,7 @@ export const StakeholdersView: React.FC = () => {
     setView,
     cameFromDashboard,
     navSource,
+    globalAccountId: accountFilter,
     loading,
   } = useCRM();
 
@@ -60,12 +61,24 @@ export const StakeholdersView: React.FC = () => {
     : undefined;
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [accountFilter, setAccountFilter] = useState<string>('All');
   const [stakeholderTypeFilter, setStakeholderTypeFilter] = useState<string>('All');
 
   // Client-side pagination over the already-filtered/sorted rows (display only)
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+
+  // The Global Account Selector represents a workspace switch — clear
+  // page-specific state so the newly selected account starts from a clean view.
+  useEffect(() => {
+    setSearchQuery('');
+    setPage(1);
+  }, [accountFilter]);
+
+  // When a specific account is active in the Global Account Selector, new
+  // stakeholders lock to it — same mechanism Account Details already uses.
+  const lockedAccount = accountFilter !== 'All'
+    ? { id: accountFilter, name: accounts.find(a => a.id === accountFilter)?.name ?? '' }
+    : undefined;
 
   // Delete confirmation state
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; label: string } | null>(null);
@@ -77,19 +90,9 @@ export const StakeholdersView: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Stakeholder | null>(null);
 
-  // Account filter options: only accounts that actually have stakeholders.
-  const accountFilterOptions = Array.from(new Set(stakeholders.map(s => s.accountId)))
-    .map(id => ({
-      value: id,
-      label: resolveAccount(id)?.name
-        || stakeholders.find(s => s.accountId === id)?.accountName
-        || id,
-    }))
-    .sort((a, b) => a.label.localeCompare(b.label));
-
   const filteredStks = stakeholders.filter(s => {
     if (focusedStakeholderId && s.id !== focusedStakeholderId) return false;
-    if (accountFilter !== 'All' && s.accountId !== accountFilter) return false;
+    if (!matchesGlobalAccount(s.accountId, accountFilter)) return false;
     if (stakeholderTypeFilter !== 'All' && s.stakeholderType !== stakeholderTypeFilter) return false;
     const account = resolveAccount(s.accountId);
     return s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -177,14 +180,6 @@ export const StakeholdersView: React.FC = () => {
           onChange={setSearchQuery}
           placeholder="Search stakeholders by name, designation, or client account..."
           className="flex-1 min-w-[240px]"
-        />
-        <FilterSelect
-          label="Account"
-          hideLabel
-          value={accountFilter}
-          onChange={(v) => { setAccountFilter(v); setPage(1); }}
-          options={[{ value: 'All', label: 'All Accounts' }, ...accountFilterOptions]}
-          className="w-56 shrink-0"
         />
         <FilterSelect
           label="Stakeholder Type"
@@ -283,6 +278,7 @@ export const StakeholdersView: React.FC = () => {
         isOpen={isModalOpen}
         mode="create"
         accounts={accounts}
+        lockedAccount={lockedAccount}
         onClose={() => setIsModalOpen(false)}
         onSubmit={async (draft) => { await addStakeholder(draft); }}
       />

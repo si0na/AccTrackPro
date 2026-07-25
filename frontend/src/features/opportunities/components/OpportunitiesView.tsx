@@ -6,15 +6,15 @@
 import React, { useState, useEffect } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
 import { Opportunity } from '@/types';
-import { Plus, Eye, Trash2, TrendingUp, X, FileSpreadsheet, Settings2, Pencil } from 'lucide-react';
+import { Plus, Eye, Trash2, TrendingUp, X, FileSpreadsheet, Settings2, Pencil, Calendar, FolderKanban, LineChart } from 'lucide-react';
 import { CustomizeColumnsSidebar } from '@/components/table/CustomizeColumnsSidebar';
 import { OpportunityActionsCommentsPanel } from '@/features/opportunities/components/OpportunityActionsCommentsPanel';
 import { OpportunityFormModal } from '@/features/opportunities/components/OpportunityFormModal';
 import { renderOpportunityCell } from '@/features/opportunities/components/OpportunityTableCells';
 import { InlineEditModal } from '@/components/InlineEditModal';
 import { LoadingState } from '@/components/common/LoadingState';
-import { OPPORTUNITY_STAGE_OPTIONS, STAGE_DEFAULT_PROBABILITY } from '@/constants';
-import { compareForSort, deriveOppStatus, SortDirection } from '@/utils';
+import { OPPORTUNITY_STAGE_OPTIONS, STAGE_DEFAULT_PROBABILITY, OPPORTUNITY_HEALTH_OPTIONS, REVENUE_MODEL_OPTIONS, SERVICE_LINE_OPTIONS } from '@/constants';
+import { compareForSort, deriveOppStatus, matchesGlobalAccount, SortDirection } from '@/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   BackButton,
@@ -26,7 +26,6 @@ import {
   ErrorBanner,
   FilterBar,
   FilterSelect,
-  INPUT_CLS,
   PageHeader,
   Pagination,
   RestoreButton,
@@ -43,6 +42,37 @@ import {
   TableRow,
 } from '@/components/ui';
 
+// Empty draft for the "New Opportunity" modal — a module constant so it can be
+// reused both as the initial state and whenever the create form is reset/reopened.
+const EMPTY_OPPORTUNITY: Omit<Opportunity, 'id'> = {
+  name: '',
+  accountId: '',
+  stage: 'Lead',
+  value: 0,
+  crmValue: 0,
+  probability: STAGE_DEFAULT_PROBABILITY.Lead ?? 0,
+  description: '',
+  allocationStartDate: '',
+  allocationEndDate: '',
+  dealStartDate: undefined,
+  dealCloseDate: undefined,
+  nextStep: '',
+  risksAndDependencies: '',
+  tags: [],
+  team: [],
+  clientStakeholderId: '',
+  serviceProviderStakeholderId: '',
+  opportunityType: 'Growth',
+  aopAvailable: false,
+  aopYear: null,
+  serviceLine: undefined,
+  opportunityHealth: undefined,
+  revenueModel: undefined,
+  location: undefined,
+  cost: 0,
+  grossMargin: undefined,
+};
+
 export const OpportunitiesView: React.FC = () => {
   const {
     opportunities,
@@ -54,6 +84,7 @@ export const OpportunitiesView: React.FC = () => {
     restoreOpportunity,
     setView,
     setSelectedOpportunityId,
+    setSelectedProjectId,
     opportunityColumns,
     opportunitiesColumnConfig,
     updateOpportunity,
@@ -63,6 +94,7 @@ export const OpportunitiesView: React.FC = () => {
     setSelectedStage,
     dashboardOppStatusFilter,
     setDashboardOppStatusFilter,
+    globalAccountId: selectedAccountFilter,
     refreshData,
     currentUser,
     loading,
@@ -70,14 +102,25 @@ export const OpportunitiesView: React.FC = () => {
 
   // Module-specific filter states (operational — never fiscal-period-based)
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedAccountFilter, setSelectedAccountFilter] = useState<string>('All');
-  const [closeDateFrom, setCloseDateFrom] = useState<string>('');
-  const [closeDateTo, setCloseDateTo] = useState<string>('');
+  const [allocationEndDateFrom, setAllocationEndDateFrom] = useState<string>('');
+  const [allocationEndDateTo, setAllocationEndDateTo] = useState<string>('');
   const [minProbability, setMinProbability] = useState<string>('All');
+  const [healthFilter, setHealthFilter] = useState<string>('All');
+  const [revenueModelFilter, setRevenueModelFilter] = useState<string>('All');
+  const [locationFilter, setLocationFilter] = useState<string>('All');
+  const [serviceLineFilter, setServiceLineFilter] = useState<string>('All');
 
   // Client-side pagination over the already-filtered rows
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
+
+  // The Global Account Selector represents a workspace switch — clear
+  // page-specific state so the newly selected account starts from a clean view.
+  useEffect(() => {
+    setSearchQuery('');
+    setPage(1);
+    setSelectedOppId(null);
+  }, [selectedAccountFilter]);
 
   // Column sort state
   const [sortField, setSortField] = useState<string>('name');
@@ -133,28 +176,18 @@ export const OpportunitiesView: React.FC = () => {
 
   // Modal State
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [newOpp, setNewOpp] = useState<Omit<Opportunity, 'id'>>({
-    name: '',
-    accountId: '',
-    stage: 'Lead',
-    value: 0,
-    crmValue: 0,
-    probability: STAGE_DEFAULT_PROBABILITY.Lead ?? 0,
-    closeDate: '',
-    description: '',
-    startDate: '',
-    endDate: '',
-    nextStep: '',
-    risksAndDependencies: '',
-    tags: [],
-    team: [],
-    clientStakeholderId: '',
-    serviceProviderStakeholderId: '',
-    opportunityType: 'Growth',
-    aopAvailable: false,
-    aopYear: null,
-    serviceLine: undefined,
-  });
+  const [newOpp, setNewOpp] = useState<Omit<Opportunity, 'id'>>(EMPTY_OPPORTUNITY);
+
+  // When a specific account is active in the Global Account Selector, new
+  // opportunities lock to it — same mechanism Account Details already uses.
+  const lockedAccount = selectedAccountFilter !== 'All'
+    ? { id: selectedAccountFilter, name: accounts.find(a => a.id === selectedAccountFilter)?.name ?? '' }
+    : undefined;
+
+  const handleOpenAddOpportunity = () => {
+    setNewOpp({ ...EMPTY_OPPORTUNITY, accountId: lockedAccount?.id ?? '' });
+    setIsAddModalOpen(true);
+  };
 
   // Operational list — module-specific filters only, never fiscal-period-based.
   const filteredOpps = opportunities.filter(o => {
@@ -162,13 +195,22 @@ export const OpportunitiesView: React.FC = () => {
     const matchesSearch = o.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           (account?.name || '').toLowerCase().includes(searchQuery.toLowerCase());
     const matchesStage   = selectedStage === 'All' || o.stage === selectedStage;
-    const matchesAccount = selectedAccountFilter === 'All' || o.accountId === selectedAccountFilter;
+    const matchesAccount = matchesGlobalAccount(o.accountId, selectedAccountFilter);
     const matchesDashboardStatus = dashboardOppStatusFilter === 'All' || deriveOppStatus(o.stage) === dashboardOppStatusFilter;
-    const matchesCloseFrom = !closeDateFrom || (o.closeDate && o.closeDate >= closeDateFrom);
-    const matchesCloseTo   = !closeDateTo   || (o.closeDate && o.closeDate <= closeDateTo);
+    const matchesAllocationEndFrom = !allocationEndDateFrom || (o.allocationEndDate && o.allocationEndDate >= allocationEndDateFrom);
+    const matchesAllocationEndTo   = !allocationEndDateTo   || (o.allocationEndDate && o.allocationEndDate <= allocationEndDateTo);
     const matchesProbability = minProbability === 'All' || o.probability >= parseInt(minProbability, 10);
+    const matchesHealth = healthFilter === 'All' || o.opportunityHealth === healthFilter;
+    const matchesRevenueModel = revenueModelFilter === 'All' || o.revenueModel === revenueModelFilter;
+    const matchesLocation = locationFilter === 'All' || o.location === locationFilter;
+    const matchesServiceLine = serviceLineFilter === 'All' || o.serviceLine === serviceLineFilter;
+    // Won opportunities become read-only Projects and are hidden from the
+    // active pipeline. An explicit Won stage filter (e.g. a dashboard funnel
+    // drill-down) reveals them so that entry point never lands on an empty list.
+    const matchesClosed = selectedStage === 'Won' || o.stage !== 'Won';
     return matchesSearch && matchesStage && matchesAccount &&
-           matchesDashboardStatus && matchesCloseFrom && matchesCloseTo && matchesProbability;
+           matchesDashboardStatus && matchesAllocationEndFrom && matchesAllocationEndTo && matchesProbability &&
+           matchesHealth && matchesRevenueModel && matchesLocation && matchesServiceLine && matchesClosed;
   });
 
   const sortedOpps = [...filteredOpps].sort((a, b) =>
@@ -188,29 +230,7 @@ export const OpportunitiesView: React.FC = () => {
     const created = await addOpportunity(newOpp);
     setIsAddModalOpen(false);
     // Reset form
-    setNewOpp({
-      name: '',
-      accountId: '',
-      stage: 'Lead',
-      value: 0,
-      crmValue: 0,
-      probability: STAGE_DEFAULT_PROBABILITY.Lead ?? 0,
-      owner: '',
-      closeDate: '',
-      description: '',
-      startDate: '',
-      endDate: '',
-      nextStep: '',
-      risksAndDependencies: '',
-      tags: [],
-      team: [],
-      clientStakeholderId: '',
-      serviceProviderStakeholderId: '',
-      opportunityType: 'Growth',
-      aopAvailable: false,
-      aopYear: null,
-      serviceLine: undefined,
-    });
+    setNewOpp({ ...EMPTY_OPPORTUNITY, accountId: lockedAccount?.id ?? '' });
     // Jump straight to details
     setSelectedOpportunityId(created.id);
     setView('opportunity-details');
@@ -219,6 +239,11 @@ export const OpportunitiesView: React.FC = () => {
   const handleRowClick = (id: string) => {
     setSelectedOpportunityId(id);
     setView('opportunity-details');
+  };
+
+  const handleForecastClick = (id: string) => {
+    setSelectedOpportunityId(id);
+    setView('opportunity-forecast');
   };
 
   const handleRestoreOpportunity = async (id: string) => {
@@ -295,7 +320,7 @@ export const OpportunitiesView: React.FC = () => {
 
       <PageHeader
         title="Deals & Opportunities"
-        subtitle="Track negotiations, deal size, stages, and execution dates across your accounts. An opportunity stays visible here until it is closed (Won or Lost)."
+        subtitle="Track negotiations, deal size, stages, and execution dates across your accounts. Won deals move to their Project and are hidden from the active pipeline."
         actions={
           <>
             <Button
@@ -309,7 +334,7 @@ export const OpportunitiesView: React.FC = () => {
             <Button
               size="md"
               icon={<Plus className="w-4 h-4" aria-hidden="true" />}
-              onClick={() => setIsAddModalOpen(true)}
+              onClick={handleOpenAddOpportunity}
             >
               New Opportunity
             </Button>
@@ -324,13 +349,17 @@ export const OpportunitiesView: React.FC = () => {
         onClose={() => setIsSidebarOpen(false)}
       />
 
-      {/* Control Panel: Search & Module-Specific Filters */}
-      <FilterBar className="grid grid-cols-1 md:grid-cols-4 gap-4 items-start">
+      {/* Control Panel: Search & Module-Specific Filters.
+          One compact grid — search + selects rely on their self-describing
+          "All …" option; the two allocation dates carry a small top label.
+          `items-end` bottom-aligns every control so the dates' extra label
+          height never breaks the row alignment. */}
+      <FilterBar className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3 items-end">
         <SearchBar
           value={searchQuery}
           onChange={setSearchQuery}
           placeholder="Search opportunities or accounts..."
-          className="w-full"
+          className="w-full sm:col-span-2 lg:col-span-3 xl:col-span-2"
         />
 
         <FilterSelect
@@ -338,6 +367,7 @@ export const OpportunitiesView: React.FC = () => {
           hideLabel
           value={selectedStage}
           onChange={setSelectedStage}
+          className="w-full"
           options={[
             { value: 'All', label: 'All Stages' },
             ...OPPORTUNITY_STAGE_OPTIONS.map((s) => ({ value: s, label: s })),
@@ -345,43 +375,35 @@ export const OpportunitiesView: React.FC = () => {
         />
 
         <FilterSelect
-          label="Account"
+          label="Health"
           hideLabel
-          value={selectedAccountFilter}
-          onChange={setSelectedAccountFilter}
+          value={healthFilter}
+          onChange={setHealthFilter}
+          className="w-full"
           options={[
-            { value: 'All', label: 'All Accounts' },
-            ...accounts.map(acc => ({ value: acc.id, label: acc.name })),
+            { value: 'All', label: 'All Health' },
+            ...OPPORTUNITY_HEALTH_OPTIONS.map((h) => ({ value: h, label: h })),
           ]}
         />
 
-        {/* Expected Close Date range */}
-        <div className="flex items-center gap-2">
-          <label className="text-[10px] font-bold text-slate-400 uppercase whitespace-nowrap">Close from</label>
-          <input
-            type="date"
-            value={closeDateFrom}
-            onChange={(e) => setCloseDateFrom(e.target.value)}
-            aria-label="Close date from"
-            className={`${INPUT_CLS} font-mono`}
-          />
-        </div>
-        <div className="flex items-center gap-2">
-          <label className="text-[10px] font-bold text-slate-400 uppercase whitespace-nowrap">Close to</label>
-          <input
-            type="date"
-            value={closeDateTo}
-            onChange={(e) => setCloseDateTo(e.target.value)}
-            aria-label="Close date to"
-            className={`${INPUT_CLS} font-mono`}
-          />
-        </div>
+        <FilterSelect
+          label="Service Line"
+          hideLabel
+          value={serviceLineFilter}
+          onChange={setServiceLineFilter}
+          className="w-full"
+          options={[
+            { value: 'All', label: 'All Service Lines' },
+            ...SERVICE_LINE_OPTIONS.map((s) => ({ value: s, label: s })),
+          ]}
+        />
 
         <FilterSelect
           label="Probability"
           hideLabel
           value={minProbability}
           onChange={setMinProbability}
+          className="w-full"
           options={[
             { value: 'All', label: 'Any Probability' },
             { value: '25', label: 'Probability ≥ 25%' },
@@ -390,6 +412,64 @@ export const OpportunitiesView: React.FC = () => {
             { value: '90', label: 'Probability ≥ 90%' },
           ]}
         />
+
+        <FilterSelect
+          label="Revenue Model"
+          hideLabel
+          value={revenueModelFilter}
+          onChange={setRevenueModelFilter}
+          className="w-full"
+          options={[
+            { value: 'All', label: 'All Revenue Models' },
+            ...REVENUE_MODEL_OPTIONS.map((r) => ({ value: r, label: r })),
+          ]}
+        />
+
+        <FilterSelect
+          label="Location"
+          hideLabel
+          value={locationFilter}
+          onChange={setLocationFilter}
+          className="w-full"
+          options={[
+            { value: 'All', label: 'All Locations' },
+            ...Array.from(new Set(opportunities.map((o) => o.location).filter((l): l is string => !!l)))
+              .sort()
+              .map((l) => ({ value: l, label: l })),
+          ]}
+        />
+
+        <label className="block w-full">
+          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">
+            Allocation Start
+          </span>
+          <div className="flex items-center gap-1.5 w-full border border-slate-200 rounded-lg bg-white px-2.5 focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500">
+            <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden="true" />
+            <input
+              type="date"
+              value={allocationEndDateFrom}
+              onChange={(e) => setAllocationEndDateFrom(e.target.value)}
+              aria-label="Allocation start date"
+              className="w-full min-w-0 text-xs font-mono py-2.5 border-0 bg-transparent focus:outline-none focus:ring-0 p-0"
+            />
+          </div>
+        </label>
+
+        <label className="block w-full">
+          <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">
+            Allocation End
+          </span>
+          <div className="flex items-center gap-1.5 w-full border border-slate-200 rounded-lg bg-white px-2.5 focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500">
+            <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden="true" />
+            <input
+              type="date"
+              value={allocationEndDateTo}
+              onChange={(e) => setAllocationEndDateTo(e.target.value)}
+              aria-label="Allocation end date"
+              className="w-full min-w-0 text-xs font-mono py-2.5 border-0 bg-transparent focus:outline-none focus:ring-0 p-0"
+            />
+          </div>
+        </label>
       </FilterBar>
 
       {/* Opportunities Grid Table */}
@@ -461,11 +541,31 @@ export const OpportunitiesView: React.FC = () => {
                             onClick={() => handleRowClick(opp.id)}
                           />
                           <RowActionButton
-                            intent="edit"
-                            label={`Edit opportunity ${opp.name}`}
-                            icon={<Pencil className="w-3.5 h-3.5" />}
-                            onClick={() => handleEditClick(opp)}
+                            intent="forecast"
+                            label={`Forecast for ${opp.name}`}
+                            icon={<LineChart className="w-3.5 h-3.5" />}
+                            onClick={() => handleForecastClick(opp.id)}
                           />
+                          {opp.stage === 'Won' ? (
+                            opp.projectId && (
+                              <RowActionButton
+                                intent="view"
+                                label={`Open project for ${opp.name}`}
+                                icon={<FolderKanban className="w-3.5 h-3.5" />}
+                                onClick={() => {
+                                  setSelectedProjectId(opp.projectId!);
+                                  setView('project-details');
+                                }}
+                              />
+                            )
+                          ) : (
+                            <RowActionButton
+                              intent="edit"
+                              label={`Edit opportunity ${opp.name}`}
+                              icon={<Pencil className="w-3.5 h-3.5" />}
+                              onClick={() => handleEditClick(opp)}
+                            />
+                          )}
                           <RowActionButton
                             intent="delete"
                             label={`Delete opportunity ${opp.name}`}
@@ -548,6 +648,7 @@ export const OpportunitiesView: React.FC = () => {
         stakeholders={stakeholders}
         opportunityColumns={opportunityColumns}
         opportunitiesColumnConfig={opportunitiesColumnConfig}
+        lockedAccount={lockedAccount}
       />
 
       {isEditModalOpen && editingOpp && (

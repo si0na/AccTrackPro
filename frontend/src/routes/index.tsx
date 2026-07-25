@@ -19,6 +19,9 @@ export const VIEW_TO_PATH: Record<ViewType, string> = {
   'account-details':      '/accounts/:id',
   opportunities:          '/opportunities',
   'opportunity-details':  '/opportunities/:id',
+  'opportunity-forecast': '/opportunities/:id/forecast',
+  projects:               '/projects',
+  'project-details':      '/projects/:id',
   actionItems:            '/action-items',
   stakeholders:           '/stakeholders',
   forecast:               '/forecast',
@@ -35,8 +38,11 @@ export function buildPath(
   view: ViewType,
   accountId?: string | null,
   opportunityId?: string | null,
+  projectId?: string | null,
 ): string {
   if (view === 'account-details' && accountId)     return `/accounts/${accountId}`;
   if (view === 'opportunity-details' && opportunityId) return `/opportunities/${opportunityId}`;
+  if (view === 'opportunity-forecast' && opportunityId) return `/opportunities/${opportunityId}/forecast`;
+  if (view === 'project-details' && projectId)     return `/projects/${projectId}`;
   return VIEW_TO_PATH[view] ?? '/';
 }

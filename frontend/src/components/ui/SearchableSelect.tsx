@@ -16,7 +16,7 @@ const TONE_CLS = {
 
 /** Gap between the input and the floating list, and the list's max height. */
 const MENU_GAP = 4;
-const MENU_MAX_HEIGHT = 224; // matches the previous max-h-56
+const MENU_MAX_HEIGHT = 176;
 /** Keep the list clear of the viewport edge when computing available space. */
 const VIEWPORT_MARGIN = 8;
 
@@ -30,10 +30,22 @@ interface MenuPosition {
   maxHeight: number;
 }
 
+/** A plain string is its own value and label; `{ value, label }` backs id-based pickers (e.g. selecting an employee by id while displaying their name). */
+export type SearchableSelectOption = string | { value: string; label: string };
+
+interface NormalizedOption {
+  value: string;
+  label: string;
+}
+
+function normalizeOptions(options: readonly SearchableSelectOption[]): NormalizedOption[] {
+  return options.map((o) => (typeof o === 'string' ? { value: o, label: o } : o));
+}
+
 export interface SearchableSelectProps {
   value: string;
   onChange: (value: string) => void;
-  options: readonly string[];
+  options: readonly SearchableSelectOption[];
   placeholder?: string;
   required?: boolean;
   /** Amber focus styling for edit dialogs, blue for create forms. */
@@ -41,6 +53,8 @@ export interface SearchableSelectProps {
   className?: string;
   id?: string;
   'aria-label'?: string;
+  /** Hides the chevron affordance for compact fields where it's just visual noise. Default true. */
+  showChevron?: boolean;
 }
 
 /**
@@ -63,6 +77,7 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
   className = '',
   id,
   'aria-label': ariaLabel,
+  showChevron = true,
 }) => {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -73,9 +88,13 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
   const listRef = useRef<HTMLUListElement>(null);
   const listId = useId();
 
+  const normalizedOptions = normalizeOptions(options);
+  const selectedOption = normalizedOptions.find((o) => o.value === value);
+  const displayValue = selectedOption?.label ?? value;
+
   const filtered = query.trim()
-    ? options.filter((o) => o.toLowerCase().includes(query.trim().toLowerCase()))
-    : options;
+    ? normalizedOptions.filter((o) => o.label.toLowerCase().includes(query.trim().toLowerCase()))
+    : normalizedOptions;
 
   useEffect(() => {
     setActiveIndex(0);
@@ -127,8 +146,8 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
     activeEl?.scrollIntoView({ block: 'nearest' });
   }, [activeIndex, open]);
 
-  const commit = (option: string) => {
-    onChange(option);
+  const commit = (option: NormalizedOption) => {
+    onChange(option.value);
     setOpen(false);
     setQuery('');
   };
@@ -165,12 +184,15 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
     }
   };
 
+  const showClearButton = !required && !!value;
+  const hasRightSlot = showClearButton || showChevron;
+
   const fieldCls =
-    `w-full text-xs pl-3 pr-16 py-2 border border-slate-200 rounded-lg bg-white cursor-text ` +
+    `w-full text-xs pl-3 ${hasRightSlot ? 'pr-16' : 'pr-3'} py-2 border border-slate-200 rounded-lg bg-white cursor-text ` +
     `focus:outline-none focus:ring-2 ${TONE_CLS[tone]} ${className}`;
 
   return (
-    <div className="relative" ref={containerRef}>
+    <div className={`relative ${className}`} ref={containerRef}>
       <input
         ref={inputRef}
         id={id}
@@ -181,9 +203,10 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
         aria-autocomplete="list"
         aria-label={ariaLabel}
         required={required}
-        value={open ? query : value}
+        value={open ? query : displayValue}
         placeholder={placeholder}
         onFocus={() => setOpen(true)}
+        onClick={() => setOpen(true)}
         onBlur={() => {
           setOpen(false);
           setQuery('');
@@ -193,23 +216,25 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
         autoComplete="off"
         className={fieldCls}
       />
-      <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-0.5 text-slate-400">
-        {!required && value && (
-          <button
-            type="button"
-            tabIndex={-1}
-            onMouseDown={(e) => {
-              e.preventDefault();
-              clear();
-            }}
-            aria-label="Clear selection"
-            className="p-0.5 rounded hover:text-slate-600 cursor-pointer"
-          >
-            <X className="w-3 h-3" />
-          </button>
-        )}
-        <ChevronsUpDown className="w-3.5 h-3.5" aria-hidden="true" />
-      </div>
+      {hasRightSlot && (
+        <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-0.5 text-slate-400">
+          {showClearButton && (
+            <button
+              type="button"
+              tabIndex={-1}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                clear();
+              }}
+              aria-label="Clear selection"
+              className="p-0.5 rounded hover:text-slate-600 cursor-pointer"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          )}
+          {showChevron && <ChevronsUpDown className="w-3.5 h-3.5" aria-hidden="true" />}
+        </div>
+      )}
       {open &&
         menuPos &&
         createPortal(
@@ -225,26 +250,26 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
               bottom: menuPos.bottom,
               maxHeight: menuPos.maxHeight,
             }}
-            className="z-[300] overflow-auto rounded-lg border border-slate-200 bg-white shadow-lg text-xs py-1"
+            className="z-[300] overflow-auto rounded-lg border border-slate-200 bg-white shadow-lg text-xs py-0.5"
           >
             {filtered.length === 0 ? (
-              <li className="px-3 py-2 text-slate-400">No matches</li>
+              <li className="px-3 py-1.5 text-slate-400">No matches</li>
             ) : (
               filtered.map((option, i) => (
                 <li
-                  key={option}
+                  key={option.value}
                   role="option"
-                  aria-selected={option === value}
+                  aria-selected={option.value === value}
                   onMouseDown={(e) => {
                     e.preventDefault();
                     commit(option);
                   }}
-                  className={`px-3 py-1.5 cursor-pointer flex items-center justify-between ${
+                  className={`px-2.5 py-1 cursor-pointer flex items-center justify-between ${
                     i === activeIndex ? 'bg-blue-50' : ''
-                  } ${option === value ? 'font-semibold text-blue-600' : 'text-slate-700'}`}
+                  } ${option.value === value ? 'font-semibold text-blue-600' : 'text-slate-700'}`}
                 >
-                  {option}
-                  {option === value && <Check className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />}
+                  {option.label}
+                  {option.value === value && <Check className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />}
                 </li>
               ))
             )}

@@ -6,7 +6,7 @@
 import React from 'react';
 import { TrendingUp } from 'lucide-react';
 import type { ColumnConfig, Opportunity } from '@/types';
-import { ExpandableTextCell, STAGE_COLORS, StatusBadge } from '@/components/ui';
+import { ExpandableTextCell, STAGE_COLORS, StatusBadge, HEALTH_COLORS } from '@/components/ui';
 
 const formatCurrency = (val: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(val);
@@ -66,16 +66,50 @@ export const renderOpportunityCell = (
     );
   }
 
-  if (col.key === 'startDate') {
-    return <span className="text-slate-500 font-mono font-medium whitespace-nowrap">{opp.startDate || 'N/A'}</span>;
+  if (col.key === 'allocationStartDate') {
+    return <span className="text-slate-500 font-mono font-medium whitespace-nowrap">{opp.allocationStartDate || 'N/A'}</span>;
   }
 
-  if (col.key === 'closeDate') {
-    return <span className="text-slate-500 font-mono font-medium">{opp.closeDate}</span>;
+  if (col.key === 'allocationEndDate') {
+    return <span className="text-slate-500 font-mono font-medium whitespace-nowrap">{opp.allocationEndDate || 'N/A'}</span>;
+  }
+
+  if (col.key === 'dealStartDate') {
+    return <span className="text-slate-500 font-mono font-medium whitespace-nowrap">{opp.dealStartDate || 'N/A'}</span>;
+  }
+
+  if (col.key === 'dealCloseDate') {
+    return <span className="text-slate-500 font-mono font-medium whitespace-nowrap">{opp.dealCloseDate || 'N/A'}</span>;
   }
 
   if (col.key === 'opportunityType') {
     return <span className="text-slate-600 font-medium">{opp.opportunityType}</span>;
+  }
+
+  if (col.key === 'opportunityHealth') {
+    return opp.opportunityHealth
+      ? <StatusBadge value={opp.opportunityHealth} colorMap={HEALTH_COLORS} />
+      : <span className="text-slate-400 italic">—</span>;
+  }
+
+  if (col.key === 'revenueModel') {
+    return <span className="text-slate-600 font-medium">{opp.revenueModel || '—'}</span>;
+  }
+
+  if (col.key === 'location') {
+    return <span className="text-slate-600 font-medium">{opp.location || '—'}</span>;
+  }
+
+  if (col.key === 'cost') {
+    return opp.cost != null
+      ? <span className="text-slate-900 font-bold font-mono text-sm">{formatCurrency(opp.cost)}</span>
+      : <span className="text-slate-400 font-mono text-sm">—</span>;
+  }
+
+  if (col.key === 'grossMargin') {
+    return opp.grossMargin != null
+      ? <span className="font-bold text-slate-700 font-mono text-[11px]">{opp.grossMargin}%</span>
+      : <span className="text-slate-400 font-mono text-[11px]">—</span>;
   }
 
   if (col.key === 'risksAndDependencies') {

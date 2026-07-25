@@ -6,6 +6,7 @@
 import React, { useState } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
 import { CustomColumnFields } from '@/components/CustomColumnFields';
+import { ActionItemOwnerField } from '@/components/ActionItemOwnerField';
 import { ActionItemCommentToggle, ActionItemCommentsExpandedRow } from '@/components/ActionItemComments';
 import { Opportunity, ActionItem, Comment, PriorityLevel, ActionItemStatus } from '@/types';
 import { ACTION_ITEM_STATUS_OPTIONS } from '@/constants';
@@ -105,6 +106,7 @@ export const OpportunityActionsCommentsPanel: React.FC<PanelProps> = ({ opportun
     actionItems,
     comments,
     accounts,
+    stakeholders,
     addActionItem,
     updateActionItem,
     deleteActionItem,
@@ -133,7 +135,7 @@ export const OpportunityActionsCommentsPanel: React.FC<PanelProps> = ({ opportun
     title: '',
     accountId: '',
     opportunityId: '',
-    owner: '',
+    ownerStakeholderId: '',
     openDate: getTodayISODate(),
     dueDate: '',
     priority: 'Medium' as PriorityLevel,
@@ -167,7 +169,7 @@ export const OpportunityActionsCommentsPanel: React.FC<PanelProps> = ({ opportun
   // Add Action Item Handler
   const handleCreateAction = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newAction.title.trim()) return;
+    if (!newAction.title.trim() || !newAction.ownerStakeholderId) return;
 
     addActionItem({
       ...newAction,
@@ -258,12 +260,11 @@ export const OpportunityActionsCommentsPanel: React.FC<PanelProps> = ({ opportun
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-slate-500 uppercase">Owner</label>
-                    <input
-                      type="text"
-                      value={newAction.owner}
-                      onChange={(e) => setNewAction({ ...newAction, owner: e.target.value })}
-                      placeholder="e.g., John Smith"
-                      className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white focus:ring-2 focus:ring-blue-500/25"
+                    <ActionItemOwnerField
+                      accountId={opp.accountId}
+                      stakeholders={stakeholders}
+                      value={newAction.ownerStakeholderId}
+                      onChange={(ownerStakeholderId) => setNewAction({ ...newAction, ownerStakeholderId })}
                     />
                   </div>
                 </div>
@@ -429,7 +430,7 @@ export const OpportunityActionsCommentsPanel: React.FC<PanelProps> = ({ opportun
                               </span>
                             )}
                           </TableCell>
-                          <TableCell className="text-slate-600 font-semibold">{action.owner}</TableCell>
+                          <TableCell className="text-slate-600 font-semibold">{action.ownerName || action.owner || '—'}</TableCell>
                           <TableCell>
                             <StatusBadge value={action.priority} colorMap={PRIORITY_COLORS} shape="rounded" />
                           </TableCell>

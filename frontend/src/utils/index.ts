@@ -12,6 +12,15 @@ export function deriveOppStatus(stage: OpportunityStage | string): 'Open' | 'Won
   return stage === 'Won' || stage === 'Lost' ? stage : 'Open';
 }
 
+/**
+ * Single call site for the global Account Selector's scoping rule. Centralized
+ * here so a future move to server-side account filtering only needs to touch
+ * these call sites, not every inline `=== 'All' || ...` check.
+ */
+export function matchesGlobalAccount(accountId: string | undefined, globalAccountId: string): boolean {
+  return globalAccountId === 'All' || accountId === globalAccountId;
+}
+
 /** Today's date as "YYYY-MM-DD" (local time) — the default Open Date for new action items. */
 export function getTodayISODate(): string {
   return new Date().toLocaleDateString('en-CA');
@@ -54,24 +63,6 @@ export function formatMillions(value: number): string {
 /** Format a number as USD thousands (e.g. 150000 → "$150K") */
 export function formatThousands(value: number): string {
   return `$${(value / 1_000).toFixed(0)}K`;
-}
-
-/**
- * Normalizes an owner display name: trims, collapses inner whitespace, and
- * capitalizes each word that was typed in a single case ("john"/"JOHN" → "John")
- * while leaving intentionally mixed-case words ("McDonald") untouched. Applied
- * on every save so case-only variants never produce duplicate owner entries.
- */
-export function normalizeOwnerName(name: string | undefined | null): string {
-  const collapsed = (name ?? '').trim().replace(/\s+/g, ' ');
-  return collapsed
-    .split(' ')
-    .map((word) =>
-      word === word.toLowerCase() || word === word.toUpperCase()
-        ? word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
-        : word,
-    )
-    .join(' ');
 }
 
 /**

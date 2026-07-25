@@ -32,7 +32,7 @@ export interface ImportFieldDef {
   /** Lowercased alias → canonical option, for friendlier enum input. */
   aliases?: Record<string, string>;
   /** For `reference` fields: which entity the human value resolves against. */
-  reference?: 'account' | 'opportunity';
+  reference?: 'account' | 'opportunity' | 'stakeholder';
   /** Extra format validation for `string` fields. */
   format?: 'email' | 'phone' | 'website';
   /** Applied when the cell is empty. */

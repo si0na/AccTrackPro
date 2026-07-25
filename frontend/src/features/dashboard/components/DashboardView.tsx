@@ -6,7 +6,7 @@
 import React, { useEffect, useState } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
 import { OPPORTUNITY_STAGE_STYLE } from '@/constants';
-import { deriveOppStatus, isDueThisWeek, isOpenActionItemStatus } from '@/utils';
+import { deriveOppStatus, isDueThisWeek, isOpenActionItemStatus, matchesGlobalAccount } from '@/utils';
 import {
   Building2,
   Briefcase,
@@ -31,6 +31,7 @@ import {
   StatusBadge,
   PRIORITY_COLORS,
   ACTION_STATUS_COLORS,
+  HEALTH_COLORS,
   EmptyState,
   Button,
   Pagination,
@@ -93,10 +94,11 @@ function activityDayLabel(iso: string): string {
 
 export const DashboardView: React.FC = () => {
   const {
-    accounts,
-    opportunities,
-    actionItems,
-    activities,
+    accounts: allAccounts,
+    opportunities: allOpportunities,
+    actionItems: allActionItems,
+    activities: allActivities,
+    globalAccountId,
     setView,
     setSelectedAccountId,
     setSelectedStage,
@@ -111,9 +113,22 @@ export const DashboardView: React.FC = () => {
     loading,
   } = useCRM();
 
+  // Scoped to the Global Account Selector — every widget below reads these
+  // names, so the whole dashboard narrows automatically.
+  const accounts = allAccounts.filter(a => matchesGlobalAccount(a.id, globalAccountId));
+  const opportunities = allOpportunities.filter(o => matchesGlobalAccount(o.accountId, globalAccountId));
+  const actionItems = allActionItems.filter(ai => matchesGlobalAccount(ai.accountId, globalAccountId));
+  const activities = allActivities.filter(a => matchesGlobalAccount(a.accountId, globalAccountId));
+
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
   const [refreshing, setRefreshing] = useState(false);
   const [actionItemsPage, setActionItemsPage] = useState(1);
+
+  // Narrowing to an account can shrink the "due this week" list below the
+  // page the user was previously on.
+  useEffect(() => {
+    setActionItemsPage(1);
+  }, [globalAccountId]);
 
   // Drives the pipeline bars' width transition from 0 → target on mount.
   const [barsAnimated, setBarsAnimated] = useState(false);
@@ -190,6 +205,21 @@ export const DashboardView: React.FC = () => {
   const amberPct = healthTotal > 0 ? amberCount / healthTotal : 0;
   const redPct   = healthTotal > 0 ? redCount   / healthTotal : 0;
   const greenPctRounded = Math.round(greenPct * 100);
+  // Opportunity Health distribution — a distinct field from Account Health;
+  // legacy opportunities predating this field are bucketed as Unclassified
+  // rather than silently defaulted into a color.
+  const oppHealthTotal = opportunities.length;
+  const oppGreenCount = opportunities.filter(o => o.opportunityHealth === 'Green').length;
+  const oppAmberCount = opportunities.filter(o => o.opportunityHealth === 'Amber').length;
+  const oppRedCount   = opportunities.filter(o => o.opportunityHealth === 'Red').length;
+  const oppUnclassifiedCount = oppHealthTotal - oppGreenCount - oppAmberCount - oppRedCount;
+
+  const oppGreenPct = oppHealthTotal > 0 ? oppGreenCount / oppHealthTotal : 0;
+  const oppAmberPct = oppHealthTotal > 0 ? oppAmberCount / oppHealthTotal : 0;
+  const oppRedPct   = oppHealthTotal > 0 ? oppRedCount   / oppHealthTotal : 0;
+  const oppUnclassifiedPct = oppHealthTotal > 0 ? oppUnclassifiedCount / oppHealthTotal : 0;
+  const oppGreenPctRounded = Math.round(oppGreenPct * 100);
+
   const healthMessage = healthTotal === 0
     ? 'No account health data available yet.'
     : redCount > 0
@@ -319,11 +349,11 @@ export const DashboardView: React.FC = () => {
           <Card
             title="Opportunity Pipeline"
             subtitle="Track your opportunities across every stage of the sales process."
-            className="flex-1 flex flex-col"
-            bodyClassName="flex-1 flex flex-col min-h-0"
+            className="flex flex-col"
+            bodyClassName="flex flex-col min-h-0"
           >
             {/* Column headers */}
-            <div className="hidden sm:grid grid-cols-[36px_1fr_1.4fr_110px_16px] items-center gap-4 px-2 pb-2 mb-1 border-b border-slate-100">
+            <div className="hidden sm:grid grid-cols-[36px_1fr_1.4fr_110px_16px] items-center gap-4 px-2 pb-1.5 mb-0.5 border-b border-slate-100">
               <span aria-hidden="true" />
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Stage</span>
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Opportunities</span>
@@ -333,13 +363,13 @@ export const DashboardView: React.FC = () => {
 
             {/* Stage rows — bar width proportional to opportunity count. A
                 0-count stage renders no colored fill, just the empty track. */}
-            <div className="flex-1 flex flex-col">
+            <div className="flex flex-col">
               {funnelStages.map((stage, i) => (
                 <button
                   key={stage.key}
                   type="button"
                   onClick={stage.onClick}
-                  className="group w-full grid grid-cols-[36px_1fr_1.4fr_110px_16px] items-center gap-4 rounded-lg px-2 py-2.5 cursor-pointer text-left transition-colors duration-150 hover:bg-slate-50 border-b border-slate-50 last:border-b-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
+                  className="group w-full grid grid-cols-[36px_1fr_1.4fr_110px_16px] items-center gap-4 rounded-lg px-2 py-1.5 cursor-pointer text-left transition-colors duration-150 hover:bg-slate-50 border-b border-slate-50 last:border-b-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
                 >
                   <span className={`inline-flex items-center justify-center w-9 h-9 rounded-full shrink-0 ${stage.iconBg} ${stage.iconText}`}>
                     <Users className="w-4 h-4" />
@@ -378,7 +408,7 @@ export const DashboardView: React.FC = () => {
 
             {/* Summary footer — three even metrics along the bottom of the card,
                 separated by subtle vertical dividers, aligned to the pipeline width. */}
-            <div className="mt-3 pt-4 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-3 gap-y-4 sm:gap-y-0 sm:divide-x sm:divide-slate-100">
+            <div className="mt-2 pt-3 border-t border-slate-100 grid grid-cols-1 sm:grid-cols-3 gap-y-4 sm:gap-y-0 sm:divide-x sm:divide-slate-100">
               {[
                 { label: 'Total Pipeline Value', value: formatCurrency(totalPipelineValue), icon: <Building2 className="w-4 h-4" />, chip: 'bg-blue-100 text-blue-600' },
                 { label: 'Conversion Rate', value: `${conversionRate}%`, icon: <CheckCircle2 className="w-4 h-4" />, chip: 'bg-emerald-100 text-emerald-600' },
@@ -457,9 +487,9 @@ export const DashboardView: React.FC = () => {
                             <TableCell>
                               <span className="flex items-center gap-2 min-w-0">
                                 <span className="w-6 h-6 rounded-full bg-blue-600 text-white text-[10px] font-bold flex items-center justify-center shrink-0">
-                                  {(item.owner || '?').charAt(0).toUpperCase()}
+                                  {(item.ownerName || item.owner || '?').charAt(0).toUpperCase()}
                                 </span>
-                                <span className="text-slate-600 font-medium truncate max-w-[130px]">{item.owner}</span>
+                                <span className="text-slate-600 font-medium truncate max-w-[130px]">{item.ownerName || item.owner || '—'}</span>
                               </span>
                             </TableCell>
                             <TableCell className={`font-mono whitespace-nowrap ${isOverdue ? 'text-red-600 font-bold' : 'text-slate-500'}`}>
@@ -570,6 +600,85 @@ export const DashboardView: React.FC = () => {
                 <Building2 className="w-4 h-4" />
               </span>
               <p className="text-xs text-slate-600 font-medium leading-relaxed">{healthMessage}</p>
+            </div>
+          </Card>
+
+          {/* Opportunity Health — updated to match Account Health's doughnut style */}
+          <Card
+            title="Opportunity Health"
+            actions={
+              <button
+                type="button"
+                onClick={() => setView('opportunities', { fromDashboard: true })}
+                className="text-xs font-semibold text-blue-600 hover:text-blue-700 flex items-center gap-1 cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 rounded"
+              >
+                View all <ChevronRight className="w-3.5 h-3.5" />
+              </button>
+            }
+            bodyClassName="flex flex-col"
+          >
+            <div className="flex-1 flex flex-col xl:flex-row items-center gap-5 py-2">
+              <div className="relative shrink-0">
+                <svg viewBox="0 0 192 192" className="w-40 h-40 transform -rotate-90">
+                  <circle cx="96" cy="96" r="80" stroke="#f1f5f9" strokeWidth="17" fill="none" />
+                  {/* Green arc */}
+                  <circle cx="96" cy="96" r="80" stroke="#10b981" strokeWidth="17" fill="none" strokeLinecap="round"
+                          strokeDasharray={C} strokeDashoffset={C * (1 - oppGreenPct)} />
+                  {/* Amber arc */}
+                  <circle cx="96" cy="96" r="80" stroke="#f97316" strokeWidth="17" fill="none" strokeLinecap="round"
+                          strokeDasharray={C} strokeDashoffset={C * (1 - oppAmberPct)}
+                          transform={`rotate(${oppGreenPct * 360} 96 96)`} />
+                  {/* Red arc */}
+                  <circle cx="96" cy="96" r="80" stroke="#ef4444" strokeWidth="17" fill="none" strokeLinecap="round"
+                          strokeDasharray={C} strokeDashoffset={C * (1 - oppRedPct)}
+                          transform={`rotate(${(oppGreenPct + oppAmberPct) * 360} 96 96)`} />
+                  {/* Unclassified arc */}
+                  <circle cx="96" cy="96" r="80" stroke="#94a3b8" strokeWidth="17" fill="none" strokeLinecap="round"
+                          strokeDasharray={C} strokeDashoffset={C * (1 - oppUnclassifiedPct)}
+                          transform={`rotate(${(oppGreenPct + oppAmberPct + oppRedPct) * 360} 96 96)`} />
+                </svg>
+                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                  <span className="text-3xl font-extrabold text-slate-900 tracking-tight">{oppGreenPctRounded}%</span>
+                  <span className="text-[10px] uppercase text-slate-400 font-bold tracking-widest mt-0.5">Green</span>
+                  <span className="text-[10px] text-slate-400 mt-0.5">{oppHealthTotal} total</span>
+                </div>
+              </div>
+
+              <div className="flex-1 w-full space-y-2.5">
+                {([
+                  { health: 'Green' as const, label: 'Green', count: oppGreenCount, pct: oppGreenPct, dot: 'bg-emerald-500', text: 'text-emerald-700', card: 'bg-gradient-to-r from-emerald-50/80 to-white border-emerald-200/70' },
+                  { health: 'Amber' as const, label: 'Amber', count: oppAmberCount, pct: oppAmberPct, dot: 'bg-orange-500', text: 'text-orange-700', card: 'bg-gradient-to-r from-orange-50/80 to-white border-orange-200/70' },
+                  { health: 'Red' as const, label: 'Red', count: oppRedCount, pct: oppRedPct, dot: 'bg-red-500', text: 'text-red-700', card: 'bg-gradient-to-r from-red-50/80 to-white border-red-200/70' },
+                ]).map(cat => (
+                  <button
+                    key={cat.health}
+                    type="button"
+                    onClick={() => { setDashboardOppStatusFilter('Open'); setView('opportunities', { fromDashboard: true }); }}
+                    className={`relative overflow-hidden w-full rounded-xl border px-3 py-2 text-left cursor-pointer transition-all duration-200 hover:shadow-md hover:-translate-y-0.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 flex items-center justify-between gap-3 ${cat.card}`}
+                  >
+                    <span className="flex items-center gap-2 min-w-0">
+                      <span className={`inline-block w-2.5 h-2.5 rounded-full shrink-0 ${cat.dot}`} />
+                      <span className={`text-xs font-bold uppercase tracking-wide ${cat.text}`}>{cat.label}</span>
+                    </span>
+                    <span className="flex items-baseline gap-1.5 shrink-0">
+                      <span className="text-lg font-extrabold text-slate-900">{cat.count}</span>
+                      <span className="text-[10px] text-slate-400 font-semibold">{Math.round(cat.pct * 100)}%</span>
+                    </span>
+                  </button>
+                ))}
+                {oppUnclassifiedCount > 0 && (
+                  <div className="flex items-center justify-between gap-3 px-2 pt-1">
+                    <span className="flex items-center gap-2 min-w-0">
+                      <span className="inline-block w-2.5 h-2.5 rounded-full shrink-0 bg-slate-400" />
+                      <span className="text-xs font-bold uppercase tracking-wide text-slate-600">Unclassified</span>
+                    </span>
+                    <span className="flex items-baseline gap-1.5 shrink-0">
+                      <span className="text-sm font-bold text-slate-600">{oppUnclassifiedCount}</span>
+                      <span className="text-[10px] text-slate-400 font-semibold">{Math.round(oppUnclassifiedPct * 100)}%</span>
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
           </Card>
 

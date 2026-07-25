@@ -21,6 +21,7 @@ import {
   parsePendingId,
   pendingAccountId,
   pendingOpportunityId,
+  pendingStakeholderId,
   norm,
 } from './bulk-adapter';
 import { ImportExportAuditService } from './import-export-audit.service';
@@ -58,6 +59,9 @@ class ParentIndex {
   private readonly oppByKey = new Map<string, ParentRef>(); // `${accountId}::${lcName}`
   private readonly oppById = new Map<string, ParentRef & { accountId: string }>();
   private readonly pendingOpp = new Map<string, ParentRef>(); // `${accountId}::${lcName}`
+  private readonly stkByKey = new Map<string, ParentRef>(); // `${accountId}::${lcName}`
+  private readonly stkById = new Map<string, ParentRef & { accountId: string }>();
+  private readonly pendingStk = new Map<string, ParentRef>(); // `${accountId}::${lcName}`
 
   seedAccount(id: string, name: string): void {
     const ref = { id, name };
@@ -67,6 +71,10 @@ class ParentIndex {
   seedOpportunity(id: string, name: string, accountId: string): void {
     this.oppByKey.set(`${accountId}::${norm(name)}`, { id, name });
     this.oppById.set(id, { id, name, accountId });
+  }
+  seedStakeholder(id: string, name: string, accountId: string): void {
+    this.stkByKey.set(`${accountId}::${norm(name)}`, { id, name });
+    this.stkById.set(id, { id, name, accountId });
   }
 
   /** A NEW account defined in the workbook — resolves to a marker until committed. */
@@ -80,6 +88,12 @@ class ParentIndex {
     if (this.oppByKey.has(key) || this.pendingOpp.has(key)) return;
     this.pendingOpp.set(key, { id: pendingOpportunityId(name), name });
   }
+  /** A NEW stakeholder defined in the workbook, under a (real or pending) account. */
+  addPendingStakeholder(name: string, accountId: string): void {
+    const key = `${accountId}::${norm(name)}`;
+    if (this.stkByKey.has(key) || this.pendingStk.has(key)) return;
+    this.pendingStk.set(key, { id: pendingStakeholderId(name), name });
+  }
 
   resolveAccount(raw: string): ParentRef | null {
     const lc = norm(raw);
@@ -91,6 +105,15 @@ class ParentIndex {
     if (this.oppByKey.has(key)) return this.oppByKey.get(key)!;
     if (this.pendingOpp.has(key)) return this.pendingOpp.get(key)!;
     const byId = this.oppById.get(raw.trim());
+    if (byId && byId.accountId === accountId) return byId;
+    return null;
+  }
+  resolveStakeholder(raw: string, accountId: string): ParentRef | null {
+    const lc = norm(raw);
+    const key = `${accountId}::${lc}`;
+    if (this.stkByKey.has(key)) return this.stkByKey.get(key)!;
+    if (this.pendingStk.has(key)) return this.pendingStk.get(key)!;
+    const byId = this.stkById.get(raw.trim());
     if (byId && byId.accountId === accountId) return byId;
     return null;
   }
@@ -189,6 +212,16 @@ export class GlobalImportExportService {
           }
           payload[f.key] = opp.id;
           refNames.opportunity = opp.name;
+        } else if (f.reference === 'stakeholder') {
+          if (!raw) continue; // required-ness already enforced by field coercion
+          if (!resolvedAccountId) continue; // account error already reported
+          const stk = parents.resolveStakeholder(raw, resolvedAccountId);
+          if (!stk) {
+            errors.push(`Stakeholder "${raw}" was not found for this account — add it to the Stakeholders sheet or ensure it already exists`);
+            continue;
+          }
+          payload[f.key] = stk.id;
+          refNames.stakeholder = stk.name;
         }
       }
       return { errors, refNames };
@@ -205,7 +238,7 @@ export class GlobalImportExportService {
     validation: BulkValidationResult,
     parents: ParentIndex,
   ): void {
-    if (module !== 'accounts' && module !== 'opportunities') return;
+    if (module !== 'accounts' && module !== 'opportunities' && module !== 'stakeholders') return;
     for (const row of validation.rows) {
       if (row.status === 'invalid' || row.existsInSystem) continue;
       if (module === 'accounts') {
@@ -213,6 +246,10 @@ export class GlobalImportExportService {
       } else if (module === 'opportunities') {
         if (row.payload.name && row.payload.accountId) {
           parents.addPendingOpportunity(String(row.payload.name), String(row.payload.accountId));
+        }
+      } else if (module === 'stakeholders') {
+        if (row.payload.name && row.payload.accountId) {
+          parents.addPendingStakeholder(String(row.payload.name), String(row.payload.accountId));
         }
       }
     }
@@ -233,6 +270,7 @@ export class GlobalImportExportService {
   ): Promise<WorkbookImportResult> {
     const committedAccounts = new Map<string, string>(); // lcName -> real id
     const committedOpps = new Map<string, string>();      // `${accountId}::${lcName}` -> real id
+    const committedStakeholders = new Map<string, string>(); // `${accountId}::${lcName}` -> real id
     const results: WorkbookImportResult = {};
 
     for (const module of MODULE_ORDER) {
@@ -244,7 +282,7 @@ export class GlobalImportExportService {
       const prepared: { payload: Record<string, any>; originalIndex: number }[] = [];
       const preFailures: BulkRowResult[] = [];
       rows.forEach((payload, index) => {
-        const err = this.resolveMarkers(module, payload, committedAccounts, committedOpps);
+        const err = this.resolveMarkers(module, payload, committedAccounts, committedOpps, committedStakeholders);
         if (err) preFailures.push({ index, status: 'failed', message: err });
         else prepared.push({ payload, originalIndex: index });
       });
@@ -265,6 +303,8 @@ export class GlobalImportExportService {
           committedAccounts.set(norm(payload.name), r.id);
         } else if (module === 'opportunities') {
           committedOpps.set(`${payload.accountId}::${norm(payload.name)}`, r.id);
+        } else if (module === 'stakeholders') {
+          committedStakeholders.set(`${payload.accountId}::${norm(payload.name)}`, r.id);
         }
       }
 
@@ -281,6 +321,7 @@ export class GlobalImportExportService {
     payload: Record<string, any>,
     accounts: Map<string, string>,
     opps: Map<string, string>,
+    stakeholders: Map<string, string>,
   ): string | null {
     const fields = FIELDS_BY_MODULE[module];
     const accField = fields.find((f) => f.reference === 'account');
@@ -297,6 +338,14 @@ export class GlobalImportExportService {
       const id = accountId ? opps.get(`${accountId}::${name}`) : undefined;
       if (!id) return `Referenced opportunity was not imported (it may have been removed or failed to import)`;
       payload[oppField.key] = id;
+    }
+    const stkField = fields.find((f) => f.reference === 'stakeholder');
+    if (stkField && isPendingId(payload[stkField.key])) {
+      const { name } = parsePendingId(payload[stkField.key]);
+      const accountId = accField ? payload[accField.key] : undefined;
+      const id = accountId ? stakeholders.get(`${accountId}::${name}`) : undefined;
+      if (!id) return `Referenced stakeholder was not imported (it may have been removed or failed to import)`;
+      payload[stkField.key] = id;
     }
     return null;
   }
@@ -340,6 +389,15 @@ export class GlobalImportExportService {
       [userId ?? null],
     );
     for (const r of oppRes.rows) index.seedOpportunity(r.id, r.name, r.account_id);
+
+    const stkRes = await this.db.query(
+      `SELECT s.id, s.name, s.account_id FROM stakeholders s
+       INNER JOIN accounts a ON s.account_id = a.id
+       WHERE s.is_deleted = FALSE AND a.is_deleted = FALSE
+       AND ($1::TEXT IS NULL OR a.owner_id = $1)`,
+      [userId ?? null],
+    );
+    for (const r of stkRes.rows) index.seedStakeholder(r.id, r.name, r.account_id);
     return index;
   }
 }

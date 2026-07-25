@@ -181,14 +181,14 @@ export class AlertsService {
 
     const [closingResult, noActivityResult] = await Promise.all([
       this.db.query(
-        `SELECT o.id, o.name, o.close_date, a.id AS account_id, a.name AS account_name
+        `SELECT o.id, o.name, o.allocation_end_date, a.id AS account_id, a.name AS account_name
          FROM opportunities o
          INNER JOIN accounts a ON o.account_id = a.id AND a.is_deleted = FALSE ${joinCond}
          WHERE o.is_deleted = FALSE
            AND o.stage != 'Won'
-           AND o.close_date ~ '^\\d{4}-\\d{2}-\\d{2}$'
-           AND o.close_date::DATE BETWEEN $${nextIdx}::DATE AND $${nextIdx + 1}::DATE
-         ORDER BY o.close_date ASC`,
+           AND o.allocation_end_date ~ '^\\d{4}-\\d{2}-\\d{2}$'
+           AND o.allocation_end_date::DATE BETWEEN $${nextIdx}::DATE AND $${nextIdx + 1}::DATE
+         ORDER BY o.allocation_end_date ASC`,
         [...baseParams, todayStr, closingSoonStr],
       ),
       this.db.query(
@@ -210,19 +210,19 @@ export class AlertsService {
     for (const row of closingResult.rows) {
       const daysLeft = Math.max(
         0,
-        Math.ceil((new Date(row.close_date).getTime() - today.getTime()) / 86_400_000),
+        Math.ceil((new Date(row.allocation_end_date).getTime() - today.getTime()) / 86_400_000),
       );
       alerts.push({
         id:              `closing-opp-${row.id}`,
         type:            'OpportunityClosingSoon',
         severity:        daysLeft <= 2 ? 'high' : 'medium',
         title:           'Opportunity Closing Soon',
-        description:     `"${row.name}" closes in ${daysLeft} day${daysLeft === 1 ? '' : 's'} (${row.close_date}).`,
+        description:     `"${row.name}" closes in ${daysLeft} day${daysLeft === 1 ? '' : 's'} (${row.allocation_end_date}).`,
         accountId:       row.account_id,
         accountName:     row.account_name,
         opportunityId:   row.id,
         opportunityName: row.name,
-        dueDate:         row.close_date,
+        dueDate:         row.allocation_end_date,
         createdAt:       nowIso,
       });
     }

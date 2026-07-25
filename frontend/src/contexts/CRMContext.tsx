@@ -3,7 +3,7 @@ import { useCRMData } from '@/hooks/useCRMData';
 import { authApi } from '@/api/crm.api';
 import type {
   Account, Opportunity, ActionItem, Stakeholder, Activity, Comment, CustomColumn, ColumnConfig,
-  User, FinancialYear, FinancialCalendar, AdminSettings,
+  User, FinancialYear, FinancialCalendar, AdminSettings, Project,
 } from '@/types';
 
 // ─── User profiles ────────────────────────────────────────────────────────────
@@ -23,6 +23,9 @@ export type ViewType =
   | 'account-details'
   | 'opportunities'
   | 'opportunity-details'
+  | 'opportunity-forecast'
+  | 'projects'
+  | 'project-details'
   | 'actionItems'
   | 'stakeholders'
   | 'forecast'
@@ -62,6 +65,7 @@ interface CRMContextProps {
   adminSettings: AdminSettings | null;
   accounts: Account[];
   opportunities: Opportunity[];
+  projects: Project[];
   actionItems: ActionItem[];
   stakeholders: Stakeholder[];
   activities: Activity[];
@@ -88,6 +92,8 @@ interface CRMContextProps {
   setSelectedAccountId: (id: string | null) => void;
   selectedOpportunityId: string | null;
   setSelectedOpportunityId: (id: string | null) => void;
+  selectedProjectId: string | null;
+  setSelectedProjectId: (id: string | null) => void;
   oppDetailsSourceView: ViewType | null;
   setOppDetailsSourceView: (view: ViewType | null) => void;
   accountDetailsActiveTab: string;
@@ -121,6 +127,10 @@ interface CRMContextProps {
   setSelectedYear: (year: string) => void;
   selectedQuarter: string;
   setSelectedQuarter: (quarter: string) => void;
+
+  // Global Account Selector — scopes every module to a single account (or 'All').
+  globalAccountId: string;
+  setGlobalAccountId: (id: string) => void;
 
   // UI
   sidebarCollapsed: boolean;
@@ -159,6 +169,11 @@ interface CRMContextProps {
   updateOpportunity: (opportunity: Opportunity) => Promise<void>;
   deleteOpportunity: (id: string) => Promise<void>;
   restoreOpportunity: (id: string) => Promise<void>;
+  deactivatedProjects: Project[];
+  addProject: (project: Omit<Project, 'id'>) => Promise<Project>;
+  updateProject: (project: Project) => Promise<void>;
+  deleteProject: (id: string) => Promise<void>;
+  restoreProject: (id: string) => Promise<void>;
   deactivatedActionItems: ActionItem[];
   addActionItem: (actionItem: Omit<ActionItem, 'id'>) => Promise<ActionItem>;
   updateActionItem: (actionItem: ActionItem) => Promise<void>;
@@ -260,16 +275,56 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     () => localStorage.getItem('crm_selected_quarter') || 'All',
   );
 
+  // ── Global Account Selector ──────────────────────────────────────────────────
+  // Scopes every operational module (Dashboard, Accounts, Opportunities,
+  // Stakeholders, Action Items, Reports) to a single account, or 'All'.
+  const [globalAccountId, setGlobalAccountIdState] = useState<string>(
+    () => localStorage.getItem('crm_global_account_id') ?? 'All',
+  );
+
   // Derive the authenticated user's UUID (empty string when not logged in).
   const currentUserId = jwtUser?.id ?? '';
 
   // Operational data — independent of the reporting period selector.
   const crmData = useCRMData(currentUser, currentUserId, isLoggedIn);
 
-  // ── Navigation state ──────────────────────────────────────────────────────────
-  const [currentView, setCurrentView] = useState<ViewType>('dashboard');
-  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(null);
-  const [selectedOpportunityId, setSelectedOpportunityId] = useState<string | null>(null);
+  // ── Initial State Parsers (Deep Linking) ────────────────────────────────────
+  const getInitialView = (): ViewType => {
+    const path = window.location.pathname;
+    if (path.startsWith('/accounts/')) return 'account-details';
+    if (path.startsWith('/opportunities/')) {
+      if (path.endsWith('/forecast')) return 'opportunity-forecast';
+      return 'opportunity-details';
+    }
+    if (path.startsWith('/projects/')) return 'project-details';
+    if (path === '/accounts') return 'accounts';
+    if (path === '/opportunities') return 'opportunities';
+    if (path === '/projects') return 'projects';
+    if (path === '/action-items') return 'actionItems';
+    if (path === '/stakeholders') return 'stakeholders';
+    if (path === '/forecast') return 'forecast';
+    if (path === '/reports') return 'reports';
+    if (path === '/notifications') return 'notifications';
+    if (path === '/administration') return 'administration';
+    if (path === '/audit-log') return 'audit-log';
+    if (path === '/performance') return 'performance-evaluation';
+    return 'dashboard';
+  };
+
+  const getInitialId = (prefix: string): string | null => {
+    const path = window.location.pathname;
+    if (path.startsWith(prefix)) {
+      const match = path.match(new RegExp(`^${prefix}([^/]+)`));
+      return match ? match[1] : null;
+    }
+    return null;
+  };
+
+  // ── Navigation ──────────────────────────────────────────────────────────────
+  const [currentView, setCurrentView] = useState<ViewType>(getInitialView);
+  const [selectedAccountId, setSelectedAccountId] = useState<string | null>(() => getInitialId('/accounts/'));
+  const [selectedOpportunityId, setSelectedOpportunityId] = useState<string | null>(() => getInitialId('/opportunities/'));
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(() => getInitialId('/projects/'));
   const [oppDetailsSourceView, setOppDetailsSourceView] = useState<ViewType | null>(null);
   const [accountDetailsActiveTab, setAccountDetailsActiveTab] = useState<string>('overview');
   const [cameFromDashboard, setCameFromDashboard] = useState<boolean>(false);
@@ -298,6 +353,20 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem('crm_selected_quarter', quarter);
   };
 
+  const setGlobalAccountId = (id: string) => {
+    setGlobalAccountIdState(id);
+    localStorage.setItem('crm_global_account_id', id);
+  };
+
+  // Reset the global account filter if the persisted id no longer belongs to
+  // the current user's accounts (e.g. the account was deactivated, or a
+  // different user logged in on a shared browser).
+  useEffect(() => {
+    if (globalAccountId !== 'All' && !crmData.loading && !crmData.accounts.some(a => a.id === globalAccountId)) {
+      setGlobalAccountId('All');
+    }
+  }, [crmData.accounts, crmData.loading]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const setSidebarCollapsed = (collapsed: boolean) => {
     setSidebarCollapsedState(collapsed);
     localStorage.setItem('crm_sidebar_collapsed', String(collapsed));
@@ -309,8 +378,10 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const detailsRoundTrip =
       view === 'account-details' ||
       view === 'opportunity-details' ||
+      view === 'project-details' ||
       (view === 'accounts' && currentView === 'account-details') ||
-      (view === 'opportunities' && currentView === 'opportunity-details');
+      (view === 'opportunities' && currentView === 'opportunity-details') ||
+      (view === 'projects' && currentView === 'project-details');
 
     if (opts?.fromDashboard) {
       // Navigation originating from a dashboard card/funnel keeps its drill-down
@@ -362,6 +433,8 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setSelectedAccountId,
         selectedOpportunityId,
         setSelectedOpportunityId,
+        selectedProjectId,
+        setSelectedProjectId,
         oppDetailsSourceView,
         setOppDetailsSourceView,
         accountDetailsActiveTab,
@@ -387,6 +460,8 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setSelectedYear,
         selectedQuarter,
         setSelectedQuarter,
+        globalAccountId,
+        setGlobalAccountId,
         sidebarCollapsed,
         setSidebarCollapsed,
       }}

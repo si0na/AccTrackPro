@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, Logger, NotFoundExc
 import { DatabaseService } from '../../database/database.service';
 import { FilterContextService, FilterParams, FiscalContext } from '../../common/services/filter-context.service';
 import { NotificationEventBus } from '../../common/events/notification-event-bus.service';
+import { ProjectsService } from '../projects/projects.service';
 import { Opportunity } from '../../types';
 import { extractCustomData } from '../../common/utils/db-mapping.util';
 import { Pagination, Paginated, extractTotal } from '../../common/utils/pagination.util';
@@ -12,16 +13,22 @@ import { BulkModuleAdapter } from '../import-export/bulk-adapter';
 
 // 'financialYear'/'quarter' remain listed so payloads from older clients are
 // stripped instead of leaking into custom_data — fiscal periods are derived
-// from closeDate and never stored.
+// from allocationEndDate and never stored.
 const KNOWN = new Set([
   'id','name','accountId','accountName','stage','value','probability','ownerId',
-  'closeDate','startDate','endDate','crmValue','description','nextStep',
+  'allocationStartDate','allocationEndDate','dealStartDate','dealCloseDate','crmValue','description','nextStep',
   'risksAndDependencies',
   'closeReason','blockedReason','delayedReason','closedAt',
   'tags','team','financialYear','quarter',
   'clientStakeholderId','clientStakeholderName','clientStakeholderDesignation',
   'serviceProviderStakeholderId','serviceProviderStakeholderName','serviceProviderStakeholderDesignation',
   'aopAvailable','aopYear','opportunityType','serviceLine',
+  'opportunityHealth','revenueModel','location','cost','grossMargin',
+  'projectId',
+  // Forecast fields are joined from opportunity_forecasts (read-only on the
+  // opportunity payload; edited via the dedicated forecast endpoint). Listed so
+  // a full-object round-trip through update() never leaks them into custom_data.
+  'forecastDate','forecastValue','actualDate','actualValue','forecastRemarks','forecastUpdatedAt',
 ]);
 
 /** Deal outcome is now tracked solely via pipeline stage — no separate status field. */
@@ -30,23 +37,29 @@ const CLOSED_STAGES = new Set(['Won', 'Lost']);
 function rowToOpportunity(row: any, derive: (date: string) => { financialYear: string; quarter: string }): Opportunity {
   const {
     custom_data, is_deleted, created_at, updated_at,
-    account_id, account_name, close_date, start_date, end_date, crm_value, next_step,
+    account_id, account_name, allocation_start_date, allocation_end_date, deal_start_date, deal_close_date, crm_value, next_step,
     risks_and_dependencies,
     close_reason, blocked_reason, delayed_reason, closed_at,
     owner_id,
     client_stakeholder_id, client_stakeholder_name, client_stakeholder_designation,
     service_provider_stakeholder_id, service_provider_stakeholder_name, service_provider_stakeholder_designation,
     aop_available, aop_year, opportunity_type, service_line,
+    opportunity_health, revenue_model, location, cost, gross_margin,
+    project_id,
+    forecast_date, forecast_value, actual_date, actual_value, forecast_remarks, forecast_updated_at,
     ...base
   } = row;
   return {
     ...base,
     accountId:     account_id,
+    // Linked Project (nullable) — populated once this opportunity has gone Won.
+    projectId:     project_id ?? null,
     accountName:   account_name ?? undefined,
     ownerId:       owner_id   ?? undefined,
-    closeDate:     close_date,
-    startDate:     start_date,
-    endDate:       end_date,
+    allocationStartDate: allocation_start_date,
+    allocationEndDate:   allocation_end_date,
+    dealStartDate:       deal_start_date ?? undefined,
+    dealCloseDate:       deal_close_date ?? undefined,
     crmValue:      Number(crm_value),
     nextStep:      next_step,
     risksAndDependencies: risks_and_dependencies ?? '',
@@ -68,33 +81,70 @@ function rowToOpportunity(row: any, derive: (date: string) => { financialYear: s
     aopYear:       aop_year ?? null,
     opportunityType: opportunity_type,
     serviceLine:   service_line ?? undefined,
-    // Read-only reporting labels derived from the business date (close date).
-    ...derive(close_date),
+    opportunityHealth: opportunity_health ?? undefined,
+    revenueModel:  revenue_model ?? undefined,
+    location:      location ?? undefined,
+    cost:          cost !== null && cost !== undefined ? Number(cost) : undefined,
+    grossMargin:   gross_margin !== null && gross_margin !== undefined ? Number(gross_margin) : undefined,
+    // Persisted forecast + actuals (joined from opportunity_forecasts; edited via
+    // the dedicated forecast endpoint, never through opportunity create/update).
+    forecastDate:     forecast_date ?? undefined,
+    forecastValue:    forecast_value !== null && forecast_value !== undefined ? Number(forecast_value) : undefined,
+    actualDate:       actual_date ?? undefined,
+    actualValue:      actual_value !== null && actual_value !== undefined ? Number(actual_value) : undefined,
+    forecastRemarks:  forecast_remarks ?? undefined,
+    forecastUpdatedAt: forecast_updated_at ? new Date(forecast_updated_at).toISOString() : undefined,
+    // Read-only reporting labels derived from the business date (allocation end date).
+    ...derive(allocation_end_date),
     ...(custom_data || {}),
   } as Opportunity;
 }
 
+/**
+ * Forecast columns are joined from opportunity_forecasts so the persisted
+ * forecast + actuals travel on every opportunity payload — the list, detail,
+ * and reporting views read them without a second fetch. Aliased away from the
+ * opportunity's own updated_at (forecast_updated_at) and remarks
+ * (forecast_remarks) to avoid column-name collisions.
+ */
+const OPP_FORECAST_SELECT = `
+         fc.forecast_date  AS forecast_date,
+         fc.forecast_value AS forecast_value,
+         fc.actual_date    AS actual_date,
+         fc.actual_value   AS actual_value,
+         fc.remarks        AS forecast_remarks,
+         fc.updated_at     AS forecast_updated_at`;
+
+const OPP_FORECAST_JOIN = `
+  LEFT JOIN opportunity_forecasts fc ON fc.opportunity_id = o.id`;
+
 const OPP_SELECT = `
   SELECT o.*, a.name AS account_name,
          cs.name AS client_stakeholder_name, cs.designation AS client_stakeholder_designation,
-         sps.name AS service_provider_stakeholder_name, sps.designation AS service_provider_stakeholder_designation
+         sps.name AS service_provider_stakeholder_name, sps.designation AS service_provider_stakeholder_designation,
+         proj.id AS project_id,
+${OPP_FORECAST_SELECT}
   FROM opportunities o
   LEFT JOIN accounts a ON o.account_id = a.id
   LEFT JOIN stakeholders cs  ON o.client_stakeholder_id           = cs.id
   LEFT JOIN stakeholders sps ON o.service_provider_stakeholder_id = sps.id
+  LEFT JOIN projects proj ON proj.opportunity_id = o.id AND proj.is_deleted = FALSE${OPP_FORECAST_JOIN}
 `;
 
 /** Business rule: when both dates are present, end date cannot precede start date. */
-function assertDateOrder(startDate?: string, endDate?: string): void {
-  if (startDate && endDate && endDate < startDate) {
-    throw new BadRequestException('End date cannot be earlier than the start date');
+function assertDateOrder(allocationStartDate?: string, allocationEndDate?: string, dealStartDate?: string, dealCloseDate?: string): void {
+  if (allocationStartDate && allocationEndDate && allocationEndDate < allocationStartDate) {
+    throw new BadRequestException('Allocation End Date cannot be earlier than Allocation Start Date');
+  }
+  if (dealStartDate && dealCloseDate && dealCloseDate < dealStartDate) {
+    throw new BadRequestException('Deal Close Date cannot be earlier than Deal Start Date');
   }
 }
 
 /**
  * Pipeline stage reflects current sales progress only. Moving an opportunity
  * between stages is never blocked by field-completeness checks — deal value,
- * expected close date, next step and description can be filled in at any time,
+ * allocation end date, next step and description can be filled in at any time,
  * independent of the stage. Data-integrity rules that validate a *provided*
  * value (date ordering, past-date, formats, ranges) still apply below.
  */
@@ -106,24 +156,24 @@ function todayISO(): string {
 }
 
 /**
- * Expected close dates: cannot precede the start date and — for a deal that is
+ * Allocation end dates: cannot precede the allocation start date and — for a deal that is
  * still open — cannot already be in the past. The past-date rule only applies
- * when the close date is being set or changed, so existing historical records
+ * when the allocation end date is being set or changed, so existing historical records
  * remain editable.
  */
-function assertCloseDateValid(
-  closeDate: string | undefined,
-  startDate: string | undefined,
+function assertAllocationEndDateValid(
+  allocationEndDate: string | undefined,
+  allocationStartDate: string | undefined,
   stage: string,
-  previousCloseDate?: string,
+  previousAllocationEndDate?: string,
 ): void {
-  if (!closeDate) return;
-  if (startDate && closeDate < startDate) {
-    throw new BadRequestException('Expected close date cannot be earlier than the start date');
+  if (!allocationEndDate) return;
+  if (allocationStartDate && allocationEndDate < allocationStartDate) {
+    throw new BadRequestException('Allocation End Date cannot be earlier than the Allocation Start Date');
   }
-  const changed = previousCloseDate === undefined || closeDate !== previousCloseDate;
-  if (!CLOSED_STAGES.has(stage) && changed && closeDate < todayISO()) {
-    throw new BadRequestException('Expected close date cannot be in the past for an open opportunity');
+  const changed = previousAllocationEndDate === undefined || allocationEndDate !== previousAllocationEndDate;
+  if (!CLOSED_STAGES.has(stage) && changed && allocationEndDate < todayISO()) {
+    throw new BadRequestException('Allocation End Date cannot be in the past for an open opportunity');
   }
 }
 
@@ -167,6 +217,7 @@ export class OpportunitiesService {
     private readonly db: DatabaseService,
     private readonly filter: FilterContextService,
     private readonly bus: NotificationEventBus,
+    private readonly projectsService: ProjectsService,
   ) {}
 
   /**
@@ -209,7 +260,7 @@ export class OpportunitiesService {
     return rows[0]?.id ?? null;
   }
 
-  /** Row mapper that derives financialYear/quarter labels from close_date. */
+  /** Row mapper that derives financialYear/quarter labels from allocation_end_date. */
   private async mapper(ctx?: FiscalContext): Promise<(row: any) => Opportunity> {
     const fiscal = ctx ?? await this.filter.getFiscalContext();
     return (row) => rowToOpportunity(row, (d) => this.filter.derivePeriod(d, fiscal));
@@ -218,9 +269,9 @@ export class OpportunitiesService {
   /**
    * Operational list — never fiscal-period-filtered. An opportunity remains
    * visible until it is closed; module-specific filtering (stage, status,
-   * account, close date, probability) happens in the UI. The response still
-   * carries financialYear/quarter labels derived from the close date for
-   * reporting views.
+   * account, allocation end date, probability) happens in the UI. The response
+   * still carries financialYear/quarter labels derived from the allocation end
+   * date for reporting views.
    */
   async findAll(
     params: FilterParams = {},
@@ -237,11 +288,14 @@ export class OpportunitiesService {
     const { rows } = await this.db.query(
       `SELECT o.*, a.name AS account_name,
               cs.name AS client_stakeholder_name, cs.designation AS client_stakeholder_designation,
-              sps.name AS service_provider_stakeholder_name, sps.designation AS service_provider_stakeholder_designation${totalCol}
+              sps.name AS service_provider_stakeholder_name, sps.designation AS service_provider_stakeholder_designation,
+              proj.id AS project_id,
+${OPP_FORECAST_SELECT}${totalCol}
        FROM opportunities o
        INNER JOIN accounts a ON o.account_id = a.id AND a.is_deleted = FALSE
        LEFT  JOIN stakeholders cs  ON o.client_stakeholder_id           = cs.id
        LEFT  JOIN stakeholders sps ON o.service_provider_stakeholder_id = sps.id
+       LEFT  JOIN projects proj ON proj.opportunity_id = o.id AND proj.is_deleted = FALSE${OPP_FORECAST_JOIN}
        WHERE ${where}
        ORDER BY o.created_at DESC${limitClause}`,
       qParams,
@@ -272,13 +326,13 @@ export class OpportunitiesService {
     }
 
     await this.assertAccountExists(data.accountId, data.ownerId);
-    assertDateOrder(data.startDate, data.endDate);
+    assertDateOrder(data.allocationStartDate, data.allocationEndDate, data.dealStartDate, data.dealCloseDate);
     await this.assertStakeholderAssignment(data.clientStakeholderId, data.accountId, 'CLIENT', 'client stakeholder');
     await this.assertStakeholderAssignment(data.serviceProviderStakeholderId, data.accountId, 'SERVICE_PROVIDER', 'service provider stakeholder');
 
     const stage = data.stage || 'Lead';
     const cd    = extractCustomData(data, KNOWN);
-    assertCloseDateValid(data.closeDate, data.startDate, stage);
+    assertAllocationEndDateValid(data.allocationEndDate, data.allocationStartDate, stage);
     const closeReason = resolveCloseReason(data, stage);
     const blockedReason = resolveStageReason(data.blockedReason, 'Blocked', stage);
     const delayedReason = resolveStageReason(data.delayedReason, 'Delayed', stage);
@@ -287,18 +341,19 @@ export class OpportunitiesService {
     const { rows } = await this.db.query(
       `INSERT INTO opportunities
          (id, name, account_id, stage, value, probability, owner_id,
-          close_date, start_date, end_date, crm_value, description, next_step,
+          allocation_start_date, allocation_end_date, deal_start_date, deal_close_date, crm_value, description, next_step,
           risks_and_dependencies,
           close_reason, blocked_reason, delayed_reason, closed_at, tags, team, custom_data,
           client_stakeholder_id, service_provider_stakeholder_id,
-          aop_available, aop_year, opportunity_type, service_line)
-       VALUES (gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
+          aop_available, aop_year, opportunity_type, service_line,
+          opportunity_health, revenue_model, location, cost, gross_margin)
+       VALUES (gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32)
        RETURNING id`,
       [
         data.name, data.accountId, stage,
         data.value ?? 0, data.probability ?? 0,
         data.ownerId ?? null,
-        data.closeDate ?? '', data.startDate ?? '', data.endDate ?? '',
+        data.allocationStartDate || null, data.allocationEndDate ?? '', data.dealStartDate ?? null, data.dealCloseDate ?? null,
         data.crmValue ?? 0, data.description ?? '', data.nextStep ?? '',
         data.risksAndDependencies ?? '',
         closeReason, blockedReason, delayedReason, closedAt,
@@ -306,11 +361,19 @@ export class OpportunitiesService {
         data.clientStakeholderId ?? null, data.serviceProviderStakeholderId ?? null,
         data.aopAvailable ?? false, data.aopAvailable ? (data.aopYear ?? null) : null,
         data.opportunityType ?? null, data.serviceLine ?? null,
+        data.opportunityHealth ?? null, data.revenueModel ?? null, data.location ?? null,
+        data.cost ?? null, data.grossMargin ?? null,
       ],
     );
     const opp = await this.findOne(rows[0].id);
     this.logger.log(`Opportunity created [id=${opp.id} ownerId=${opp.ownerId ?? 'NULL'}]`);
     await this.log(`Created Opportunity '${opp.name}'`, opp.accountId, opp.id, data.ownerId);
+
+    // An opportunity can theoretically be created directly in Won — derive its
+    // Project immediately so it never sits Won without one.
+    if (opp.stage === 'Won') {
+      await this.projectsService.createFromOpportunity(opp, data.ownerId);
+    }
 
     if (opp.ownerId) {
       this.logger.log(`Emitting Opportunity:Created notification [userId=${opp.ownerId} opportunityId=${opp.id}]`);
@@ -336,15 +399,23 @@ export class OpportunitiesService {
    */
   async update(id: string, data: any, requestingUserId?: string): Promise<Opportunity> {
     const existing = await this.findOne(id, requestingUserId);
+    // Read-only enforcement: a Won opportunity's sales history is frozen —
+    // ongoing work happens on its linked Project instead. This guard checks
+    // existing.stage (the value BEFORE this update), so the one transition
+    // update that first moves the deal INTO Won still passes; only a second
+    // edit attempt on an already-Won opportunity is blocked.
+    if (existing.stage === 'Won') {
+      throw new ConflictException('Won opportunities are read-only. Manage ongoing work through the linked Project instead.');
+    }
     if (data.accountId && data.accountId !== existing.accountId) {
       await this.assertAccountExists(data.accountId, requestingUserId);
     }
-    assertDateOrder(data.startDate, data.endDate);
+    assertDateOrder(data.allocationStartDate, data.allocationEndDate, data.dealStartDate, data.dealCloseDate);
     await this.assertStakeholderAssignment(data.clientStakeholderId, data.accountId, 'CLIENT', 'client stakeholder');
     await this.assertStakeholderAssignment(data.serviceProviderStakeholderId, data.accountId, 'SERVICE_PROVIDER', 'service provider stakeholder');
     const cd    = extractCustomData(data, KNOWN);
     const stage = data.stage ?? existing.stage;
-    assertCloseDateValid(data.closeDate, data.startDate, stage, existing.closeDate);
+    assertAllocationEndDateValid(data.allocationEndDate, data.allocationStartDate, stage, existing.allocationEndDate);
     const closeReason = resolveCloseReason(data, stage, existing);
     const blockedReason = resolveStageReason(
       data.blockedReason, 'Blocked', stage,
@@ -371,26 +442,32 @@ export class OpportunitiesService {
     const aopAvailable = typeof data.aopAvailable === 'boolean' ? data.aopAvailable : existing.aopAvailable;
     const aopYear = aopAvailable ? (data.aopYear ?? existing.aopYear ?? null) : null;
     const serviceLine = data.serviceLine !== undefined ? data.serviceLine : existing.serviceLine ?? null;
+    const opportunityHealth = data.opportunityHealth ?? existing.opportunityHealth ?? null;
+    const revenueModel = data.revenueModel ?? existing.revenueModel ?? null;
+    const location = data.location ?? existing.location ?? null;
+    const cost = data.cost ?? existing.cost ?? null;
+    const grossMargin = data.grossMargin ?? existing.grossMargin ?? null;
 
     await this.db.query(
       `UPDATE opportunities SET
          name=$1, account_id=$2, stage=$3, value=$4, probability=$5,
          owner_id=$6,
-         close_date=$7, start_date=$8, end_date=$9, crm_value=$10,
-         description=$11, next_step=$12, risks_and_dependencies=$13, close_reason=$14,
-         blocked_reason=$15, delayed_reason=$16, closed_at=$17,
-         tags=$18, team=$19,
-         custom_data=$20,
-         client_stakeholder_id=$21, service_provider_stakeholder_id=$22,
-         aop_available=$23, aop_year=$24, opportunity_type=$25,
-         service_line=$26,
+         allocation_start_date=$7, allocation_end_date=$8, deal_start_date=$9, deal_close_date=$10, crm_value=$11,
+         description=$12, next_step=$13, risks_and_dependencies=$14, close_reason=$15,
+         blocked_reason=$16, delayed_reason=$17, closed_at=$18,
+         tags=$19, team=$20,
+         custom_data=$21,
+         client_stakeholder_id=$22, service_provider_stakeholder_id=$23,
+         aop_available=$24, aop_year=$25, opportunity_type=$26,
+         service_line=$27,
+         opportunity_health=$28, revenue_model=$29, location=$30, cost=$31, gross_margin=$32,
          updated_at=NOW()
-       WHERE id=$27 AND is_deleted=FALSE`,
+       WHERE id=$33 AND is_deleted=FALSE`,
       [
         data.name, data.accountId, stage,
         data.value ?? existing.value ?? 0, data.probability ?? existing.probability ?? 0,
         effectiveOwnerId,
-        data.closeDate ?? '', data.startDate ?? '', data.endDate ?? '',
+        data.allocationStartDate || null, data.allocationEndDate ?? '', data.dealStartDate ?? null, data.dealCloseDate ?? null,
         data.crmValue ?? 0, data.description ?? '', data.nextStep ?? '',
         data.risksAndDependencies ?? '',
         closeReason, blockedReason, delayedReason, closedAt,
@@ -398,11 +475,23 @@ export class OpportunitiesService {
         data.clientStakeholderId ?? null, data.serviceProviderStakeholderId ?? null,
         aopAvailable, aopYear, opportunityType,
         serviceLine,
+        opportunityHealth, revenueModel, location, cost, grossMargin,
         id,
       ],
     );
     const opp = await this.findOne(id);
     await this.log(`Updated Opportunity '${opp.name}'`, opp.accountId, opp.id, requestingUserId);
+
+    // Won transition: derive the Project that takes over as the live, working
+    // record. The read-only guard above already guarantees existing.stage can
+    // never be 'Won' here (an already-Won opportunity's update is rejected
+    // before reaching this point), so reaching Won always means a fresh
+    // transition. Runs independent of whether opp.ownerId is set (that guard
+    // below is for notifications only) and is idempotent via
+    // createFromOpportunity's ON CONFLICT DO NOTHING.
+    if (opp.stage === 'Won') {
+      await this.projectsService.createFromOpportunity(opp, requestingUserId);
+    }
 
     if (opp.ownerId) {
       if (existing.stage !== opp.stage && CLOSED_STAGES.has(opp.stage)) {

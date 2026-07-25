@@ -4,8 +4,9 @@ import { FormField, FormGrid, FormModal, FormSection, INPUT_CLS_AMBER, Searchabl
 import { NumberInput } from '@/components/NumberInput';
 import { AopYearFields } from '@/components/AopYearFields';
 import { StakeholderAssignmentFields } from '@/components/StakeholderAssignmentFields';
+import { ActionItemOwnerField } from '@/components/ActionItemOwnerField';
 import { getCustomerSinceYearOptions } from '@/utils';
-import { ACTION_ITEM_STATUS_OPTIONS, OPPORTUNITY_STAGE_OPTIONS, OPPORTUNITY_TYPE_OPTIONS, SERVICE_LINE_OPTIONS, ACCOUNT_TYPE_OPTIONS, ACCOUNT_HEALTH_OPTIONS, LOCATION_OPTIONS, stageChangePatch } from '@/constants';
+import { ACTION_ITEM_STATUS_OPTIONS, OPPORTUNITY_STAGE_OPTIONS, OPPORTUNITY_TYPE_OPTIONS, SERVICE_LINE_OPTIONS, ACCOUNT_TYPE_OPTIONS, ACCOUNT_HEALTH_OPTIONS, LOCATION_OPTIONS, OPPORTUNITY_HEALTH_OPTIONS, REVENUE_MODEL_OPTIONS, stageChangePatch } from '@/constants';
 import type {
   Account,
   Opportunity,
@@ -150,7 +151,7 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
             options={LOCATION_OPTIONS}
             placeholder="Search countries…"
             tone="amber"
-            aria-label="Account location"
+            aria-label={mode === 'opportunities' ? 'Opportunity location' : 'Account location'}
           />
         );
 
@@ -167,6 +168,17 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
         );
 
       case 'owner':
+        if (mode === 'actionItems') {
+          return (
+            <ActionItemOwnerField
+              accountId={entity.accountId}
+              stakeholders={stakeholders}
+              value={entity.ownerStakeholderId}
+              onChange={(ownerStakeholderId) => onChange({ ownerStakeholderId })}
+              tone="amber"
+            />
+          );
+        }
         return (
           <input
             type="text"
@@ -283,9 +295,10 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
           />
         );
 
-      case 'closeDate':
-      case 'startDate':
-      case 'endDate':
+      case 'allocationStartDate':
+      case 'allocationEndDate':
+      case 'dealStartDate':
+      case 'dealCloseDate':
       case 'dueDate':
       case 'openDate':
         return (
@@ -374,13 +387,65 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
           </select>
         );
 
+      case 'opportunityHealth':
+        return (
+          <select
+            value={val ?? ''}
+            onChange={(e) => onChange({ opportunityHealth: e.target.value || undefined })}
+            className={`${inputCls} bg-white`}
+          >
+            <option value="">— None —</option>
+            {OPPORTUNITY_HEALTH_OPTIONS.map((h) => (
+              <option key={h} value={h}>{h}</option>
+            ))}
+          </select>
+        );
+
+      case 'revenueModel':
+        return (
+          <select
+            value={val ?? ''}
+            onChange={(e) => onChange({ revenueModel: e.target.value || undefined })}
+            className={`${inputCls} bg-white`}
+          >
+            <option value="">— None —</option>
+            {REVENUE_MODEL_OPTIONS.map((r) => (
+              <option key={r} value={r}>{r}</option>
+            ))}
+          </select>
+        );
+
+      case 'cost':
+        return (
+          <NumberInput
+            min={0}
+            step="0.01"
+            value={val}
+            onValueChange={(n) => onChange({ cost: n })}
+            className={inputCls}
+          />
+        );
+
+      case 'grossMargin':
+        return (
+          <NumberInput
+            min={0}
+            max={100}
+            step="0.01"
+            value={val}
+            onValueChange={(n) => onChange({ grossMargin: n })}
+            placeholder="0–100"
+            className={inputCls}
+          />
+        );
+
       case 'aopAvailable':
         return (
           <AopYearFields
             aopAvailable={!!val}
             aopYear={entity.aopYear}
             onChange={(patch) => onChange(patch)}
-            inputCls={inputCls}
+            tone="amber"
           />
         );
 
@@ -503,6 +568,12 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
               <FormField label="Service Line">
                 {renderInput(editCol('serviceLine', 'Service Line'))}
               </FormField>
+              <FormField label="Opportunity Health">
+                {renderInput(editCol('opportunityHealth', 'Opportunity Health'))}
+              </FormField>
+              <FormField label="Revenue Model">
+                {renderInput(editCol('revenueModel', 'Revenue Model'))}
+              </FormField>
             </FormGrid>
 
             {/* Closing a deal captures an optional win/loss reason for analysis. */}
@@ -553,15 +624,45 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
           </FormSection>
 
           <FormSection title="Timeline & Value">
-            <FormGrid columns={3}>
+            <FormGrid columns={2}>
               <FormField label="Deal Value ($)">
                 {renderInput(editCol('value', 'Deal Value ($)', 'number'))}
               </FormField>
-              <FormField label="Start Date">
-                {renderInput(editCol('startDate', 'Start Date', 'date'))}
+            </FormGrid>
+          </FormSection>
+
+          <FormSection title="Business Details">
+            <FormGrid columns={3}>
+              <FormField label="Location">
+                {renderInput(editCol('location', 'Location'))}
               </FormField>
-              <FormField label="Expected Close Date">
-                {renderInput(editCol('closeDate', 'Expected Close Date', 'date'))}
+              <FormField label="Cost ($)">
+                {renderInput(editCol('cost', 'Cost ($)', 'number'))}
+              </FormField>
+              <FormField label="Gross Margin (%)">
+                {renderInput(editCol('grossMargin', 'Gross Margin (%)', 'number'))}
+              </FormField>
+            </FormGrid>
+          </FormSection>
+
+          <FormSection title="Allocation Period">
+            <FormGrid columns={2}>
+              <FormField label="Allocation Start Date">
+                {renderInput(editCol('allocationStartDate', 'Allocation Start Date', 'date'))}
+              </FormField>
+              <FormField label="Allocation End Date">
+                {renderInput(editCol('allocationEndDate', 'Allocation End Date', 'date'))}
+              </FormField>
+            </FormGrid>
+          </FormSection>
+
+          <FormSection title="Deal Period (Optional)">
+            <FormGrid columns={2}>
+              <FormField label="Deal Start Date">
+                {renderInput(editCol('dealStartDate', 'Deal Start Date', 'date'))}
+              </FormField>
+              <FormField label="Deal Close Date">
+                {renderInput(editCol('dealCloseDate', 'Deal Close Date', 'date'))}
               </FormField>
             </FormGrid>
           </FormSection>

@@ -244,9 +244,9 @@ export const OpportunityPipelineProgress: React.FC<OpportunityPipelineProgressPr
             const nodeCls = isCurrent
               ? style
                 ? style.node
-                : 'bg-indigo-50 border-indigo-600 text-indigo-600 scale-110 shadow-md shadow-indigo-500/20'
+                : 'bg-green-50 border-green-600 text-green-600 scale-110 shadow-md shadow-green-500/20'
               : isCompleted
-                ? 'bg-indigo-600 border-indigo-600 text-white'
+                ? 'bg-green-600 border-green-600 text-white'
                 : isDead
                   ? 'bg-slate-100 border-slate-200 text-slate-300'
                   : 'bg-white border-slate-200 text-slate-400';
@@ -254,9 +254,9 @@ export const OpportunityPipelineProgress: React.FC<OpportunityPipelineProgressPr
             const labelCls = isCurrent
               ? style
                 ? style.nodeLabel
-                : 'text-indigo-700'
+                : 'text-green-700'
               : isCompleted
-                ? 'text-indigo-700'
+                ? 'text-green-700'
                 : isDead
                   ? 'text-slate-300'
                   : 'text-slate-400';
@@ -276,7 +276,7 @@ export const OpportunityPipelineProgress: React.FC<OpportunityPipelineProgressPr
                       <span className={`absolute inset-0 rounded-full ${style.ring}`} />
                     )}
                     {isCurrent && !style && (
-                      <span className="absolute inset-0 rounded-full bg-indigo-400/30 animate-ping" />
+                      <span className="absolute inset-0 rounded-full bg-green-400/30 animate-ping" />
                     )}
                     {isCompleted ? (
                       <Check className="w-4 h-4 relative" strokeWidth={3} />
@@ -295,7 +295,7 @@ export const OpportunityPipelineProgress: React.FC<OpportunityPipelineProgressPr
                   <div className="flex-1 mt-[17px] px-0.5 min-w-1">
                     <div
                       className={`h-0.5 rounded-full transition-colors duration-500 ${
-                        connectorFilled ? 'bg-indigo-600' : 'bg-slate-200'
+                        connectorFilled ? 'bg-green-600' : 'bg-slate-200'
                       }`}
                     />
                   </div>
