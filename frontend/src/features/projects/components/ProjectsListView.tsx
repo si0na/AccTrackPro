@@ -39,8 +39,9 @@ const HEALTH_OPTIONS = ['Green', 'Amber', 'Red'] as const;
 
 /**
  * Projects list — modeled on OpportunitiesView.tsx. Unlike every other list
- * view, there is intentionally no "New Project" action: a Project is always
- * derived server-side from a Won Opportunity, never created by hand.
+ * view, there is intentionally no "New Project" action here: a Project is only
+ * created via the "Create Project" action on a Won Opportunity (which fixes the
+ * account/opportunity links), never started blank from this list.
  */
 export const ProjectsListView: React.FC = () => {
   const {

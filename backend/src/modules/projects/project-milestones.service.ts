@@ -5,13 +5,19 @@ import { ProjectMilestone } from '../../types';
 const TABLE = 'project_milestones';
 
 const COLUMNS = [
-  'name', 'sprints', 'planned_start', 'planned_end', 'actual_start', 'actual_end',
+  'name',
+  'milestone_no', 'activities', 'deliverables', 'acceptance_criteria',
+  'payment_trigger', 'payment_pct', 'payment_amount', 'target_date',
+  'sprints', 'planned_start', 'planned_end', 'actual_start', 'actual_end',
   'status', 'remarks', 'effort_planned', 'effort_spent', 'cost_planned', 'cost_spent', 'completion_pct',
 ];
 
 function toValues(data: any): any[] {
   return [
-    data.name, data.sprints ?? null,
+    data.name,
+    data.milestoneNo ?? null, data.activities ?? null, data.deliverables ?? null, data.acceptanceCriteria ?? null,
+    data.paymentTrigger ?? null, data.paymentPct ?? null, data.paymentAmount ?? null, data.targetDate || null,
+    data.sprints ?? null,
     data.plannedStart || null, data.plannedEnd || null, data.actualStart || null, data.actualEnd || null,
     data.status || 'Not Started', data.remarks ?? '',
     data.effortPlanned ?? null, data.effortSpent ?? null,
@@ -23,11 +29,18 @@ function rowToMilestone(row: any): ProjectMilestone {
   const {
     project_id, planned_start, planned_end, actual_start, actual_end,
     effort_planned, effort_spent, cost_planned, cost_spent, completion_pct,
+    milestone_no, acceptance_criteria, payment_trigger, payment_pct, payment_amount, target_date,
     created_at, updated_at, ...base
   } = row;
   return {
     ...base,
     projectId: project_id,
+    milestoneNo: milestone_no ?? undefined,
+    acceptanceCriteria: acceptance_criteria ?? undefined,
+    paymentTrigger: payment_trigger ?? undefined,
+    paymentPct: payment_pct !== null && payment_pct !== undefined ? Number(payment_pct) : undefined,
+    paymentAmount: payment_amount !== null && payment_amount !== undefined ? Number(payment_amount) : undefined,
+    targetDate: target_date ?? undefined,
     plannedStart: planned_start ?? undefined,
     plannedEnd: planned_end ?? undefined,
     actualStart: actual_start ?? undefined,

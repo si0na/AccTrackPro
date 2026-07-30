@@ -8,6 +8,36 @@ export class CreateProjectMilestoneDto {
   name!: string;
 
   @EmptyToUndefined()
+  @IsOptional() @IsString() @MaxLength(50)
+  milestoneNo?: string;
+
+  @EmptyToUndefined()
+  @IsOptional() @IsString() @MaxLength(5000)
+  activities?: string;
+
+  @EmptyToUndefined()
+  @IsOptional() @IsString() @MaxLength(5000)
+  deliverables?: string;
+
+  @EmptyToUndefined()
+  @IsOptional() @IsString() @MaxLength(5000)
+  acceptanceCriteria?: string;
+
+  @EmptyToUndefined()
+  @IsOptional() @IsString() @MaxLength(500)
+  paymentTrigger?: string;
+
+  @IsNumber() @IsOptional() @Min(0, { message: 'Payment % cannot be negative' }) @Max(100, { message: 'Payment % cannot exceed 100' })
+  paymentPct?: number;
+
+  @IsNumber() @IsOptional() @Min(0, { message: 'Payment amount cannot be negative' })
+  paymentAmount?: number;
+
+  @EmptyToUndefined()
+  @IsOptional() @Matches(ISO_DATE_RE, { message: `targetDate ${ISO_DATE_MSG}` })
+  targetDate?: string;
+
+  @EmptyToUndefined()
   @IsOptional() @IsString() @MaxLength(200)
   sprints?: string;
 

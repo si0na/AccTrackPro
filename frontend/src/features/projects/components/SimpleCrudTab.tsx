@@ -4,7 +4,7 @@
  */
 
 import React, { useState } from 'react';
-import { Pencil, Plus, Trash2 } from 'lucide-react';
+import { Eye, Pencil, Plus, Trash2 } from 'lucide-react';
 import {
   Button,
   Card,
@@ -39,6 +39,18 @@ export interface SimpleCrudTabProps<T extends { id: string }> {
   emptyMessage: string;
   onAddClick: () => void;
   onEditClick: (row: T) => void;
+  /**
+   * Optional: when provided, clicking anywhere on a row (outside the Actions
+   * cell) opens a detailed view of that row. Rows become visibly clickable.
+   * Omit to keep rows non-interactive (the default for tabs with no drill-in).
+   */
+  onRowClick?: (row: T) => void;
+  /**
+   * Optional: when provided, a dedicated View action button (eye icon) is
+   * rendered alongside Edit/Delete, opening the read-only detail view. Usually
+   * wired to the same handler as {@link onRowClick}.
+   */
+  onViewClick?: (row: T) => void;
   /** Short human-readable identifier for a row, used in the delete confirmation and action labels. */
   getRowLabel: (row: T) => string;
   onDelete: (row: T) => Promise<void>;
@@ -62,6 +74,8 @@ export function SimpleCrudTab<T extends { id: string }>({
   emptyMessage,
   onAddClick,
   onEditClick,
+  onRowClick,
+  onViewClick,
   getRowLabel,
   onDelete,
 }: SimpleCrudTabProps<T>) {
@@ -101,14 +115,31 @@ export function SimpleCrudTab<T extends { id: string }>({
                 <EmptyRow colSpan={columns.length + 1} message={emptyMessage} />
               ) : (
                 rows.map((row) => (
-                  <TableRow key={row.id}>
+                  <TableRow
+                    key={row.id}
+                    clickable={!!onRowClick}
+                    onClick={onRowClick ? () => onRowClick(row) : undefined}
+                  >
                     {columns.map((col) => (
                       <TableCell key={col.key} align={col.align} className={col.className}>
                         {col.render(row)}
                       </TableCell>
                     ))}
                     <TableCell align="center" sticky="right">
-                      <div className="flex items-center justify-center gap-1.5">
+                      {/* Stop propagation so the row-level onRowClick (detail view) does
+                          not also fire when the user clicks Edit/Delete. */}
+                      <div
+                        className="flex items-center justify-center gap-1.5"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {onViewClick && (
+                          <RowActionButton
+                            intent="view"
+                            label={`View ${entityLabel.toLowerCase()} ${getRowLabel(row)}`}
+                            icon={<Eye className="w-3.5 h-3.5" />}
+                            onClick={() => onViewClick(row)}
+                          />
+                        )}
                         <RowActionButton
                           intent="edit"
                           label={`Edit ${entityLabel.toLowerCase()} ${getRowLabel(row)}`}

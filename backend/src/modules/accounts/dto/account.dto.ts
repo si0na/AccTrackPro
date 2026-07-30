@@ -21,6 +21,13 @@ export class CreateAccountDto {
   // Keeping the field optional so existing API clients that still send it don't fail validation.
   @IsString() @IsOptional() ownerId?: string;
 
+  // Role-ownership FKs (drive account visibility). Each references a users.id; a
+  // blank string clears the assignment.
+  @EmptyToUndefined() @IsString() @IsOptional() accountManagerId?: string;
+  @EmptyToUndefined() @IsString() @IsOptional() practiceLeadId?: string;
+  @EmptyToUndefined() @IsString() @IsOptional() clientPartnerId?: string;
+  @EmptyToUndefined() @IsString() @IsOptional() verticalHeadId?: string;
+
   @IsNumber() @Min(0, { message: 'Revenue cannot be negative' })
   @Max(9999999999999, { message: 'Revenue exceeds the maximum supported amount' })
   revenue!: number;

@@ -4,7 +4,7 @@
  */
 
 import React from 'react';
-import { TrendingUp } from 'lucide-react';
+import { TrendingUp, FolderKanban } from 'lucide-react';
 import type { ColumnConfig, Opportunity } from '@/types';
 import { ExpandableTextCell, STAGE_COLORS, StatusBadge, HEALTH_COLORS } from '@/components/ui';
 
@@ -40,7 +40,25 @@ export const renderOpportunityCell = (
   }
 
   if (col.key === 'stage') {
-    return <StatusBadge value={opp.stage} colorMap={STAGE_COLORS} />;
+    // Won opportunities that have already transitioned into a Project are kept
+    // in the list but flagged with a compact indigo pill (mirroring the
+    // "Project Created" badge on the opportunity detail header) so users can
+    // tell at a glance which Won deals are still pending project setup.
+    const hasProject = opp.stage === 'Won' && !!opp.projectId;
+    return (
+      <div className="flex items-center gap-1.5">
+        <StatusBadge value={opp.stage} colorMap={STAGE_COLORS} />
+        {hasProject && (
+          <span
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 whitespace-nowrap"
+            title="This opportunity has an associated project"
+          >
+            <FolderKanban className="w-3 h-3" aria-hidden="true" />
+            Project
+          </span>
+        )}
+      </div>
+    );
   }
 
   if (col.key === 'value') {

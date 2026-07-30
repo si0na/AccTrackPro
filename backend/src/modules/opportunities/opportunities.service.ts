@@ -1,9 +1,10 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
 import { FilterContextService, FilterParams, FiscalContext } from '../../common/services/filter-context.service';
+import { AccessScopeService } from '../rbac/access-scope.service';
 import { NotificationEventBus } from '../../common/events/notification-event-bus.service';
 import { ProjectsService } from '../projects/projects.service';
-import { Opportunity } from '../../types';
+import { Opportunity, Project } from '../../types';
 import { extractCustomData } from '../../common/utils/db-mapping.util';
 import { Pagination, Paginated, extractTotal } from '../../common/utils/pagination.util';
 import { validateDto } from '../../common/utils/validate-dto.util';
@@ -216,9 +217,22 @@ export class OpportunitiesService {
   constructor(
     private readonly db: DatabaseService,
     private readonly filter: FilterContextService,
+    private readonly access: AccessScopeService,
     private readonly bus: NotificationEventBus,
     private readonly projectsService: ProjectsService,
   ) {}
+
+  /**
+   * Role-aware visibility fragment for the opportunities alias `o`. An
+   * opportunity is visible only when its parent account is visible to the user.
+   * When userId is absent (internal calls, e.g. re-reading a row just written)
+   * no scoping is applied; view-all roles get no restriction.
+   */
+  private async childScope(userId: string | null, startIdx: number) {
+    if (!userId) return { conditions: [], params: [], nextIdx: startIdx };
+    const ctx = await this.access.getContext(userId);
+    return this.access.buildChildVisibility('o', ctx, startIdx);
+  }
 
   /**
    * Bulk adapter used by the Global Import/Export service. Each opportunity row
@@ -278,7 +292,7 @@ export class OpportunitiesService {
     pg: Pagination | null = null,
   ): Promise<Opportunity[] | Paginated<Opportunity>> {
     const f = this.filter.normalize(params);
-    const owner = this.filter.buildOwnerConditions('o', f, 1);
+    const owner = await this.childScope(f.userId, 1);
     const where = ['o.is_deleted = FALSE', ...owner.conditions].join(' AND ');
 
     const totalCol   = pg ? ', COUNT(*) OVER()::INTEGER AS __total' : '';
@@ -307,10 +321,11 @@ ${OPP_FORECAST_SELECT}${totalCol}
   }
 
   async findOne(id: string, userId?: string): Promise<Opportunity> {
+    const { conditions, params } = await this.childScope(userId ?? null, 2);
+    const scopeClause = conditions.length ? ` AND ${conditions.join(' AND ')}` : '';
     const { rows } = await this.db.query(
-      `${OPP_SELECT} WHERE o.id = $1 AND o.is_deleted = FALSE
-       AND ($2::TEXT IS NULL OR o.owner_id = $2)`,
-      [id, userId ?? null],
+      `${OPP_SELECT} WHERE o.id = $1 AND o.is_deleted = FALSE${scopeClause}`,
+      [id, ...params],
     );
     if (!rows.length) throw new NotFoundException(`Opportunity "${id}" not found`);
     return (await this.mapper())(rows[0]);
@@ -369,11 +384,9 @@ ${OPP_FORECAST_SELECT}${totalCol}
     this.logger.log(`Opportunity created [id=${opp.id} ownerId=${opp.ownerId ?? 'NULL'}]`);
     await this.log(`Created Opportunity '${opp.name}'`, opp.accountId, opp.id, data.ownerId);
 
-    // An opportunity can theoretically be created directly in Won — derive its
-    // Project immediately so it never sits Won without one.
-    if (opp.stage === 'Won') {
-      await this.projectsService.createFromOpportunity(opp, data.ownerId);
-    }
+    // Note: reaching the Won stage no longer auto-creates a Project. A Project
+    // is created only when a user explicitly runs the "Create Project" action
+    // (see createProject() below), so a Won opportunity can sit without one.
 
     if (opp.ownerId) {
       this.logger.log(`Emitting Opportunity:Created notification [userId=${opp.ownerId} opportunityId=${opp.id}]`);
@@ -482,16 +495,9 @@ ${OPP_FORECAST_SELECT}${totalCol}
     const opp = await this.findOne(id);
     await this.log(`Updated Opportunity '${opp.name}'`, opp.accountId, opp.id, requestingUserId);
 
-    // Won transition: derive the Project that takes over as the live, working
-    // record. The read-only guard above already guarantees existing.stage can
-    // never be 'Won' here (an already-Won opportunity's update is rejected
-    // before reaching this point), so reaching Won always means a fresh
-    // transition. Runs independent of whether opp.ownerId is set (that guard
-    // below is for notifications only) and is idempotent via
-    // createFromOpportunity's ON CONFLICT DO NOTHING.
-    if (opp.stage === 'Won') {
-      await this.projectsService.createFromOpportunity(opp, requestingUserId);
-    }
+    // Won transition no longer auto-creates a Project. The opportunity stays in
+    // the Opportunity module until a user explicitly runs "Create Project"
+    // (createProject() below); it does not enter the Projects module on its own.
 
     if (opp.ownerId) {
       if (existing.stage !== opp.stage && CLOSED_STAGES.has(opp.stage)) {
@@ -540,6 +546,43 @@ ${OPP_FORECAST_SELECT}${totalCol}
     return opp;
   }
 
+  /**
+   * User-initiated conversion of a Won Opportunity into a Project. Replaces the
+   * former automatic-on-Won behaviour: nothing happens until a user explicitly
+   * runs this. Validates that the deal is Won and has no Project yet (the DB
+   * unique index is the race-safe backstop), then delegates the actual insert to
+   * ProjectsService, which forces the account/opportunity/owner links from the
+   * Opportunity. `data` carries the user-reviewed project fields from the form.
+   *
+   * @param requestingUserId UUID of the authenticated user (enforces visibility + ownership).
+   */
+  async createProject(id: string, data: any, requestingUserId?: string): Promise<Project> {
+    const opp = await this.findOne(id, requestingUserId);
+    if (opp.stage !== 'Won') {
+      throw new BadRequestException('A Project can only be created for a Won opportunity.');
+    }
+    if (opp.projectId) {
+      throw new ConflictException('A project already exists for this opportunity.');
+    }
+    const project = await this.projectsService.createFromOpportunity(opp, data);
+    this.logger.log(`Project created from Opportunity [opportunityId=${opp.id} projectId=${project.id}]`);
+
+    if (opp.ownerId) {
+      this.bus.emit({
+        userId:               opp.ownerId,
+        type:                 'Opportunity',
+        eventType:            'Updated',
+        title:                'Project Created',
+        message:              `A project has been created for opportunity "${opp.name}".`,
+        severity:             'Success',
+        notificationCategory: 'BUSINESS',
+        accountId:            opp.accountId,
+        opportunityId:        opp.id,
+      });
+    }
+    return project;
+  }
+
   async remove(id: string, userId?: string): Promise<{ success: boolean }> {
     const opp = await this.findOne(id, userId);
     await this.db.query(`UPDATE opportunities SET is_deleted=TRUE, updated_at=NOW() WHERE id=$1`, [id]);
@@ -563,7 +606,7 @@ ${OPP_FORECAST_SELECT}${totalCol}
 
   async findAllDeactivated(params: FilterParams = {}): Promise<Opportunity[]> {
     const f = this.filter.normalize(params);
-    const owner = this.filter.buildOwnerConditions('o', f, 1);
+    const owner = await this.childScope(f.userId, 1);
     const where = ['o.is_deleted = TRUE', ...owner.conditions].join(' AND ');
     // Join accounts without an is_deleted condition: the parent may itself be
     // deactivated (cascade) and its name must still appear in the list.
@@ -575,13 +618,14 @@ ${OPP_FORECAST_SELECT}${totalCol}
   }
 
   async restore(id: string, userId?: string): Promise<Opportunity> {
+    const { conditions, params } = await this.childScope(userId ?? null, 2);
+    const scopeClause = conditions.length ? ` AND ${conditions.join(' AND ')}` : '';
     const { rows: existing } = await this.db.query(
       `SELECT o.id, a.is_deleted AS account_deleted
        FROM opportunities o
        LEFT JOIN accounts a ON o.account_id = a.id
-       WHERE o.id = $1 AND o.is_deleted = TRUE
-       AND ($2::TEXT IS NULL OR o.owner_id = $2)`,
-      [id, userId ?? null],
+       WHERE o.id = $1 AND o.is_deleted = TRUE${scopeClause}`,
+      [id, ...params],
     );
     if (!existing.length) throw new NotFoundException(`Deactivated opportunity "${id}" not found`);
     // Business rule: a child record cannot be active under a deactivated parent.
@@ -613,12 +657,15 @@ ${OPP_FORECAST_SELECT}${totalCol}
     return opp;
   }
 
-  /** Relational rule: the parent account must exist, be active, and belong to the requesting user. */
-  private async assertAccountExists(accountId: string, ownerId?: string): Promise<void> {
+  /** Relational rule: the parent account must exist, be active, and be visible to the requesting user. */
+  private async assertAccountExists(accountId: string, userId?: string): Promise<void> {
+    const scope = userId
+      ? this.access.buildAccountVisibility('a', await this.access.getContext(userId), 2)
+      : { conditions: [] as string[], params: [] as any[] };
+    const clause = scope.conditions.length ? ` AND ${scope.conditions.join(' AND ')}` : '';
     const { rows } = await this.db.query(
-      `SELECT id FROM accounts WHERE id = $1 AND is_deleted = FALSE
-       AND ($2::TEXT IS NULL OR owner_id = $2)`,
-      [accountId, ownerId ?? null],
+      `SELECT a.id FROM accounts a WHERE a.id = $1 AND a.is_deleted = FALSE${clause}`,
+      [accountId, ...scope.params],
     );
     if (!rows.length) throw new BadRequestException('The selected account does not exist');
   }

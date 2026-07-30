@@ -150,6 +150,20 @@ export class ProjectsService {
 
     await this.assertAccountExists(data.accountId, data.ownerId);
     await this.assertOpportunityBelongsToAccount(data.opportunityId, data.accountId, data.ownerId);
+    return this.insertProject(data);
+  }
+
+  /**
+   * Shared insert path for both create() and createFromOpportunity(). Validates
+   * only the client stakeholder assignments (which are account-scoped, never
+   * owner-scoped) and writes the row. The account/opportunity relational rules
+   * are the caller's responsibility: create() enforces them with owner scoping,
+   * while createFromOpportunity() relies on the already-loaded, RBAC-visible
+   * Opportunity — so a project whose opportunity owner differs from the account
+   * owner (a valid RBAC case) is never wrongly rejected. The `uq_project_opportunity`
+   * unique index still guarantees one active project per opportunity (409).
+   */
+  private async insertProject(data: any): Promise<Project> {
     await this.assertStakeholderAssignment(data.clientStakeholderId, data.accountId, 'client stakeholder');
     await this.assertStakeholderAssignment(data.clientPmStakeholderId, data.accountId, 'client PM stakeholder');
 
@@ -277,36 +291,33 @@ export class ProjectsService {
   }
 
   /**
-   * Derives a new Project from a just-Won Opportunity. Idempotent: the partial
-   * unique index `uq_project_opportunity` (one active project per opportunity)
-   * backs an `ON CONFLICT ... DO NOTHING`, so this is safe to call unconditionally
-   * from both OpportunitiesService.create() and .update() without a separate
-   * existence check, and never creates a duplicate project for the same deal.
+   * Creates a Project from a Won Opportunity as an explicit, user-initiated
+   * action (no longer automatic on the Won transition). The relational links —
+   * account, originating opportunity, and owner — are always forced from the
+   * Opportunity so they can't be tampered with via the form; every other field
+   * comes from the user-reviewed `data`, falling back to values derived from the
+   * Opportunity. The Service Provider PM is never auto-assigned — a user chooses
+   * it after the project exists.
+   *
+   * Delegates to create(), which enforces the account/opportunity/stakeholder
+   * relational rules and maps the `uq_project_opportunity` unique-index violation
+   * (one active project per opportunity) to a friendly 409, so concurrent
+   * conversions can never produce a duplicate project for the same deal.
    */
-  async createFromOpportunity(opp: any, requestingUserId?: string): Promise<Project | null> {
-    // service_provider_pm_id is intentionally left unset here — the Service
-    // Provider Project Manager must be explicitly chosen by a user after the
-    // project is created, never auto-assigned from the Opportunity Owner.
-    const { rows } = await this.db.query(
-      `INSERT INTO projects
-         (id, name, description, account_id, opportunity_id, owner_id,
-          start_date, end_date, client_stakeholder_id)
-       VALUES (gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7,$8)
-       ON CONFLICT (opportunity_id) WHERE is_deleted = FALSE DO NOTHING
-       RETURNING id`,
-      [
-        opp.name, opp.description ?? '', opp.accountId, opp.id, opp.ownerId ?? null,
-        opp.allocationStartDate || null, opp.allocationEndDate || null,
-        opp.clientStakeholderId ?? null,
-      ],
-    );
-    if (!rows.length) {
-      this.logger.log(`Project already exists for Opportunity — skipping creation [opportunityId=${opp.id}]`);
-      return null;
-    }
-    const project = await this.findOne(rows[0].id);
+  async createFromOpportunity(opp: any, data: any = {}): Promise<Project> {
+    const merged = {
+      ...data,
+      accountId:     opp.accountId,
+      opportunityId: opp.id,
+      ownerId:       opp.ownerId ?? null,
+      name:          typeof data.name === 'string' && data.name.trim() ? data.name.trim() : opp.name,
+      description:   data.description ?? opp.description ?? '',
+      startDate:     data.startDate ?? opp.allocationStartDate ?? undefined,
+      endDate:       data.endDate ?? opp.allocationEndDate ?? undefined,
+      clientStakeholderId: data.clientStakeholderId ?? opp.clientStakeholderId ?? undefined,
+    };
+    const project = await this.insertProject(merged);
     this.logger.log(`Project created from Won Opportunity [projectId=${project.id} opportunityId=${opp.id}]`);
-    await this.log(`Project created from Opportunity '${opp.name}'`, project.accountId, project.id, requestingUserId);
     return project;
   }
 

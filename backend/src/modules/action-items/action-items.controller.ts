@@ -5,6 +5,7 @@ import {
 import { ActionItemsService } from './action-items.service';
 import { CreateActionItemDto, UpdateActionItemDto } from './dto/action-item.dto';
 import { AuthUser, JwtPayload } from '../auth/auth-user.decorator';
+import { RequirePermission } from '../rbac/require-permission.decorator';
 import { mergeWithCustomFields } from '../../common/utils/merge-custom-fields.util';
 import { parsePagination } from '../../common/utils/pagination.util';
 
@@ -16,6 +17,7 @@ export class ActionItemsController {
   // always the authenticated user (JWT). Any client-sent userId is ignored.
   // Optional ?page=&pageSize= switches the response to a paginated envelope.
   @Get()
+  @RequirePermission('action-items', 'view')
   findAll(
     @AuthUser() authUser: JwtPayload,
     @Query('page') page?: string,
@@ -25,12 +27,14 @@ export class ActionItemsController {
   }
 
   @Get('deactivated')
+  @RequirePermission('action-items', 'view')
   findAllDeactivated(@AuthUser() authUser: JwtPayload) {
     return this.service.findAllDeactivated({ userId: authUser.sub });
   }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
+  @RequirePermission('action-items', 'create')
   create(
     @Body() body: CreateActionItemDto,
     @Req() req: { body: Record<string, any> },
@@ -43,6 +47,7 @@ export class ActionItemsController {
   }
 
   @Put(':id')
+  @RequirePermission('action-items', 'update')
   update(
     @Param('id') id: string,
     @Body() body: UpdateActionItemDto,
@@ -57,6 +62,7 @@ export class ActionItemsController {
 
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
+  @RequirePermission('action-items', 'delete')
   remove(@Param('id') id: string, @AuthUser() authUser: JwtPayload) {
     return this.service.remove(id, authUser.sub);
   }

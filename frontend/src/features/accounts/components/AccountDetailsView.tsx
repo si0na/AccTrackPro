@@ -5,7 +5,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
-import { Account, AccountType, AccountHealth, Opportunity, ActionItem, Stakeholder, ActionItemStatus, PriorityLevel } from '@/types';
+import { usersApi } from '@/api/crm.api';
+import { Account, Opportunity, ActionItem, Stakeholder, StakeholderType, ActionItemStatus, PriorityLevel, User as UserRecord } from '@/types';
 import { InlineEditModal } from '@/components/InlineEditModal';
 import { DocumentsPanel } from '@/components/documents/DocumentsPanel';
 import { OpportunityActionsCommentsPanel } from '@/features/opportunities/components/OpportunityActionsCommentsPanel';
@@ -24,27 +25,13 @@ import {
   DetailTabBar,
   EmptyRow,
   EmptyState,
-  FilterBar,
-  FilterSelect,
-  FormField,
-  FormGrid,
-  FormModal,
-  FormSection,
   HEALTH_COLORS,
   InfoBlock,
-  INFLUENCE_COLORS,
-  INPUT_CLS_AMBER,
   isValidPhone,
-  Pagination,
   PhoneInput,
   PRIORITY_COLORS,
-  RELATIONSHIP_COLORS,
   SearchableSelect,
-  SearchBar,
-  SortableHeader,
   STAGE_COLORS,
-  STAKEHOLDER_TYPE_COLORS,
-  STAKEHOLDER_TYPE_LABELS,
   StatusBadge,
   SummaryCard,
   Table,
@@ -56,15 +43,13 @@ import {
   ExpandableTextCell,
 } from '@/components/ui';
 import { StakeholderFormModal } from '@/features/stakeholders/components/StakeholderFormModal';
-import { ACCOUNT_TYPE_OPTIONS, ACCOUNT_HEALTH_OPTIONS, LOCATION_OPTIONS, STAGE_DEFAULT_PROBABILITY } from '@/constants';
+import { StakeholderTabs } from '@/features/stakeholders/components/StakeholderTabs';
+import { LOCATION_OPTIONS, STAGE_DEFAULT_PROBABILITY } from '@/constants';
 import {
-  compareForSort,
   deriveOppStatus,
-  getCustomerSinceYearOptions,
   getTodayISODate,
   isOpenActionItemStatus,
   mapLocationToOption,
-  SortDirection,
 } from '@/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -123,7 +108,7 @@ export const AccountDetailsView: React.FC = () => {
     deleteStakeholder,
     addComment,
     deleteComment,
-    accountColumns,
+    accountsColumnConfig,
     opportunityColumns,
     opportunitiesColumnConfig,
     actionItemColumns,
@@ -134,6 +119,7 @@ export const AccountDetailsView: React.FC = () => {
     cameFromDashboard,
     navSource,
     currentUser,
+    can,
   } = useCRM();
 
   // Find current account
@@ -246,21 +232,21 @@ export const AccountDetailsView: React.FC = () => {
   const [showAddStakeholder, setShowAddStakeholder] = useState(false);
   const [editingStk, setEditingStk] = useState<Stakeholder | null>(null);
 
-  // Stakeholders table controls: search / sort / pagination
-  const [stkSearch, setStkSearch] = useState('');
-  const [stkTypeFilter, setStkTypeFilter] = useState<string>('All');
-  const [stkSortField, setStkSortField] = useState<string>('name');
-  const [stkSortDirection, setStkSortDirection] = useState<SortDirection>('asc');
-  const [stkPage, setStkPage] = useState(1);
-  const [stkPageSize, setStkPageSize] = useState(10);
-  const handleStkSort = (field: string) => {
-    if (stkSortField === field) setStkSortDirection(prev => (prev === 'asc' ? 'desc' : 'asc'));
-    else { setStkSortField(field); setStkSortDirection('asc'); }
-  };
+  // Stakeholders are split into two independent sub-tabs (Client Stakeholders /
+  // Service Providers), matching the Stakeholders directory. Each sub-table owns
+  // its own search / sort / pagination internally (see StakeholderTable).
+  const [stkSubTab, setStkSubTab] = useState<StakeholderType>('CLIENT');
 
   // Edit Account modal state
   const [isEditingAccount, setIsEditingAccount] = useState(false);
   const [accountDraft, setAccountDraft] = useState<Account | null>(null);
+
+  // Users list — backs the role-filtered owner dropdowns (incl. Account Manager)
+  // on the shared account edit modal, matching the List View edit experience.
+  const [users, setUsers] = useState<UserRecord[]>([]);
+  useEffect(() => {
+    usersApi.getAll().then(setUsers).catch(() => setUsers([]));
+  }, []);
 
   // Header overflow actions menu
   const [showAccountMenu, setShowAccountMenu] = useState(false);
@@ -409,23 +395,9 @@ export const AccountDetailsView: React.FC = () => {
     setCommentText('');
   };
 
-  // Stakeholders table: search → sort → paginate (client-side, this account only)
-  const filteredStks = accountStks.filter(s => {
-    if (stkTypeFilter !== 'All' && s.stakeholderType !== stkTypeFilter) return false;
-    const q = stkSearch.trim().toLowerCase();
-    if (!q) return true;
-    return s.name.toLowerCase().includes(q) ||
-      s.designation.toLowerCase().includes(q) ||
-      s.email.toLowerCase().includes(q) ||
-      s.phone.toLowerCase().includes(q);
-  });
-  const sortedStks = [...filteredStks].sort((a, b) =>
-    compareForSort((a as any)[stkSortField], (b as any)[stkSortField], stkSortDirection),
-  );
-  // Clamp the page so search changes never leave the user on an empty page.
-  const stkTotalPages = Math.max(1, Math.ceil(sortedStks.length / stkPageSize));
-  const stkCurrentPage = Math.min(stkPage, stkTotalPages);
-  const pagedStks = sortedStks.slice((stkCurrentPage - 1) * stkPageSize, stkCurrentPage * stkPageSize);
+  // Stakeholders for this account, split by type for the two sub-tabs.
+  const clientStks = accountStks.filter(s => s.stakeholderType === 'CLIENT');
+  const serviceProviderStks = accountStks.filter(s => s.stakeholderType === 'SERVICE_PROVIDER');
 
   return (
     <div className="space-y-6">
@@ -1184,118 +1156,32 @@ export const AccountDetailsView: React.FC = () => {
         {/* Stakeholders Workspace */}
         {activeTab === 'stakeholders' && (
           <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <h4 className="font-extrabold text-slate-800 text-sm tracking-tight">Customer Stakeholders</h4>
-              <Button icon={<Plus className="w-3.5 h-3.5" />} onClick={() => setShowAddStakeholder(true)}>
-                Add Stakeholder
-              </Button>
-            </div>
+            {/* Two-tab layout (Client Stakeholders / Service Providers), scoped to
+                this account — same StakeholderTabs component as the directory. */}
+            <StakeholderTabs
+              title="Stakeholders"
+              clientRows={clientStks}
+              serviceProviderRows={serviceProviderStks}
+              resolveAccount={() => account}
+              hideAccountColumn
+              storageKeyPrefix={`acct-${account.id}-stk`}
+              canCreate={can('stakeholders', 'create')}
+              canEdit={can('stakeholders', 'update')}
+              canDelete={can('stakeholders', 'delete')}
+              onAdd={(type) => { setStkSubTab(type); setShowAddStakeholder(true); }}
+              onEdit={setEditingStk}
+              onDelete={(s) => setDeleteTarget({ type: 'stakeholder', id: s.id, label: s.name })}
+              clientEmptyMessage="No Client Stakeholders found."
+              serviceProviderEmptyMessage="No Service Providers found. One is created automatically when an Account Manager creates this account, or add one manually above."
+            />
 
-            {/* Stakeholder search + type filter */}
-            <FilterBar>
-              <SearchBar
-                value={stkSearch}
-                onChange={(v) => { setStkSearch(v); setStkPage(1); }}
-                placeholder="Search stakeholders by name, designation, email, or phone..."
-              />
-              <FilterSelect
-                label="Stakeholder Type"
-                hideLabel
-                value={stkTypeFilter}
-                onChange={(v) => { setStkTypeFilter(v); setStkPage(1); }}
-                options={[
-                  { value: 'All', label: 'All Stakeholders' },
-                  { value: 'CLIENT', label: 'Client Stakeholders' },
-                  { value: 'SERVICE_PROVIDER', label: 'Service Provider Stakeholders' },
-                ]}
-                className="w-56 shrink-0"
-              />
-            </FilterBar>
-
-            {/* Stakeholders table */}
-            <Card padding="none" clip>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHead>
-                    <TableHeadCell><SortableHeader label="Name" field="name" sortField={stkSortField} sortDirection={stkSortDirection} onSort={handleStkSort} /></TableHeadCell>
-                    <TableHeadCell><SortableHeader label="Type" field="stakeholderType" sortField={stkSortField} sortDirection={stkSortDirection} onSort={handleStkSort} /></TableHeadCell>
-                    <TableHeadCell><SortableHeader label="Department" field="department" sortField={stkSortField} sortDirection={stkSortDirection} onSort={handleStkSort} /></TableHeadCell>
-                    <TableHeadCell><SortableHeader label="Designation" field="designation" sortField={stkSortField} sortDirection={stkSortDirection} onSort={handleStkSort} /></TableHeadCell>
-                    <TableHeadCell align="center"><SortableHeader label="Influence" field="influence" sortField={stkSortField} sortDirection={stkSortDirection} onSort={handleStkSort} className="justify-center w-full" /></TableHeadCell>
-                    <TableHeadCell align="center"><SortableHeader label="Relationship" field="relationship" sortField={stkSortField} sortDirection={stkSortDirection} onSort={handleStkSort} className="justify-center w-full" /></TableHeadCell>
-                    <TableHeadCell><SortableHeader label="Email" field="email" sortField={stkSortField} sortDirection={stkSortDirection} onSort={handleStkSort} /></TableHeadCell>
-                    <TableHeadCell><SortableHeader label="Phone" field="phone" sortField={stkSortField} sortDirection={stkSortDirection} onSort={handleStkSort} /></TableHeadCell>
-                    <TableHeadCell align="center">Actions</TableHeadCell>
-                  </TableHead>
-                  <tbody>
-                    {sortedStks.length === 0 ? (
-                      <EmptyRow
-                        colSpan={9}
-                        message={accountStks.length === 0
-                          ? "No stakeholders registered. Click 'Add Stakeholder' above."
-                          : 'No stakeholders match your search.'}
-                      />
-                    ) : (
-                      pagedStks.map(stk => (
-                        <TableRow key={stk.id} className="hover:bg-slate-50/50">
-                          <TableCell className="font-extrabold text-slate-900">{stk.name}</TableCell>
-                          <TableCell>
-                            <StatusBadge value={STAKEHOLDER_TYPE_LABELS[stk.stakeholderType]} colorMap={STAKEHOLDER_TYPE_COLORS} shape="rounded" />
-                          </TableCell>
-                          <TableCell className="text-slate-500 font-semibold">{stk.department || '—'}</TableCell>
-                          <TableCell className="text-slate-500 font-semibold">{stk.designation}</TableCell>
-                          <TableCell align="center">
-                            {stk.stakeholderType === 'SERVICE_PROVIDER'
-                              ? <span className="text-slate-300">—</span>
-                              : <StatusBadge value={stk.influence} colorMap={INFLUENCE_COLORS} shape="rounded" />}
-                          </TableCell>
-                          <TableCell align="center">
-                            {stk.stakeholderType === 'SERVICE_PROVIDER'
-                              ? <span className="text-slate-300">—</span>
-                              : <StatusBadge value={stk.relationship} colorMap={RELATIONSHIP_COLORS} />}
-                          </TableCell>
-                          <TableCell className="select-all text-slate-500 hover:text-blue-500 transition-colors">
-                            <a href={`mailto:${stk.email}`} className="flex items-center space-x-1 font-semibold">
-                              <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden="true" />
-                              <span className="truncate max-w-[150px]">{stk.email}</span>
-                            </a>
-                          </TableCell>
-                          <TableCell className="font-mono select-all text-slate-500">
-                            <span className="flex items-center space-x-1">
-                              <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden="true" />
-                              <span>{stk.phone}</span>
-                            </span>
-                          </TableCell>
-                          <TableCell align="center">
-                            <TableActions
-                              entityLabel={`stakeholder ${stk.name}`}
-                              onEdit={() => setEditingStk(stk)}
-                              onDelete={() => setDeleteTarget({ type: 'stakeholder', id: stk.id, label: stk.name })}
-                            />
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </tbody>
-                </Table>
-              </div>
-
-              <Pagination
-                page={stkCurrentPage}
-                pageSize={stkPageSize}
-                totalItems={sortedStks.length}
-                onPageChange={setStkPage}
-                onPageSizeChange={(size) => { setStkPageSize(size); setStkPage(1); }}
-                itemLabel="stakeholders"
-              />
-            </Card>
-
-            {/* Add stakeholder modal (account locked to this account) */}
+            {/* Add stakeholder modal (account + type locked to this context) */}
             <StakeholderFormModal
               isOpen={showAddStakeholder}
               mode="create"
               accounts={accounts}
               lockedAccount={{ id: account.id, name: account.name }}
+              lockedType={stkSubTab}
               onClose={() => setShowAddStakeholder(false)}
               onSubmit={async (draft) => { await addStakeholder(draft); }}
             />
@@ -1436,188 +1322,28 @@ export const AccountDetailsView: React.FC = () => {
         />
       </div>
 
-      {/* Edit Account Modal */}
-      {accountDraft && (
-        <FormModal
-          isOpen={isEditingAccount}
-          title={`Edit Account — ${account.name}`}
-          icon={<Pencil className="w-5 h-5 text-amber-600" />}
-          onClose={() => { setIsEditingAccount(false); setAccountDraft(null); }}
-          onSubmit={async (e) => {
+      {/* Edit Account Modal — the same shared InlineEditModal used by the
+          Accounts List View, so both edit experiences expose an identical set
+          of editable fields (including the Account Manager and the other
+          role-ownership assignments). */}
+      {isEditingAccount && accountDraft && (
+        <InlineEditModal
+          mode="accounts"
+          entity={accountDraft}
+          displayedConfigs={accountsColumnConfig.filter(c => c.isDisplayed)}
+          accounts={accounts}
+          opportunities={opportunities}
+          stakeholders={stakeholders}
+          users={users}
+          onChange={(patch) => setAccountDraft({ ...accountDraft, ...patch })}
+          onSave={async (e) => {
             e.preventDefault();
-            if (accountDraft) {
-              await updateAccount(accountDraft);
-              setIsEditingAccount(false);
-              setAccountDraft(null);
-            }
+            await updateAccount(accountDraft);
+            setIsEditingAccount(false);
+            setAccountDraft(null);
           }}
-          submitLabel="Save Changes"
-          submitVariant="warning"
-          maxWidth="max-w-4xl"
-        >
-          <div className="space-y-5">
-            <FormSection title="Identity">
-              <FormGrid columns={3}>
-                <FormField label="Account Name" required wide>
-                  <input
-                    type="text"
-                    required
-                    value={accountDraft.name}
-                    onChange={(e) => setAccountDraft({ ...accountDraft, name: e.target.value })}
-                    className={INPUT_CLS_AMBER}
-                  />
-                </FormField>
-                <FormField label="Account Type">
-                  <select
-                    value={accountDraft.type}
-                    onChange={(e) => setAccountDraft({ ...accountDraft, type: e.target.value as AccountType })}
-                    className={`${INPUT_CLS_AMBER} bg-white cursor-pointer`}
-                  >
-                    {ACCOUNT_TYPE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                </FormField>
-                <FormField label="Health Status">
-                  <select
-                    value={accountDraft.health}
-                    onChange={(e) => setAccountDraft({ ...accountDraft, health: e.target.value as AccountHealth })}
-                    className={`${INPUT_CLS_AMBER} bg-white cursor-pointer`}
-                  >
-                    {ACCOUNT_HEALTH_OPTIONS.map(h => <option key={h} value={h}>{h}</option>)}
-                  </select>
-                </FormField>
-                <FormField label="Industry">
-                  <input
-                    type="text"
-                    value={accountDraft.industry}
-                    onChange={(e) => setAccountDraft({ ...accountDraft, industry: e.target.value })}
-                    className={INPUT_CLS_AMBER}
-                  />
-                </FormField>
-                <FormField label="Client Since">
-                  <SearchableSelect
-                    value={accountDraft.since || ''}
-                    onChange={(since) => setAccountDraft({ ...accountDraft, since })}
-                    options={getCustomerSinceYearOptions()}
-                    placeholder="Select year…"
-                    tone="amber"
-                    aria-label="Customer since year"
-                  />
-                </FormField>
-              </FormGrid>
-            </FormSection>
-
-            <FormSection title="Contact & Location">
-              <FormGrid columns={3}>
-                <FormField label="Website">
-                  <input
-                    type="text"
-                    value={accountDraft.website || ''}
-                    onChange={(e) => setAccountDraft({ ...accountDraft, website: e.target.value })}
-                    placeholder="https://"
-                    className={INPUT_CLS_AMBER}
-                  />
-                </FormField>
-                <FormField label="Phone">
-                  <PhoneInput
-                    value={accountDraft.phone || ''}
-                    onChange={(phone) => setAccountDraft({ ...accountDraft, phone })}
-                    tone="amber"
-                  />
-                </FormField>
-                <FormField label="Email">
-                  <input
-                    type="email"
-                    value={accountDraft.email || ''}
-                    onChange={(e) => setAccountDraft({ ...accountDraft, email: e.target.value })}
-                    className={INPUT_CLS_AMBER}
-                  />
-                </FormField>
-                <FormField label="Location">
-                  <SearchableSelect
-                    value={accountDraft.location || ''}
-                    onChange={(location) => setAccountDraft({ ...accountDraft, location })}
-                    options={LOCATION_OPTIONS}
-                    placeholder="Search countries…"
-                    tone="amber"
-                    aria-label="Account location"
-                  />
-                </FormField>
-                <FormField label="Address" wide>
-                  <input
-                    type="text"
-                    value={accountDraft.address || ''}
-                    onChange={(e) => setAccountDraft({ ...accountDraft, address: e.target.value })}
-                    className={INPUT_CLS_AMBER}
-                  />
-                </FormField>
-              </FormGrid>
-            </FormSection>
-
-            <FormSection title="Overview">
-              <FormGrid columns={3}>
-                <FormField label="Account Summary / Description" wide>
-                  <textarea
-                    value={accountDraft.description || ''}
-                    onChange={(e) => setAccountDraft({ ...accountDraft, description: e.target.value })}
-                    rows={3}
-                    className={`${INPUT_CLS_AMBER} resize-none`}
-                  />
-                </FormField>
-                <FormField label="Total Revenue">
-                  <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg">
-                    <span className="text-xs font-mono font-bold text-slate-700">
-                      {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(
-                        accountOpps.reduce((sum, o) => sum + (o.value || 0), 0)
-                      )}
-                    </span>
-                    <span className="text-[10px] text-slate-400 font-medium">(auto-calculated from opportunities)</span>
-                  </div>
-                </FormField>
-                {accountColumns.length > 0 && accountColumns.map((col) => {
-                  const rawVal = accountDraft[col.key] ?? (col.type === 'boolean' ? false : '');
-                  return (
-                    <FormField key={col.id} label={col.name}>
-                      {col.type === 'boolean' ? (
-                        <div className="flex items-center h-8">
-                          <input
-                            type="checkbox"
-                            checked={!!rawVal}
-                            onChange={(e) => setAccountDraft({ ...accountDraft, [col.key]: e.target.checked })}
-                            className="w-4 h-4 text-amber-600 border-slate-300 rounded cursor-pointer"
-                          />
-                          <span className="text-xs font-medium text-slate-500 ml-2">Active / Yes</span>
-                        </div>
-                      ) : col.type === 'number' ? (
-                        <input
-                          type="number"
-                          value={rawVal}
-                          onChange={(e) => setAccountDraft({ ...accountDraft, [col.key]: e.target.value === '' ? '' : Number(e.target.value) })}
-                          placeholder="Enter number"
-                          className={INPUT_CLS_AMBER}
-                        />
-                      ) : col.type === 'date' ? (
-                        <input
-                          type="date"
-                          value={rawVal}
-                          onChange={(e) => setAccountDraft({ ...accountDraft, [col.key]: e.target.value })}
-                          className={`${INPUT_CLS_AMBER} font-mono`}
-                        />
-                      ) : (
-                        <input
-                          type="text"
-                          value={rawVal}
-                          onChange={(e) => setAccountDraft({ ...accountDraft, [col.key]: e.target.value })}
-                          placeholder="Enter value"
-                          className={INPUT_CLS_AMBER}
-                        />
-                      )}
-                    </FormField>
-                  );
-                })}
-              </FormGrid>
-            </FormSection>
-          </div>
-        </FormModal>
+          onCancel={() => { setIsEditingAccount(false); setAccountDraft(null); }}
+        />
       )}
 
       <ConfirmDialog

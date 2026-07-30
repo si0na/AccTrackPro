@@ -30,6 +30,15 @@ export interface Account {
   health: AccountHealth;
   owner: string;
   ownerId?: string;
+  /** Role-ownership FKs driving account visibility (joined names alongside). */
+  accountManagerId?: string | null;
+  accountManagerName?: string;
+  practiceLeadId?: string | null;
+  practiceLeadName?: string;
+  clientPartnerId?: string | null;
+  clientPartnerName?: string;
+  verticalHeadId?: string | null;
+  verticalHeadName?: string;
   revenue: number;
   industry: string;
   since: string;
@@ -232,6 +241,17 @@ export interface ProjectMilestone {
   id: string;
   projectId: string;
   name: string;
+  /** Essential planning fields captured on the simplified Create Milestone form. */
+  milestoneNo?: string;
+  activities?: string;
+  deliverables?: string;
+  acceptanceCriteria?: string;
+  paymentTrigger?: string;
+  /** Percentage of contract value released at this milestone (0–100). */
+  paymentPct?: number;
+  paymentAmount?: number;
+  /** Planned target/due date (ISO yyyy-mm-dd). */
+  targetDate?: string;
   /** Free text, e.g. "Sprint 3-4". */
   sprints?: string;
   plannedStart?: string;
@@ -377,7 +397,7 @@ export interface Stakeholder {
 
 export interface Activity {
   id: string;
-  type: 'account' | 'opportunity' | 'actionItem' | 'stakeholder' | 'general';
+  type: 'account' | 'opportunity' | 'actionItem' | 'stakeholder' | 'general' | 'permission';
   text: string;
   timestamp: string;
   user: string;
@@ -429,8 +449,63 @@ export interface User {
   name: string;
   email: string;
   role: string;
+  roleId?: string | null;
+  roleKey?: string | null;
+  employeeId?: string | null;
+  department?: string | null;
+  designation?: string | null;
   avatarData: string;
   isActive: boolean;
+}
+
+// ── RBAC ────────────────────────────────────────────────────────────────────
+export interface Role {
+  id: string;
+  key: string;
+  name: string;
+  description?: string | null;
+  isSystem: boolean;
+  accountScopeField: string | null;
+}
+
+export interface RbacModule {
+  key: string;
+  name: string;
+  sortOrder: number;
+}
+
+export interface RbacPermission {
+  key: string;
+  name: string;
+  sortOrder: number;
+}
+
+export interface PermissionMatrixCell {
+  roleId: string;
+  moduleKey: string;
+  permissionKey: string;
+  isAllowed: boolean;
+  isLocked: boolean;
+}
+
+export interface PermissionMatrix {
+  roles: Array<Pick<Role, 'id' | 'key' | 'name' | 'isSystem' | 'accountScopeField'>>;
+  modules: RbacModule[];
+  permissions: RbacPermission[];
+  cells: PermissionMatrixCell[];
+}
+
+/** The logged-in user's effective permissions (drives menu/button gating). */
+export interface MyPermissions {
+  roleKey: string | null;
+  roleName: string | null;
+  /** Every role key the user holds (multi-role). */
+  roleKeys: string[];
+  accountScopeField: string | null;
+  /** Every account ownership scope field across the user's roles. */
+  accountScopeFields: string[];
+  canViewAllAccounts: boolean;
+  permissions: string[]; // `${moduleKey}:${permissionKey}`
 }
 
 export type NotificationType =
@@ -520,6 +595,15 @@ export interface AdminUser {
   name: string;
   email: string;
   role: string;
+  roleId?: string | null;
+  roleKey?: string | null;
+  roleName?: string | null;
+  /** Every role the user holds (multi-role). */
+  roleIds?: string[];
+  roleKeys?: string[];
+  employeeId?: string | null;
+  department?: string | null;
+  designation?: string | null;
   isActive: boolean;
   lastLogin?: string | null;
   createdAt: string;
@@ -537,6 +621,11 @@ export interface EmployeeMaster {
   email: string;
   /** Display name — used by Performance Evaluations. */
   name: string;
+  /** Pre-assigned RBAC attributes applied at registration. */
+  roleId?: string | null;
+  employeeId?: string | null;
+  department?: string | null;
+  designation?: string | null;
   createdAt: string;
   updatedAt: string;
 }

@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
 import { FilterContextService, FilterParams } from '../../common/services/filter-context.service';
+import { AccessScopeService } from '../rbac/access-scope.service';
 import { NotificationEventBus } from '../../common/events/notification-event-bus.service';
 import { Stakeholder } from '../../types';
 import { validateDto } from '../../common/utils/validate-dto.util';
@@ -9,12 +10,13 @@ import { STAKEHOLDER_FIELDS } from '../import-export/import-field-schemas';
 import { BulkModuleAdapter } from '../import-export/bulk-adapter';
 
 function rowToStakeholder(row: any): Stakeholder {
-  const { is_deleted, created_at, updated_at, account_id, account_name, stakeholder_type, ...base } = row;
+  const { is_deleted, created_at, updated_at, account_id, account_name, stakeholder_type, user_id, ...base } = row;
   return {
     ...base,
     accountId:       account_id,
     accountName:     account_name ?? undefined,
     stakeholderType: stakeholder_type,
+    userId:          user_id ?? undefined,
   } as Stakeholder;
 }
 
@@ -25,8 +27,21 @@ export class StakeholdersService {
   constructor(
     private readonly db: DatabaseService,
     private readonly filter: FilterContextService,
+    private readonly access: AccessScopeService,
     private readonly bus: NotificationEventBus,
   ) {}
+
+  /**
+   * Role-aware visibility fragment for the stakeholders alias `s`. A stakeholder
+   * is visible only when its parent account is visible to the user. When userId
+   * is absent (internal calls) no scoping is applied; view-all roles get no
+   * restriction.
+   */
+  private async childScope(userId: string | null, startIdx: number) {
+    if (!userId) return { conditions: [], params: [], nextIdx: startIdx };
+    const ctx = await this.access.getContext(userId);
+    return this.access.buildChildVisibility('s', ctx, startIdx);
+  }
 
   /**
    * Bulk adapter used by the Global Import/Export service. Each stakeholder row
@@ -78,14 +93,11 @@ export class StakeholdersService {
   }
 
   // Stakeholders belong to an account and have no fiscal dimension — they are
-  // never period-filtered. Scoping is via the parent account's owner_id only.
+  // never period-filtered. Visibility follows the parent account (role-aware).
   async findAll(params: FilterParams = {}): Promise<Stakeholder[]> {
     const f = this.filter.normalize(params);
-    const conditions: string[] = ['s.is_deleted = FALSE'];
-    const qParams: any[] = [];
-
-    // Stakeholders have no owner — scope by the parent account's owner_id
-    if (f.userId) { conditions.push(`a.owner_id = $1`); qParams.push(f.userId); }
+    const scope = await this.childScope(f.userId, 1);
+    const conditions: string[] = ['s.is_deleted = FALSE', ...scope.conditions];
 
     const { rows } = await this.db.query(
       `SELECT s.*, a.name AS account_name
@@ -93,17 +105,15 @@ export class StakeholdersService {
        INNER JOIN accounts a ON s.account_id = a.id AND a.is_deleted = FALSE
        WHERE ${conditions.join(' AND ')}
        ORDER BY s.created_at DESC`,
-      qParams,
+      scope.params,
     );
     return rows.map(rowToStakeholder);
   }
 
   async findAllDeactivated(params: FilterParams = {}): Promise<Stakeholder[]> {
     const f = this.filter.normalize(params);
-    const conditions: string[] = ['s.is_deleted = TRUE'];
-    const qParams: any[] = [];
-
-    if (f.userId) { conditions.push(`a.owner_id = $1`); qParams.push(f.userId); }
+    const scope = await this.childScope(f.userId, 1);
+    const conditions: string[] = ['s.is_deleted = TRUE', ...scope.conditions];
 
     // The accounts join has no is_deleted condition: the parent may itself be
     // deactivated (cascade) and its name must still appear in the list.
@@ -113,19 +123,20 @@ export class StakeholdersService {
        LEFT JOIN accounts a ON s.account_id = a.id
        WHERE ${conditions.join(' AND ')}
        ORDER BY s.updated_at DESC`,
-      qParams,
+      scope.params,
     );
     return rows.map(rowToStakeholder);
   }
 
   async findOne(id: string, userId?: string): Promise<Stakeholder> {
+    const { conditions, params } = await this.childScope(userId ?? null, 2);
+    const scopeClause = conditions.length ? ` AND ${conditions.join(' AND ')}` : '';
     const { rows } = await this.db.query(
       `SELECT s.*, a.name AS account_name
        FROM stakeholders s
        INNER JOIN accounts a ON s.account_id = a.id
-       WHERE s.id = $1 AND s.is_deleted = FALSE
-       AND ($2::TEXT IS NULL OR a.owner_id = $2)`,
-      [id, userId ?? null],
+       WHERE s.id = $1 AND s.is_deleted = FALSE${scopeClause}`,
+      [id, ...params],
     );
     if (!rows.length) throw new NotFoundException(`Stakeholder "${id}" not found`);
     return rowToStakeholder(rows[0]);
@@ -231,12 +242,15 @@ export class StakeholdersService {
     return { success: true };
   }
 
-  /** Relational rule: the parent account must exist, be active, and belong to the requesting user. */
-  private async assertAccountExists(accountId: string, ownerId?: string): Promise<void> {
+  /** Relational rule: the parent account must exist, be active, and be visible to the requesting user. */
+  private async assertAccountExists(accountId: string, userId?: string): Promise<void> {
+    const scope = userId
+      ? this.access.buildAccountVisibility('a', await this.access.getContext(userId), 2)
+      : { conditions: [] as string[], params: [] as any[] };
+    const clause = scope.conditions.length ? ` AND ${scope.conditions.join(' AND ')}` : '';
     const { rows } = await this.db.query(
-      `SELECT id FROM accounts WHERE id = $1 AND is_deleted = FALSE
-       AND ($2::TEXT IS NULL OR owner_id = $2)`,
-      [accountId, ownerId ?? null],
+      `SELECT a.id FROM accounts a WHERE a.id = $1 AND a.is_deleted = FALSE${clause}`,
+      [accountId, ...scope.params],
     );
     if (!rows.length) throw new BadRequestException('The selected account does not exist');
   }

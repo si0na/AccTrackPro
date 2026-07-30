@@ -27,15 +27,24 @@ export interface ProjectFormModalProps {
   users: AdminUser[];
   /** Full stakeholders list — filtered here to the project's account + CLIENT type for the Client Name / Client PM selects. */
   stakeholders: Stakeholder[];
+  /**
+   * 'edit' (default) — updating an existing project's Overview fields.
+   * 'create' — converting a Won opportunity into a new project; the same fields,
+   * relabelled ("Create Project" / primary CTA). The account & opportunity links
+   * are fixed by the originating opportunity server-side and so are not shown.
+   */
+  mode?: 'create' | 'edit';
 }
 
 /**
- * Edit dialog for a Project's Overview fields only — Health, As On Date, and
- * the Overall Progress metrics have their own independent inline edit on the
- * "Overall Progress" tab (see ProjectDetailsView) so the two sections can be
- * edited without affecting one another. Projects are never created manually
- * (they're derived from a Won Opportunity), so this modal is edit-only —
- * opened from the "Edit Project" header action.
+ * Dialog for a Project's Overview fields — Health, As On Date, and the Overall
+ * Progress metrics have their own independent inline edit on the "Overall
+ * Progress" tab (see ProjectDetailsView) so the two sections can be edited
+ * without affecting one another.
+ *
+ * Used in two modes: `edit` (from the "Edit Project" header action) and `create`
+ * (from a Won opportunity's "Create Project" action — projects are no longer
+ * derived automatically, so a user reviews the pre-filled fields before saving).
  */
 export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
   isOpen,
@@ -46,21 +55,23 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
   onChange,
   users,
   stakeholders,
+  mode = 'edit',
 }) => {
   const clientStakeholders = stakeholders.filter(
     (s) => s.accountId === value.accountId && s.stakeholderType === 'CLIENT',
   );
+  const isCreate = mode === 'create';
 
   return (
     <FormModal
       isOpen={isOpen}
-      title="Edit Project"
+      title={isCreate ? 'Create Project' : 'Edit Project'}
       icon={<FolderKanban className="w-5 h-5 text-indigo-600" aria-hidden="true" />}
       onClose={onClose}
       onSubmit={onSubmit}
-      submitLabel={isSubmitting ? 'Saving…' : 'Save Changes'}
+      submitLabel={isSubmitting ? (isCreate ? 'Creating…' : 'Saving…') : (isCreate ? 'Create Project' : 'Save Changes')}
       isSubmitting={isSubmitting}
-      submitVariant="warning"
+      submitVariant={isCreate ? 'primary' : 'warning'}
       maxWidth="max-w-5xl"
     >
       <div className="space-y-5">

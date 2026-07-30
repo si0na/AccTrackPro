@@ -85,6 +85,7 @@ export const OpportunitiesView: React.FC = () => {
     setView,
     setSelectedOpportunityId,
     setSelectedProjectId,
+    setCreateProjectIntent,
     opportunityColumns,
     opportunitiesColumnConfig,
     updateOpportunity,
@@ -98,6 +99,7 @@ export const OpportunitiesView: React.FC = () => {
     refreshData,
     currentUser,
     loading,
+    can,
   } = useCRM();
 
   // Module-specific filter states (operational — never fiscal-period-based)
@@ -204,13 +206,13 @@ export const OpportunitiesView: React.FC = () => {
     const matchesRevenueModel = revenueModelFilter === 'All' || o.revenueModel === revenueModelFilter;
     const matchesLocation = locationFilter === 'All' || o.location === locationFilter;
     const matchesServiceLine = serviceLineFilter === 'All' || o.serviceLine === serviceLineFilter;
-    // Won opportunities become read-only Projects and are hidden from the
-    // active pipeline. An explicit Won stage filter (e.g. a dashboard funnel
-    // drill-down) reveals them so that entry point never lands on an empty list.
-    const matchesClosed = selectedStage === 'Won' || o.stage !== 'Won';
+    // Won opportunities stay visible in the list even after transitioning into
+    // a Project — they are visually differentiated (a "Project" pill on the
+    // stage cell and a "View project" row action) rather than hidden, so users
+    // can always trace a deal from the pipeline through to its project.
     return matchesSearch && matchesStage && matchesAccount &&
            matchesDashboardStatus && matchesAllocationEndFrom && matchesAllocationEndTo && matchesProbability &&
-           matchesHealth && matchesRevenueModel && matchesLocation && matchesServiceLine && matchesClosed;
+           matchesHealth && matchesRevenueModel && matchesLocation && matchesServiceLine;
   });
 
   const sortedOpps = [...filteredOpps].sort((a, b) =>
@@ -331,13 +333,15 @@ export const OpportunitiesView: React.FC = () => {
             >
               Customize Columns
             </Button>
-            <Button
-              size="md"
-              icon={<Plus className="w-4 h-4" aria-hidden="true" />}
-              onClick={handleOpenAddOpportunity}
-            >
-              New Opportunity
-            </Button>
+            {can('opportunities', 'create') && (
+              <Button
+                size="md"
+                icon={<Plus className="w-4 h-4" aria-hidden="true" />}
+                onClick={handleOpenAddOpportunity}
+              >
+                New Opportunity
+              </Button>
+            )}
           </>
         }
       />
@@ -506,12 +510,19 @@ export const OpportunitiesView: React.FC = () => {
               ) : (
                 pagedOpps.map((opp) => {
                   const associatedAccount = accounts.find(a => a.id === opp.accountId);
+                  const hasProject = opp.stage === 'Won' && !!opp.projectId;
                   return (
                     <TableRow
                       key={opp.id}
                       clickable
                       onClick={() => setSelectedOppId(opp.id)}
-                      className={selectedOppId === opp.id ? 'bg-blue-50/45 border-l-4 border-l-blue-600 font-semibold' : ''}
+                      className={
+                        selectedOppId === opp.id
+                          ? 'bg-blue-50/45 border-l-4 border-l-blue-600 font-semibold'
+                          : hasProject
+                            ? 'bg-indigo-50/30'
+                            : ''
+                      }
                     >
                       {displayedConfigs.map(col => (
                         <TableCell
@@ -547,31 +558,49 @@ export const OpportunitiesView: React.FC = () => {
                             onClick={() => handleForecastClick(opp.id)}
                           />
                           {opp.stage === 'Won' ? (
-                            opp.projectId && (
+                            opp.projectId ? (
                               <RowActionButton
                                 intent="view"
-                                label={`Open project for ${opp.name}`}
+                                label={`View project for ${opp.name}`}
                                 icon={<FolderKanban className="w-3.5 h-3.5" />}
                                 onClick={() => {
                                   setSelectedProjectId(opp.projectId!);
                                   setView('project-details');
                                 }}
                               />
+                            ) : (
+                              can('opportunities', 'update') && (
+                                <RowActionButton
+                                  intent="edit"
+                                  label={`Create project for ${opp.name}`}
+                                  icon={<FolderKanban className="w-3.5 h-3.5" />}
+                                  onClick={() => {
+                                    // Open the details view and auto-launch its Create Project modal.
+                                    setCreateProjectIntent(true);
+                                    setSelectedOpportunityId(opp.id);
+                                    setView('opportunity-details');
+                                  }}
+                                />
+                              )
                             )
                           ) : (
+                            can('opportunities', 'update') && (
+                              <RowActionButton
+                                intent="edit"
+                                label={`Edit opportunity ${opp.name}`}
+                                icon={<Pencil className="w-3.5 h-3.5" />}
+                                onClick={() => handleEditClick(opp)}
+                              />
+                            )
+                          )}
+                          {can('opportunities', 'delete') && (
                             <RowActionButton
-                              intent="edit"
-                              label={`Edit opportunity ${opp.name}`}
-                              icon={<Pencil className="w-3.5 h-3.5" />}
-                              onClick={() => handleEditClick(opp)}
+                              intent="delete"
+                              label={`Delete opportunity ${opp.name}`}
+                              icon={<Trash2 className="w-3.5 h-3.5" />}
+                              onClick={() => setDeleteTarget({ id: opp.id, label: opp.name })}
                             />
                           )}
-                          <RowActionButton
-                            intent="delete"
-                            label={`Delete opportunity ${opp.name}`}
-                            icon={<Trash2 className="w-3.5 h-3.5" />}
-                            onClick={() => setDeleteTarget({ id: opp.id, label: opp.name })}
-                          />
                         </div>
                       </TableCell>
                     </TableRow>
@@ -702,10 +731,12 @@ export const OpportunitiesView: React.FC = () => {
                     </TableCell>
                     <TableCell className="font-mono">${opp.value?.toLocaleString() || '0'}</TableCell>
                     <TableCell align="center">
-                      <RestoreButton
-                        label={`Restore opportunity ${opp.name}`}
-                        onClick={() => setRestoreTarget({ id: opp.id, label: opp.name })}
-                      />
+                      {can('opportunities', 'update') && (
+                        <RestoreButton
+                          label={`Restore opportunity ${opp.name}`}
+                          onClick={() => setRestoreTarget({ id: opp.id, label: opp.name })}
+                        />
+                      )}
                     </TableCell>
                   </TableRow>
                 );

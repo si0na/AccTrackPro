@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
 import { FilterContextService, FilterParams } from '../../common/services/filter-context.service';
+import { AccessScopeService } from '../rbac/access-scope.service';
 import { Activity } from '../../types';
 import { toIsoString } from '../../common/utils/db-mapping.util';
 import { Pagination, Paginated, extractTotal } from '../../common/utils/pagination.util';
@@ -22,6 +23,7 @@ export class ActivitiesService {
   constructor(
     private readonly db: DatabaseService,
     private readonly filter: FilterContextService,
+    private readonly access: AccessScopeService,
   ) {}
 
   async findAll(
@@ -31,24 +33,35 @@ export class ActivitiesService {
     const f = this.filter.normalize(params);
 
     // The activity feed is operational data — always accessible, never
-    // fiscal-period-filtered. Owner scoping goes through the parent account;
-    // activities with no account_id are included only when their user_id
-    // matches the requesting user (so each user sees their own global activities).
-    const owner = this.filter.buildOwnerConditions('a', f, 1);
-    const conditions = owner.conditions.map(
-      (c) => `(${c} OR (act.account_id IS NULL AND act.user_id = $1))`,
-    );
+    // fiscal-period-filtered. Row-scoped visibility (role-aware): an activity is
+    // visible when EITHER its parent account is visible to the user OR it is the
+    // user's own activity (user_id = the requester). A view-all user gets no
+    // restriction; when no userId is supplied, no scoping is applied.
+    const conditions: string[] = [];
+    const scopeParams: any[] = [];
+    let nextIdx = 1;
+
+    if (f.userId) {
+      const ctx = await this.access.getContext(f.userId);
+      const vis = this.access.buildChildVisibility('act', ctx, 1);
+      if (vis.conditions.length > 0) {
+        conditions.push(`(${vis.conditions.join(' AND ')} OR act.user_id = $${vis.nextIdx})`);
+        scopeParams.push(...vis.params, f.userId);
+        nextIdx = vis.nextIdx + 1;
+      }
+      // else view-all: no restriction
+    }
+
     const where = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
     const totalCol    = pg ? ', COUNT(*) OVER()::INTEGER AS __total' : '';
-    const limitClause = pg ? ` LIMIT $${owner.nextIdx} OFFSET $${owner.nextIdx + 1}` : '';
-    const qParams     = pg ? [...owner.params, pg.limit, pg.offset] : owner.params;
+    const limitClause = pg ? ` LIMIT $${nextIdx} OFFSET $${nextIdx + 1}` : '';
+    const qParams     = pg ? [...scopeParams, pg.limit, pg.offset] : scopeParams;
 
     const { rows } = await this.db.query(
       `SELECT act.*, u.name AS user_display_name${totalCol}
        FROM activities act
-       LEFT JOIN accounts a ON act.account_id = a.id
-       LEFT JOIN users    u ON act.user_id    = u.id
+       LEFT JOIN users u ON act.user_id = u.id
        ${where}
        ORDER BY act.created_at DESC${limitClause}`,
       qParams,

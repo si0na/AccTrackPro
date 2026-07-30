@@ -285,6 +285,11 @@ export const useCRMData = (
     setAccounts((prev) => [created, ...prev]);
     const f = buildOwnerFilter(currentUserId);
     activitiesApi.getAll(f).then(setActivities);
+    // When the creator is an Account Manager the backend auto-registers a
+    // Service Provider stakeholder for the new account. Refetch stakeholders so
+    // it appears in the Service Providers tab immediately (the Client tab is
+    // unaffected — its rows don't change).
+    stakeholdersApi.getAll(f).then(setStakeholders);
     scheduleCountRefresh();
     return created;
   };
@@ -339,9 +344,8 @@ export const useCRMData = (
     setOpportunities((prev) => [created, ...prev]);
     const f = buildOwnerFilter(currentUserId);
     activitiesApi.getAll(f).then(setActivities);
-    // A Won opportunity spawns a Project server-side — pull it into state so the
-    // Projects sidebar count, list, and stats reflect it without a manual refresh.
-    if (created.stage === 'Won') projectsApi.getAll(f).then(setProjects);
+    // Reaching Won no longer spawns a Project automatically — a user creates it
+    // explicitly (see createProjectFromOpportunity), so no project refetch here.
     scheduleCountRefresh();
     return created;
   };
@@ -352,10 +356,8 @@ export const useCRMData = (
     const fresh = await opportunitiesApi.getAll(f);
     setOpportunities(fresh);
     activitiesApi.getAll(f).then(setActivities);
-    // Marking an opportunity Won creates the linked Project server-side (idempotent).
-    // The PUT response carries only the opportunity, so refetch projects here to keep
-    // the Projects module (sidebar badge, list, stats) in sync in real time.
-    if (updated.stage === 'Won') projectsApi.getAll(f).then(setProjects);
+    // Marking an opportunity Won no longer creates a Project — that happens only
+    // via the explicit "Create Project" action (createProjectFromOpportunity).
   };
 
   const deleteOpportunity = async (id: string): Promise<void> => {
@@ -386,6 +388,23 @@ export const useCRMData = (
     const created = await projectsApi.create(data);
     setProjects((prev) => [created, ...prev]);
     const f = buildOwnerFilter(currentUserId);
+    activitiesApi.getAll(f).then(setActivities);
+    scheduleCountRefresh();
+    return created;
+  };
+
+  // User-initiated conversion of a Won opportunity into a Project. The backend
+  // forces the account/opportunity/owner links; the opportunity then carries a
+  // linked projectId (joined server-side), so refetch opportunities to flip the
+  // "Create Project" action to "View Project" everywhere it appears.
+  const createProjectFromOpportunity = async (
+    opportunityId: string,
+    data: Partial<Project>,
+  ): Promise<Project> => {
+    const created = await opportunitiesApi.createProject(opportunityId, data);
+    setProjects((prev) => [created, ...prev]);
+    const f = buildOwnerFilter(currentUserId);
+    opportunitiesApi.getAll(f).then(setOpportunities);
     activitiesApi.getAll(f).then(setActivities);
     scheduleCountRefresh();
     return created;
@@ -555,7 +574,7 @@ export const useCRMData = (
     refreshData,
     addAccount, updateAccount, deleteAccount, restoreAccount,
     addOpportunity, updateOpportunity, deleteOpportunity, restoreOpportunity,
-    addProject, updateProject, deleteProject, restoreProject,
+    addProject, updateProject, deleteProject, restoreProject, createProjectFromOpportunity,
     addActionItem, updateActionItem, deleteActionItem,
     addStakeholder, updateStakeholder, deleteStakeholder,
     addComment, deleteComment,

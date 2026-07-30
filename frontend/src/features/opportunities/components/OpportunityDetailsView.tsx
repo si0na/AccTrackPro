@@ -3,9 +3,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
-import { Opportunity, OpportunityStage, PriorityLevel, ActionItem, ActionItemStatus } from '@/types';
+import { Opportunity, OpportunityStage, PriorityLevel, ActionItem, ActionItemStatus, Stakeholder, StakeholderType, Project, AdminUser } from '@/types';
+import { administrationApi } from '@/api/crm.api';
+import { ProjectFormModal } from '@/features/projects/components/ProjectFormModal';
 import {
   Briefcase,
   Calendar,
@@ -22,6 +24,7 @@ import {
   Trash2,
   Settings2,
   TrendingUp,
+  Users,
   X,
   Pencil,
 } from 'lucide-react';
@@ -31,6 +34,7 @@ import { InlineEditModal } from '@/components/InlineEditModal';
 import { CustomColumnFields } from '@/components/CustomColumnFields';
 import { ActionItemOwnerField } from '@/components/ActionItemOwnerField';
 import { OpportunityPipelineProgress } from './OpportunityPipelineProgress';
+import { StakeholderTabs } from '@/features/stakeholders/components/StakeholderTabs';
 import { ACTION_ITEM_STATUS_OPTIONS, OPPORTUNITY_STAGE_OPTIONS, stageChangePatch } from '@/constants';
 import {
   ACTION_STATUS_COLORS,
@@ -66,7 +70,7 @@ import {
 } from '@/components/ui';
 import { compareForSort, getTodayISODate, isOpenActionItemStatus, SortDirection } from '@/utils';
 
-type OppTab = 'overview' | 'action-items' | 'comments' | 'documents';
+type OppTab = 'overview' | 'action-items' | 'stakeholders' | 'comments' | 'documents';
 
 const SORTABLE_AI_FIELDS = new Set(['title', 'owner', 'priority', 'status', 'dueDate']);
 
@@ -85,6 +89,9 @@ export const OpportunityDetailsView: React.FC = () => {
     setFocusedRecord,
     updateOpportunity,
     deleteOpportunity,
+    createProjectFromOpportunity,
+    createProjectIntent,
+    setCreateProjectIntent,
     addComment,
     deleteComment,
     actionItemColumns,
@@ -191,6 +198,67 @@ export const OpportunityDetailsView: React.FC = () => {
     setOppDraft(null);
   };
 
+  // ── Create Project (manual conversion of a Won opportunity) ──────────────────
+  // Projects are no longer auto-created when a deal reaches Won. Instead the user
+  // reviews opportunity-derived defaults in the shared ProjectFormModal and saves
+  // when ready. `users` backs the Service Provider PM / Practice Lead selects.
+  const [users, setUsers] = useState<AdminUser[]>([]);
+  useEffect(() => {
+    administrationApi.getUsers().then(setUsers).catch(() => setUsers([]));
+  }, []);
+
+  const [isCreateProjectOpen, setIsCreateProjectOpen] = useState(false);
+  const [projectDraft, setProjectDraft] = useState<Project | null>(null);
+  const [isCreatingProject, setIsCreatingProject] = useState(false);
+
+  const buildProjectDraft = (o: Opportunity): Project => ({
+    id: '',
+    name: o.name,
+    description: o.description ?? '',
+    accountId: o.accountId,
+    opportunityId: o.id,
+    methodology: 'Agile',
+    status: 'Active',
+    health: 'Green',
+    startDate: o.allocationStartDate || undefined,
+    endDate: o.allocationEndDate || undefined,
+    clientStakeholderId: o.clientStakeholderId,
+  });
+
+  const openCreateProject = () => {
+    if (!opp) return;
+    setProjectDraft(buildProjectDraft(opp));
+    setIsCreateProjectOpen(true);
+  };
+
+  const handleCreateProject = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!opp || !projectDraft || !projectDraft.name.trim()) return;
+    setIsCreatingProject(true);
+    try {
+      const created = await createProjectFromOpportunity(opp.id, projectDraft);
+      setIsCreateProjectOpen(false);
+      setProjectDraft(null);
+      // Land the user on the freshly created project to continue setup.
+      setSelectedProjectId(created.id);
+      setView('project-details');
+    } finally {
+      setIsCreatingProject(false);
+    }
+  };
+
+  // The Opportunities list "Create Project" action navigates here with an intent
+  // flag set; honor it once the opportunity has loaded, then clear it so a later
+  // visit doesn't re-open the modal.
+  useEffect(() => {
+    if (createProjectIntent && opp && opp.stage === 'Won' && !opp.projectId) {
+      setProjectDraft(buildProjectDraft(opp));
+      setIsCreateProjectOpen(true);
+    }
+    if (createProjectIntent) setCreateProjectIntent(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [createProjectIntent, opp?.id]);
+
   // New action item modal state
   const [isAddTaskOpen, setIsAddTaskOpen] = useState(false);
   const emptyTask: Omit<ActionItem, 'id'> = {
@@ -250,6 +318,37 @@ export const OpportunityDetailsView: React.FC = () => {
   // Filter actions & comments
   const oppActions = actionItems.filter(ai => ai.opportunityId === opp.id);
   const oppComments = comments.filter(c => c.targetType === 'opportunity' && c.targetId === opp.id);
+
+  // Stakeholders linked to THIS opportunity, split by type for the two-tab view.
+  // Prefer the full record from state; if it isn't loaded (e.g. deactivated or
+  // out of scope) fall back to a minimal row from the opportunity's own
+  // denormalised fields so the linked contact still appears.
+  const linkedStakeholder = (
+    id: string | undefined,
+    name: string | undefined,
+    designation: string | undefined,
+    type: StakeholderType,
+  ): Stakeholder[] => {
+    if (!id) return [];
+    const found = stakeholders.find(s => s.id === id);
+    if (found) return [found];
+    return [{
+      id,
+      name: name ?? 'Unknown',
+      accountId: opp.accountId,
+      designation: designation ?? '',
+      influence: '' as Stakeholder['influence'],
+      relationship: '' as Stakeholder['relationship'],
+      email: '',
+      phone: '',
+      stakeholderType: type,
+      department: '',
+    }];
+  };
+  const oppClientStks = linkedStakeholder(
+    opp.clientStakeholderId, opp.clientStakeholderName, opp.clientStakeholderDesignation, 'CLIENT');
+  const oppServiceProviderStks = linkedStakeholder(
+    opp.serviceProviderStakeholderId, opp.serviceProviderStakeholderName, opp.serviceProviderStakeholderDesignation, 'SERVICE_PROVIDER');
 
   const stages: OpportunityStage[] = ['Lead', 'Qualified', 'Proposal', 'Negotiation', 'Verbal Agreement', 'Won'];
   const currentStageIdx = stages.indexOf(opp.stage);
@@ -318,7 +417,17 @@ export const OpportunityDetailsView: React.FC = () => {
         avatarContent={<TrendingUp className="w-6 h-6" aria-hidden="true" />}
         avatarColorClass="bg-indigo-50 text-indigo-600"
         title={opp.name}
-        badges={<StatusBadge value={opp.stage} colorMap={STAGE_COLORS} />}
+        badges={
+          <div className="flex flex-wrap items-center gap-2">
+            <StatusBadge value={opp.stage} colorMap={STAGE_COLORS} />
+            {opp.stage === 'Won' && opp.projectId && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                <FolderKanban className="w-3 h-3" aria-hidden="true" />
+                Project Created
+              </span>
+            )}
+          </div>
+        }
         actions={
           <>
             {/* Forecast is available for every stage (open, Won, or Lost). */}
@@ -330,13 +439,21 @@ export const OpportunityDetailsView: React.FC = () => {
               View Forecast
             </Button>
             {opp.stage === 'Won' ? (
-              opp.projectId && (
+              opp.projectId ? (
                 <Button
                   variant="primary"
                   icon={<FolderKanban className="w-3.5 h-3.5" aria-hidden="true" />}
                   onClick={() => { setSelectedProjectId(opp.projectId!); setView('project-details'); }}
                 >
-                  Open Project
+                  View Project
+                </Button>
+              ) : (
+                <Button
+                  variant="success"
+                  icon={<FolderKanban className="w-3.5 h-3.5" aria-hidden="true" />}
+                  onClick={openCreateProject}
+                >
+                  Create Project
                 </Button>
               )
             ) : (
@@ -421,7 +538,9 @@ export const OpportunityDetailsView: React.FC = () => {
         <div className="flex items-center gap-3 p-4 rounded-xl border bg-blue-50 border-blue-200">
           <Info className="w-5 h-5 text-blue-600 shrink-0" aria-hidden="true" />
           <p className="text-xs text-blue-800 font-semibold">
-            This opportunity is Won and read-only. Manage ongoing work in its Project.
+            {opp.projectId
+              ? 'This opportunity is Won and read-only. A Project has been created — manage ongoing work there.'
+              : 'This opportunity is Won and read-only. Use “Create Project” to begin delivery — it will not appear in the Projects module until you do.'}
           </p>
         </div>
       )}
@@ -467,6 +586,7 @@ export const OpportunityDetailsView: React.FC = () => {
         tabs={[
           { id: 'overview', label: 'Overview', icon: Briefcase, count: null },
           { id: 'action-items', label: 'Action Items', icon: CheckSquare, count: oppActions.length },
+          { id: 'stakeholders', label: 'Stakeholders', icon: Users, count: oppClientStks.length + oppServiceProviderStks.length || null },
           { id: 'comments', label: 'Comments', icon: MessageSquare, count: oppComments.length },
           { id: 'documents', label: 'Documents', icon: FileText, count: docCount > 0 ? docCount : null },
         ]}
@@ -621,34 +741,6 @@ export const OpportunityDetailsView: React.FC = () => {
                   </div>
                 </FormSection>
 
-                <FormSection title="Stakeholders">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {([
-                      { label: 'Client Stakeholder', id: opp.clientStakeholderId, name: opp.clientStakeholderName, designation: opp.clientStakeholderDesignation },
-                      { label: 'Service Provider Stakeholder', id: opp.serviceProviderStakeholderId, name: opp.serviceProviderStakeholderName, designation: opp.serviceProviderStakeholderDesignation },
-                    ]).map(sh => (
-                      <div key={sh.label} className="rounded-lg border border-slate-100 p-3.5 hover:border-slate-200 transition-colors">
-                        <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">{sh.label}</span>
-                        {sh.id && sh.name ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setFocusedRecord({ type: 'stakeholder', id: sh.id! });
-                              setView('stakeholders');
-                            }}
-                            className="text-left cursor-pointer group"
-                          >
-                            <p className="text-sm text-blue-600 group-hover:underline font-semibold">{sh.name}</p>
-                            {sh.designation && <p className="text-xs text-slate-500 font-medium mt-0.5">{sh.designation}</p>}
-                          </button>
-                        ) : (
-                          <p className="text-sm text-slate-400 font-medium italic">Not assigned</p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </FormSection>
-
                 <FormSection title="Classification">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                     <div>
@@ -712,6 +804,30 @@ export const OpportunityDetailsView: React.FC = () => {
                   </div>
                 </FormSection>
               </Card>
+          </div>
+        )}
+
+        {activeTab === 'stakeholders' && (
+          <div className="space-y-6">
+            {/* Client Stakeholders and Service Providers linked to this
+                opportunity, in a dedicated tab. Reuses the same StakeholderTabs
+                component used across the app. Read-only here — click a name to
+                open the full record in the Stakeholders directory. */}
+            <Card title="Stakeholders" bodyClassName="space-y-6">
+              <StakeholderTabs
+                clientRows={oppClientStks}
+                serviceProviderRows={oppServiceProviderStks}
+                resolveAccount={(id) => accounts.find(a => a.id === id)}
+                hideAccountColumn
+                storageKeyPrefix={`opp-${opp.id}-stk`}
+                onRowClick={(s) => {
+                  setFocusedRecord({ type: 'stakeholder', id: s.id });
+                  setView('stakeholders');
+                }}
+                clientEmptyMessage="No Client Stakeholders linked to this opportunity."
+                serviceProviderEmptyMessage="No Service Providers linked to this opportunity."
+              />
+            </Card>
           </div>
         )}
 
@@ -1083,6 +1199,22 @@ export const OpportunityDetailsView: React.FC = () => {
           onChange={(patch) => setOppDraft({ ...oppDraft, ...patch })}
           onSave={handleSaveOpp}
           onCancel={() => { setIsEditOppModalOpen(false); setOppDraft(null); }}
+        />
+      )}
+
+      {/* Create Project Modal — manual conversion of a Won opportunity. Reuses the
+          shared ProjectFormModal (create mode) with opportunity-derived defaults. */}
+      {isCreateProjectOpen && projectDraft && (
+        <ProjectFormModal
+          isOpen={isCreateProjectOpen}
+          mode="create"
+          onClose={() => { setIsCreateProjectOpen(false); setProjectDraft(null); }}
+          onSubmit={handleCreateProject}
+          isSubmitting={isCreatingProject}
+          value={projectDraft}
+          onChange={(patch) => setProjectDraft((prev) => (prev ? { ...prev, ...patch } : prev))}
+          users={users}
+          stakeholders={stakeholders}
         />
       )}
 

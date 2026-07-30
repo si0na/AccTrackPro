@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { Pencil } from 'lucide-react';
-import { FormField, FormGrid, FormModal, FormSection, INPUT_CLS_AMBER, SearchableSelect } from '@/components/ui';
+import { FormField, FormGrid, FormModal, FormSection, INPUT_CLS_AMBER, PhoneInput, SearchableSelect } from '@/components/ui';
 import { NumberInput } from '@/components/NumberInput';
 import { AopYearFields } from '@/components/AopYearFields';
 import { StakeholderAssignmentFields } from '@/components/StakeholderAssignmentFields';
@@ -17,6 +17,7 @@ import type {
   PriorityLevel,
   ActionItemStatus,
   Stakeholder,
+  User,
 } from '@/types';
 
 export type EditMode = 'accounts' | 'opportunities' | 'actionItems';
@@ -29,11 +30,35 @@ export interface InlineEditModalProps {
   accounts: Account[];
   opportunities: Opportunity[];
   stakeholders: Stakeholder[];
+  /** Users list — backs the role-filtered "owner" dropdowns on the account edit form. */
+  users?: User[];
   onChange: (patch: Record<string, any>) => void;
   onSave: (e: React.FormEvent) => void;
   onCancel: () => void;
   isSaving?: boolean;
 }
+
+// The canonical set of editable Account fields. Rendering the account edit form
+// from this fixed list — rather than from whichever table columns happen to be
+// displayed — is what guarantees the List View and Detail View edit screens
+// expose exactly the same fields. Read-only fields (revenue is auto-calculated;
+// status/created metadata) are handled by renderInput or omitted entirely.
+// The four role-ownership dropdowns (Account Manager, Practice Lead, Client
+// Partner, Vertical Head) are appended separately below.
+const ACCOUNT_EDIT_FIELDS: ColumnConfig[] = [
+  { key: 'name',        name: 'Account Name',   isStandard: true, isPinned: true,  isDisplayed: true, type: 'text'   },
+  { key: 'type',        name: 'Account Type',   isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
+  { key: 'health',      name: 'Health Status',  isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
+  { key: 'industry',    name: 'Industry',       isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
+  { key: 'since',       name: 'Customer Since', isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
+  { key: 'location',    name: 'Location',       isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
+  { key: 'website',     name: 'Website',        isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
+  { key: 'phone',       name: 'Phone',          isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
+  { key: 'email',       name: 'Email',          isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
+  { key: 'address',     name: 'Address',        isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
+  { key: 'description', name: 'Description',    isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
+  { key: 'revenue',     name: 'Revenue',        isStandard: true, isPinned: false, isDisplayed: true, type: 'number' },
+];
 
 const MODE_META: Record<EditMode, { title: string; primaryKey: string }> = {
   accounts:      { title: 'Edit Account',     primaryKey: 'name'  },
@@ -58,6 +83,7 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
   accounts,
   opportunities,
   stakeholders,
+  users = [],
   onChange,
   onSave,
   onCancel,
@@ -66,11 +92,33 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
   const { title, primaryKey } = MODE_META[mode];
   const inputCls = INPUT_CLS_AMBER;
 
+  // Role-filtered option lists ({ value: id, label: name }) backing the four
+  // account "owner" dropdowns — one per role. Only rendered for accounts mode.
+  const ownerRoleFields = useMemo(
+    () => ([
+      { key: 'accountManagerId', label: 'Account Manager', roleKey: 'account-manager' },
+      { key: 'practiceLeadId',   label: 'Practice Lead',   roleKey: 'practice-lead' },
+      { key: 'clientPartnerId',  label: 'Client Partner',  roleKey: 'client-partner' },
+      { key: 'verticalHeadId',   label: 'Vertical Head',   roleKey: 'vertical-head' },
+    ] as const).map((f) => ({
+      ...f,
+      options: users.filter((u) => u.roleKey === f.roleKey).map((u) => ({ value: u.id, label: u.name })),
+    })),
+    [users],
+  );
+
   // Always include the primary identifier field even if hidden in the table,
   // plus (for opportunities) the client/service-provider stakeholder assignment
   // fields — these aren't part of the customizable-columns system, so they must
   // be force-included the same way the primary key is.
   const formConfigs = useMemo<ColumnConfig[]>(() => {
+    // Accounts render a fixed, comprehensive field set (not the displayed
+    // columns) so both edit entry points show identical fields, plus any
+    // user-defined custom columns currently displayed in the table.
+    if (mode === 'accounts') {
+      return [...ACCOUNT_EDIT_FIELDS, ...displayedConfigs.filter((c) => !c.isStandard)];
+    }
+
     const cols = displayedConfigs.some((c) => c.key === primaryKey)
       ? displayedConfigs
       : [{
@@ -228,6 +276,26 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
             value={val ?? ''}
             onChange={(e) => onChange({ email: e.target.value })}
             className={inputCls}
+          />
+        );
+
+      case 'website':
+        return (
+          <input
+            type="text"
+            value={val ?? ''}
+            onChange={(e) => onChange({ website: e.target.value })}
+            placeholder="www.example.com"
+            className={inputCls}
+          />
+        );
+
+      case 'phone':
+        return (
+          <PhoneInput
+            value={val ?? ''}
+            onChange={(phone) => onChange({ phone })}
+            tone="amber"
           />
         );
 
@@ -727,6 +795,25 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
                 {col.name}
               </label>
               {renderInput(col)}
+            </div>
+          ))}
+
+          {/* Role-filtered owner assignments — not part of the customizable-columns
+              system, so rendered explicitly for the account edit form. Empty
+              selection is saved as null so the backend clears the FK. */}
+          {mode === 'accounts' && ownerRoleFields.map((f) => (
+            <div key={f.key} className="space-y-1">
+              <label className="text-label font-semibold text-slate-600 uppercase tracking-wide">
+                {f.label}
+              </label>
+              <SearchableSelect
+                value={entity[f.key] ?? ''}
+                onChange={(v) => onChange({ [f.key]: v || null })}
+                options={f.options}
+                placeholder={`Select ${f.label.toLowerCase()}…`}
+                tone="amber"
+                aria-label={f.label}
+              />
             </div>
           ))}
         </div>
