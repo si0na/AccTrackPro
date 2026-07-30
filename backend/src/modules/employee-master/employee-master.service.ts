@@ -9,11 +9,17 @@ export interface EmployeeMaster {
   email: string;
   /** Display name used by Performance Evaluations; falls back to '' for legacy rows. */
   name: string;
+  /** Pre-assigned RBAC attributes copied onto the user record at registration. */
+  roleId: string | null;
+  employeeId: string | null;
+  department: string | null;
+  designation: string | null;
   createdAt: string;
   updatedAt: string;
 }
 
-const SELECT_COLS = `id, email, name, created_at::TEXT AS created_at, updated_at::TEXT AS updated_at`;
+const SELECT_COLS = `id, email, name, role_id, employee_id, department, designation,
+  created_at::TEXT AS created_at, updated_at::TEXT AS updated_at`;
 
 @Injectable()
 export class EmployeeMasterService {
@@ -21,11 +27,15 @@ export class EmployeeMasterService {
 
   private mapRow(r: Record<string, unknown>): EmployeeMaster {
     return {
-      id:        r.id as string,
-      email:     r.email as string,
-      name:      (r.name as string) ?? '',
-      createdAt: r.created_at as string,
-      updatedAt: r.updated_at as string,
+      id:          r.id as string,
+      email:       r.email as string,
+      name:        (r.name as string) ?? '',
+      roleId:      (r.role_id as string) ?? null,
+      employeeId:  (r.employee_id as string) ?? null,
+      department:  (r.department as string) ?? null,
+      designation: (r.designation as string) ?? null,
+      createdAt:   r.created_at as string,
+      updatedAt:   r.updated_at as string,
     };
   }
 
@@ -58,10 +68,10 @@ export class EmployeeMasterService {
       throw new ConflictException('This email address is already in the employee master list');
     }
     const { rows } = await this.db.query(
-      `INSERT INTO employee_master (id, email, name)
-       VALUES (gen_random_uuid()::TEXT, $1, $2)
+      `INSERT INTO employee_master (id, email, name, role_id, employee_id, department, designation)
+       VALUES (gen_random_uuid()::TEXT, $1, $2, $3, $4, $5, $6)
        RETURNING ${SELECT_COLS}`,
-      [dto.email, dto.name ?? ''],
+      [dto.email, dto.name ?? '', dto.roleId ?? null, dto.employeeId ?? null, dto.department ?? null, dto.designation ?? null],
     );
     return this.mapRow(rows[0]);
   }
@@ -100,10 +110,15 @@ export class EmployeeMasterService {
     const name = dto.name !== undefined ? dto.name : (existing[0].name as string) ?? '';
     const { rows } = await this.db.query(
       `UPDATE employee_master
-       SET email = $1, name = $2, updated_at = NOW()
+       SET email = $1, name = $2,
+           role_id     = COALESCE($4, role_id),
+           employee_id = COALESCE($5, employee_id),
+           department  = COALESCE($6, department),
+           designation = COALESCE($7, designation),
+           updated_at = NOW()
        WHERE id = $3
        RETURNING ${SELECT_COLS}`,
-      [dto.email, name, id],
+      [dto.email, name, id, dto.roleId ?? null, dto.employeeId ?? null, dto.department ?? null, dto.designation ?? null],
     );
 
     // Keep the denormalized employee_name on evaluations in sync with the

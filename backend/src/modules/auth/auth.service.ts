@@ -70,11 +70,11 @@ export class AuthService {
 
   private async issueTokenPair(
     res: Response, userId: string, email: string, name: string, role: string,
-    ip: string, userAgent: string,
+    roleId: string | null, ip: string, userAgent: string,
   ): Promise<void> {
     // Short-lived access token (JWT, 15 min)
     const accessJwt = this.jwtService.sign(
-      { sub: userId, email, name, role, type: 'access' },
+      { sub: userId, email, name, role, roleId, type: 'access' },
       { secret: process.env.JWT_SECRET, expiresIn: ACCESS_EXPIRY_SECS },
     );
 
@@ -111,7 +111,23 @@ export class AuthService {
     if (existing) throw new ConflictException('An account already exists for this email address');
 
     const passwordHash = await bcrypt.hash(password, BCRYPT_ROUNDS);
-    const user = await this.usersService.create({ name, email, passwordHash, avatarData });
+
+    // Inherit any role / department / designation the administrator pre-assigned
+    // on the employee_master (whitelist) record. Resolve the role's display name
+    // so the denormalised users.role text (JWT display claim) stays in sync.
+    let roleName: string | null = null;
+    if (authorized.roleId) {
+      const { rows } = await this.db.query(`SELECT name FROM roles WHERE id = $1`, [authorized.roleId]);
+      roleName = rows[0]?.name ?? null;
+    }
+    const user = await this.usersService.create({
+      name, email, passwordHash, avatarData,
+      role:        roleName ?? undefined,
+      roleId:      authorized.roleId ?? null,
+      employeeId:  authorized.employeeId ?? null,
+      department:  authorized.department ?? null,
+      designation: authorized.designation ?? null,
+    });
 
     await this.audit('register', user.id, email, '', '', true, {});
 
@@ -178,7 +194,7 @@ export class AuthService {
 
     // Success
     await this.usersService.onLoginSuccess(user.id);
-    await this.issueTokenPair(res, user.id, user.email, user.name, user.role, ip, userAgent);
+    await this.issueTokenPair(res, user.id, user.email, user.name, user.role, user.roleId ?? null, ip, userAgent);
     await this.audit('login', user.id, email, ip, userAgent, true, {});
 
     const { passwordHash: _, failedAttempts: __, lockedUntil: ___, ...safeUser } = user;
@@ -192,7 +208,7 @@ export class AuthService {
 
     const { rows } = await this.db.query(
       `SELECT rt.id, rt.user_id,
-              u.id AS uid, u.email, u.name, u.role, u.is_active
+              u.id AS uid, u.email, u.name, u.role, u.role_id, u.is_active
        FROM refresh_tokens rt
        JOIN users u ON u.id = rt.user_id
        WHERE rt.token_hash = $1
@@ -218,7 +234,7 @@ export class AuthService {
       `UPDATE refresh_tokens SET revoked_at = NOW() WHERE id = $1`,
       [row.id],
     );
-    await this.issueTokenPair(res, row.uid, row.email, row.name, row.role, ip, userAgent);
+    await this.issueTokenPair(res, row.uid, row.email, row.name, row.role, row.role_id ?? null, ip, userAgent);
     await this.audit('token_refreshed', row.uid, row.email, ip, userAgent, true, {});
   }
 

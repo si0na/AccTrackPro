@@ -1,9 +1,9 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import { useCRMData } from '@/hooks/useCRMData';
-import { authApi } from '@/api/crm.api';
+import { authApi, rbacApi } from '@/api/crm.api';
 import type {
   Account, Opportunity, ActionItem, Stakeholder, Activity, Comment, CustomColumn, ColumnConfig,
-  User, FinancialYear, FinancialCalendar, AdminSettings, Project,
+  User, FinancialYear, FinancialCalendar, AdminSettings, Project, MyPermissions,
 } from '@/types';
 
 // ─── User profiles ────────────────────────────────────────────────────────────
@@ -83,6 +83,18 @@ interface CRMContextProps {
   logout: () => void;
   updateProfilePicture: (dataUrl: string) => void;
 
+  // RBAC — permission gating (source of truth is the backend; this mirrors it)
+  /** The logged-in user's primary role key (e.g. 'admin', 'sales'), or null. */
+  roleKey: string | null;
+  /** Every role key the user holds (multi-role). */
+  roleKeys: string[];
+  /** Whether the effective-permissions fetch has completed at least once. */
+  permissionsLoaded: boolean;
+  /** True when the user is granted `${module}:${permission}`. */
+  can: (module: string, permission: string) => boolean;
+  /** Re-fetch the current user's effective permissions (after an admin edits the matrix). */
+  refreshPermissions: () => Promise<void>;
+
   // Navigation
   currentView: ViewType;
   setView: (view: ViewType, opts?: SetViewOptions) => void;
@@ -94,6 +106,9 @@ interface CRMContextProps {
   setSelectedOpportunityId: (id: string | null) => void;
   selectedProjectId: string | null;
   setSelectedProjectId: (id: string | null) => void;
+  /** When true, the Opportunity Details view auto-opens its Create Project modal on mount (set by the list "Create Project" action, then cleared). */
+  createProjectIntent: boolean;
+  setCreateProjectIntent: (val: boolean) => void;
   oppDetailsSourceView: ViewType | null;
   setOppDetailsSourceView: (view: ViewType | null) => void;
   accountDetailsActiveTab: string;
@@ -136,6 +151,13 @@ interface CRMContextProps {
   sidebarCollapsed: boolean;
   setSidebarCollapsed: (collapsed: boolean) => void;
 
+  // Service Provider profile modal (first-time prompt + later edits share it)
+  isServiceProviderProfileOpen: boolean;
+  openServiceProviderProfile: () => void;
+  closeServiceProviderProfile: () => void;
+  /** Re-read the signed-in user (/auth/me) so identity edits reflect immediately. */
+  refreshCurrentUser: () => Promise<void>;
+
   // Custom columns
   accountColumns: CustomColumn[];
   opportunityColumns: CustomColumn[];
@@ -174,6 +196,8 @@ interface CRMContextProps {
   updateProject: (project: Project) => Promise<void>;
   deleteProject: (id: string) => Promise<void>;
   restoreProject: (id: string) => Promise<void>;
+  /** Manually create a Project from a Won opportunity (user-initiated conversion). */
+  createProjectFromOpportunity: (opportunityId: string, data: Partial<Project>) => Promise<Project>;
   deactivatedActionItems: ActionItem[];
   addActionItem: (actionItem: Omit<ActionItem, 'id'>) => Promise<ActionItem>;
   updateActionItem: (actionItem: ActionItem) => Promise<void>;
@@ -197,6 +221,19 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   );
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
   const [authLoading, setAuthLoading] = useState<boolean>(true);
+  const [myPermissions, setMyPermissions] = useState<MyPermissions | null>(null);
+  const [permissionsLoaded, setPermissionsLoaded] = useState<boolean>(false);
+
+  const loadPermissions = useCallback(async (): Promise<void> => {
+    try {
+      const perms = await rbacApi.getMyPermissions();
+      setMyPermissions(perms);
+    } catch {
+      setMyPermissions(null);
+    } finally {
+      setPermissionsLoaded(true);
+    }
+  }, []);
 
   // ── Session restoration ──────────────────────────────────────────────────────
   // The axios interceptor automatically handles access token expiry by calling
@@ -208,6 +245,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setJwtUser(user);
         setCurrentUser(user.name);
         setIsLoggedIn(true);
+        await loadPermissions();
       } catch {
         // Not authenticated — show login screen
       } finally {
@@ -215,17 +253,30 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     };
     restore();
-  }, []);
+  }, [loadPermissions]);
 
   // ── Force-logout from 401 interceptor ────────────────────────────────────────
   useEffect(() => {
     const onForceLogout = () => {
       setIsLoggedIn(false);
       setJwtUser(null);
+      setMyPermissions(null);
       localStorage.removeItem('crm_current_user');
     };
     window.addEventListener('crm:auth:logout', onForceLogout);
     return () => window.removeEventListener('crm:auth:logout', onForceLogout);
+  }, []);
+
+  // Re-read the signed-in user so identity edits (e.g. from the Service Provider
+  // profile modal) are reflected in the header/menu without a full reload.
+  const refreshCurrentUser = useCallback(async (): Promise<void> => {
+    try {
+      const user = await authApi.me();
+      setJwtUser(user);
+      setCurrentUser(user.name);
+    } catch {
+      // Non-blocking: a failed refresh leaves the existing user state in place.
+    }
   }, []);
 
   // ── Auth profile (no sensitive data exposed) ─────────────────────────────────
@@ -242,6 +293,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setJwtUser(user);
     setCurrentUser(user.name);
     setIsLoggedIn(true);
+    await loadPermissions();
   };
 
   const register = async (name: string, email: string, password: string): Promise<void> => {
@@ -255,7 +307,19 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.removeItem('crm_current_user');
     setIsLoggedIn(false);
     setJwtUser(null);
+    setMyPermissions(null);
+    setPermissionsLoaded(false);
   };
+
+  // ── RBAC permission helper ───────────────────────────────────────────────────
+  const permissionSet = useMemo(
+    () => new Set(myPermissions?.permissions ?? []),
+    [myPermissions],
+  );
+  const can = useCallback(
+    (module: string, permission: string): boolean => permissionSet.has(`${module}:${permission}`),
+    [permissionSet],
+  );
 
   const updateProfilePicture = (dataUrl: string): void => {
     setJwtUser((prev) => (prev ? { ...prev, avatarData: dataUrl } : prev));
@@ -325,6 +389,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(() => getInitialId('/accounts/'));
   const [selectedOpportunityId, setSelectedOpportunityId] = useState<string | null>(() => getInitialId('/opportunities/'));
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(() => getInitialId('/projects/'));
+  const [createProjectIntent, setCreateProjectIntent] = useState<boolean>(false);
   const [oppDetailsSourceView, setOppDetailsSourceView] = useState<ViewType | null>(null);
   const [accountDetailsActiveTab, setAccountDetailsActiveTab] = useState<string>('overview');
   const [cameFromDashboard, setCameFromDashboard] = useState<boolean>(false);
@@ -342,6 +407,10 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [sidebarCollapsed, setSidebarCollapsedState] = useState<boolean>(
     () => localStorage.getItem('crm_sidebar_collapsed') === 'true',
   );
+
+  const [isServiceProviderProfileOpen, setServiceProviderProfileOpen] = useState<boolean>(false);
+  const openServiceProviderProfile = () => setServiceProviderProfileOpen(true);
+  const closeServiceProviderProfile = () => setServiceProviderProfileOpen(false);
 
   const setSelectedYear = (year: string) => {
     setSelectedYearState(year);
@@ -425,6 +494,11 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         register,
         logout,
         updateProfilePicture,
+        roleKey: myPermissions?.roleKey ?? null,
+        roleKeys: myPermissions?.roleKeys ?? [],
+        permissionsLoaded,
+        can,
+        refreshPermissions: loadPermissions,
         currentView,
         setView,
         focusedRecord,
@@ -435,6 +509,8 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setSelectedOpportunityId,
         selectedProjectId,
         setSelectedProjectId,
+        createProjectIntent,
+        setCreateProjectIntent,
         oppDetailsSourceView,
         setOppDetailsSourceView,
         accountDetailsActiveTab,
@@ -464,6 +540,10 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setGlobalAccountId,
         sidebarCollapsed,
         setSidebarCollapsed,
+        isServiceProviderProfileOpen,
+        openServiceProviderProfile,
+        closeServiceProviderProfile,
+        refreshCurrentUser,
       }}
     >
       {children}

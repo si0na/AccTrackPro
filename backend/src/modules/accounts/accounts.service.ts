@@ -1,6 +1,8 @@
 import { Injectable, Logger, NotFoundException, ConflictException } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
 import { FilterContextService, FilterParams } from '../../common/services/filter-context.service';
+import { AccessScopeService } from '../rbac/access-scope.service';
+import { ServiceProviderService } from '../service-provider/service-provider.service';
 import { NotificationEventBus } from '../../common/events/notification-event-bus.service';
 import { Account } from '../../types';
 import { resolveOwnerName, extractCustomData } from '../../common/utils/db-mapping.util';
@@ -16,16 +18,33 @@ import { BulkModuleAdapter } from '../import-export/bulk-adapter';
 const KNOWN = new Set([
   'id','name','type','health','owner','ownerId','revenue','industry','since',
   'website','phone','email','address','location','description',
+  'accountManagerId','practiceLeadId','clientPartnerId','verticalHeadId',
   'financial_year','quarter','financialYear',
 ]);
 
 function rowToAccount(row: any): Account {
-  const { custom_data, is_deleted, created_at, updated_at, owner_id, owner_name, ...base } = row;
+  const {
+    custom_data, is_deleted, created_at, updated_at,
+    owner_id, owner_name,
+    account_manager_id, account_manager_name,
+    practice_lead_id, practice_lead_name,
+    client_partner_id, client_partner_name,
+    vertical_head_id, vertical_head_name,
+    ...base
+  } = row;
   return {
     ...base,
     revenue:   Number(base.revenue),
     ownerId:   owner_id   ?? undefined,
     owner:     owner_name ?? base.owner ?? '',
+    accountManagerId:   account_manager_id   ?? undefined,
+    accountManagerName: account_manager_name ?? '',
+    practiceLeadId:     practice_lead_id      ?? undefined,
+    practiceLeadName:   practice_lead_name    ?? '',
+    clientPartnerId:    client_partner_id     ?? undefined,
+    clientPartnerName:  client_partner_name   ?? '',
+    verticalHeadId:     vertical_head_id      ?? undefined,
+    verticalHeadName:   vertical_head_name    ?? '',
     // Exposed for the dashboard's "Recently Updated Accounts" widget.
     updatedAt: updated_at instanceof Date ? updated_at.toISOString() : updated_at,
     ...(custom_data || {}),
@@ -33,9 +52,18 @@ function rowToAccount(row: any): Account {
 }
 
 const ACCOUNT_SELECT = `
-  SELECT a.*, u.name AS owner_name
+  SELECT a.*,
+         u.name  AS owner_name,
+         am.name AS account_manager_name,
+         pl.name AS practice_lead_name,
+         cp.name AS client_partner_name,
+         vh.name AS vertical_head_name
   FROM accounts a
-  LEFT JOIN users u ON a.owner_id = u.id
+  LEFT JOIN users u  ON a.owner_id           = u.id
+  LEFT JOIN users am ON a.account_manager_id = am.id
+  LEFT JOIN users pl ON a.practice_lead_id   = pl.id
+  LEFT JOIN users cp ON a.client_partner_id  = cp.id
+  LEFT JOIN users vh ON a.vertical_head_id   = vh.id
 `;
 
 @Injectable()
@@ -45,8 +73,22 @@ export class AccountsService {
   constructor(
     private readonly db: DatabaseService,
     private readonly filter: FilterContextService,
+    private readonly access: AccessScopeService,
+    private readonly serviceProvider: ServiceProviderService,
     private readonly bus: NotificationEventBus,
   ) {}
+
+  /**
+   * Role-aware visibility fragment for the accounts alias `a`. When userId is
+   * absent (internal calls, e.g. re-reading a row just written) no scoping is
+   * applied. Admin/Sales/Finance (view-all) get no restriction; ownership-scoped
+   * roles are limited to their assigned accounts.
+   */
+  private async accountScope(userId: string | null, startIdx: number): Promise<{ conditions: string[]; params: any[]; nextIdx: number }> {
+    if (!userId) return { conditions: [], params: [], nextIdx: startIdx };
+    const ctx = await this.access.getContext(userId);
+    return this.access.buildAccountVisibility('a', ctx, startIdx);
+  }
 
   /**
    * Bulk adapter used by the Global Import/Export service. Each account row is
@@ -87,7 +129,7 @@ export class AccountsService {
     pg: Pagination | null = null,
   ): Promise<Account[] | Paginated<Account>> {
     const f = this.filter.normalize(params);
-    const { conditions, params: qParams, nextIdx } = this.filter.buildOwnerConditions('a', f, 1);
+    const { conditions, params: qParams, nextIdx } = await this.accountScope(f.userId, 1);
     const where = ['a.is_deleted = FALSE', ...conditions].join(' AND ');
 
     if (!pg) {
@@ -99,9 +141,19 @@ export class AccountsService {
     }
 
     const { rows } = await this.db.query(
-      `SELECT a.*, u.name AS owner_name, COUNT(*) OVER()::INTEGER AS __total
+      `SELECT a.*,
+              u.name  AS owner_name,
+              am.name AS account_manager_name,
+              pl.name AS practice_lead_name,
+              cp.name AS client_partner_name,
+              vh.name AS vertical_head_name,
+              COUNT(*) OVER()::INTEGER AS __total
        FROM accounts a
-       LEFT JOIN users u ON a.owner_id = u.id
+       LEFT JOIN users u  ON a.owner_id           = u.id
+       LEFT JOIN users am ON a.account_manager_id = am.id
+       LEFT JOIN users pl ON a.practice_lead_id   = pl.id
+       LEFT JOIN users cp ON a.client_partner_id  = cp.id
+       LEFT JOIN users vh ON a.vertical_head_id   = vh.id
        WHERE ${where} ORDER BY a.created_at DESC
        LIMIT $${nextIdx} OFFSET $${nextIdx + 1}`,
       [...qParams, pg.limit, pg.offset],
@@ -111,10 +163,11 @@ export class AccountsService {
   }
 
   async findOne(id: string, userId?: string): Promise<Account> {
+    const { conditions, params } = await this.accountScope(userId ?? null, 2);
+    const scopeClause = conditions.length ? ` AND ${conditions.join(' AND ')}` : '';
     const { rows } = await this.db.query(
-      `${ACCOUNT_SELECT} WHERE a.id = $1 AND a.is_deleted = FALSE
-       AND ($2::TEXT IS NULL OR a.owner_id = $2)`,
-      [id, userId ?? null],
+      `${ACCOUNT_SELECT} WHERE a.id = $1 AND a.is_deleted = FALSE${scopeClause}`,
+      [id, ...params],
     );
     if (!rows.length) throw new NotFoundException(`Account "${id}" not found`);
     return rowToAccount(rows[0]);
@@ -138,12 +191,16 @@ export class AccountsService {
 
     const { rows } = await this.db.query(
       `INSERT INTO accounts
-         (id, name, type, health, owner_id, owner, revenue, industry, since, website, phone, email, address, location, description, custom_data)
-       VALUES (gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+         (id, name, type, health, owner_id, owner,
+          account_manager_id, practice_lead_id, client_partner_id, vertical_head_id,
+          revenue, industry, since, website, phone, email, address, location, description, custom_data)
+       VALUES (gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
        RETURNING *`,
       [
         name, data.type, data.health,
         data.ownerId ?? null, ownerDisplayName,
+        data.accountManagerId ?? null, data.practiceLeadId ?? null,
+        data.clientPartnerId ?? null, data.verticalHeadId ?? null,
         data.revenue ?? 0, data.industry ?? '', data.since ?? '',
         data.website ?? '', data.phone ?? '', data.email ?? '',
         data.address ?? '', data.location ?? '', data.description ?? '',
@@ -173,6 +230,29 @@ export class AccountsService {
         `Account created without ownerId — notification suppressed [accountId=${account.id}]`,
       );
     }
+
+    // Auto-register the account's Account Manager as a SERVICE_PROVIDER
+    // stakeholder on the new account.
+    //
+    // `account_manager_id` is populated by the controller only when the
+    // logged-in creator actually holds the Account Manager role (determined
+    // from roles.account_scope_field, never a hardcoded role name), and it is
+    // always the creator — never a value chosen on the form. So this branch
+    // fires exactly for Account-Manager-created accounts and skips everyone
+    // else, which is the entire role gate the feature needs.
+    //
+    // registerForAccount is idempotent and skips missing/inactive users, and is
+    // never allowed to fail account creation.
+    if (account.accountManagerId) {
+      try {
+        await this.serviceProvider.registerForAccount(account.accountManagerId, account.id);
+      } catch (err) {
+        this.logger.error(
+          `Service Provider auto-registration failed [userId=${account.accountManagerId} accountId=${account.id}]`,
+          err instanceof Error ? err.stack : String(err),
+        );
+      }
+    }
     return account;
   }
 
@@ -196,15 +276,27 @@ export class AccountsService {
 
     const since = data.since ?? existing.since ?? '';
 
+    // Role-ownership FKs are updatable. `undefined` (field absent from payload,
+    // e.g. a bulk import row) preserves the existing value; an explicit `null`
+    // clears the assignment.
+    const keepFk = (incoming: any, current: any) =>
+      incoming !== undefined ? incoming : (current ?? null);
+    const accountManagerId = keepFk(data.accountManagerId, existing.accountManagerId);
+    const practiceLeadId   = keepFk(data.practiceLeadId,   existing.practiceLeadId);
+    const clientPartnerId  = keepFk(data.clientPartnerId,  existing.clientPartnerId);
+    const verticalHeadId   = keepFk(data.verticalHeadId,   existing.verticalHeadId);
+
     await this.db.query(
       `UPDATE accounts SET
-         name=$1, type=$2, health=$3, owner_id=$4, owner=$5, revenue=$6, industry=$7,
-         since=$8, website=$9, phone=$10, email=$11, address=$12, location=$13,
-         description=$14, custom_data=$15, updated_at=NOW()
-       WHERE id=$16 AND is_deleted=FALSE`,
+         name=$1, type=$2, health=$3, owner_id=$4, owner=$5,
+         account_manager_id=$6, practice_lead_id=$7, client_partner_id=$8, vertical_head_id=$9,
+         revenue=$10, industry=$11, since=$12, website=$13, phone=$14, email=$15,
+         address=$16, location=$17, description=$18, custom_data=$19, updated_at=NOW()
+       WHERE id=$20 AND is_deleted=FALSE`,
       [
         name, data.type, data.health,
         effectiveOwnerId, ownerDisplayName || existing.owner,
+        accountManagerId, practiceLeadId, clientPartnerId, verticalHeadId,
         data.revenue ?? 0, data.industry ?? '', since,
         data.website ?? '', data.phone ?? '', data.email ?? '',
         data.address ?? '', data.location ?? '', data.description ?? '',
@@ -213,6 +305,22 @@ export class AccountsService {
     ).catch((err) => { throw this.mapNameConflict(err, name); });
     const account = await this.findOne(id);
     await this.log(`Updated Account '${account.name}'`, account.id, requestingUserId);
+
+    // When the Account Manager changes, auto-register the NEW manager as a
+    // SERVICE_PROVIDER stakeholder on this account. The previous manager's
+    // stakeholder is intentionally left intact so historical activity stays
+    // attributable. registerForAccount is idempotent + Account-Manager-role
+    // gated, and is never allowed to fail the update.
+    if (accountManagerId && accountManagerId !== existing.accountManagerId) {
+      try {
+        await this.serviceProvider.registerForAccount(accountManagerId, id);
+      } catch (err) {
+        this.logger.error(
+          `Service Provider auto-registration failed on manager change [userId=${accountManagerId} accountId=${id}]`,
+          err instanceof Error ? err.stack : String(err),
+        );
+      }
+    }
 
     if (account.ownerId) {
       this.logger.log(`Emitting Account:Updated notification [userId=${account.ownerId} accountId=${account.id}]`);
@@ -258,7 +366,7 @@ export class AccountsService {
 
   async findAllDeactivated(params: FilterParams = {}): Promise<Account[]> {
     const f = this.filter.normalize(params);
-    const { conditions, params: qParams } = this.filter.buildOwnerConditions('a', f, 1);
+    const { conditions, params: qParams } = await this.accountScope(f.userId, 1);
     const where = ['a.is_deleted = TRUE', ...conditions].join(' AND ');
     const { rows } = await this.db.query(
       `${ACCOUNT_SELECT} WHERE ${where} ORDER BY a.updated_at DESC`,
@@ -268,10 +376,11 @@ export class AccountsService {
   }
 
   async restore(id: string, userId?: string): Promise<Account> {
+    const { conditions, params } = await this.accountScope(userId ?? null, 2);
+    const scopeClause = conditions.length ? ` AND ${conditions.join(' AND ')}` : '';
     const { rows: pending } = await this.db.query(
-      `SELECT name, owner_id FROM accounts WHERE id=$1 AND is_deleted=TRUE
-       AND ($2::TEXT IS NULL OR owner_id = $2)`,
-      [id, userId ?? null],
+      `SELECT a.name, a.owner_id FROM accounts a WHERE a.id=$1 AND a.is_deleted=TRUE${scopeClause}`,
+      [id, ...params],
     );
     if (!pending.length) throw new NotFoundException(`Deactivated account "${id}" not found`);
     // Business rule: restoring must not resurrect a duplicate — the name may

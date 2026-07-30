@@ -129,6 +129,7 @@ export const AuditLogView: React.FC = () => {
       (filterType === 'opportunity' && act.type === 'opportunity') ||
       (filterType === 'actionItem' && act.type === 'actionItem') ||
       (filterType === 'stakeholder' && act.type === 'stakeholder') ||
+      (filterType === 'permission' && act.type === 'permission') ||
       (filterType === 'general' && act.type === 'general');
 
     // Search query filtering
@@ -170,6 +171,8 @@ export const AuditLogView: React.FC = () => {
         return <CheckSquare className="w-4 h-4 text-indigo-600" />;
       case 'stakeholder':
         return <Users className="w-4 h-4 text-purple-600" />;
+      case 'permission':
+        return <ShieldCheck className="w-4 h-4 text-amber-600" />;
       default:
         return <Settings className="w-4 h-4 text-slate-500" />;
     }
@@ -197,6 +200,7 @@ export const AuditLogView: React.FC = () => {
               { id: 'opportunity', label: 'Opportunities' },
               { id: 'actionItem', label: 'Action Items' },
               { id: 'stakeholder', label: 'Stakeholders' },
+              { id: 'permission', label: 'Permissions' },
               { id: 'general', label: 'System / Others' }
             ].map(type => (
               <FilterChip

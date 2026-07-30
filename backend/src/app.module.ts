@@ -4,6 +4,7 @@ import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { DatabaseModule } from './database/database.module';
 import { CommonModule } from './common/common.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { RbacModule } from './modules/rbac/rbac.module';
 import { AccountsModule } from './modules/accounts/accounts.module';
 import { OpportunitiesModule } from './modules/opportunities/opportunities.module';
 import { OpportunityForecastModule } from './modules/opportunity-forecast/opportunity-forecast.module';
@@ -24,6 +25,7 @@ import { HealthModule } from './modules/health/health.module';
 import { PerformanceEvaluationsModule } from './modules/performance-evaluations/performance-evaluations.module';
 import { EmployeeMasterModule } from './modules/employee-master/employee-master.module';
 import { ImportExportModule } from './modules/import-export/import-export.module';
+import { ServiceProviderModule } from './modules/service-provider/service-provider.module';
 
 @Module({
   imports: [
@@ -39,6 +41,7 @@ import { ImportExportModule } from './modules/import-export/import-export.module
     NotificationsModule,
     AlertsModule,
     AuthModule,
+    RbacModule,
     AccountsModule,
     OpportunitiesModule,
     OpportunityForecastModule,
@@ -56,6 +59,7 @@ import { ImportExportModule } from './modules/import-export/import-export.module
     AnalyticsModule,
     HealthModule,
     PerformanceEvaluationsModule,
+    ServiceProviderModule,
   ],
   providers: [
     // Apply rate limiting globally; auth controller methods set tighter limits

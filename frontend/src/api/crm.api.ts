@@ -7,7 +7,16 @@ import type {
   PerformanceEvaluation, EmployeeMaster, Project, ProjectTeamMember,
   ProjectMilestone, ProjectRisk, ProjectAssumption, ProjectIssue, ProjectDependency,
   OpportunityForecastResult, OpportunityForecastPayload,
+  Role, PermissionMatrix, MyPermissions,
 } from '@/types';
+
+/** Attributes an administrator can pre-assign / edit on a user or whitelist row. */
+export interface UserRbacAttrs {
+  roleId?: string;
+  employeeId?: string;
+  department?: string;
+  designation?: string;
+}
 
 /** Owner scoping only — for entities that are never fiscal-period-filtered. */
 export interface OwnerFilter {
@@ -131,6 +140,14 @@ export const opportunitiesApi = {
   update: (id: string, data: Opportunity) => apiClient.put<Opportunity>(`/opportunities/${id}`, data).then((r) => r.data),
   restore: (id: string) => apiClient.patch<Opportunity>(`/opportunities/${id}/restore`).then((r) => r.data),
   delete: (id: string) => apiClient.delete<{ success: boolean }>(`/opportunities/${id}`).then((r) => r.data),
+  /**
+   * Manually create a Project from a Won opportunity (user-initiated — projects
+   * are no longer auto-created on the Won transition). `data` carries the
+   * user-reviewed project fields; the backend forces the account/opportunity/
+   * owner links from the opportunity.
+   */
+  createProject: (id: string, data: Partial<Project>) =>
+    apiClient.post<Project>(`/opportunities/${id}/create-project`, data).then((r) => r.data),
 };
 
 export const opportunityForecastApi = {
@@ -307,6 +324,72 @@ export const administrationApi = {
     apiClient.get<AdminSettings>('/administration/settings').then((r) => r.data),
   updateSettings:           (data: Partial<AdminSettings>) =>
     apiClient.put<AdminSettings>('/administration/settings', data).then((r) => r.data),
+  /** Assign role, edit department/designation/employeeId, activate/deactivate. */
+  updateUser:               (id: string, data: UserRbacAttrs & { roleIds?: string[]; isActive?: boolean }) =>
+    apiClient.put<AdminUser>(`/administration/users/${id}`, data).then((r) => r.data),
+};
+
+// ── Users (lightweight list for assignment pickers; authenticated-only) ──────
+export const usersApi = {
+  /** Active users incl. roleKey — used to populate role-filtered owner dropdowns. */
+  getAll: () => apiClient.get<User[]>('/users').then((r) => r.data),
+};
+
+// ── Service Provider profile (the logged-in user's own record) ───────────────
+export type ServiceProviderField = 'name' | 'department' | 'designation' | 'email' | 'phone';
+
+export interface ServiceProviderProfile {
+  name: string;
+  department: string;
+  designation: string;
+  email: string;
+  phone: string;
+  /** True once the user has at least one linked SERVICE_PROVIDER stakeholder. */
+  isServiceProvider: boolean;
+  /** Required fields still missing (null / empty / whitespace). */
+  missingFields: ServiceProviderField[];
+  isComplete: boolean;
+}
+
+/** Fields the completion modal may send back. `phone` is always required. */
+export interface UpdateServiceProviderProfileInput {
+  phone: string;
+  name?: string;
+  department?: string;
+  designation?: string;
+  email?: string;
+}
+
+export const serviceProviderApi = {
+  /** The current user's Service Provider profile (identity + phone + completeness). */
+  getMine: () =>
+    apiClient.get<ServiceProviderProfile>('/service-provider-profile/me').then((r) => r.data),
+  /**
+   * Saves the profile: the phone (applied to all the user's Service Provider
+   * stakeholders) plus any previously-missing identity fields (written back to
+   * the user record and synced onto the stakeholders).
+   */
+  updateProfile: (input: UpdateServiceProviderProfileInput) =>
+    apiClient.put<ServiceProviderProfile>('/service-provider-profile/me', input).then((r) => r.data),
+};
+
+// ── RBAC (roles & permission matrix) ────────────────────────────────────────
+export const rbacApi = {
+  /** The logged-in user's effective permissions — drives menu/button gating. */
+  getMyPermissions: () =>
+    apiClient.get<MyPermissions>('/rbac/permissions/me').then((r) => r.data),
+  getMatrix: () =>
+    apiClient.get<PermissionMatrix>('/rbac/matrix').then((r) => r.data),
+  saveMatrix: (changes: Array<{ roleId: string; moduleKey: string; permissionKey: string; isAllowed: boolean }>) =>
+    apiClient.put<{ updated: number }>('/rbac/matrix', { changes }).then((r) => r.data),
+  getRoles: () =>
+    apiClient.get<Role[]>('/rbac/roles').then((r) => r.data),
+  createRole: (data: { name: string; description?: string }) =>
+    apiClient.post<{ id: string }>('/rbac/roles', data).then((r) => r.data),
+  updateRole: (id: string, data: { name?: string; description?: string }) =>
+    apiClient.put<{ id: string }>(`/rbac/roles/${id}`, data).then((r) => r.data),
+  deleteRole: (id: string) =>
+    apiClient.delete<{ success: boolean }>(`/rbac/roles/${id}`).then((r) => r.data),
 };
 
 export const columnConfigsApi = {
@@ -452,10 +535,10 @@ export const analyticsApi = {
 export const employeeMasterApi = {
   getAll: () =>
     apiClient.get<EmployeeMaster[]>('/employee-master').then((r) => r.data),
-  create: (email: string, name?: string) =>
-    apiClient.post<EmployeeMaster>('/employee-master', { email, name }).then((r) => r.data),
-  update: (id: string, email: string, name?: string) =>
-    apiClient.put<EmployeeMaster>(`/employee-master/${id}`, { email, name }).then((r) => r.data),
+  create: (email: string, name?: string, attrs?: UserRbacAttrs) =>
+    apiClient.post<EmployeeMaster>('/employee-master', { email, name, ...attrs }).then((r) => r.data),
+  update: (id: string, email: string, name?: string, attrs?: UserRbacAttrs) =>
+    apiClient.put<EmployeeMaster>(`/employee-master/${id}`, { email, name, ...attrs }).then((r) => r.data),
   delete: (id: string) =>
     apiClient.delete<{ success: boolean }>(`/employee-master/${id}`).then((r) => r.data),
 };

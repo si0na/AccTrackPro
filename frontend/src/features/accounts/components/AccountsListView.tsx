@@ -3,9 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
-import { Account, AccountType, AccountHealth } from '@/types';
+import { usersApi, serviceProviderApi } from '@/api/crm.api';
+import { Account, AccountType, AccountHealth, User } from '@/types';
 import { Plus, Building2, Settings2, HeartPulse, X } from 'lucide-react';
 import { CustomizeColumnsSidebar } from '@/components/table/CustomizeColumnsSidebar';
 import { InlineEditModal } from '@/components/InlineEditModal';
@@ -68,7 +69,34 @@ export const AccountsListView: React.FC = () => {
     globalAccountId,
     currentUser,
     loading,
+    can,
+    refreshData,
+    openServiceProviderProfile,
   } = useCRM();
+
+  // Users list — backs the four role-filtered "owner" dropdowns on the create
+  // form (loaded once on mount, same pattern as ProjectDetailsView).
+  const [users, setUsers] = useState<User[]>([]);
+  useEffect(() => {
+    usersApi.getAll().then(setUsers).catch(() => setUsers([]));
+  }, []);
+
+  // Role-filtered option lists ({ value: id, label: name }) for each FK field.
+  // Account Manager is intentionally absent here — it is never chosen on the
+  // create form; the backend assigns the logged-in creator when they hold the
+  // Account Manager role. It remains editable afterwards (see InlineEditModal).
+  const practiceLeadOptions = useMemo(
+    () => users.filter(u => u.roleKey === 'practice-lead').map(u => ({ value: u.id, label: u.name })),
+    [users],
+  );
+  const clientPartnerOptions = useMemo(
+    () => users.filter(u => u.roleKey === 'client-partner').map(u => ({ value: u.id, label: u.name })),
+    [users],
+  );
+  const verticalHeadOptions = useMemo(
+    () => users.filter(u => u.roleKey === 'vertical-head').map(u => ({ value: u.id, label: u.name })),
+    [users],
+  );
 
   // Restore failure message (network/server errors must not fail silently)
   const [restoreError, setRestoreError] = useState<string | null>(null);
@@ -139,7 +167,11 @@ export const AccountsListView: React.FC = () => {
     email: '',
     address: '',
     location: '',
-    description: ''
+    description: '',
+    accountManagerId: '',
+    practiceLeadId: '',
+    clientPartnerId: '',
+    verticalHeadId: '',
   };
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newAccount, setNewAccount] = useState<Omit<Account, 'id'>>(EMPTY_ACCOUNT);
@@ -176,9 +208,33 @@ export const AccountsListView: React.FC = () => {
     e.preventDefault();
     if (!newAccount.name.trim() || !newAccount.type || !newAccount.health) return;
     try {
-      const created = await addAccount(newAccount);
+      // Empty selection → null so the backend leaves the FK unset rather than
+      // storing an empty string. Account Manager is never sent from creation —
+      // the backend assigns the logged-in creator (when they are an Account
+      // Manager) and ignores any account_manager_id in the request.
+      const { accountManagerId: _omitAm, ...rest } = newAccount;
+      const payload: Omit<Account, 'id'> = {
+        ...rest,
+        practiceLeadId: newAccount.practiceLeadId || null,
+        clientPartnerId: newAccount.clientPartnerId || null,
+        verticalHeadId: newAccount.verticalHeadId || null,
+      };
+      const created = await addAccount(payload);
       setIsAddModalOpen(false);
       setNewAccount(EMPTY_ACCOUNT);
+
+      // The account's Account Manager was auto-registered as a Service Provider
+      // stakeholder on the new account. Refresh so it shows on the account, and —
+      // when the current user is that Service Provider and their profile is still
+      // missing a required field — prompt them to complete it.
+      refreshData();
+      try {
+        const profile = await serviceProviderApi.getMine();
+        if (profile.isServiceProvider && !profile.isComplete) openServiceProviderProfile();
+      } catch {
+        // Non-blocking: a failed profile check never interrupts account creation.
+      }
+
       // Jump straight to details
       setSelectedAccountId(created.id);
       setView('account-details');
@@ -248,13 +304,15 @@ export const AccountsListView: React.FC = () => {
             >
               Customize Columns
             </Button>
-            <Button
-              size="md"
-              icon={<Plus className="w-4 h-4" aria-hidden="true" />}
-              onClick={() => setIsAddModalOpen(true)}
-            >
-              New Account
-            </Button>
+            {can('accounts', 'create') && (
+              <Button
+                size="md"
+                icon={<Plus className="w-4 h-4" aria-hidden="true" />}
+                onClick={() => setIsAddModalOpen(true)}
+              >
+                New Account
+              </Button>
+            )}
           </>
         }
       />
@@ -489,8 +547,12 @@ export const AccountsListView: React.FC = () => {
                       <TableActions
                         entityLabel={`account ${acc.name}`}
                         onView={() => handleRowClick(acc.id)}
-                        onEdit={() => { setEditingAccount({ ...acc, location: mapLocationToOption(acc.location) }); setIsEditModalOpen(true); }}
-                        onDelete={() => setDeleteTarget({ id: acc.id, label: acc.name })}
+                        onEdit={can('accounts', 'update')
+                          ? () => { setEditingAccount({ ...acc, location: mapLocationToOption(acc.location) }); setIsEditModalOpen(true); }
+                          : undefined}
+                        onDelete={can('accounts', 'delete')
+                          ? () => setDeleteTarget({ id: acc.id, label: acc.name })
+                          : undefined}
                       />
                     </TableCell>
                   </TableRow>
@@ -546,10 +608,12 @@ export const AccountsListView: React.FC = () => {
                   </TableCell>
                   <TableCell>{acc.owner}</TableCell>
                   <TableCell align="center">
-                    <RestoreButton
-                      label={`Restore account ${acc.name}`}
-                      onClick={() => setRestoreTarget({ id: acc.id, label: acc.name })}
-                    />
+                    {can('accounts', 'update') && (
+                      <RestoreButton
+                        label={`Restore account ${acc.name}`}
+                        onClick={() => setRestoreTarget({ id: acc.id, label: acc.name })}
+                      />
+                    )}
                   </TableCell>
                 </TableRow>
               ))}
@@ -594,6 +658,7 @@ export const AccountsListView: React.FC = () => {
           accounts={accounts}
           opportunities={opportunities}
           stakeholders={stakeholders}
+          users={users}
           onChange={(patch) => setEditingAccount({ ...editingAccount, ...patch })}
           onSave={async (e) => {
             e.preventDefault();
@@ -687,6 +752,40 @@ export const AccountsListView: React.FC = () => {
                   options={LOCATION_OPTIONS}
                   placeholder="Search countries…"
                   aria-label="Account location"
+                />
+              </FormField>
+            </FormGrid>
+          </FormSection>
+
+          <FormSection title="Ownership">
+            <FormGrid columns={2}>
+              <FormField label="Practice Lead (Optional)">
+                <SearchableSelect
+                  value={newAccount.practiceLeadId || ''}
+                  onChange={(practiceLeadId) => setNewAccount({ ...newAccount, practiceLeadId })}
+                  options={practiceLeadOptions}
+                  placeholder="Select practice lead…"
+                  aria-label="Practice lead"
+                />
+              </FormField>
+
+              <FormField label="Client Partner (Optional)">
+                <SearchableSelect
+                  value={newAccount.clientPartnerId || ''}
+                  onChange={(clientPartnerId) => setNewAccount({ ...newAccount, clientPartnerId })}
+                  options={clientPartnerOptions}
+                  placeholder="Select client partner…"
+                  aria-label="Client partner"
+                />
+              </FormField>
+
+              <FormField label="Vertical Head (Optional)">
+                <SearchableSelect
+                  value={newAccount.verticalHeadId || ''}
+                  onChange={(verticalHeadId) => setNewAccount({ ...newAccount, verticalHeadId })}
+                  options={verticalHeadOptions}
+                  placeholder="Select vertical head…"
+                  aria-label="Vertical head"
                 />
               </FormField>
             </FormGrid>

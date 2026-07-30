@@ -31,6 +31,16 @@ export interface Account {
   type: AccountType;
   health: AccountHealth;
   owner: string;
+  ownerId?: string;
+  /** Ownership FKs driving role-based account visibility (joined names alongside). */
+  accountManagerId?: string;
+  accountManagerName?: string;
+  practiceLeadId?: string;
+  practiceLeadName?: string;
+  clientPartnerId?: string;
+  clientPartnerName?: string;
+  verticalHeadId?: string;
+  verticalHeadName?: string;
   revenue: number;
   industry: string;
   since: string;
@@ -163,6 +173,17 @@ export interface ProjectMilestone {
   id: string;
   projectId: string;
   name: string;
+  /** Essential planning fields captured on the simplified Create Milestone form. */
+  milestoneNo?: string;
+  activities?: string;
+  deliverables?: string;
+  acceptanceCriteria?: string;
+  paymentTrigger?: string;
+  /** Percentage of contract value released at this milestone (0–100). */
+  paymentPct?: number;
+  paymentAmount?: number;
+  /** Planned target/due date (ISO yyyy-mm-dd). */
+  targetDate?: string;
   /** Free text, e.g. "Sprint 3-4". */
   sprints?: string;
   plannedStart?: string;
@@ -302,6 +323,8 @@ export interface Stakeholder {
   phone: string;
   stakeholderType: StakeholderType;
   department?: string;
+  /** Set on auto-registered Service Provider stakeholders — links back to the user they represent. */
+  userId?: string;
 }
 
 export interface Activity {

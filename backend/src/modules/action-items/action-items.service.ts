@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
 import { FilterContextService, FilterParams, FiscalContext } from '../../common/services/filter-context.service';
+import { AccessScopeService } from '../rbac/access-scope.service';
 import { NotificationEventBus } from '../../common/events/notification-event-bus.service';
 import { ActionItem } from '../../types';
 import { extractCustomData } from '../../common/utils/db-mapping.util';
@@ -77,8 +78,21 @@ export class ActionItemsService {
   constructor(
     private readonly db: DatabaseService,
     private readonly filter: FilterContextService,
+    private readonly access: AccessScopeService,
     private readonly bus: NotificationEventBus,
   ) {}
+
+  /**
+   * Role-aware visibility fragment for the action_items alias `ai`. An action
+   * item is visible when its parent account is visible. When userId is absent
+   * (internal calls, e.g. re-reading a row just written) no scoping is applied;
+   * view-all roles get no restriction.
+   */
+  private async childScope(userId: string | null, startIdx: number) {
+    if (!userId) return { conditions: [], params: [], nextIdx: startIdx };
+    const ctx = await this.access.getContext(userId);
+    return this.access.buildChildVisibility('ai', ctx, startIdx);
+  }
 
   /**
    * Bulk adapter used by the Global Import/Export service. Each action-item row
@@ -136,12 +150,12 @@ export class ActionItemsService {
     pg: Pagination | null = null,
   ): Promise<ActionItem[] | Paginated<ActionItem>> {
     const f = this.filter.normalize(params);
-    const owner = this.filter.buildOwnerConditions('ai', f, 1);
-    const where = ['ai.is_deleted = FALSE', ...owner.conditions].join(' AND ');
+    const scope = await this.childScope(f.userId, 1);
+    const where = ['ai.is_deleted = FALSE', ...scope.conditions].join(' AND ');
 
     const totalCol    = pg ? ', COUNT(*) OVER()::INTEGER AS __total' : '';
-    const limitClause = pg ? ` LIMIT $${owner.nextIdx} OFFSET $${owner.nextIdx + 1}` : '';
-    const qParams     = pg ? [...owner.params, pg.limit, pg.offset] : owner.params;
+    const limitClause = pg ? ` LIMIT $${scope.nextIdx} OFFSET $${scope.nextIdx + 1}` : '';
+    const qParams     = pg ? [...scope.params, pg.limit, pg.offset] : scope.params;
 
     const { rows } = await this.db.query(
       `SELECT ai.*, u.name AS owner_name, a.name AS account_name, proj.name AS project_name,
@@ -164,22 +178,23 @@ export class ActionItemsService {
 
   async findAllDeactivated(params: FilterParams = {}): Promise<ActionItem[]> {
     const f = this.filter.normalize(params);
-    const owner = this.filter.buildOwnerConditions('ai', f, 1);
-    const where = ['ai.is_deleted = TRUE', ...owner.conditions].join(' AND ');
+    const scope = await this.childScope(f.userId, 1);
+    const where = ['ai.is_deleted = TRUE', ...scope.conditions].join(' AND ');
     // The accounts join has no is_deleted condition: the parent may itself be
     // deactivated (cascade) and its name must still appear in the list.
     const { rows } = await this.db.query(
       `${AI_SELECT} WHERE ${where} ORDER BY ai.updated_at DESC`,
-      owner.params,
+      scope.params,
     );
     return rows.map(await this.mapper());
   }
 
   async findOne(id: string, userId?: string): Promise<ActionItem> {
+    const { conditions, params } = await this.childScope(userId ?? null, 2);
+    const scopeClause = conditions.length ? ` AND ${conditions.join(' AND ')}` : '';
     const { rows } = await this.db.query(
-      `${AI_SELECT} WHERE ai.id = $1 AND ai.is_deleted = FALSE
-       AND ($2::TEXT IS NULL OR ai.owner_id = $2)`,
-      [id, userId ?? null],
+      `${AI_SELECT} WHERE ai.id = $1 AND ai.is_deleted = FALSE${scopeClause}`,
+      [id, ...params],
     );
     if (!rows.length) throw new NotFoundException(`ActionItem "${id}" not found`);
     return (await this.mapper())(rows[0]);
@@ -336,9 +351,10 @@ export class ActionItemsService {
   }
 
   /**
-   * Relational rules: the parent account must exist, be active, and belong to the
-   * requesting user; a linked opportunity (optional) must exist and belong to the same account;
-   * a linked project (optional) must exist, be active, and belong to the same account.
+   * Relational rules: the parent account must exist, be active, and be VISIBLE to
+   * the requesting user (role-aware, not owner-only); a linked opportunity
+   * (optional) must exist and belong to the same account; a linked project
+   * (optional) must exist, be active, and belong to the same account.
    */
   private async assertValidRelations(
     accountId: string,
@@ -346,10 +362,13 @@ export class ActionItemsService {
     projectId?: string | null,
     ownerId?: string,
   ): Promise<void> {
+    const scope = ownerId
+      ? this.access.buildAccountVisibility('a', await this.access.getContext(ownerId), 2)
+      : { conditions: [] as string[], params: [] as any[], nextIdx: 2 };
+    const scopeClause = scope.conditions.length ? ` AND ${scope.conditions.join(' AND ')}` : '';
     const { rows: acct } = await this.db.query(
-      `SELECT id FROM accounts WHERE id = $1 AND is_deleted = FALSE
-       AND ($2::TEXT IS NULL OR owner_id = $2)`,
-      [accountId, ownerId ?? null],
+      `SELECT a.id FROM accounts a WHERE a.id = $1 AND a.is_deleted = FALSE${scopeClause}`,
+      [accountId, ...scope.params],
     );
     if (!acct.length) throw new BadRequestException('The selected account does not exist');
 

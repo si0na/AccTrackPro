@@ -2,13 +2,14 @@ import { createParamDecorator, ExecutionContext } from '@nestjs/common';
 
 /** Shape of the JWT access-token payload attached to req.user by JwtAuthGuard. */
 export interface JwtPayload {
-  sub:   string; // Authenticated user UUID (FK → users.id)
-  email: string;
-  name:  string;
-  role:  string;
-  type:  'access';
-  iat?:  number;
-  exp?:  number;
+  sub:    string; // Authenticated user UUID (FK → users.id)
+  email:  string;
+  name:   string;
+  role:   string;        // Display role name (kept in sync with roleId)
+  roleId?: string | null; // FK → roles.id (display convenience; authz re-reads from DB)
+  type:   'access';
+  iat?:   number;
+  exp?:   number;
 }
 
 /**

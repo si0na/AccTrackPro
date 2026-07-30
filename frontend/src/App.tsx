@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { BrowserRouter, useNavigate } from 'react-router-dom';
 import { CRMProvider, useCRM } from '@/contexts/CRMContext';
 import { buildPath } from '@/routes';
+import { canAccessView } from '@/utils/permissions';
+import { NotAuthorized } from '@/components/NotAuthorized';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { GlobalAccountSelector } from '@/components/layout/GlobalAccountSelector';
 import { DashboardView } from '@/features/dashboard/components/DashboardView';
@@ -25,8 +27,9 @@ import { SignUpPage } from '@/features/auth/components/SignUpPage';
 import { ForgotPasswordPage } from '@/features/auth/components/ForgotPasswordPage';
 import { ResetPasswordPage } from '@/features/auth/components/ResetPasswordPage';
 import { FullPageLoading } from '@/components/common/LoadingState';
+import { ServiceProviderProfileModal } from '@/components/ServiceProviderProfileModal';
 import {
-  Bell, Settings, LogOut, Camera,
+  Bell, Settings, LogOut, Camera, UserCog,
 } from 'lucide-react';
 
 // ─── Main layout (requires BrowserRouter context) ─────────────────────────────
@@ -38,6 +41,9 @@ const InnerLayout: React.FC = () => {
     selectedAccountId, selectedOpportunityId, selectedProjectId,
     updateProfilePicture,
     unreadNotificationCount,
+    can, permissionsLoaded,
+    isServiceProviderProfileOpen, openServiceProviderProfile, closeServiceProviderProfile,
+    refreshCurrentUser, refreshData,
   } = useCRM();
 
   const handleAvatarUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -123,7 +129,7 @@ const InnerLayout: React.FC = () => {
 
           {/* Actions */}
           <div className="flex items-center space-x-4">
-            <ImportExportLauncher />
+            {can('import-export', 'view') && <ImportExportLauncher />}
             <button
               onClick={() => setView('notifications')}
               className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 relative cursor-pointer"
@@ -135,13 +141,15 @@ const InnerLayout: React.FC = () => {
                 </span>
               )}
             </button>
-            <button
-              onClick={() => setView('administration')}
-              className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 cursor-pointer"
-              title="SSO Administration"
-            >
-              <Settings className="w-4 h-4" />
-            </button>
+            {can('administration', 'view') && (
+              <button
+                onClick={() => setView('administration')}
+                className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 cursor-pointer"
+                title="SSO Administration"
+              >
+                <Settings className="w-4 h-4" />
+              </button>
+            )}
 
             {/* Profile avatar */}
             <div className="relative flex items-center space-x-2 border-l pl-4 border-slate-200">
@@ -186,12 +194,21 @@ const InnerLayout: React.FC = () => {
                       <p className="text-[9px] text-slate-500 font-mono mt-0.5 truncate">{currentUserProfile?.email}</p>
                     </div>
                     <div className="p-1">
+                      {can('administration', 'view') && (
+                        <button
+                          onClick={() => { setIsProfileOpen(false); setView('administration'); }}
+                          className="w-full flex items-center space-x-2 px-3 py-1.5 rounded-lg text-left text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition-colors cursor-pointer"
+                        >
+                          <Settings className="w-3.5 h-3.5 text-slate-400" />
+                          <span>SSO Administration</span>
+                        </button>
+                      )}
                       <button
-                        onClick={() => { setIsProfileOpen(false); setView('administration'); }}
+                        onClick={() => { setIsProfileOpen(false); openServiceProviderProfile(); }}
                         className="w-full flex items-center space-x-2 px-3 py-1.5 rounded-lg text-left text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition-colors cursor-pointer"
                       >
-                        <Settings className="w-3.5 h-3.5 text-slate-400" />
-                        <span>SSO Administration</span>
+                        <UserCog className="w-3.5 h-3.5 text-slate-400" />
+                        <span>My Service Provider Profile</span>
                       </button>
                       <button
                         onClick={() => { setIsProfileOpen(false); logout(); }}
@@ -208,8 +225,14 @@ const InnerLayout: React.FC = () => {
           </div>
         </header>
 
-        {/* Main workspace — view rendered conditionally by currentView state */}
+        {/* Main workspace — view rendered conditionally by currentView state.
+            Once permissions have loaded, a gated view the user can't access is
+            replaced by <NotAuthorized/> — this also closes direct-URL access. */}
         <main className="flex-1 overflow-y-auto p-6 md:p-8 custom-scrollbar">
+          {permissionsLoaded && !canAccessView(currentView, can) ? (
+            <NotAuthorized />
+          ) : (
+          <>
           {currentView === 'dashboard'              && <DashboardView />}
           {currentView === 'accounts'               && <AccountsListView />}
           {currentView === 'account-details'        && <AccountDetailsView />}
@@ -227,8 +250,23 @@ const InnerLayout: React.FC = () => {
           {currentView === 'performance-evaluation' && <PerformanceEvaluationView />}
           {currentView === 'notifications'          && <AlertsAndNotificationsView />}
           {currentView === 'administration'         && <AdministrationPage />}
+          </>
+          )}
         </main>
       </div>
+
+      <ServiceProviderProfileModal
+        isOpen={isServiceProviderProfileOpen}
+        onClose={closeServiceProviderProfile}
+        onSaved={() => {
+          // Identity edits may have changed the user record; the phone was
+          // written onto the Service Provider stakeholders. Refresh both the
+          // signed-in user and the CRM data (accounts/stakeholders) so the
+          // current account and header reflect the change immediately.
+          void refreshCurrentUser();
+          void refreshData();
+        }}
+      />
     </div>
   );
 };

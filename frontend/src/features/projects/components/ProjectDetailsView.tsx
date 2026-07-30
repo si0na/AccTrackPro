@@ -45,6 +45,7 @@ import { ActionItemCommentToggle, ActionItemCommentsExpandedRow } from '@/compon
 import { ProjectFormModal } from './ProjectFormModal';
 import { SimpleCrudTab } from './SimpleCrudTab';
 import { MilestoneFormModal, MilestoneDraft, emptyMilestoneDraft } from './MilestoneFormModal';
+import { MilestoneDetailsModal } from './MilestoneDetailsModal';
 import { RiskFormModal, RiskDraft, emptyRiskDraft } from './RiskFormModal';
 import { AssumptionFormModal, AssumptionDraft, emptyAssumptionDraft } from './AssumptionFormModal';
 import { IssueFormModal, IssueDraft, emptyIssueDraft } from './IssueFormModal';
@@ -95,12 +96,6 @@ const SENIORITY_OPTIONS = ['Junior', 'Mid', 'Senior', 'Lead', 'Principal'] as co
 /** Local color maps for the child-table status enums — not shared elsewhere
  *  in the app, unlike PRIORITY_COLORS/ACTION_STATUS_COLORS which every one
  *  of these tabs' Priority columns reuses as-is. */
-const MILESTONE_STATUS_COLORS: Record<string, string> = {
-  'Not Started': 'bg-slate-100 text-slate-600',
-  'In Progress': 'bg-blue-100 text-blue-700',
-  Completed: 'bg-green-100 text-green-700',
-  Delayed: 'bg-red-100 text-red-700',
-};
 const RISK_STATUS_COLORS: Record<string, string> = {
   Open: 'bg-red-100 text-red-700',
   Mitigated: 'bg-blue-100 text-blue-700',
@@ -294,12 +289,20 @@ export const ProjectDetailsView: React.FC = () => {
   const [milestoneDraft, setMilestoneDraft] = useState<MilestoneDraft>(emptyMilestoneDraft);
   const [isSavingMilestone, setIsSavingMilestone] = useState(false);
 
+  // Read-only detail view opened by selecting a milestone row. Editing is
+  // delegated back to the form modal (edit mode) via openEditMilestone.
+  const [viewingMilestone, setViewingMilestone] = useState<ProjectMilestone | null>(null);
+
   const openAddMilestone = () => {
     setEditingMilestone(null);
     setMilestoneDraft(emptyMilestoneDraft);
     setIsMilestoneModalOpen(true);
   };
+  const openMilestoneDetails = (m: ProjectMilestone) => {
+    setViewingMilestone(m);
+  };
   const openEditMilestone = (m: ProjectMilestone) => {
+    setViewingMilestone(null);
     setEditingMilestone(m);
     setMilestoneDraft({ ...m });
     setIsMilestoneModalOpen(true);
@@ -1003,23 +1006,20 @@ export const ProjectDetailsView: React.FC = () => {
             emptyMessage='No milestones yet. Click "Add Milestone" to create one.'
             onAddClick={openAddMilestone}
             onEditClick={openEditMilestone}
+            onRowClick={openMilestoneDetails}
+            onViewClick={openMilestoneDetails}
             getRowLabel={(m) => m.name}
             onDelete={handleDeleteMilestone}
             columns={[
-              { key: 'name', label: 'Name', render: (m) => <span className="font-semibold text-slate-800">{m.name}</span> },
-              { key: 'sprints', label: 'Sprints', render: (m) => <span className="text-slate-600">{m.sprints || '—'}</span> },
-              {
-                key: 'planned',
-                label: 'Planned Start → End',
-                render: (m) => <span className="font-mono text-slate-500">{m.plannedStart || '—'} → {m.plannedEnd || '—'}</span>,
-              },
-              {
-                key: 'actual',
-                label: 'Actual Start → End',
-                render: (m) => <span className="font-mono text-slate-500">{m.actualStart || '—'} → {m.actualEnd || '—'}</span>,
-              },
-              { key: 'status', label: 'Status', render: (m) => <StatusBadge value={m.status} colorMap={MILESTONE_STATUS_COLORS} shape="rounded" /> },
-              { key: 'completionPct', label: 'Completion', align: 'right', render: (m) => <span className="font-mono font-semibold text-slate-700">{m.completionPct ?? 0}%</span> },
+              { key: 'milestoneNo', label: 'Milestone No.', render: (m) => <span className="font-mono text-slate-500">{m.milestoneNo || '—'}</span> },
+              { key: 'name', label: 'Milestone Name', render: (m) => <span className="font-semibold text-slate-800">{m.name}</span> },
+              { key: 'activities', label: 'Activities', render: (m) => <span className="block max-w-[240px] line-clamp-2 text-slate-600" title={m.activities || ''}>{m.activities || '—'}</span> },
+              { key: 'deliverables', label: 'Deliverables', render: (m) => <span className="block max-w-[240px] line-clamp-2 text-slate-600" title={m.deliverables || ''}>{m.deliverables || '—'}</span> },
+              { key: 'acceptanceCriteria', label: 'Acceptance Criteria', render: (m) => <span className="block max-w-[240px] line-clamp-2 text-slate-600" title={m.acceptanceCriteria || ''}>{m.acceptanceCriteria || '—'}</span> },
+              { key: 'paymentTrigger', label: 'Payment Trigger', render: (m) => <span className="text-slate-600">{m.paymentTrigger || '—'}</span> },
+              { key: 'paymentPct', label: 'Payment %', align: 'right', render: (m) => <span className="font-mono text-slate-600">{m.paymentPct ? `${m.paymentPct}%` : '—'}</span> },
+              { key: 'paymentAmount', label: 'Payment Amount', align: 'right', render: (m) => <span className="font-mono text-slate-600">{m.paymentAmount ? `$${m.paymentAmount.toLocaleString()}` : '—'}</span> },
+              { key: 'targetDate', label: 'Target Date', render: (m) => <span className="font-mono text-slate-500">{m.targetDate || '—'}</span> },
             ]}
           />
         )}
@@ -1394,8 +1394,17 @@ export const ProjectDetailsView: React.FC = () => {
         isSubmitting={isSavingMilestone}
         submitLabel={editingMilestone ? 'Save Changes' : 'Add Milestone'}
         submitVariant={editingMilestone ? 'warning' : 'primary'}
+        mode={editingMilestone ? 'edit' : 'create'}
         value={milestoneDraft}
         onChange={(patch) => setMilestoneDraft({ ...milestoneDraft, ...patch })}
+      />
+
+      {/* Milestone Details (read-only) — opened by selecting a milestone row */}
+      <MilestoneDetailsModal
+        isOpen={!!viewingMilestone}
+        milestone={viewingMilestone}
+        onClose={() => setViewingMilestone(null)}
+        onEdit={viewingMilestone ? () => openEditMilestone(viewingMilestone) : undefined}
       />
 
       {/* Add/Edit Risk Modal */}

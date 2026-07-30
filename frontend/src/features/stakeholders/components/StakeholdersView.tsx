@@ -3,38 +3,29 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
-import { Stakeholder } from '@/types';
-import { Plus, Mail, Phone, X, Users } from 'lucide-react';
+import { Account, Stakeholder, StakeholderType } from '@/types';
+import { X, Users } from 'lucide-react';
 import {
   BackButton,
-  Button,
-  Card,
   ConfirmDialog,
   DeactivatedSection,
-  EmptyRow,
-  FilterBar,
-  FilterSelect,
   INFLUENCE_COLORS,
   PageHeader,
-  Pagination,
   RELATIONSHIP_COLORS,
-  SearchBar,
-  SortableHeader,
   STAKEHOLDER_TYPE_COLORS,
   STAKEHOLDER_TYPE_LABELS,
   StatusBadge,
   Table,
-  TableActions,
   TableHead,
   TableHeadCell,
   TableCell,
   TableRow,
 } from '@/components/ui';
 import { StakeholderFormModal } from './StakeholderFormModal';
+import { StakeholderTabs } from './StakeholderTabs';
 import { LoadingState } from '@/components/common/LoadingState';
-import { compareForSort, matchesGlobalAccount, SortDirection } from '@/utils';
 
 export const StakeholdersView: React.FC = () => {
   const {
@@ -52,6 +43,7 @@ export const StakeholdersView: React.FC = () => {
     navSource,
     globalAccountId: accountFilter,
     loading,
+    can,
   } = useCRM();
 
   // Single-record focus set when the user opens a stakeholder notification
@@ -60,19 +52,13 @@ export const StakeholdersView: React.FC = () => {
     ? stakeholders.find(s => s.id === focusedStakeholderId)
     : undefined;
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [stakeholderTypeFilter, setStakeholderTypeFilter] = useState<string>('All');
+  // Client Stakeholders vs Service Providers are shown in two independent tabs
+  // (owned by StakeholderTabs). Track the tab the create dialog should default
+  // to; StakeholderTabs reports it via onAdd(type).
+  const [createType, setCreateType] = useState<StakeholderType>('CLIENT');
 
-  // Client-side pagination over the already-filtered/sorted rows (display only)
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
-
-  // The Global Account Selector represents a workspace switch — clear
-  // page-specific state so the newly selected account starts from a clean view.
-  useEffect(() => {
-    setSearchQuery('');
-    setPage(1);
-  }, [accountFilter]);
+  const resolveAccount = (accountId: string): Account | undefined =>
+    accounts.find(a => a.id === accountId) || deactivatedAccounts.find(a => a.id === accountId);
 
   // When a specific account is active in the Global Account Selector, new
   // stakeholders lock to it — same mechanism Account Details already uses.
@@ -80,47 +66,30 @@ export const StakeholdersView: React.FC = () => {
     ? { id: accountFilter, name: accounts.find(a => a.id === accountFilter)?.name ?? '' }
     : undefined;
 
-  // Delete confirmation state
-  const [deleteTarget, setDeleteTarget] = useState<{ id: string; label: string } | null>(null);
-
-  const resolveAccount = (accountId: string) =>
-    accounts.find(a => a.id === accountId) || deactivatedAccounts.find(a => a.id === accountId);
-
-  // Create/edit dialog state (shared StakeholderFormModal)
+  // Create/edit/delete dialog state (shared StakeholderFormModal)
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Stakeholder | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ id: string; label: string } | null>(null);
 
-  const filteredStks = stakeholders.filter(s => {
+  // Base list shared by both tabs: respect the global account selector and the
+  // single-record notification focus. Type filtering happens per-tab.
+  const baseStakeholders = stakeholders.filter(s => {
     if (focusedStakeholderId && s.id !== focusedStakeholderId) return false;
-    if (!matchesGlobalAccount(s.accountId, accountFilter)) return false;
-    if (stakeholderTypeFilter !== 'All' && s.stakeholderType !== stakeholderTypeFilter) return false;
-    const account = resolveAccount(s.accountId);
-    return s.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      s.designation.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (account?.name || '').toLowerCase().includes(searchQuery.toLowerCase());
+    if (accountFilter !== 'All' && s.accountId !== accountFilter) return false;
+    return true;
   });
 
-  // Column sort state
-  const [sortField, setSortField] = useState<string>('name');
-  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
-  const handleSort = (field: string) => {
-    if (sortField === field) setSortDirection(prev => (prev === 'asc' ? 'desc' : 'asc'));
-    else { setSortField(field); setSortDirection('asc'); }
-  };
-  const getSortValue = (s: Stakeholder, key: string) => {
-    if (key === 'accountId') return resolveAccount(s.accountId)?.name || s.accountName || '';
-    return (s as any)[key];
-  };
-  const sortedStks = [...filteredStks].sort((a, b) =>
-    compareForSort(getSortValue(a, sortField), getSortValue(b, sortField), sortDirection),
-  );
+  const clientStks = baseStakeholders.filter(s => s.stakeholderType === 'CLIENT');
+  const serviceProviderStks = baseStakeholders.filter(s => s.stakeholderType === 'SERVICE_PROVIDER');
 
-  // Clamp the page so filter changes never leave the user on an empty page.
-  const totalPages = Math.max(1, Math.ceil(sortedStks.length / pageSize));
-  const currentPage = Math.min(page, totalPages);
-  const pagedStks = sortedStks.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  // Counts (unfocused) for the tab labels — always reflect the full directory
+  // even while a single record is focused from a notification.
+  const clientCount = stakeholders.filter(s => s.stakeholderType === 'CLIENT').length;
+  const spCount = stakeholders.filter(s => s.stakeholderType === 'SERVICE_PROVIDER').length;
 
   if (loading) return <LoadingState label="Loading stakeholders…" />;
+
+  const canCreate = can('stakeholders', 'create');
 
   return (
     <div className="space-y-6">
@@ -143,14 +112,7 @@ export const StakeholdersView: React.FC = () => {
 
       <PageHeader
         title="Stakeholders Directory"
-        subtitle="Keep record of client executives, their corporate influence, and relationship health."
-        actions={
-          <>
-            <Button size="md" icon={<Plus className="w-4 h-4" />} onClick={() => setIsModalOpen(true)}>
-              Add Stakeholder
-            </Button>
-          </>
-        }
+        subtitle="Client executives and internal service providers, kept in clearly separated registers."
       />
 
       {/* Single-record focus banner (arrived here from a notification) */}
@@ -173,112 +135,31 @@ export const StakeholdersView: React.FC = () => {
         </div>
       )}
 
-      {/* Control Filters */}
-      <FilterBar>
-        <SearchBar
-          value={searchQuery}
-          onChange={setSearchQuery}
-          placeholder="Search stakeholders by name, designation, or client account..."
-          className="flex-1 min-w-[240px]"
-        />
-        <FilterSelect
-          label="Stakeholder Type"
-          hideLabel
-          value={stakeholderTypeFilter}
-          onChange={(v) => { setStakeholderTypeFilter(v); setPage(1); }}
-          options={[
-            { value: 'All', label: 'All Stakeholders' },
-            { value: 'CLIENT', label: 'Client Stakeholders' },
-            { value: 'SERVICE_PROVIDER', label: 'Service Provider Stakeholders' },
-          ]}
-          className="w-56 shrink-0"
-        />
-      </FilterBar>
+      <StakeholderTabs
+        clientRows={clientStks}
+        serviceProviderRows={serviceProviderStks}
+        resolveAccount={resolveAccount}
+        storageKeyPrefix="stakeholders"
+        focusTab={focusedStakeholder?.stakeholderType ?? null}
+        clientCount={clientCount}
+        serviceProviderCount={spCount}
+        canCreate={canCreate}
+        canEdit={can('stakeholders', 'update')}
+        canDelete={can('stakeholders', 'delete')}
+        onAdd={(type) => { setCreateType(type); setIsModalOpen(true); }}
+        onEdit={setEditTarget}
+        onDelete={(s) => setDeleteTarget({ id: s.id, label: s.name })}
+        clientEmptyMessage="No Client Stakeholders found."
+        serviceProviderEmptyMessage="No Service Providers found. Service Providers are created automatically when an Account Manager creates an account, or manually here."
+      />
 
-      {/* Stakeholders spreadsheet grid */}
-      <Card padding="none" clip>
-        <div className="overflow-x-auto">
-          <Table resizable storageKey="stakeholders">
-            <TableHead>
-              <TableHeadCell><SortableHeader label="Name" field="name" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} /></TableHeadCell>
-              <TableHeadCell><SortableHeader label="Client Account" field="accountId" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} /></TableHeadCell>
-              <TableHeadCell><SortableHeader label="Type" field="stakeholderType" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} /></TableHeadCell>
-              <TableHeadCell><SortableHeader label="Department" field="department" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} /></TableHeadCell>
-              <TableHeadCell><SortableHeader label="Designation" field="designation" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} /></TableHeadCell>
-              <TableHeadCell align="center"><SortableHeader label="Influence" field="influence" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="justify-center w-full" /></TableHeadCell>
-              <TableHeadCell align="center"><SortableHeader label="Relationship" field="relationship" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="justify-center w-full" /></TableHeadCell>
-              <TableHeadCell><SortableHeader label="Email" field="email" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} /></TableHeadCell>
-              <TableHeadCell><SortableHeader label="Phone" field="phone" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} /></TableHeadCell>
-              <TableHeadCell align="center" sticky="right">Actions</TableHeadCell>
-            </TableHead>
-            <tbody>
-              {sortedStks.length === 0 ? (
-                <EmptyRow colSpan={10} message="No stakeholders registered yet in the registry." />
-              ) : (
-                pagedStks.map(s => {
-                  const account = resolveAccount(s.accountId);
-                  return (
-                    <TableRow key={s.id} className="hover:bg-slate-50/50">
-                      <TableCell className="font-extrabold text-slate-900">{s.name}</TableCell>
-                      <TableCell className="text-slate-600 font-bold">{account?.name || s.accountName || 'Unknown'}</TableCell>
-                      <TableCell>
-                        <StatusBadge value={STAKEHOLDER_TYPE_LABELS[s.stakeholderType]} colorMap={STAKEHOLDER_TYPE_COLORS} shape="rounded" />
-                      </TableCell>
-                      <TableCell className="text-slate-500 font-semibold">{s.department || '—'}</TableCell>
-                      <TableCell className="text-slate-500 font-semibold">{s.designation}</TableCell>
-                      <TableCell align="center">
-                        {s.stakeholderType === 'SERVICE_PROVIDER'
-                          ? <span className="text-slate-300">—</span>
-                          : <StatusBadge value={s.influence} colorMap={INFLUENCE_COLORS} shape="rounded" />}
-                      </TableCell>
-                      <TableCell align="center">
-                        {s.stakeholderType === 'SERVICE_PROVIDER'
-                          ? <span className="text-slate-300">—</span>
-                          : <StatusBadge value={s.relationship} colorMap={RELATIONSHIP_COLORS} />}
-                      </TableCell>
-                      <TableCell className="select-all text-slate-500 hover:text-blue-500 transition-colors">
-                        <a href={`mailto:${s.email}`} className="flex items-center space-x-1 font-semibold">
-                          <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden="true" />
-                          <span className="truncate max-w-[150px]">{s.email}</span>
-                        </a>
-                      </TableCell>
-                      <TableCell className="font-mono select-all text-slate-500">
-                        <span className="flex items-center space-x-1">
-                          <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden="true" />
-                          <span>{s.phone}</span>
-                        </span>
-                      </TableCell>
-                      <TableCell align="center" sticky="right">
-                        <TableActions
-                          entityLabel={`stakeholder ${s.name}`}
-                          onEdit={() => setEditTarget(s)}
-                          onDelete={() => setDeleteTarget({ id: s.id, label: s.name })}
-                        />
-                      </TableCell>
-                    </TableRow>
-                  );
-                })
-              )}
-            </tbody>
-          </Table>
-        </div>
-
-        <Pagination
-          page={currentPage}
-          pageSize={pageSize}
-          totalItems={sortedStks.length}
-          onPageChange={setPage}
-          onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
-          itemLabel="stakeholders"
-        />
-      </Card>
-
-      {/* Add stakeholder modal */}
+      {/* Add stakeholder modal — type is fixed to the tab the user added from. */}
       <StakeholderFormModal
         isOpen={isModalOpen}
         mode="create"
         accounts={accounts}
         lockedAccount={lockedAccount}
+        lockedType={createType}
         onClose={() => setIsModalOpen(false)}
         onSubmit={async (draft) => { await addStakeholder(draft); }}
       />

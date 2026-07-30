@@ -6,6 +6,7 @@
 import React from 'react';
 import { useCRM, ViewType } from '@/contexts/CRMContext';
 import { isOpenActionItemStatus, matchesGlobalAccount } from '@/utils';
+import { canAccessView } from '@/utils/permissions';
 import {
   LayoutDashboard,
   Building2,
@@ -41,6 +42,7 @@ export const Sidebar: React.FC = () => {
     setSelectedStage,
     sidebarCollapsed,
     setSidebarCollapsed,
+    can,
   } = useCRM();
 
   // Nav badges reflect the Global Account Selector, same as every other module.
@@ -140,6 +142,15 @@ export const Sidebar: React.FC = () => {
     },
   ];
 
+  // Permission-gate the nav: keep only items the user can access, and drop any
+  // section left with zero visible items (no empty section headers).
+  const visibleSections = sections
+    .map(section => ({
+      ...section,
+      items: section.items.filter(item => canAccessView(item.id, can)),
+    }))
+    .filter(section => section.items.length > 0);
+
   return (
     <aside className={`bg-slate-900 flex flex-col h-screen shrink-0 border-r border-slate-800 transition-all duration-300 ease-in-out ${
       sidebarCollapsed ? 'w-16' : 'w-60'
@@ -176,7 +187,7 @@ export const Sidebar: React.FC = () => {
       <nav className={`flex-1 space-y-1 overflow-y-auto no-scrollbar py-4 ${
         sidebarCollapsed ? 'px-2' : 'px-4'
       }`}>
-        {sections.map((section, sectionIndex) => (
+        {visibleSections.map((section, sectionIndex) => (
           <div key={section.label} className={sectionIndex > 0 ? 'pt-3 mt-3 border-t border-slate-800/60' : ''}>
             {!sidebarCollapsed && (
               <div className="px-3 pb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">

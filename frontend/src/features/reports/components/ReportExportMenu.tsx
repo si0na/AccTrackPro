@@ -6,6 +6,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Download, FileSpreadsheet, FileText } from 'lucide-react';
 import { Button } from '@/components/ui';
+import { useCRM } from '@/contexts/CRMContext';
 
 export interface ReportExportMenuProps {
   label?: string;
@@ -26,6 +27,7 @@ export const ReportExportMenu: React.FC<ReportExportMenuProps> = ({
   onExportXlsx,
   disabled = false,
 }) => {
+  const { can } = useCRM();
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -39,6 +41,10 @@ export const ReportExportMenu: React.FC<ReportExportMenuProps> = ({
     document.addEventListener('mousedown', onMouseDown);
     return () => document.removeEventListener('mousedown', onMouseDown);
   }, [open]);
+
+  // Export is a distinct RBAC permission — hide the affordance entirely when the
+  // role lacks reports:export (centralized here so every report reuses the rule).
+  if (!can('reports', 'export')) return null;
 
   return (
     <div className="relative" ref={containerRef}>

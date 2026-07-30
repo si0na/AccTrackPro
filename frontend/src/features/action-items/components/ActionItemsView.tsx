@@ -75,6 +75,7 @@ export const ActionItemsView: React.FC = () => {
     setOverdueActionItemsFilter,
     globalAccountId: selectedAccountFilter,
     loading,
+    can,
   } = useCRM();
 
   // Single-record focus set when the user opens an action-item notification
@@ -323,13 +324,15 @@ export const ActionItemsView: React.FC = () => {
             >
               Customize Columns
             </Button>
-            <Button
-              size="md"
-              icon={<Plus className="w-4 h-4" aria-hidden="true" />}
-              onClick={handleOpenAddActionItem}
-            >
-              New Action Item
-            </Button>
+            {can('action-items', 'create') && (
+              <Button
+                size="md"
+                icon={<Plus className="w-4 h-4" aria-hidden="true" />}
+                onClick={handleOpenAddActionItem}
+              >
+                New Action Item
+              </Button>
+            )}
           </>
         }
       />
@@ -587,8 +590,8 @@ export const ActionItemsView: React.FC = () => {
                       <TableCell align="center" sticky="right">
                         <TableActions
                           entityLabel={`action item ${item.title}`}
-                          onEdit={() => handleEditClick(item)}
-                          onDelete={() => setDeleteTarget({ type: 'actionItem', id: item.id, label: item.title })}
+                          onEdit={can('action-items', 'update') ? () => handleEditClick(item) : undefined}
+                          onDelete={can('action-items', 'delete') ? () => setDeleteTarget({ type: 'actionItem', id: item.id, label: item.title }) : undefined}
                         />
                       </TableCell>
                     </TableRow>
