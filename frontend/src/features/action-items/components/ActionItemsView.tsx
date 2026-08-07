@@ -448,7 +448,7 @@ export const ActionItemsView: React.FC = () => {
                   />
                 </TableHeadCell>
               ))}
-              <TableHeadCell align="center" sticky="right">Delete</TableHeadCell>
+              <TableHeadCell align="center" sticky="right">Actions</TableHeadCell>
             </TableHead>
             <tbody>
               {filteredActionItems.length === 0 && (

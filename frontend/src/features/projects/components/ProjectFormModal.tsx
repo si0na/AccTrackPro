@@ -5,7 +5,8 @@
 
 import React from 'react';
 import { FolderKanban } from 'lucide-react';
-import type { AdminUser, Project, ProjectMethodology, ProjectStatus, Stakeholder } from '@/types';
+import type { AdminUser, Project, ProjectHealth, ProjectMethodology, ProjectStatus, Stakeholder } from '@/types';
+import { PROJECT_HEALTH_CHOICES } from '@/constants';
 import {
   FormField,
   FormGrid,
@@ -37,10 +38,15 @@ export interface ProjectFormModalProps {
 }
 
 /**
- * Dialog for a Project's Overview fields — Health, As On Date, and the Overall
- * Progress metrics have their own independent inline edit on the "Overall
- * Progress" tab (see ProjectDetailsView) so the two sections can be edited
- * without affecting one another.
+ * Dialog for a Project's Overview fields — As On Date and the Overall Progress
+ * metrics have their own independent inline edit on the "Overall Progress" tab
+ * (see ProjectDetailsView) so the two sections can be edited without affecting
+ * one another.
+ *
+ * Project Health is set here in both modes and flows through the existing
+ * Project Health Tracker server-side: on create it seeds the first history
+ * entry, and on edit a changed value appends a new one, never overwriting the
+ * trail.
  *
  * Used in two modes: `edit` (from the "Edit Project" header action) and `create`
  * (from a Won opportunity's "Create Project" action — projects are no longer
@@ -192,6 +198,22 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
                 <option value="Completed">Completed</option>
                 <option value="Cancelled">Cancelled</option>
               </select>
+            </FormField>
+            <FormField label="Project Health">
+              <select
+                value={value.health}
+                onChange={(e) => onChange({ health: e.target.value as ProjectHealth })}
+                className={SELECT_CLS}
+              >
+                {PROJECT_HEALTH_CHOICES.map((h) => (
+                  <option key={h.value} value={h.value}>{h.label}</option>
+                ))}
+              </select>
+              <p className="text-[11px] text-slate-500 mt-1 leading-tight">
+                {isCreate
+                  ? 'Becomes the project’s initial health and opens its Health Tracker history.'
+                  : 'Changing this adds a new entry to the Health Tracker — earlier entries are kept.'}
+              </p>
             </FormField>
           </FormGrid>
         </FormSection>

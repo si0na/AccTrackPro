@@ -5,6 +5,7 @@ import {
 import { PerformanceEvaluationsService } from './performance-evaluations.service';
 import { CreatePerformanceEvaluationDto, UpdatePerformanceEvaluationDto } from './dto/performance-evaluation.dto';
 import { AuthUser, JwtPayload } from '../auth/auth-user.decorator';
+import { RequirePermission } from '../rbac/require-permission.decorator';
 import { mergeWithCustomFields } from '../../common/utils/merge-custom-fields.util';
 
 @Controller('performance-evaluations')
@@ -51,6 +52,7 @@ export class PerformanceEvaluationsController {
   }
 
   @Delete(':id')
+  @RequirePermission('performance', 'delete')
   @HttpCode(HttpStatus.OK)
   remove(@Param('id') id: string, @AuthUser() authUser: JwtPayload) {
     return this.service.remove(id, authUser.sub);

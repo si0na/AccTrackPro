@@ -53,7 +53,11 @@ export interface SimpleCrudTabProps<T extends { id: string }> {
   onViewClick?: (row: T) => void;
   /** Short human-readable identifier for a row, used in the delete confirmation and action labels. */
   getRowLabel: (row: T) => string;
-  onDelete: (row: T) => Promise<void>;
+  /**
+   * Optional: omit to hide the Delete action entirely. Callers gate this on the
+   * RBAC matrix (`can('projects', 'delete')`) rather than on a role name.
+   */
+  onDelete?: (row: T) => Promise<void>;
 }
 
 /**
@@ -146,12 +150,14 @@ export function SimpleCrudTab<T extends { id: string }>({
                           icon={<Pencil className="w-3.5 h-3.5" />}
                           onClick={() => onEditClick(row)}
                         />
-                        <RowActionButton
-                          intent="delete"
-                          label={`Delete ${entityLabel.toLowerCase()} ${getRowLabel(row)}`}
-                          icon={<Trash2 className="w-3.5 h-3.5" />}
-                          onClick={() => setDeleteTarget(row)}
-                        />
+                        {onDelete && (
+                          <RowActionButton
+                            intent="delete"
+                            label={`Delete ${entityLabel.toLowerCase()} ${getRowLabel(row)}`}
+                            icon={<Trash2 className="w-3.5 h-3.5" />}
+                            onClick={() => setDeleteTarget(row)}
+                          />
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -167,7 +173,7 @@ export function SimpleCrudTab<T extends { id: string }>({
         title={`Delete ${entityLabel}`}
         message={deleteTarget ? <>Delete <span className="font-bold">"{getRowLabel(deleteTarget)}"</span>? This cannot be undone.</> : undefined}
         onConfirm={async () => {
-          if (!deleteTarget) return;
+          if (!deleteTarget || !onDelete) return;
           await onDelete(deleteTarget);
           setDeleteTarget(null);
         }}

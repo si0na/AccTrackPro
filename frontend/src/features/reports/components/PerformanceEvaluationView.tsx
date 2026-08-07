@@ -54,7 +54,10 @@ export const PerformanceEvaluationView: React.FC = () => {
     currentUserId,
     performanceEvaluationColumns,
     performanceEvaluationColumnConfig,
+    can,
   } = useCRM();
+
+  const canDeleteEvaluation = can('performance', 'delete');
 
   const [evaluations, setEvaluations] = useState<PerformanceEvaluation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -808,7 +811,9 @@ export const PerformanceEvaluationView: React.FC = () => {
                       <td className="px-4 py-3 text-center">
                         <div className="flex items-center justify-center space-x-1.5">
                           <RowActionButton intent="edit" label="Edit evaluation" icon={<Pencil className="w-3.5 h-3.5" />} onClick={() => handleEditClick(evalItem)} />
-                          <RowActionButton intent="delete" label="Delete record" icon={<Trash2 className="w-3.5 h-3.5" />} onClick={() => handleDeleteClick(evalItem.id)} />
+                          {canDeleteEvaluation && (
+                            <RowActionButton intent="delete" label="Delete record" icon={<Trash2 className="w-3.5 h-3.5" />} onClick={() => handleDeleteClick(evalItem.id)} />
+                          )}
                         </div>
                       </td>
                     </tr>

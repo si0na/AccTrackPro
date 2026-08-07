@@ -417,6 +417,15 @@ export const useCRMData = (
     activitiesApi.getAll(f).then(setActivities);
   };
 
+  // Refetch a single project into local state. Used after a write that bypasses
+  // updateProject — notably a Health Tracker update, which changes the project's
+  // health server-side, so the header badge and Overview must pick it up without
+  // a full refreshData().
+  const refreshProject = async (id: string): Promise<void> => {
+    const fresh = await projectsApi.getById(id);
+    setProjects((prev) => prev.map((p) => (p.id === id ? fresh : p)));
+  };
+
   const deleteProject = async (id: string): Promise<void> => {
     const project = projects.find((p) => p.id === id);
     await projectsApi.delete(id);
@@ -574,7 +583,7 @@ export const useCRMData = (
     refreshData,
     addAccount, updateAccount, deleteAccount, restoreAccount,
     addOpportunity, updateOpportunity, deleteOpportunity, restoreOpportunity,
-    addProject, updateProject, deleteProject, restoreProject, createProjectFromOpportunity,
+    addProject, updateProject, deleteProject, restoreProject, createProjectFromOpportunity, refreshProject,
     addActionItem, updateActionItem, deleteActionItem,
     addStakeholder, updateStakeholder, deleteStakeholder,
     addComment, deleteComment,

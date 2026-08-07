@@ -15,46 +15,12 @@ import {
 } from '@/components/ui';
 import { LoadingState } from '@/components/common/LoadingState';
 import { FileText, Eye, Download, Trash2 } from 'lucide-react';
+import { getFileTypeInfo } from './fileType';
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-/** File types browsers can render natively — these get a "View in browser" action.
- * SVG is excluded: blob URLs are same-origin and user-uploaded SVG can embed
- * scripts, so opening it in a tab would be a stored-XSS vector. */
-function isViewableInBrowser(mimeType: string): boolean {
-  if (mimeType === 'image/svg+xml') return false;
-  return (
-    mimeType === 'application/pdf' ||
-    mimeType.startsWith('image/') ||
-    mimeType.startsWith('text/') ||
-    mimeType === 'application/json'
-  );
-}
-
-function getFileTypeInfo(mimeType: string): { label: string; colorClass: string; badgeClass: string } {
-  if (mimeType === 'application/pdf')
-    return { label: 'PDF', colorClass: 'bg-red-50 text-red-600', badgeClass: 'bg-red-100 text-red-700' };
-  if (mimeType.includes('word') || mimeType.includes('document'))
-    return { label: 'Word', colorClass: 'bg-blue-50 text-blue-600', badgeClass: 'bg-blue-100 text-blue-700' };
-  if (mimeType.includes('excel') || mimeType.includes('spreadsheet'))
-    return { label: 'Excel', colorClass: 'bg-green-50 text-green-600', badgeClass: 'bg-green-100 text-green-700' };
-  if (mimeType.includes('powerpoint') || mimeType.includes('presentation'))
-    return { label: 'PPT', colorClass: 'bg-orange-50 text-orange-600', badgeClass: 'bg-orange-100 text-orange-700' };
-  if (mimeType.startsWith('image/'))
-    return { label: 'Image', colorClass: 'bg-purple-50 text-purple-600', badgeClass: 'bg-purple-100 text-purple-700' };
-  if (mimeType === 'text/csv')
-    return { label: 'CSV', colorClass: 'bg-emerald-50 text-emerald-600', badgeClass: 'bg-emerald-100 text-emerald-700' };
-  if (mimeType === 'text/plain')
-    return { label: 'TXT', colorClass: 'bg-slate-100 text-slate-600', badgeClass: 'bg-slate-200 text-slate-600' };
-  if (mimeType.includes('zip'))
-    return { label: 'ZIP', colorClass: 'bg-amber-50 text-amber-600', badgeClass: 'bg-amber-100 text-amber-700' };
-  if (mimeType === 'application/json')
-    return { label: 'JSON', colorClass: 'bg-teal-50 text-teal-600', badgeClass: 'bg-teal-100 text-teal-700' };
-  return { label: 'File', colorClass: 'bg-slate-100 text-slate-500', badgeClass: 'bg-slate-200 text-slate-500' };
 }
 
 const ALLOWED_EXTENSIONS = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.json,.png,.jpg,.jpeg,.gif,.webp,.svg,.zip';
@@ -134,25 +100,38 @@ export const DocumentsPanel: React.FC<DocumentsPanelProps> = ({
     }
   };
 
-  // View and Download both stream the file through the authenticated API
-  // client (auth cookies + silent token refresh + VITE_API_URL base) and then
-  // hand the browser a local blob URL — one mechanism for both actions.
   const handleViewDocument = async (docItem: Document) => {
     if (busyDocId) return;
     // Open the tab synchronously so popup blockers allow it, then navigate it
-    // to the blob once the file has streamed down.
+    // to the blob or office viewer once the file has streamed down / token fetched.
     const viewerTab = window.open('', '_blank');
     setBusyDocId(docItem.id);
     setDocsError('');
     try {
-      const blob = await documentsApi.getFileBlob(docItem.id);
-      const url = URL.createObjectURL(blob);
-      if (viewerTab) {
-        viewerTab.location.href = url;
+      if (getFileTypeInfo(docItem.originalName, docItem.mimeType).isOffice) {
+        const token = await documentsApi.getShareToken(docItem.id);
+        // Ensure we have an absolute URL for Microsoft's servers to reach
+        const baseURL = import.meta.env.VITE_API_URL 
+          ? `${import.meta.env.VITE_API_URL}/api` 
+          : `${window.location.origin}/api`;
+        const publicUrl = `${baseURL}/documents/public/${token}/${encodeURIComponent(docItem.originalName)}`;
+        const officeViewerUrl = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(publicUrl)}`;
+        
+        if (viewerTab) {
+          viewerTab.location.href = officeViewerUrl;
+        } else {
+          window.open(officeViewerUrl, '_blank');
+        }
       } else {
-        window.open(url, '_blank');
+        const blob = await documentsApi.getFileBlob(docItem.id);
+        const url = URL.createObjectURL(blob);
+        if (viewerTab) {
+          viewerTab.location.href = url;
+        } else {
+          window.open(url, '_blank');
+        }
+        setTimeout(() => URL.revokeObjectURL(url), 60_000);
       }
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
     } catch {
       viewerTab?.close();
       setDocsError(`Could not open "${docItem.originalName}". Please try again.`);
@@ -218,23 +197,24 @@ export const DocumentsPanel: React.FC<DocumentsPanelProps> = ({
       {!docsLoading && documents.length > 0 && (
         <div className="space-y-2">
           {documents.map((doc) => {
-            const typeInfo = getFileTypeInfo(doc.mimeType);
+            const typeInfo = getFileTypeInfo(doc.originalName, doc.mimeType);
+            const TypeIcon = typeInfo.icon;
             const uploadDate = new Date(doc.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
             return (
               <div
                 key={doc.id}
                 className="flex items-center gap-3 p-3 border border-slate-100 hover:border-slate-200 rounded-lg bg-slate-50/40 hover:bg-white transition-all text-xs group"
               >
-                {/* File type badge */}
-                <div className={`p-2 rounded-lg shrink-0 ${typeInfo.colorClass}`}>
-                  <FileText className="w-4 h-4" />
+                {/* File type icon */}
+                <div className={`p-2 rounded-lg shrink-0 ${typeInfo.colorClass}`} title={typeInfo.label}>
+                  <TypeIcon className="w-4 h-4" aria-hidden="true" />
                 </div>
 
                 {/* Metadata */}
                 <div className="flex-1 min-w-0">
                   <p className="font-bold text-slate-800 truncate" title={doc.originalName}>{doc.originalName}</p>
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-0.5">
-                    <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded ${typeInfo.badgeClass}`}>{typeInfo.label}</span>
+                    <span className={`text-[9px] font-bold tracking-wide px-1.5 py-0.5 rounded whitespace-nowrap ${typeInfo.badgeClass}`}>{typeInfo.label}</span>
                     <span className="text-[10px] text-slate-400">{formatBytes(doc.sizeBytes)}</span>
                     <span className="text-slate-300">·</span>
                     <span className="text-[10px] text-slate-400">{uploadDate}</span>
@@ -245,10 +225,10 @@ export const DocumentsPanel: React.FC<DocumentsPanelProps> = ({
 
                 {/* Actions — always visible so View/Download are discoverable */}
                 <div className="flex items-center space-x-1 shrink-0">
-                  {isViewableInBrowser(doc.mimeType) && (
+                  {typeInfo.isBrowserViewable && (
                     <RowActionButton
                       intent="view"
-                      label={`View "${doc.originalName}" in browser`}
+                      label={`View "${doc.originalName}" (${typeInfo.label}) in browser`}
                       icon={<Eye className="w-3.5 h-3.5" />}
                       onClick={() => handleViewDocument(doc)}
                       disabled={busyDocId === doc.id}

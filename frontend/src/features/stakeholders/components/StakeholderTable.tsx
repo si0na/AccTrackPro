@@ -124,7 +124,7 @@ export const StakeholderTable: React.FC<StakeholderTableProps> = ({
               <TableHeadCell><SortableHeader label="Designation" field="designation" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} /></TableHeadCell>
               {!isServiceProvider && (
                 <>
-                  <TableHeadCell align="center"><SortableHeader label="Influence" field="influence" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="justify-center w-full" /></TableHeadCell>
+                  <TableHeadCell align="center"><SortableHeader label="Interest" field="influence" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="justify-center w-full" /></TableHeadCell>
                   <TableHeadCell align="center"><SortableHeader label="Relationship" field="relationship" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="justify-center w-full" /></TableHeadCell>
                 </>
               )}

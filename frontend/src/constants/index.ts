@@ -41,6 +41,17 @@ export const PRESET_USER_NAMES = ['John Smith', 'Sarah Johnson', 'Mike Brown', '
 export const ACCOUNT_TYPE_OPTIONS = ['Strategic', 'Non Strategic', 'New'] as const;
 export const ACCOUNT_HEALTH_OPTIONS = ['Green', 'Amber', 'Red'] as const;
 export const PROJECT_HEALTH_OPTIONS = ['Green', 'Amber', 'Red'] as const;
+/**
+ * RAG choices for every Project Health picker — Create/Edit Project and the
+ * Health Tracker's update form. The label is the RAG status alone: no
+ * "(On Track)" / "(At Risk)" / "(Critical)" descriptor, so the picker matches
+ * the badge shown on the Overview.
+ */
+export const PROJECT_HEALTH_CHOICES = [
+  { value: 'Green', label: '🟢 Green' },
+  { value: 'Amber', label: '🟠 Amber' },
+  { value: 'Red',   label: '🔴 Red' },
+] as const;
 export const OPPORTUNITY_STAGE_OPTIONS = [
   'Lead', 'Qualified', 'Proposal', 'Negotiation', 'Verbal Agreement', 'Won', 'Blocked', 'Delayed', 'Lost',
 ] as const;

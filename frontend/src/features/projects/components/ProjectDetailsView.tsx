@@ -46,6 +46,8 @@ import { ProjectFormModal } from './ProjectFormModal';
 import { SimpleCrudTab } from './SimpleCrudTab';
 import { MilestoneFormModal, MilestoneDraft, emptyMilestoneDraft } from './MilestoneFormModal';
 import { MilestoneDetailsModal } from './MilestoneDetailsModal';
+import { ProjectHealthTab } from './ProjectHealthTab';
+import { ProjectHealthDetailsSection } from './ProjectHealthDetailsSection';
 import { RiskFormModal, RiskDraft, emptyRiskDraft } from './RiskFormModal';
 import { AssumptionFormModal, AssumptionDraft, emptyAssumptionDraft } from './AssumptionFormModal';
 import { IssueFormModal, IssueDraft, emptyIssueDraft } from './IssueFormModal';
@@ -87,7 +89,7 @@ import { compareForSort, getTodayISODate, SortDirection } from '@/utils';
 type ProjectTab =
   | 'overview' | 'progress' | 'team'
   | 'milestones' | 'risks' | 'assumptions' | 'issues' | 'dependencies'
-  | 'action-items';
+  | 'action-items' | 'health';
 
 const SORTABLE_AI_FIELDS = new Set(['title', 'owner', 'priority', 'status', 'dueDate']);
 
@@ -146,12 +148,19 @@ export const ProjectDetailsView: React.FC = () => {
     opportunities,
     cameFromDashboard,
     navSource,
+    can,
   } = useCRM();
+
+  // Single RBAC gate for every delete surface on this page — the project itself
+  // and its child records (team, milestones, risks, assumptions, issues,
+  // dependencies), all of which the backend guards with `projects:delete`.
+  const canDeleteProject = can('projects', 'delete');
 
   const project = projects.find((p) => p.id === selectedProjectId);
   const account = project ? accounts.find((a) => a.id === project.accountId) : null;
 
   const [activeTab, setActiveTab] = useState<ProjectTab>('overview');
+  const [openHealthModalTrigger, setOpenHealthModalTrigger] = useState(0);
 
   // Users list (Administration) backs the Service Provider PM / Practice Lead
   // selects — not fetched in useCRMData today, so this view fetches it
@@ -659,28 +668,32 @@ export const ProjectDetailsView: React.FC = () => {
             <Button variant="primary" icon={<Edit2 className="w-3.5 h-3.5" aria-hidden="true" />} onClick={openProjectEdit}>
               Edit Project
             </Button>
-            <div className="relative">
-              <button
-                onClick={() => setShowMenu((v) => !v)}
-                className="p-2.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 cursor-pointer transition-colors"
-                title="More actions"
-              >
-                <MoreVertical className="w-4 h-4" />
-              </button>
-              {showMenu && (
-                <>
-                  <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)} />
-                  <div className="absolute right-0 top-full mt-1.5 w-48 bg-white border border-slate-200 rounded-lg shadow-lg z-20 py-1">
-                    <button
-                      onClick={() => { setShowMenu(false); setDeleteProjectTarget(true); }}
-                      className="w-full text-left px-3.5 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 cursor-pointer transition-colors"
-                    >
-                      Deactivate Project
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
+            {/* Deactivate is the only entry in this menu, so the whole overflow
+                button is hidden when the user cannot delete projects. */}
+            {canDeleteProject && (
+              <div className="relative">
+                <button
+                  onClick={() => setShowMenu((v) => !v)}
+                  className="p-2.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 cursor-pointer transition-colors"
+                  title="More actions"
+                >
+                  <MoreVertical className="w-4 h-4" />
+                </button>
+                {showMenu && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setShowMenu(false)} />
+                    <div className="absolute right-0 top-full mt-1.5 w-48 bg-white border border-slate-200 rounded-lg shadow-lg z-20 py-1">
+                      <button
+                        onClick={() => { setShowMenu(false); setDeleteProjectTarget(true); }}
+                        className="w-full text-left px-3.5 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 cursor-pointer transition-colors"
+                      >
+                        Deactivate Project
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
           </>
         }
         attributes={[
@@ -721,6 +734,7 @@ export const ProjectDetailsView: React.FC = () => {
           { id: 'issues', label: 'Issues', icon: AlertOctagon, count: issues.length > 0 ? issues.length : null },
           { id: 'dependencies', label: 'Dependencies', icon: Link2, count: dependencies.length > 0 ? dependencies.length : null },
           { id: 'action-items', label: 'Action Items', icon: CheckSquare, count: projectActions.length },
+          { id: 'health', label: 'Health Tracker', icon: Gauge, count: null },
         ]}
         activeTab={activeTab}
         onChange={(id) => setActiveTab(id as ProjectTab)}
@@ -728,6 +742,7 @@ export const ProjectDetailsView: React.FC = () => {
 
       <div className="space-y-6">
         {activeTab === 'overview' && (
+          <>
           <Card title="Project Details" bodyClassName="space-y-6">
             <FormSection title="Linked Opportunity">
               <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-100 p-3.5">
@@ -786,12 +801,20 @@ export const ProjectDetailsView: React.FC = () => {
               </div>
             </FormSection>
 
+            {/* Health status fields, straight from the latest Health Tracker
+                entry — the standalone health card no longer sits on Overview. */}
+            <ProjectHealthDetailsSection
+              projectId={project.id}
+              fallbackHealth={project.health}
+            />
+
             <FormSection title="Project Description">
               <p className="text-sm text-slate-600 leading-relaxed font-medium">
                 {project.description || <span className="text-slate-400 font-medium italic">No description provided.</span>}
               </p>
             </FormSection>
           </Card>
+          </>
         )}
 
         {activeTab === 'progress' && (
@@ -832,17 +855,26 @@ export const ProjectDetailsView: React.FC = () => {
                   },
                   {
                     key: 'health', label: 'Health',
-                    view: <StatusBadge value={project.health} colorMap={HEALTH_COLORS} />,
+                    view: (
+                      <div className="flex items-center gap-3">
+                        <StatusBadge value={project.health} colorMap={HEALTH_COLORS} />
+                        <Button
+                          variant="secondary"
+                          className="!py-1 !text-[11px]"
+                          onClick={() => {
+                            setActiveTab('health');
+                            setOpenHealthModalTrigger(c => c + 1);
+                          }}
+                        >
+                          Update Health
+                        </Button>
+                      </div>
+                    ),
                     edit: (
-                      <select
-                        value={progressDraft.health}
-                        onChange={(e) => setProgressDraft({ ...progressDraft, health: e.target.value as ProjectHealth })}
-                        className={`${SELECT_CLS} max-w-xs`}
-                      >
-                        {PROJECT_HEALTH_OPTIONS.map((h) => (
-                          <option key={h} value={h}>{h}</option>
-                        ))}
-                      </select>
+                      <div className="flex items-center gap-3">
+                        <StatusBadge value={project.health} colorMap={HEALTH_COLORS} />
+                        <span className="text-xs text-slate-500 italic">Health is edited from the Overview tab, the Edit Project form, or the Health Tracker — every change is recorded there.</span>
+                      </div>
                     ),
                   },
                   {
@@ -979,12 +1011,14 @@ export const ProjectDetailsView: React.FC = () => {
                               icon={<Pencil className="w-3.5 h-3.5" />}
                               onClick={() => openEditTeamMember(m)}
                             />
-                            <RowActionButton
-                              intent="delete"
-                              label={`Remove team member ${m.role}`}
-                              icon={<Trash2 className="w-3.5 h-3.5" />}
-                              onClick={() => setTeamDeleteTarget({ id: m.id, label: `${m.role} — ${m.employeeName || 'Unknown'}` })}
-                            />
+                            {canDeleteProject && (
+                              <RowActionButton
+                                intent="delete"
+                                label={`Remove team member ${m.role}`}
+                                icon={<Trash2 className="w-3.5 h-3.5" />}
+                                onClick={() => setTeamDeleteTarget({ id: m.id, label: `${m.role} — ${m.employeeName || 'Unknown'}` })}
+                              />
+                            )}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -1009,7 +1043,7 @@ export const ProjectDetailsView: React.FC = () => {
             onRowClick={openMilestoneDetails}
             onViewClick={openMilestoneDetails}
             getRowLabel={(m) => m.name}
-            onDelete={handleDeleteMilestone}
+            onDelete={canDeleteProject ? handleDeleteMilestone : undefined}
             columns={[
               { key: 'milestoneNo', label: 'Milestone No.', render: (m) => <span className="font-mono text-slate-500">{m.milestoneNo || '—'}</span> },
               { key: 'name', label: 'Milestone Name', render: (m) => <span className="font-semibold text-slate-800">{m.name}</span> },
@@ -1035,7 +1069,7 @@ export const ProjectDetailsView: React.FC = () => {
             onAddClick={openAddRisk}
             onEditClick={openEditRisk}
             getRowLabel={(r) => r.description.substring(0, 40)}
-            onDelete={handleDeleteRisk}
+            onDelete={canDeleteProject ? handleDeleteRisk : undefined}
             columns={[
               { key: 'description', label: 'Description', render: (r) => <span className="block max-w-[320px] line-clamp-2 font-semibold text-slate-800" title={r.description}>{r.description}</span> },
               { key: 'priority', label: 'Priority', render: (r) => <StatusBadge value={r.priority} colorMap={PRIORITY_COLORS} shape="rounded" /> },
@@ -1057,7 +1091,7 @@ export const ProjectDetailsView: React.FC = () => {
             onAddClick={openAddAssumption}
             onEditClick={openEditAssumption}
             getRowLabel={(a) => a.description.substring(0, 40)}
-            onDelete={handleDeleteAssumption}
+            onDelete={canDeleteProject ? handleDeleteAssumption : undefined}
             columns={[
               { key: 'description', label: 'Description', render: (a) => <span className="block max-w-[320px] line-clamp-2 font-semibold text-slate-800" title={a.description}>{a.description}</span> },
               { key: 'priority', label: 'Priority', render: (a) => <StatusBadge value={a.priority} colorMap={PRIORITY_COLORS} shape="rounded" /> },
@@ -1079,7 +1113,7 @@ export const ProjectDetailsView: React.FC = () => {
             onAddClick={openAddIssue}
             onEditClick={openEditIssue}
             getRowLabel={(i) => i.description.substring(0, 40)}
-            onDelete={handleDeleteIssue}
+            onDelete={canDeleteProject ? handleDeleteIssue : undefined}
             columns={[
               { key: 'description', label: 'Description', render: (i) => <span className="block max-w-[320px] line-clamp-2 font-semibold text-slate-800" title={i.description}>{i.description}</span> },
               { key: 'priority', label: 'Priority', render: (i) => <StatusBadge value={i.priority} colorMap={PRIORITY_COLORS} shape="rounded" /> },
@@ -1101,7 +1135,7 @@ export const ProjectDetailsView: React.FC = () => {
             onAddClick={openAddDependency}
             onEditClick={openEditDependency}
             getRowLabel={(d) => d.description.substring(0, 40)}
-            onDelete={handleDeleteDependency}
+            onDelete={canDeleteProject ? handleDeleteDependency : undefined}
             columns={[
               { key: 'description', label: 'Description', render: (d) => <span className="block max-w-[280px] line-clamp-2 font-semibold text-slate-800" title={d.description}>{d.description}</span> },
               { key: 'priority', label: 'Priority', render: (d) => <StatusBadge value={d.priority} colorMap={PRIORITY_COLORS} shape="rounded" /> },
@@ -1178,7 +1212,7 @@ export const ProjectDetailsView: React.FC = () => {
                         )}
                       </TableHeadCell>
                     ))}
-                    <TableHeadCell align="center" sticky="right">Delete</TableHeadCell>
+                    <TableHeadCell align="center" sticky="right">Actions</TableHeadCell>
                   </TableHead>
                   <tbody>
                     {pagedActions.length === 0 ? (
@@ -1313,6 +1347,14 @@ export const ProjectDetailsView: React.FC = () => {
               />
             </Card>
           </div>
+        )}
+
+        {activeTab === 'health' && (
+          <ProjectHealthTab
+            projectId={project.id}
+            users={users}
+            openModalTrigger={openHealthModalTrigger}
+          />
         )}
       </div>
 

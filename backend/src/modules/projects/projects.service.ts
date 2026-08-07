@@ -4,6 +4,7 @@ import { FilterContextService, FilterParams } from '../../common/services/filter
 import { Project } from '../../types';
 import { extractCustomData } from '../../common/utils/db-mapping.util';
 import { Pagination, Paginated, extractTotal } from '../../common/utils/pagination.util';
+import { insertHealthHistory } from './project-health-history.util';
 
 const KNOWN = new Set([
   'id', 'name', 'description', 'accountId', 'accountName',
@@ -162,37 +163,55 @@ export class ProjectsService {
    * Opportunity — so a project whose opportunity owner differs from the account
    * owner (a valid RBAC case) is never wrongly rejected. The `uq_project_opportunity`
    * unique index still guarantees one active project per opportunity (409).
+   *
+   * Also seeds the project's first Project Health entry from the health chosen
+   * on the form, so the Health Tracker's audit trail begins at creation rather
+   * than at the first manual update.
    */
-  private async insertProject(data: any): Promise<Project> {
+  private async insertProject(data: any, requestingUserId?: string): Promise<Project> {
     await this.assertStakeholderAssignment(data.clientStakeholderId, data.accountId, 'client stakeholder');
     await this.assertStakeholderAssignment(data.clientPmStakeholderId, data.accountId, 'client PM stakeholder');
 
     const cd = extractCustomData(data, KNOWN);
+    const health = data.health || 'Green';
 
-    const { rows } = await this.db.query(
-      `INSERT INTO projects
-         (id, name, description, account_id, opportunity_id, owner_id,
-          start_date, end_date, methodology,
-          service_provider_pm_id, practice_lead_id,
-          client_stakeholder_id, client_pm_stakeholder_id,
-          status, health, as_on_date,
-          planned_completion_pct, actual_completion_pct,
-          planned_effort_hours, actual_effort_hours,
-          planned_cost, actual_cost, custom_data)
-       VALUES (gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
-       RETURNING id`,
-      [
-        data.name, data.description ?? '', data.accountId, data.opportunityId, data.ownerId ?? null,
-        data.startDate || null, data.endDate || null, data.methodology || 'Agile',
-        data.serviceProviderPmId ?? null, data.practiceLeadId ?? null,
-        data.clientStakeholderId ?? null, data.clientPmStakeholderId ?? null,
-        data.status || 'Active', data.health || 'Green', data.asOnDate || null,
-        data.plannedCompletionPct ?? null, data.actualCompletionPct ?? null,
-        data.plannedEffortHours ?? null, data.actualEffortHours ?? null,
-        data.plannedCost ?? null, data.actualCost ?? null, JSON.stringify(cd),
-      ],
-    ).catch((err) => { throw this.mapOpportunityConflict(err); });
-    const project = await this.findOne(rows[0].id);
+    // The project row and the health entry that opens its audit trail commit
+    // together — the Health Tracker's history must start at project creation.
+    const newId = await this.db.withTransaction(async (client) => {
+      const { rows } = await client.query(
+        `INSERT INTO projects
+           (id, name, description, account_id, opportunity_id, owner_id,
+            start_date, end_date, methodology,
+            service_provider_pm_id, practice_lead_id,
+            client_stakeholder_id, client_pm_stakeholder_id,
+            status, health, as_on_date,
+            planned_completion_pct, actual_completion_pct,
+            planned_effort_hours, actual_effort_hours,
+            planned_cost, actual_cost, custom_data)
+         VALUES (gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
+         RETURNING id`,
+        [
+          data.name, data.description ?? '', data.accountId, data.opportunityId, data.ownerId ?? null,
+          data.startDate || null, data.endDate || null, data.methodology || 'Agile',
+          data.serviceProviderPmId ?? null, data.practiceLeadId ?? null,
+          data.clientStakeholderId ?? null, data.clientPmStakeholderId ?? null,
+          data.status || 'Active', health, data.asOnDate || null,
+          data.plannedCompletionPct ?? null, data.actualCompletionPct ?? null,
+          data.plannedEffortHours ?? null, data.actualEffortHours ?? null,
+          data.plannedCost ?? null, data.actualCost ?? null, JSON.stringify(cd),
+        ],
+      );
+      // No summary text is invented here — the history entry records the health
+      // and who set it; only a user-written summary ever fills status_summary.
+      await insertHealthHistory(client, {
+        projectId: rows[0].id,
+        health,
+        statusSummary: '',
+        updatedById: requestingUserId ?? data.ownerId ?? null,
+      });
+      return rows[0].id as string;
+    }).catch((err) => { throw this.mapOpportunityConflict(err); });
+    const project = await this.findOne(newId);
     this.logger.log(`Project created [id=${project.id} opportunityId=${project.opportunityId}]`);
     await this.log(`Created Project '${project.name}'`, project.accountId, project.id, data.ownerId);
     return project;
@@ -217,31 +236,48 @@ export class ProjectsService {
     // Ownership (owner_id) preserved from DB — never overwritten by a regular update.
     const effectiveOwnerId = existing.ownerId ?? null;
 
-    await this.db.query(
-      `UPDATE projects SET
-         name=$1, description=$2, account_id=$3, opportunity_id=$4, owner_id=$5,
-         start_date=$6, end_date=$7, methodology=$8,
-         service_provider_pm_id=$9, practice_lead_id=$10,
-         client_stakeholder_id=$11, client_pm_stakeholder_id=$12,
-         status=$13, health=$14, as_on_date=$15,
-         planned_completion_pct=$16, actual_completion_pct=$17,
-         planned_effort_hours=$18, actual_effort_hours=$19,
-         planned_cost=$20, actual_cost=$21,
-         custom_data=$22, updated_at=NOW()
-       WHERE id=$23 AND is_deleted=FALSE`,
-      [
-        data.name ?? existing.name, data.description ?? existing.description ?? '',
-        data.accountId ?? existing.accountId, data.opportunityId ?? existing.opportunityId, effectiveOwnerId,
-        data.startDate || null, data.endDate || null, data.methodology || existing.methodology || 'Agile',
-        data.serviceProviderPmId ?? null, data.practiceLeadId ?? null,
-        data.clientStakeholderId ?? null, data.clientPmStakeholderId ?? null,
-        data.status || existing.status || 'Active', data.health || existing.health || 'Green', data.asOnDate || null,
-        data.plannedCompletionPct ?? null, data.actualCompletionPct ?? null,
-        data.plannedEffortHours ?? null, data.actualEffortHours ?? null,
-        data.plannedCost ?? null, data.actualCost ?? null, JSON.stringify(cd),
-        id,
-      ],
-    ).catch((err) => { throw this.mapOpportunityConflict(err); });
+    // A changed Health must land in the Project Health Tracker's history too —
+    // the Overview reads the latest entry, so the two can never diverge. An
+    // unchanged Health (every save that isn't about health) writes nothing.
+    const health = data.health || existing.health || 'Green';
+    const healthChanged = health !== existing.health;
+
+    await this.db.withTransaction(async (client) => {
+      await client.query(
+        `UPDATE projects SET
+           name=$1, description=$2, account_id=$3, opportunity_id=$4, owner_id=$5,
+           start_date=$6, end_date=$7, methodology=$8,
+           service_provider_pm_id=$9, practice_lead_id=$10,
+           client_stakeholder_id=$11, client_pm_stakeholder_id=$12,
+           status=$13, health=$14, as_on_date=$15,
+           planned_completion_pct=$16, actual_completion_pct=$17,
+           planned_effort_hours=$18, actual_effort_hours=$19,
+           planned_cost=$20, actual_cost=$21,
+           custom_data=$22, updated_at=NOW()
+         WHERE id=$23 AND is_deleted=FALSE`,
+        [
+          data.name ?? existing.name, data.description ?? existing.description ?? '',
+          data.accountId ?? existing.accountId, data.opportunityId ?? existing.opportunityId, effectiveOwnerId,
+          data.startDate || null, data.endDate || null, data.methodology || existing.methodology || 'Agile',
+          data.serviceProviderPmId ?? null, data.practiceLeadId ?? null,
+          data.clientStakeholderId ?? null, data.clientPmStakeholderId ?? null,
+          data.status || existing.status || 'Active', health, data.asOnDate || null,
+          data.plannedCompletionPct ?? null, data.actualCompletionPct ?? null,
+          data.plannedEffortHours ?? null, data.actualEffortHours ?? null,
+          data.plannedCost ?? null, data.actualCost ?? null, JSON.stringify(cd),
+          id,
+        ],
+      );
+      if (healthChanged) {
+        // Health-only entry: no generated summary text (see create()).
+        await insertHealthHistory(client, {
+          projectId: id,
+          health,
+          statusSummary: '',
+          updatedById: requestingUserId ?? null,
+        });
+      }
+    }).catch((err) => { throw this.mapOpportunityConflict(err); });
     const project = await this.findOne(id);
     await this.log(`Updated Project '${project.name}'`, project.accountId, project.id, requestingUserId);
     return project;
@@ -304,7 +340,7 @@ export class ProjectsService {
    * (one active project per opportunity) to a friendly 409, so concurrent
    * conversions can never produce a duplicate project for the same deal.
    */
-  async createFromOpportunity(opp: any, data: any = {}): Promise<Project> {
+  async createFromOpportunity(opp: any, data: any = {}, requestingUserId?: string): Promise<Project> {
     const merged = {
       ...data,
       accountId:     opp.accountId,
@@ -316,7 +352,7 @@ export class ProjectsService {
       endDate:       data.endDate ?? opp.allocationEndDate ?? undefined,
       clientStakeholderId: data.clientStakeholderId ?? opp.clientStakeholderId ?? undefined,
     };
-    const project = await this.insertProject(merged);
+    const project = await this.insertProject(merged, requestingUserId);
     this.logger.log(`Project created from Won Opportunity [projectId=${project.id} opportunityId=${opp.id}]`);
     return project;
   }

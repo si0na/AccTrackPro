@@ -5,6 +5,7 @@ import {
 import { ProjectAssumptionsService } from './project-assumptions.service';
 import { CreateProjectAssumptionDto, UpdateProjectAssumptionDto } from './dto/project-assumptions.dto';
 import { AuthUser, JwtPayload } from '../auth/auth-user.decorator';
+import { RequirePermission } from '../rbac/require-permission.decorator';
 
 @Controller('projects/:projectId/assumptions')
 export class ProjectAssumptionsController {
@@ -36,6 +37,7 @@ export class ProjectAssumptionsController {
   }
 
   @Delete(':id')
+  @RequirePermission('projects', 'delete')
   @HttpCode(HttpStatus.OK)
   remove(
     @Param('projectId') projectId: string,

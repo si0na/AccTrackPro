@@ -55,7 +55,10 @@ export const ProjectsListView: React.FC = () => {
     globalAccountId: selectedAccountFilter,
     refreshData,
     loading,
+    can,
   } = useCRM();
+
+  const canDeleteProject = can('projects', 'delete');
 
   const [searchQuery, setSearchQuery] = useState('');
   const [healthFilter, setHealthFilter] = useState<string>('All');
@@ -255,12 +258,14 @@ export const ProjectsListView: React.FC = () => {
                             icon={<Eye className="w-3.5 h-3.5" />}
                             onClick={() => handleRowClick(p.id)}
                           />
-                          <RowActionButton
-                            intent="delete"
-                            label={`Delete project ${p.name}`}
-                            icon={<Trash2 className="w-3.5 h-3.5" />}
-                            onClick={() => setDeleteTarget({ id: p.id, label: p.name })}
-                          />
+                          {canDeleteProject && (
+                            <RowActionButton
+                              intent="delete"
+                              label={`Delete project ${p.name}`}
+                              icon={<Trash2 className="w-3.5 h-3.5" />}
+                              onClick={() => setDeleteTarget({ id: p.id, label: p.name })}
+                            />
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>

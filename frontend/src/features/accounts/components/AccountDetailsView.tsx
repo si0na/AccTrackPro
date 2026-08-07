@@ -911,7 +911,7 @@ export const AccountDetailsView: React.FC = () => {
                         {col.name}
                       </TableHeadCell>
                     ))}
-                    <TableHeadCell align="center" sticky="right">Delete</TableHeadCell>
+                    <TableHeadCell align="center" sticky="right">Actions</TableHeadCell>
                   </TableHead>
                   <tbody>
                     {visibleActions.length === 0 ? (
