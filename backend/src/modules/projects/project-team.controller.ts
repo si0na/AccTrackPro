@@ -5,6 +5,7 @@ import {
 import { ProjectTeamService } from './project-team.service';
 import { CreateProjectTeamMemberDto, UpdateProjectTeamMemberDto } from './dto/project-team.dto';
 import { AuthUser, JwtPayload } from '../auth/auth-user.decorator';
+import { RequirePermission } from '../rbac/require-permission.decorator';
 
 @Controller('projects/:projectId/team')
 export class ProjectTeamController {
@@ -36,6 +37,7 @@ export class ProjectTeamController {
   }
 
   @Delete(':id')
+  @RequirePermission('projects', 'delete')
   @HttpCode(HttpStatus.OK)
   remove(
     @Param('projectId') projectId: string,

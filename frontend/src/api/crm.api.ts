@@ -5,7 +5,7 @@ import type {
   CRMNotification, Alert, ForecastData,
   AdminSystemOverview, AdminUser, FinancialCalendar, AdminSettings, FYQuarterDef,
   PerformanceEvaluation, EmployeeMaster, Project, ProjectTeamMember,
-  ProjectMilestone, ProjectRisk, ProjectAssumption, ProjectIssue, ProjectDependency,
+  ProjectMilestone, ProjectRisk, ProjectAssumption, ProjectIssue, ProjectDependency, ProjectHealthUpdate,
   OpportunityForecastResult, OpportunityForecastPayload,
   Role, PermissionMatrix, MyPermissions,
 } from '@/types';
@@ -175,6 +175,13 @@ export const projectsApi = {
   update: (id: string, data: Project) => apiClient.put<Project>(`/projects/${id}`, data).then((r) => r.data),
   restore: (id: string) => apiClient.patch<Project>(`/projects/${id}/restore`).then((r) => r.data),
   delete: (id: string) => apiClient.delete<{ success: boolean }>(`/projects/${id}`).then((r) => r.data),
+};
+
+export const projectHealthApi = {
+  getAllForProject: (projectId: string) =>
+    apiClient.get<ProjectHealthUpdate[]>(`/projects/${projectId}/health`).then((r) => r.data),
+  create: (projectId: string, data: Omit<ProjectHealthUpdate, 'id' | 'projectId' | 'createdAt' | 'updatedById' | 'updatedByName' | 'reviewedByName'>) =>
+    apiClient.post<ProjectHealthUpdate>(`/projects/${projectId}/health`, data).then((r) => r.data),
 };
 
 export const projectTeamApi = {
@@ -450,6 +457,11 @@ export const documentsApi = {
     apiClient
       .get<Blob>(`/documents/${id}/download`, { responseType: 'blob' })
       .then((r) => r.data),
+
+  getShareToken: (id: string) =>
+    apiClient
+      .get<{ token: string }>(`/documents/${id}/share-token`)
+      .then((r) => r.data.token),
 
   delete: (id: string) =>
     apiClient.delete<{ success: boolean }>(`/documents/${id}`).then((r) => r.data),

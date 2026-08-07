@@ -5,6 +5,7 @@ import {
 import { ProjectRisksService } from './project-risks.service';
 import { CreateProjectRiskDto, UpdateProjectRiskDto } from './dto/project-risks.dto';
 import { AuthUser, JwtPayload } from '../auth/auth-user.decorator';
+import { RequirePermission } from '../rbac/require-permission.decorator';
 
 @Controller('projects/:projectId/risks')
 export class ProjectRisksController {
@@ -36,6 +37,7 @@ export class ProjectRisksController {
   }
 
   @Delete(':id')
+  @RequirePermission('projects', 'delete')
   @HttpCode(HttpStatus.OK)
   remove(
     @Param('projectId') projectId: string,

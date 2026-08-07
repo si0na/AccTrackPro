@@ -5,6 +5,7 @@ import {
 import { ProjectsService } from './projects.service';
 import { CreateProjectDto, UpdateProjectDto } from './dto/project.dto';
 import { AuthUser, JwtPayload } from '../auth/auth-user.decorator';
+import { RequirePermission } from '../rbac/require-permission.decorator';
 import { mergeWithCustomFields } from '../../common/utils/merge-custom-fields.util';
 import { parsePagination } from '../../common/utils/pagination.util';
 
@@ -67,6 +68,7 @@ export class ProjectsController {
   }
 
   @Delete(':id')
+  @RequirePermission('projects', 'delete')
   @HttpCode(HttpStatus.OK)
   remove(@Param('id') id: string, @AuthUser() authUser: JwtPayload) {
     return this.projectsService.remove(id, authUser.sub);

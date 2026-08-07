@@ -13,6 +13,8 @@ import { ProjectIssuesController } from './project-issues.controller';
 import { ProjectIssuesService } from './project-issues.service';
 import { ProjectDependenciesController } from './project-dependencies.controller';
 import { ProjectDependenciesService } from './project-dependencies.service';
+import { ProjectHealthController } from './project-health.controller';
+import { ProjectHealthService } from './project-health.service';
 
 @Module({
   controllers: [
@@ -23,6 +25,7 @@ import { ProjectDependenciesService } from './project-dependencies.service';
     ProjectAssumptionsController,
     ProjectIssuesController,
     ProjectDependenciesController,
+    ProjectHealthController,
   ],
   providers: [
     ProjectsService,
@@ -32,6 +35,7 @@ import { ProjectDependenciesService } from './project-dependencies.service';
     ProjectAssumptionsService,
     ProjectIssuesService,
     ProjectDependenciesService,
+    ProjectHealthService,
   ],
   exports: [ProjectsService],
 })

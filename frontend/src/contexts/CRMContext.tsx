@@ -198,6 +198,8 @@ interface CRMContextProps {
   restoreProject: (id: string) => Promise<void>;
   /** Manually create a Project from a Won opportunity (user-initiated conversion). */
   createProjectFromOpportunity: (opportunityId: string, data: Partial<Project>) => Promise<Project>;
+  /** Refetch one project — for writes that change it outside updateProject (e.g. a Health Tracker update). */
+  refreshProject: (id: string) => Promise<void>;
   deactivatedActionItems: ActionItem[];
   addActionItem: (actionItem: Omit<ActionItem, 'id'>) => Promise<ActionItem>;
   updateActionItem: (actionItem: ActionItem) => Promise<void>;

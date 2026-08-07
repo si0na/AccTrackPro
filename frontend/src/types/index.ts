@@ -226,6 +226,25 @@ export interface Project {
   [key: string]: any;
 }
 
+export interface ProjectHealthUpdate {
+  id: string;
+  projectId: string;
+  health: ProjectHealth;
+  statusSummary: string;
+  keyAchievements?: string;
+  currentChallenges?: string;
+  risksImpactingHealth?: string;
+  mitigationPlan?: string;
+  supportRequired?: string;
+  nextReviewDate?: string;
+  overallConfidencePct?: number;
+  reviewedById?: string;
+  reviewedByName?: string;
+  updatedById?: string;
+  updatedByName?: string;
+  createdAt: string;
+}
+
 export interface ProjectTeamMember {
   id: string;
   projectId: string;

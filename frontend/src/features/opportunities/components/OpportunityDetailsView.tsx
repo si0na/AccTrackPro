@@ -912,7 +912,7 @@ export const OpportunityDetailsView: React.FC = () => {
                         )}
                       </TableHeadCell>
                     ))}
-                    <TableHeadCell align="center" sticky="right">Delete</TableHeadCell>
+                    <TableHeadCell align="center" sticky="right">Actions</TableHeadCell>
                   </TableHead>
                   <tbody>
                       {pagedActions.length === 0 ? (

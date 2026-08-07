@@ -5,6 +5,7 @@ import {
 import { ProjectMilestonesService } from './project-milestones.service';
 import { CreateProjectMilestoneDto, UpdateProjectMilestoneDto } from './dto/project-milestones.dto';
 import { AuthUser, JwtPayload } from '../auth/auth-user.decorator';
+import { RequirePermission } from '../rbac/require-permission.decorator';
 
 @Controller('projects/:projectId/milestones')
 export class ProjectMilestonesController {
@@ -36,6 +37,7 @@ export class ProjectMilestonesController {
   }
 
   @Delete(':id')
+  @RequirePermission('projects', 'delete')
   @HttpCode(HttpStatus.OK)
   remove(
     @Param('projectId') projectId: string,

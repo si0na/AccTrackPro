@@ -186,7 +186,7 @@ export const StakeholdersView: React.FC = () => {
               <TableHeadCell>Type</TableHeadCell>
               <TableHeadCell>Department</TableHeadCell>
               <TableHeadCell>Designation</TableHeadCell>
-              <TableHeadCell align="center">Influence</TableHeadCell>
+              <TableHeadCell align="center">Interest</TableHeadCell>
               <TableHeadCell align="center">Relationship</TableHeadCell>
               <TableHeadCell>Email</TableHeadCell>
             </TableHead>

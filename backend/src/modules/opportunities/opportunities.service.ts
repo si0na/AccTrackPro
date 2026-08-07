@@ -564,7 +564,7 @@ ${OPP_FORECAST_SELECT}${totalCol}
     if (opp.projectId) {
       throw new ConflictException('A project already exists for this opportunity.');
     }
-    const project = await this.projectsService.createFromOpportunity(opp, data);
+    const project = await this.projectsService.createFromOpportunity(opp, data, requestingUserId);
     this.logger.log(`Project created from Opportunity [opportunityId=${opp.id} projectId=${project.id}]`);
 
     if (opp.ownerId) {

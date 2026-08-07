@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, ConflictException, UnauthorizedException } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
 import { NotificationEventBus } from '../../common/events/notification-event-bus.service';
 import * as path from 'path';
@@ -6,6 +6,8 @@ import * as fs from 'fs';
 import { randomUUID } from 'crypto';
 import { toIsoString } from '../../common/utils/db-mapping.util';
 import { matchesDeclaredMimeType } from './file-signature.util';
+import { resolveMimeType } from './file-type.util';
+import { JwtService } from '@nestjs/jwt';
 
 export interface CrmDocument {
   id: string;
@@ -61,7 +63,9 @@ function rowToDoc(row: any): CrmDocument {
     opportunityId: row.opportunity_id ?? undefined,
     fileName:     row.file_name,
     originalName: row.original_name,
-    mimeType:     row.mime_type,
+    // Resolved rather than returned verbatim so rows stored before MIME types
+    // were canonicalised on write still report the correct type.
+    mimeType:     resolveMimeType(row.original_name, row.mime_type),
     sizeBytes:    Number(row.size_bytes),
     uploadedBy:   row.uploaded_by,
     createdAt:    toIsoString(row.created_at)!,
@@ -75,6 +79,7 @@ export class DocumentsService {
   constructor(
     private readonly db: DatabaseService,
     private readonly bus: NotificationEventBus,
+    private readonly jwtService: JwtService,
   ) {
     if (!fs.existsSync(UPLOAD_DIR)) {
       fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -121,19 +126,25 @@ export class DocumentsService {
   ): Promise<CrmDocument> {
     if (!file) throw new BadRequestException('No file provided');
     if (file.size > MAX_BYTES) throw new BadRequestException('File exceeds the 50 MB size limit');
-    if (!ALLOWED_MIME.has(file.mimetype)) {
+
+    // Browsers disagree on the MIME type they report for the same file, so the
+    // extension decides the type and the client's value is only a fallback.
+    // This is what stops e.g. a .xlsx arriving as octet-stream, or a .csv
+    // arriving as application/vnd.ms-excel, from being stored as the wrong type.
+    const mimeType = resolveMimeType(file.originalname, file.mimetype);
+    if (!ALLOWED_MIME.has(mimeType)) {
       throw new BadRequestException(
-        `File type "${file.mimetype}" is not supported. Allowed types: PDF, Word, Excel, PowerPoint, images, CSV, TXT, ZIP, JSON`,
+        `File type "${mimeType || file.originalname}" is not supported. Allowed types: PDF, Word, Excel, PowerPoint, images, CSV, TXT, ZIP, JSON`,
       );
     }
-    // The declared MIME type is client-controlled — verify the actual file
-    // content (magic bytes) matches it before anything touches disk.
-    if (!matchesDeclaredMimeType(file.buffer, file.mimetype)) {
+    // Neither the extension nor the declared MIME type describes the bytes —
+    // verify the actual file content (magic bytes) before anything touches disk.
+    if (!matchesDeclaredMimeType(file.buffer, mimeType)) {
       this.logger.warn(
-        `Upload rejected: content of "${file.originalname}" does not match declared type "${file.mimetype}"`,
+        `Upload rejected: content of "${file.originalname}" does not match its type "${mimeType}"`,
       );
       throw new BadRequestException(
-        `The content of "${file.originalname}" does not match its declared type "${file.mimetype}". The file was rejected.`,
+        `The content of "${file.originalname}" does not match its file type "${mimeType}". The file was rejected.`,
       );
     }
 
@@ -188,7 +199,7 @@ export class DocumentsService {
        RETURNING *`,
       // uploaded_by stores the display name (shown in the UI); the uploader's
       // UUID is used for the notification below.
-      [accountId, opportunityId ?? null, storedName, file.originalname, file.mimetype, file.size, uploader.name],
+      [accountId, opportunityId ?? null, storedName, file.originalname, mimeType, file.size, uploader.name],
     );
     const doc = rowToDoc(rows[0]);
 
@@ -240,6 +251,35 @@ export class DocumentsService {
     }
 
     return { success: true };
+  }
+
+  async generateShareToken(id: string, userId?: string): Promise<string> {
+    const doc = await this.findOne(id, userId);
+    // Token is valid for 5 minutes, sufficient time for MS Office Viewer to fetch it
+    return this.jwtService.signAsync({ documentId: doc.id }, { expiresIn: '5m' });
+  }
+
+  async verifyShareToken(token: string): Promise<{ doc: CrmDocument; filePath: string }> {
+    try {
+      const payload = await this.jwtService.verifyAsync(token);
+      if (!payload || !payload.documentId) {
+        throw new UnauthorizedException('Invalid share token');
+      }
+      // Do not pass userId here, as the token itself implies authorization to view this document.
+      // We skip the account owner check since this is a temporary, secure token.
+      const { rows } = await this.db.query(`SELECT * FROM documents WHERE id=$1`, [payload.documentId]);
+      if (!rows.length) throw new NotFoundException('Document not found');
+      
+      const doc = rowToDoc(rows[0]);
+      const filePath = path.join(UPLOAD_DIR, doc.fileName);
+      if (!fs.existsSync(filePath)) {
+        throw new NotFoundException('File data not found on server');
+      }
+      return { doc, filePath };
+    } catch (error) {
+      if (error instanceof NotFoundException) throw error;
+      throw new UnauthorizedException('Invalid or expired share token');
+    }
   }
 
   /** Verify the requesting user owns the account before listing its documents. */
