@@ -16,6 +16,7 @@ import {
 import { LoadingState } from '@/components/common/LoadingState';
 import { FileText, Eye, Download, Trash2 } from 'lucide-react';
 import { getFileTypeInfo } from './fileType';
+import { DocumentPreviewModal } from './preview/DocumentPreviewModal';
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -53,6 +54,7 @@ export const DocumentsPanel: React.FC<DocumentsPanelProps> = ({
   const [docsError, setDocsError] = useState('');
   const [busyDocId, setBusyDocId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Document | null>(null);
+  const [previewTarget, setPreviewTarget] = useState<Document | null>(null);
 
   const targetKey = target.opportunityId ?? target.accountId ?? '';
 
@@ -100,44 +102,14 @@ export const DocumentsPanel: React.FC<DocumentsPanelProps> = ({
     }
   };
 
-  const handleViewDocument = async (docItem: Document) => {
-    if (busyDocId) return;
-    // Open the tab synchronously so popup blockers allow it, then navigate it
-    // to the blob or office viewer once the file has streamed down / token fetched.
-    const viewerTab = window.open('', '_blank');
-    setBusyDocId(docItem.id);
+  /**
+   * Every supported format is previewed in-app, decoded in the browser from the
+   * authenticated download stream — no popup, no external viewer, and no
+   * dependency on the deployment being reachable from the public internet.
+   */
+  const handleViewDocument = (docItem: Document) => {
     setDocsError('');
-    try {
-      if (getFileTypeInfo(docItem.originalName, docItem.mimeType).isOffice) {
-        const token = await documentsApi.getShareToken(docItem.id);
-        // Ensure we have an absolute URL for Microsoft's servers to reach
-        const baseURL = import.meta.env.VITE_API_URL 
-          ? `${import.meta.env.VITE_API_URL}/api` 
-          : `${window.location.origin}/api`;
-        const publicUrl = `${baseURL}/documents/public/${token}/${encodeURIComponent(docItem.originalName)}`;
-        const officeViewerUrl = `https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(publicUrl)}`;
-        
-        if (viewerTab) {
-          viewerTab.location.href = officeViewerUrl;
-        } else {
-          window.open(officeViewerUrl, '_blank');
-        }
-      } else {
-        const blob = await documentsApi.getFileBlob(docItem.id);
-        const url = URL.createObjectURL(blob);
-        if (viewerTab) {
-          viewerTab.location.href = url;
-        } else {
-          window.open(url, '_blank');
-        }
-        setTimeout(() => URL.revokeObjectURL(url), 60_000);
-      }
-    } catch {
-      viewerTab?.close();
-      setDocsError(`Could not open "${docItem.originalName}". Please try again.`);
-    } finally {
-      setBusyDocId(null);
-    }
+    setPreviewTarget(docItem);
   };
 
   const handleDownloadDocument = async (docItem: Document) => {
@@ -225,10 +197,10 @@ export const DocumentsPanel: React.FC<DocumentsPanelProps> = ({
 
                 {/* Actions — always visible so View/Download are discoverable */}
                 <div className="flex items-center space-x-1 shrink-0">
-                  {typeInfo.isBrowserViewable && (
+                  {typeInfo.isPreviewable && (
                     <RowActionButton
                       intent="view"
-                      label={`View "${doc.originalName}" (${typeInfo.label}) in browser`}
+                      label={`View "${doc.originalName}" (${typeInfo.label})`}
                       icon={<Eye className="w-3.5 h-3.5" />}
                       onClick={() => handleViewDocument(doc)}
                       disabled={busyDocId === doc.id}
@@ -278,6 +250,14 @@ export const DocumentsPanel: React.FC<DocumentsPanelProps> = ({
         }}
         onCancel={() => setDeleteTarget(null)}
       />
+
+      {previewTarget && (
+        <DocumentPreviewModal
+          doc={previewTarget}
+          onClose={() => setPreviewTarget(null)}
+          onDownload={() => handleDownloadDocument(previewTarget)}
+        />
+      )}
     </div>
   );
 };

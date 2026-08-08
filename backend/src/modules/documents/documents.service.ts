@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException, BadRequestException, ConflictException, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
 import { NotificationEventBus } from '../../common/events/notification-event-bus.service';
 import * as path from 'path';
@@ -7,7 +7,6 @@ import { randomUUID } from 'crypto';
 import { toIsoString } from '../../common/utils/db-mapping.util';
 import { matchesDeclaredMimeType } from './file-signature.util';
 import { resolveMimeType } from './file-type.util';
-import { JwtService } from '@nestjs/jwt';
 
 export interface CrmDocument {
   id: string;
@@ -79,7 +78,6 @@ export class DocumentsService {
   constructor(
     private readonly db: DatabaseService,
     private readonly bus: NotificationEventBus,
-    private readonly jwtService: JwtService,
   ) {
     if (!fs.existsSync(UPLOAD_DIR)) {
       fs.mkdirSync(UPLOAD_DIR, { recursive: true });
@@ -251,35 +249,6 @@ export class DocumentsService {
     }
 
     return { success: true };
-  }
-
-  async generateShareToken(id: string, userId?: string): Promise<string> {
-    const doc = await this.findOne(id, userId);
-    // Token is valid for 5 minutes, sufficient time for MS Office Viewer to fetch it
-    return this.jwtService.signAsync({ documentId: doc.id }, { expiresIn: '5m' });
-  }
-
-  async verifyShareToken(token: string): Promise<{ doc: CrmDocument; filePath: string }> {
-    try {
-      const payload = await this.jwtService.verifyAsync(token);
-      if (!payload || !payload.documentId) {
-        throw new UnauthorizedException('Invalid share token');
-      }
-      // Do not pass userId here, as the token itself implies authorization to view this document.
-      // We skip the account owner check since this is a temporary, secure token.
-      const { rows } = await this.db.query(`SELECT * FROM documents WHERE id=$1`, [payload.documentId]);
-      if (!rows.length) throw new NotFoundException('Document not found');
-      
-      const doc = rowToDoc(rows[0]);
-      const filePath = path.join(UPLOAD_DIR, doc.fileName);
-      if (!fs.existsSync(filePath)) {
-        throw new NotFoundException('File data not found on server');
-      }
-      return { doc, filePath };
-    } catch (error) {
-      if (error instanceof NotFoundException) throw error;
-      throw new UnauthorizedException('Invalid or expired share token');
-    }
   }
 
   /** Verify the requesting user owns the account before listing its documents. */
