@@ -458,11 +458,6 @@ export const documentsApi = {
       .get<Blob>(`/documents/${id}/download`, { responseType: 'blob' })
       .then((r) => r.data),
 
-  getShareToken: (id: string) =>
-    apiClient
-      .get<{ token: string }>(`/documents/${id}/share-token`)
-      .then((r) => r.data.token),
-
   delete: (id: string) =>
     apiClient.delete<{ success: boolean }>(`/documents/${id}`).then((r) => r.data),
 };

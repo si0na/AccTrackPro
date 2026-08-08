@@ -42,10 +42,12 @@ export interface FileTypeInfo {
   colorClass: string;
   /** Tailwind classes for the type badge. */
   badgeClass: string;
-  /** Office formats are previewed through the Microsoft Office web viewer. */
-  isOffice: boolean;
-  /** The browser can render this file itself from a blob URL. */
-  isBrowserViewable: boolean;
+  /**
+   * The preview modal can render this file. True for every accepted kind —
+   * each format is decoded in the browser (see `preview/previewLoader`), so
+   * nothing depends on an external viewer.
+   */
+  isPreviewable: boolean;
 }
 
 /** Extensions accepted by the upload control — kept in sync with ALLOWED_EXTENSIONS. */
@@ -79,47 +81,47 @@ const KIND_BY_MIME: Record<string, FileKind> = {
   'application/x-zip-compressed': 'zip',
 };
 
-type KindStyle = Omit<FileTypeInfo, 'kind' | 'isBrowserViewable'>;
+type KindStyle = Omit<FileTypeInfo, 'kind' | 'isPreviewable'>;
 
 const STYLE_BY_KIND: Record<FileKind, KindStyle> = {
   pdf: {
-    label: 'PDF', icon: FileType2, isOffice: false,
+    label: 'PDF', icon: FileType2,
     colorClass: 'bg-red-50 text-red-600', badgeClass: 'bg-red-100 text-red-700',
   },
   word: {
-    label: 'Microsoft Word', icon: FileText, isOffice: true,
+    label: 'Microsoft Word', icon: FileText,
     colorClass: 'bg-blue-50 text-blue-600', badgeClass: 'bg-blue-100 text-blue-700',
   },
   excel: {
-    label: 'Microsoft Excel', icon: FileSpreadsheet, isOffice: true,
+    label: 'Microsoft Excel', icon: FileSpreadsheet,
     colorClass: 'bg-green-50 text-green-600', badgeClass: 'bg-green-100 text-green-700',
   },
   powerpoint: {
-    label: 'Microsoft PowerPoint', icon: Presentation, isOffice: true,
+    label: 'Microsoft PowerPoint', icon: Presentation,
     colorClass: 'bg-orange-50 text-orange-600', badgeClass: 'bg-orange-100 text-orange-700',
   },
   csv: {
-    label: 'CSV', icon: Sheet, isOffice: false,
+    label: 'CSV', icon: Sheet,
     colorClass: 'bg-emerald-50 text-emerald-600', badgeClass: 'bg-emerald-100 text-emerald-700',
   },
   text: {
-    label: 'Text', icon: LetterText, isOffice: false,
+    label: 'Text', icon: LetterText,
     colorClass: 'bg-slate-100 text-slate-600', badgeClass: 'bg-slate-200 text-slate-600',
   },
   json: {
-    label: 'JSON', icon: FileJson, isOffice: false,
+    label: 'JSON', icon: FileJson,
     colorClass: 'bg-teal-50 text-teal-600', badgeClass: 'bg-teal-100 text-teal-700',
   },
   image: {
-    label: 'Image', icon: FileImage, isOffice: false,
+    label: 'Image', icon: FileImage,
     colorClass: 'bg-purple-50 text-purple-600', badgeClass: 'bg-purple-100 text-purple-700',
   },
   zip: {
-    label: 'ZIP Archive', icon: FileArchive, isOffice: false,
+    label: 'ZIP Archive', icon: FileArchive,
     colorClass: 'bg-amber-50 text-amber-600', badgeClass: 'bg-amber-100 text-amber-700',
   },
   unknown: {
-    label: 'File', icon: FileIcon, isOffice: false,
+    label: 'File', icon: FileIcon,
     colorClass: 'bg-slate-100 text-slate-500', badgeClass: 'bg-slate-200 text-slate-500',
   },
 };
@@ -152,12 +154,9 @@ export function getFileTypeInfo(fileName: string, mimeType: string): FileTypeInf
   const kind = resolveKind(fileName, mimeType);
   const style = STYLE_BY_KIND[kind];
 
-  // SVG is excluded from in-browser preview: blob URLs are same-origin and a
-  // user-uploaded SVG can embed scripts, so opening one in a tab would be a
-  // stored-XSS vector.
-  const isSvg = extensionOf(fileName) === '.svg' || mimeType === 'image/svg+xml';
-  const isBrowserViewable =
-    !isSvg && kind !== 'zip' && kind !== 'unknown';
-
-  return { kind, ...style, isBrowserViewable };
+  // Only a file whose kind we could not identify has no renderer. SVG is
+  // previewable because the modal inlines it through DOMPurify's SVG profile
+  // instead of opening the raw upload as a same-origin document, which would
+  // have made an embedded <script> a stored-XSS vector.
+  return { kind, ...style, isPreviewable: kind !== 'unknown' };
 }

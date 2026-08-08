@@ -6,7 +6,6 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { DocumentsService } from './documents.service';
 import { AuthUser, JwtPayload } from '../auth/auth-user.decorator';
-import { Public } from '../auth/public.decorator';
 import { createReadStream } from 'fs';
 import type { Response } from 'express';
 
@@ -62,29 +61,5 @@ export class DocumentsController {
   @HttpCode(HttpStatus.OK)
   remove(@Param('id') id: string, @AuthUser() authUser: JwtPayload) {
     return this.service.remove(id, authUser.sub);
-  }
-
-  @Get(':id/share-token')
-  async getShareToken(
-    @Param('id') id: string,
-    @AuthUser() authUser: JwtPayload,
-  ) {
-    const token = await this.service.generateShareToken(id, authUser.sub);
-    return { token };
-  }
-
-  @Public()
-  @Get('public/:token/:filename')
-  async downloadPublic(
-    @Param('token') token: string,
-    @Res({ passthrough: true }) res: Response,
-  ): Promise<StreamableFile> {
-    const { doc, filePath } = await this.service.verifyShareToken(token);
-    res.set({
-      'Content-Type': doc.mimeType,
-      'Content-Disposition': `inline; filename="${doc.originalName}"`,
-      'Content-Length': String(doc.sizeBytes),
-    });
-    return new StreamableFile(createReadStream(filePath));
   }
 }
