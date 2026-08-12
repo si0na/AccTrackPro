@@ -1,4 +1,6 @@
+import { describe, it, expect } from '@jest/globals';
 import { validateEnvironment } from '../env.validation';
+
 
 const STRONG_SECRET = 'a'.repeat(64);
 
@@ -50,10 +52,13 @@ describe('validateEnvironment', () => {
     expect(prod.errors.some((e) => e.includes('32 characters'))).toBe(true);
   });
 
-  it('requires FRONTEND_URL and UPLOAD_DIR in production', () => {
+  it('requires FRONTEND_URL, UPLOAD_DIR, and Azure credentials in production', () => {
     const result = validateEnvironment(baseEnv({ NODE_ENV: 'production' }));
     expect(result.errors.some((e) => e.startsWith('FRONTEND_URL is required'))).toBe(true);
     expect(result.errors.some((e) => e.startsWith('UPLOAD_DIR is required'))).toBe(true);
+    expect(result.errors.some((e) => e.includes('AZURE_TENANT_ID is required'))).toBe(true);
+    expect(result.errors.some((e) => e.includes('AZURE_CLIENT_ID is required'))).toBe(true);
+    expect(result.errors.some((e) => e.includes('AZURE_CLIENT_SECRET is required'))).toBe(true);
   });
 
   it('accepts a fully configured production environment', () => {
@@ -62,9 +67,34 @@ describe('validateEnvironment', () => {
         NODE_ENV: 'production',
         FRONTEND_URL: 'https://crm.example.com',
         UPLOAD_DIR: '/var/lib/acctrack/uploads',
+        AZURE_TENANT_ID: 'tenant-id',
+        AZURE_CLIENT_ID: 'client-id',
+        AZURE_CLIENT_SECRET: 'client-secret',
       }),
     );
     expect(result.errors).toEqual([]);
+  });
+
+  it('warns in development if Graph config is partial', () => {
+    const result = validateEnvironment(
+      baseEnv({
+        AZURE_TENANT_ID: 'tenant-id',
+      }),
+    );
+    expect(result.warnings.some((w) => w.includes('AZURE_CLIENT_ID is missing'))).toBe(true);
+    expect(result.warnings.some((w) => w.includes('AZURE_CLIENT_SECRET is missing'))).toBe(true);
+  });
+
+  it('masks AZURE_CLIENT_SECRET in the summary', () => {
+    const result = validateEnvironment(
+      baseEnv({
+        AZURE_CLIENT_SECRET: 'supersecretvalue',
+      }),
+    );
+    const line = result.summary.find((s) => s.startsWith('AZURE_CLIENT_SECRET='));
+    expect(line).toBeDefined();
+    expect(line).not.toContain('supersecretvalue');
+    expect(line).toContain('*** (16 chars)');
   });
 
   it('warns when UPLOAD_DIR is inside the application directory', () => {

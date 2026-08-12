@@ -6,6 +6,7 @@ import { AuthService } from './auth.service';
 import { JwtAuthGuard } from './jwt.guard';
 import { UsersModule } from '../users/users.module';
 import { EmployeeMasterModule } from '../employee-master/employee-master.module';
+import { GraphMailService } from './graph-mail.service';
 
 @Module({
   imports: [
@@ -24,6 +25,7 @@ import { EmployeeMasterModule } from '../employee-master/employee-master.module'
     AuthService,
     JwtAuthGuard,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
+    GraphMailService,
   ],
   exports: [JwtModule, AuthService],
 })

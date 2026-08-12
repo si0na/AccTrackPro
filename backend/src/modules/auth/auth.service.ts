@@ -10,6 +10,7 @@ import { UsersService } from '../users/users.service';
 import { DatabaseService } from '../../database/database.service';
 import { NotificationEventBus } from '../../common/events/notification-event-bus.service';
 import { EmployeeMasterService } from '../employee-master/employee-master.service';
+import { GraphMailService } from './graph-mail.service';
 
 const ACCESS_EXPIRY_SECS  = parseInt(process.env.ACCESS_TOKEN_EXPIRY_SECS  || '900',    10); // 15 min
 const REFRESH_EXPIRY_SECS = parseInt(process.env.REFRESH_TOKEN_EXPIRY_SECS || '604800', 10); // 7 days
@@ -27,6 +28,7 @@ export class AuthService {
     private readonly db: DatabaseService,
     private readonly bus: NotificationEventBus,
     private readonly employeeMasterService: EmployeeMasterService,
+    private readonly graphMailService: GraphMailService,
   ) {}
 
   // ─── Cookie helpers ─────────────────────────────────────────────────────────
@@ -326,10 +328,31 @@ export class AuthService {
   }
 
   async forgotPassword(email: string, ip: string, userAgent: string): Promise<void> {
-    const user = await this.usersService.findByEmail(email);
+    const normalizedEmail = email.trim().toLowerCase();
+    const user = await this.usersService.findByEmail(normalizedEmail);
 
     // Always respond identically — do not reveal whether email exists
-    if (!user || !user.isActive) return;
+    if (!user || !user.isActive) {
+      this.logger.log(`Password reset requested for non-existent or inactive email: <${normalizedEmail}>`);
+      return;
+    }
+
+    // Cooldown/rate limit check: 60 seconds per user
+    const { rows: recentRequests } = await this.db.query(
+      `SELECT created_at FROM password_reset_tokens
+       WHERE user_id = $1
+       ORDER BY created_at DESC LIMIT 1`,
+      [user.id],
+    );
+
+    if (recentRequests.length > 0) {
+      const lastCreated = new Date(recentRequests[0].created_at);
+      const cooldownMs = 60 * 1000;
+      if (Date.now() - lastCreated.getTime() < cooldownMs) {
+        this.logger.warn(`Password reset request throttled due to cooldown active for user: <${normalizedEmail}>`);
+        return;
+      }
+    }
 
     // Invalidate any outstanding reset tokens for this user
     await this.db.query(
@@ -347,55 +370,112 @@ export class AuthService {
       [user.id, tokenHash, expiresAt],
     );
 
-    await this.audit('password_reset_requested', user.id, email, ip, userAgent, true, {});
+    await this.audit('password_reset_requested', user.id, normalizedEmail, ip, userAgent, true, {});
 
-    if (process.env.NODE_ENV !== 'production') {
-      // In production, send via email (SMTP/SendGrid/etc.)
-      this.logger.warn(
-        `[DEV] Password reset token for <${email}>: ${rawToken}  (expires ${expiresAt.toISOString()})`,
-      );
-    }
+    const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+    const resetUrl = `${frontendUrl}/reset-password?token=${rawToken}`;
+    const sender = process.env.GRAPH_SENDER_EMAIL || 'noreply@reflectionsinfos.com';
+
+    // HTML content for professional AccTrack Pro email
+    const htmlContent = `
+      <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 30px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
+        <div style="text-align: center; margin-bottom: 32px; padding-bottom: 20px; border-bottom: 1px solid #f1f5f9;">
+          <span style="font-size: 24px; font-weight: bold; color: #2563eb; letter-spacing: -0.025em;">AccTrack Pro</span>
+        </div>
+        <p style="font-size: 16px; color: #1e293b; margin-top: 0; font-weight: 500;">Hello ${user.name || 'User'},</p>
+        <p style="font-size: 14px; color: #475569; line-height: 1.6; margin-bottom: 24px;">
+          We received a request to reset your password for your AccTrack Pro account. If you did not make this request, you can safely ignore this email — your password will remain secure.
+        </p>
+        <div style="text-align: center; margin: 36px 0;">
+          <a href="${resetUrl}" style="background-color: #2563eb; color: #ffffff; padding: 14px 28px; font-size: 14px; font-weight: 600; border-radius: 8px; text-decoration: none; display: inline-block; transition: background-color 0.2s;">
+            Reset Password
+          </a>
+        </div>
+        <p style="font-size: 13px; color: #64748b; line-height: 1.6; margin-top: 24px;">
+          For security, this request is short-lived and will expire in <strong>15 minutes</strong>. It can only be used once.
+        </p>
+        <hr style="border: 0; border-top: 1px solid #f1f5f9; margin: 32px 0;" />
+        <p style="font-size: 11px; color: #94a3b8; line-height: 1.6; text-align: center; margin-bottom: 0;">
+          This is an automated security transmission. Please do not reply directly to this email.<br />
+          Sender: ${sender}
+        </p>
+      </div>
+    `;
+
+    // Send the email using Microsoft Graph API
+    await this.graphMailService.sendMail(
+      user.email,
+      'AccTrack Pro – Password Reset Request',
+      htmlContent,
+    );
   }
 
   async resetPassword(token: string, newPassword: string, ip: string, userAgent: string): Promise<void> {
     const tokenHash = this.hashToken(token);
 
-    const { rows } = await this.db.query(
-      `SELECT prt.id, u.id AS uid, u.email
-       FROM password_reset_tokens prt
-       JOIN users u ON u.id = prt.user_id
-       WHERE prt.token_hash = $1
-         AND prt.expires_at > NOW()
-         AND prt.used_at IS NULL`,
-      [tokenHash],
-    );
+    await this.db.withTransaction(async (client) => {
+      // 1. Find the token record and verify it is unused & unexpired
+      const { rows } = await client.query(
+        `SELECT prt.id, u.id AS uid, u.email
+         FROM password_reset_tokens prt
+         JOIN users u ON u.id = prt.user_id
+         WHERE prt.token_hash = $1
+           AND prt.expires_at > NOW()
+           AND prt.used_at IS NULL`,
+        [tokenHash],
+      );
 
-    if (!rows.length) throw new BadRequestException('Invalid or expired reset token');
+      if (!rows.length) {
+        throw new BadRequestException('Invalid or expired reset token');
+      }
 
-    const row = rows[0];
+      const row = rows[0];
 
-    // Mark token as consumed
-    await this.db.query(
-      `UPDATE password_reset_tokens SET used_at = NOW() WHERE id = $1`,
-      [row.id],
-    );
+      // 2. Mark the current reset token as used (consumed)
+      await client.query(
+        `UPDATE password_reset_tokens SET used_at = NOW() WHERE id = $1`,
+        [row.id],
+      );
 
-    const newHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
-    await this.usersService.updatePassword(row.uid, newHash);
+      // 3. Invalidate all other active reset tokens for this user
+      await client.query(
+        `UPDATE password_reset_tokens SET used_at = NOW() WHERE user_id = $1 AND used_at IS NULL`,
+        [row.uid],
+      );
 
-    // Force re-login on all devices
-    await this.revokeAllRefreshTokens(row.uid);
+      // 4. Hash the new password using bcrypt
+      const newHash = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
 
-    await this.audit('password_reset', row.uid, row.email, ip, userAgent, true, {});
+      // 5. Update user's password record
+      await client.query(
+        `UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2`,
+        [newHash, row.uid],
+      );
 
-    this.bus.emit({
-      userId:               row.uid,
-      type:                 'System',
-      eventType:            'PasswordReset',
-      title:                'Password Reset',
-      message:              'Your password has been reset successfully. Please sign in with your new password.',
-      severity:             'Warning',
-      notificationCategory: 'SYSTEM',
+      // 6. Revoke all active refresh tokens/sessions for this user
+      await client.query(
+        `UPDATE refresh_tokens SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL`,
+        [row.uid],
+      );
+
+      // 7. Save audit log inside transaction
+      await client.query(
+        `INSERT INTO auth_audit_log
+           (id, event, user_id, email, ip_address, user_agent, success, details)
+         VALUES (gen_random_uuid()::TEXT, $1, $2, $3, $4, $5, $6, $7)`,
+        ['password_reset', row.uid, row.email, ip, userAgent.slice(0, 500), true, JSON.stringify({})],
+      );
+
+      // 8. Emit notification on the event bus
+      this.bus.emit({
+        userId:               row.uid,
+        type:                 'System',
+        eventType:            'PasswordReset',
+        title:                'Password Reset',
+        message:              'Your password has been reset successfully. Please sign in with your new password.',
+        severity:             'Warning',
+        notificationCategory: 'SYSTEM',
+      });
     });
   }
 

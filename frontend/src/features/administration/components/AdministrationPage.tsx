@@ -113,7 +113,10 @@ const Toolbar: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export const AdministrationPage: React.FC = () => {
-  const { financialYears, financialCalendar, adminSettings, refreshData, refreshPermissions, can } = useCRM();
+  // Financial years, the calendar template and admin settings are all owned by
+  // loadConfig() — refreshData() only refetches operational entities and would
+  // leave this page showing stale config after a save.
+  const { financialYears, financialCalendar, adminSettings, loadConfig, refreshPermissions, can } = useCRM();
 
   const [activeTab, setActiveTab] = useState<AdminTab>('users');
 
@@ -258,13 +261,19 @@ export const AdministrationPage: React.FC = () => {
     setFYLoading(true);
     setFYError('');
     setFYSuccess('');
+    const existing = financialYears.find((fy) => fy.startYear === startYear);
     try {
-      await financialYearsApi.create({ startYear });
-      await refreshData();
-      setFYSuccess(`Financial year created successfully.`);
+      const created = await financialYearsApi.create({ startYear });
+      await loadConfig();
+      setFYSuccess(
+        existing
+          ? `FY ${created.fyLabel} already existed — it has been re-activated.`
+          : `Financial year FY ${created.fyLabel} created successfully.`,
+      );
       setNewFYYear('');
-    } catch {
-      setFYError('Failed to create financial year — it may already exist.');
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      setFYError(typeof msg === 'string' ? msg : 'Failed to create financial year.');
     } finally {
       setFYLoading(false);
     }
@@ -280,7 +289,7 @@ export const AdministrationPage: React.FC = () => {
       } else {
         await financialYearsApi.activate(id);
       }
-      await refreshData();
+      await loadConfig();
     } catch {
       setFYError('Failed to update financial year status.');
     } finally {
@@ -296,7 +305,7 @@ export const AdministrationPage: React.FC = () => {
     try {
       const quarters = deriveQuarters(editCalStartMonth);
       await financialYearsApi.updateCalendar(fyId, { startMonth: editCalStartMonth, quarters });
-      await refreshData();
+      await loadConfig();
       setEditingCalendarFYId(null);
     } catch {
       setCalendarEditError('Failed to update calendar.');
@@ -436,7 +445,7 @@ export const AdministrationPage: React.FC = () => {
     try {
       const quarters = deriveQuarters(calStartMonth);
       await administrationApi.updateFinancialCalendar({ startMonth: calStartMonth, quarters });
-      await refreshData();
+      await loadConfig();
       setCalSuccess('Financial calendar updated. New financial years will use this structure.');
     } catch {
       setCalError('Failed to save financial calendar configuration.');
@@ -457,7 +466,7 @@ export const AdministrationPage: React.FC = () => {
     setSettingsSuccess('');
     try {
       await administrationApi.updateSettings({ fySelectorCount: String(n) });
-      await refreshData();
+      await loadConfig();
       setSettingsSuccess('Settings saved.');
     } catch { /* swallow */ } finally {
       setSettingsSaving(false);

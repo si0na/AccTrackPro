@@ -68,15 +68,23 @@ const InnerLayout: React.FC = () => {
 
   const navigate = useNavigate();
   const [isProfileOpen, setIsProfileOpen] = useState(false);
-  const [authView, setAuthView] = useState<'login' | 'signup' | 'forgot-password' | 'reset-password'>('login');
+  const [authView, setAuthView] = useState<'login' | 'signup' | 'forgot-password' | 'reset-password'>(
+    window.location.pathname === '/reset-password' ? 'reset-password' : 'login'
+  );
 
   // Sync state → URL so browser history reflects the current view
   useEffect(() => {
+    if (!isLoggedIn) {
+      if (window.location.pathname === '/reset-password') {
+        return;
+      }
+      return;
+    }
     const path = buildPath(currentView, selectedAccountId, selectedOpportunityId, selectedProjectId);
     if (window.location.pathname !== path) {
       navigate(path, { replace: true });
     }
-  }, [currentView, selectedAccountId, selectedOpportunityId, selectedProjectId, navigate]);
+  }, [currentView, selectedAccountId, selectedOpportunityId, selectedProjectId, navigate, isLoggedIn]);
 
   if (authLoading) {
     return <FullPageLoading />;
@@ -102,8 +110,14 @@ const InnerLayout: React.FC = () => {
     if (authView === 'reset-password') {
       return (
         <ResetPasswordPage
-          onBack={() => setAuthView('login')}
-          onSuccess={() => setAuthView('login')}
+          onBack={() => {
+            setAuthView('login');
+            navigate('/', { replace: true });
+          }}
+          onSuccess={() => {
+            setAuthView('login');
+            navigate('/', { replace: true });
+          }}
         />
       );
     }
