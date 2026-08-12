@@ -10,6 +10,8 @@ function rowToUser(row: any) {
     role:        row.role,
     roleId:      row.role_id ?? null,
     roleKey:     row.role_key ?? null,
+    roleIds:     row.role_ids ?? [],
+    roleKeys:    row.role_keys ?? [],
     employeeId:  row.employee_id ?? null,
     department:  row.department ?? null,
     designation: row.designation ?? null,
@@ -41,15 +43,94 @@ export class UsersService {
 
   async findAll(): Promise<any[]> {
     const { rows } = await this.db.query(
-      `SELECT u.id, u.name, u.email, u.role, u.role_id, r.key AS role_key,
-              u.employee_id, u.department, u.designation,
-              u.avatar_data, u.is_active, u.last_login, u.created_at, u.updated_at
-       FROM users u
-       LEFT JOIN roles r ON r.id = u.role_id
-       WHERE u.is_active = TRUE ORDER BY u.created_at DESC`,
+      `SELECT 
+         COALESCE(u.id, em.id) AS id,
+         COALESCE(NULLIF(u.name, ''), NULLIF(em.name, ''), u.email, em.email) AS name,
+         COALESCE(u.email, em.email) AS email,
+         COALESCE(u.role, r.name, '') AS role,
+         COALESCE(u.role_id, em.role_id) AS role_id,
+         r.key AS role_key,
+         COALESCE(u.employee_id, em.employee_id) AS employee_id,
+         COALESCE(u.department, em.department) AS department,
+         COALESCE(u.designation, em.designation) AS designation,
+         COALESCE(u.avatar_data, '') AS avatar_data,
+         COALESCE(u.is_active, TRUE) AS is_active,
+         u.last_login,
+         COALESCE(u.created_at, em.created_at) AS created_at,
+         u.updated_at,
+         COALESCE(ur.role_ids, er.role_ids, CASE WHEN em.role_id IS NOT NULL THEN ARRAY[em.role_id] ELSE ARRAY[]::TEXT[] END) AS role_ids,
+         COALESCE(ur.role_keys, er.role_keys, CASE WHEN r.key IS NOT NULL THEN ARRAY[r.key] ELSE ARRAY[]::TEXT[] END) AS role_keys
+       FROM employee_master em
+       FULL OUTER JOIN users u ON LOWER(u.email) = LOWER(em.email)
+       LEFT JOIN roles r ON r.id = COALESCE(u.role_id, em.role_id)
+       LEFT JOIN LATERAL (
+         SELECT array_agg(rr.id ORDER BY rr.is_system DESC, rr.name ASC) AS role_ids,
+                array_agg(rr.key ORDER BY rr.is_system DESC, rr.name ASC) AS role_keys
+         FROM user_roles x
+         JOIN roles rr ON rr.id = x.role_id
+         WHERE x.user_id = u.id
+       ) ur ON TRUE
+       LEFT JOIN LATERAL (
+         SELECT array_agg(rr.id ORDER BY rr.is_system DESC, rr.name ASC) AS role_ids,
+                array_agg(rr.key ORDER BY rr.is_system DESC, rr.name ASC) AS role_keys
+         FROM employee_roles x
+         JOIN roles rr ON rr.id = x.role_id
+         WHERE x.employee_id = em.id
+       ) er ON TRUE
+       WHERE COALESCE(u.is_active, TRUE) = TRUE
+       ORDER BY COALESCE(u.name, em.name) ASC`,
     );
     return rows.map(rowToUser);
   }
+
+  /**
+   * All system users as Service Provider options — no is_active filter.
+   * Every person who exists as a System User is available as a Service Provider,
+   * regardless of registration or active status.
+   */
+  async findAllAsServiceProviders(): Promise<any[]> {
+    const { rows } = await this.db.query(
+      `SELECT u.id, u.name, u.email, u.department, u.designation, u.is_active,
+              (u.name IS NULL OR u.name = '') AS is_pending
+       FROM users u
+       ORDER BY u.name ASC NULLS LAST, u.email ASC`,
+    );
+    return rows.map((r) => ({
+      id:          r.id,
+      name:        r.name ?? '',
+      email:       r.email ?? '',
+      department:  r.department ?? '',
+      designation: r.designation ?? '',
+      isActive:    r.is_active,
+      isPending:   r.is_pending,
+    }));
+  }
+
+
+  /**
+   * All active System Users who hold the given role key (via user_roles join or
+   * primary role_id). Used by the Service Provider PM picker.
+   */
+  async findByRole(roleKey: string): Promise<any[]> {
+    const { rows } = await this.db.query(
+      `SELECT DISTINCT u.id, u.name, u.email, u.department, u.designation, u.is_active
+       FROM users u
+       JOIN user_roles ur ON ur.user_id = u.id
+       JOIN roles r ON r.id = ur.role_id AND r.key = $1
+       WHERE u.is_active = TRUE
+       ORDER BY u.name ASC NULLS LAST, u.email ASC`,
+      [roleKey],
+    );
+    return rows.map((r) => ({
+      id:          r.id,
+      name:        r.name ?? '',
+      email:       r.email ?? '',
+      department:  r.department ?? '',
+      designation: r.designation ?? '',
+      isActive:    r.is_active,
+    }));
+  }
+
 
   async findById(id: string): Promise<any | null> {
     const { rows } = await this.db.query(
@@ -59,6 +140,7 @@ export class UsersService {
     if (!rows.length) return null;
     return rowToUserFull(rows[0]);
   }
+
 
   async findByEmail(email: string): Promise<any | null> {
     const { rows } = await this.db.query(
@@ -98,6 +180,7 @@ export class UsersService {
    * sync (it backs the JWT display claim). Returns the updated user.
    */
   async adminUpdate(id: string, data: {
+    name?: string | null;
     roleId?: string | null; roleName?: string | null;
     department?: string | null; designation?: string | null;
     employeeId?: string | null; isActive?: boolean;
@@ -113,6 +196,7 @@ export class UsersService {
          designation = COALESCE($5, designation),
          employee_id = COALESCE($6, employee_id),
          is_active   = COALESCE($7, is_active),
+         name        = COALESCE($8, name),
          updated_at  = NOW()
        WHERE id = $1
        RETURNING *`,
@@ -124,6 +208,7 @@ export class UsersService {
         data.designation ?? null,
         data.employeeId ?? null,
         typeof data.isActive === 'boolean' ? data.isActive : null,
+        data.name ?? null,
       ],
     );
 

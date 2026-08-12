@@ -13,8 +13,9 @@ export class CreateOpportunityDto {
   @IsString() @IsNotEmpty({ message: 'accountId is required' })
   accountId!: string;
 
-  @IsOptional() @IsIn(['Lead', 'Qualified', 'Proposal', 'Negotiation', 'Verbal Agreement', 'Won', 'Blocked', 'Delayed', 'Lost'])
-  stage?: string;
+  @IsString() @IsNotEmpty({ message: 'Stage is required' })
+  @IsIn(['Lead', 'Qualified', 'Proposal', 'Negotiation', 'Verbal Agreement', 'Won', 'Blocked', 'Delayed', 'Lost'])
+  stage!: string;
 
   @IsNumber() @IsOptional() @Min(0, { message: 'Value cannot be negative' })
   @Max(9999999999999, { message: 'Value exceeds the maximum supported deal size' })
@@ -69,6 +70,11 @@ export class CreateOpportunityDto {
   @IsOptional() @IsString()
   serviceProviderStakeholderId?: string;
 
+  @EmptyToUndefined()
+  @IsOptional() @IsString()
+  serviceProviderPmId?: string;
+
+
   @IsBoolean() @IsOptional()
   aopAvailable?: boolean;
 
@@ -77,14 +83,15 @@ export class CreateOpportunityDto {
   @Matches(AOP_YEAR_RE, { message: AOP_YEAR_MSG })
   aopYear?: string;
 
-  @IsOptional() @IsIn(['Growth', 'Pursuit', 'Whitespace', 'New', 'Extension'], {
+  @IsString() @IsNotEmpty({ message: 'Opportunity Type is required' })
+  @IsIn(['Growth', 'Pursuit', 'Whitespace', 'New', 'Extension'], {
     message: 'Opportunity Type must be one of: Growth, Pursuit, Whitespace, New, or Extension',
   })
-  opportunityType?: string;
+  opportunityType!: string;
 
-  @EmptyToUndefined()
-  @IsOptional() @IsIn(SERVICE_LINE_OPTIONS, { message: 'Service Line must be one of the allowed values' })
-  serviceLine?: string;
+  @IsString() @IsNotEmpty({ message: 'Service Line is required' })
+  @IsIn(SERVICE_LINE_OPTIONS, { message: 'Service Line must be one of the allowed values' })
+  serviceLine!: string;
 
   @EmptyToUndefined()
   @IsOptional() @IsIn(['Green', 'Amber', 'Red'], { message: 'Opportunity Health must be Green, Amber, or Red' })

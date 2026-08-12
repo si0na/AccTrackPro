@@ -160,6 +160,16 @@ export class PermissionsService {
     return ctx.permissions.has(`${moduleKey}:${permissionKey}`);
   }
 
+  /**
+   * Returns true when the given user holds the role identified by `roleKey`
+   * (e.g. `'project-manager'`). Uses the cached access context so no extra
+   * DB round-trip is needed on a warm cache.
+   */
+  async userHasRole(userId: string, roleKey: string): Promise<boolean> {
+    const ctx = await this.getUserAccessContext(userId);
+    return ctx.roleKeys.includes(roleKey);
+  }
+
   /** The logged-in user's effective permission set — consumed by the SPA. */
   async getMyPermissions(userId: string): Promise<{
     roleKey: string | null;
@@ -328,7 +338,7 @@ export class PermissionsService {
     }));
   }
 
-  async createRole(data: { name: string; description?: string }, actorUserId: string): Promise<{ id: string }> {
+  async createRole(data: { name: string; description?: string; accountScopeField?: string | null }, actorUserId: string): Promise<{ id: string }> {
     const name = String(data.name ?? '').trim();
     if (!name) throw new BadRequestException('Role name is required');
     const key = name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
@@ -336,8 +346,8 @@ export class PermissionsService {
 
     const created = await this.db.withTransaction(async (client) => {
       const { rows } = await client.query(
-        `INSERT INTO roles (key, name, description, is_system) VALUES ($1, $2, $3, FALSE) RETURNING id`,
-        [key, name, data.description ?? null],
+        `INSERT INTO roles (key, name, description, is_system, account_scope_field) VALUES ($1, $2, $3, FALSE, $4) RETURNING id`,
+        [key, name, data.description ?? null, data.accountScopeField?.trim() || null],
       ).catch((err: any) => {
         if (err?.code === '23505') throw new ConflictException(`A role named "${name}" already exists.`);
         throw err;
@@ -347,8 +357,7 @@ export class PermissionsService {
       // Accounts→Delete business rule) so the new role appears in the grid.
       await client.query(
         `INSERT INTO role_permissions (role_id, module_key, permission_key, is_allowed, is_locked)
-         SELECT $1, m.key, p.key, FALSE,
-                CASE WHEN m.key = 'accounts' AND p.key = 'delete' THEN TRUE ELSE FALSE END
+         SELECT $1, m.key, p.key, FALSE, FALSE
          FROM modules m CROSS JOIN permissions p
          ON CONFLICT (role_id, module_key, permission_key) DO NOTHING`,
         [roleId],
@@ -361,20 +370,37 @@ export class PermissionsService {
     return created;
   }
 
-  async updateRole(id: string, data: { name?: string; description?: string }, actorUserId: string): Promise<{ id: string }> {
+  async updateRole(id: string, data: { name?: string; description?: string; accountScopeField?: string | null }, actorUserId: string): Promise<{ id: string }> {
     const { rows } = await this.db.query(`SELECT is_system, name FROM roles WHERE id = $1`, [id]);
     if (!rows.length) throw new NotFoundException('Role not found');
     if (rows[0].is_system && data.name && data.name.trim() !== rows[0].name) {
       throw new ForbiddenException('System roles cannot be renamed.');
     }
-    await this.db.query(
-      `UPDATE roles SET
-         name = COALESCE($2, name),
-         description = COALESCE($3, description),
-         updated_at = NOW()
-       WHERE id = $1`,
-      [id, data.name?.trim() ?? null, data.description ?? null],
-    );
+
+    const updates: string[] = [];
+    const params: any[] = [id];
+    let pIdx = 2;
+
+    if (data.name !== undefined) {
+      updates.push(`name = $${pIdx++}`);
+      params.push(data.name.trim());
+    }
+    if (data.description !== undefined) {
+      updates.push(`description = $${pIdx++}`);
+      params.push(data.description.trim() || null);
+    }
+    if (data.accountScopeField !== undefined) {
+      updates.push(`account_scope_field = $${pIdx++}`);
+      params.push(data.accountScopeField?.trim() || null);
+    }
+
+    if (updates.length > 0) {
+      updates.push(`updated_at = NOW()`);
+      await this.db.query(
+        `UPDATE roles SET ${updates.join(', ')} WHERE id = $1`,
+        params,
+      );
+    }
     await this.db.query(
       `INSERT INTO activities (id, type, text, user_id, user_name)
        VALUES (gen_random_uuid()::TEXT, 'permission', $1, $2, 'System')`,

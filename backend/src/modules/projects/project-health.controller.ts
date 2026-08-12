@@ -1,8 +1,8 @@
 import {
-  Controller, Get, Post, Body, Param, HttpCode, HttpStatus,
+  Controller, Get, Post, Put, Body, Param, HttpCode, HttpStatus,
 } from '@nestjs/common';
 import { ProjectHealthService } from './project-health.service';
-import { CreateProjectHealthDto } from './dto/project-health.dto';
+import { CreateProjectHealthDto, UpdateProjectHealthDto } from './dto/project-health.dto';
 import { AuthUser, JwtPayload } from '../auth/auth-user.decorator';
 
 @Controller('projects/:projectId/health')
@@ -22,5 +22,15 @@ export class ProjectHealthController {
     @AuthUser() authUser: JwtPayload,
   ) {
     return this.healthService.create(projectId, body, authUser.sub);
+  }
+
+  @Put(':id')
+  update(
+    @Param('projectId') projectId: string,
+    @Param('id') id: string,
+    @Body() body: UpdateProjectHealthDto,
+    @AuthUser() authUser: JwtPayload,
+  ) {
+    return this.healthService.update(projectId, id, body, authUser.sub);
   }
 }

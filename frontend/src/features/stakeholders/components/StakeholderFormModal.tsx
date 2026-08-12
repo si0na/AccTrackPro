@@ -195,7 +195,7 @@ export const StakeholderFormModal: React.FC<StakeholderFormModalProps> = ({
                 >
                   <option value="" disabled>Select stakeholder type…</option>
                   <option value="CLIENT">Client Stakeholder</option>
-                  <option value="SERVICE_PROVIDER">Service Provider Stakeholder</option>
+                  {/* SERVICE_PROVIDER is auto-managed from System Users — not manually creatable */}
                 </select>
               )}
             </FormField>

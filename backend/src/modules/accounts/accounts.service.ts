@@ -20,6 +20,7 @@ const KNOWN = new Set([
   'website','phone','email','address','location','description',
   'accountManagerId','practiceLeadId','clientPartnerId','verticalHeadId',
   'financial_year','quarter','financialYear',
+  'clientStakeholderIds','serviceProviderUserIds',
 ]);
 
 function rowToAccount(row: any): Account {
@@ -32,6 +33,22 @@ function rowToAccount(row: any): Account {
     vertical_head_id, vertical_head_name,
     ...base
   } = row;
+
+  // Clean custom_data by stripping first-class fields to avoid overwriting them
+  const cleanedCustomData = { ...custom_data };
+  const firstClassFields = [
+    'id', 'name', 'type', 'health', 'owner', 'ownerId', 'revenue', 'industry', 'since',
+    'website', 'phone', 'email', 'address', 'location', 'description',
+    'accountManagerId', 'accountManagerName',
+    'practiceLeadId', 'practiceLeadName',
+    'clientPartnerId', 'clientPartnerName',
+    'verticalHeadId', 'verticalHeadName',
+    'updatedAt'
+  ];
+  for (const field of firstClassFields) {
+    delete cleanedCustomData[field];
+  }
+
   return {
     ...base,
     revenue:   Number(base.revenue),
@@ -47,23 +64,27 @@ function rowToAccount(row: any): Account {
     verticalHeadName:   vertical_head_name    ?? '',
     // Exposed for the dashboard's "Recently Updated Accounts" widget.
     updatedAt: updated_at instanceof Date ? updated_at.toISOString() : updated_at,
-    ...(custom_data || {}),
+    ...cleanedCustomData,
   } as Account;
 }
 
 const ACCOUNT_SELECT = `
   SELECT a.*,
          u.name  AS owner_name,
-         am.name AS account_manager_name,
-         pl.name AS practice_lead_name,
-         cp.name AS client_partner_name,
-         vh.name AS vertical_head_name
+         COALESCE(NULLIF(am.name, ''), NULLIF(em_am.name, ''), am.email, em_am.email) AS account_manager_name,
+         COALESCE(NULLIF(pl.name, ''), NULLIF(em_pl.name, ''), pl.email, em_pl.email) AS practice_lead_name,
+         COALESCE(NULLIF(cp.name, ''), NULLIF(em_cp.name, ''), cp.email, em_cp.email) AS client_partner_name,
+         COALESCE(NULLIF(vh.name, ''), NULLIF(em_vh.name, ''), vh.email, em_vh.email) AS vertical_head_name
   FROM accounts a
   LEFT JOIN users u  ON a.owner_id           = u.id
   LEFT JOIN users am ON a.account_manager_id = am.id
+  LEFT JOIN employee_master em_am ON a.account_manager_id = em_am.id
   LEFT JOIN users pl ON a.practice_lead_id   = pl.id
+  LEFT JOIN employee_master em_pl ON a.practice_lead_id   = em_pl.id
   LEFT JOIN users cp ON a.client_partner_id  = cp.id
+  LEFT JOIN employee_master em_cp ON a.client_partner_id  = em_cp.id
   LEFT JOIN users vh ON a.vertical_head_id   = vh.id
+  LEFT JOIN employee_master em_vh ON a.vertical_head_id   = em_vh.id
 `;
 
 @Injectable()
@@ -143,17 +164,21 @@ export class AccountsService {
     const { rows } = await this.db.query(
       `SELECT a.*,
               u.name  AS owner_name,
-              am.name AS account_manager_name,
-              pl.name AS practice_lead_name,
-              cp.name AS client_partner_name,
-              vh.name AS vertical_head_name,
+              COALESCE(NULLIF(am.name, ''), NULLIF(em_am.name, ''), am.email, em_am.email) AS account_manager_name,
+              COALESCE(NULLIF(pl.name, ''), NULLIF(em_pl.name, ''), pl.email, em_pl.email) AS practice_lead_name,
+              COALESCE(NULLIF(cp.name, ''), NULLIF(em_cp.name, ''), cp.email, em_cp.email) AS client_partner_name,
+              COALESCE(NULLIF(vh.name, ''), NULLIF(em_vh.name, ''), vh.email, em_vh.email) AS vertical_head_name,
               COUNT(*) OVER()::INTEGER AS __total
        FROM accounts a
        LEFT JOIN users u  ON a.owner_id           = u.id
        LEFT JOIN users am ON a.account_manager_id = am.id
+       LEFT JOIN employee_master em_am ON a.account_manager_id = em_am.id
        LEFT JOIN users pl ON a.practice_lead_id   = pl.id
+       LEFT JOIN employee_master em_pl ON a.practice_lead_id   = em_pl.id
        LEFT JOIN users cp ON a.client_partner_id  = cp.id
+       LEFT JOIN employee_master em_cp ON a.client_partner_id  = em_cp.id
        LEFT JOIN users vh ON a.vertical_head_id   = vh.id
+       LEFT JOIN employee_master em_vh ON a.vertical_head_id   = em_vh.id
        WHERE ${where} ORDER BY a.created_at DESC
        LIMIT $${nextIdx} OFFSET $${nextIdx + 1}`,
       [...qParams, pg.limit, pg.offset],
@@ -213,6 +238,54 @@ export class AccountsService {
     );
     await this.log(`Created Account '${account.name}'`, account.id, data.ownerId);
 
+    // Associate existing client stakeholders (array or singular)
+    const clientIds: string[] = [];
+    if (data.clientStakeholderId) clientIds.push(data.clientStakeholderId);
+    if (Array.isArray(data.clientStakeholderIds)) clientIds.push(...data.clientStakeholderIds);
+    if (clientIds.length > 0) {
+      await this.db.query(
+        `UPDATE stakeholders SET account_id = $1, updated_at = NOW() WHERE id = ANY($2) AND stakeholder_type = 'CLIENT'`,
+        [account.id, clientIds],
+      );
+      this.logger.log(`Associated client stakeholders [ids=${clientIds.join(',')} accountId=${account.id}]`);
+    }
+
+    // Create a new client stakeholder
+    if (data.clientStakeholderDraft) {
+      const draft = data.clientStakeholderDraft;
+      await this.db.query(
+        `INSERT INTO stakeholders
+           (id, name, account_id, designation, influence, relationship, email, phone, stakeholder_type, department)
+         VALUES (gen_random_uuid()::TEXT, $1, $2, $3, $4, $5, $6, $7, 'CLIENT', $8)`,
+        [
+          draft.name,
+          account.id,
+          draft.designation || '',
+          draft.influence || 'Medium',
+          draft.relationship || 'Neutral',
+          draft.email || '',
+          draft.phone || '',
+          draft.department || '',
+        ],
+      );
+      this.logger.log(`Created new client stakeholder [name=${draft.name} accountId=${account.id}]`);
+    }
+
+    // Resolve and associate selected Service Providers from system users
+    const spUserIds: string[] = [];
+    if (data.serviceProviderUserId) spUserIds.push(data.serviceProviderUserId);
+    if (Array.isArray(data.serviceProviderUserIds)) spUserIds.push(...data.serviceProviderUserIds);
+    for (const spUserId of spUserIds) {
+      try {
+        await this.serviceProvider.resolveOrCreate(spUserId, account.id);
+      } catch (err) {
+        this.logger.error(
+          `Service Provider auto-registration failed [userId=${spUserId} accountId=${account.id}]`,
+          err instanceof Error ? err.stack : String(err),
+        );
+      }
+    }
+
     if (account.ownerId) {
       this.logger.log(`Emitting Account:Created notification [userId=${account.ownerId} accountId=${account.id}]`);
       this.bus.emit({
@@ -231,28 +304,6 @@ export class AccountsService {
       );
     }
 
-    // Auto-register the account's Account Manager as a SERVICE_PROVIDER
-    // stakeholder on the new account.
-    //
-    // `account_manager_id` is populated by the controller only when the
-    // logged-in creator actually holds the Account Manager role (determined
-    // from roles.account_scope_field, never a hardcoded role name), and it is
-    // always the creator — never a value chosen on the form. So this branch
-    // fires exactly for Account-Manager-created accounts and skips everyone
-    // else, which is the entire role gate the feature needs.
-    //
-    // registerForAccount is idempotent and skips missing/inactive users, and is
-    // never allowed to fail account creation.
-    if (account.accountManagerId) {
-      try {
-        await this.serviceProvider.registerForAccount(account.accountManagerId, account.id);
-      } catch (err) {
-        this.logger.error(
-          `Service Provider auto-registration failed [userId=${account.accountManagerId} accountId=${account.id}]`,
-          err instanceof Error ? err.stack : String(err),
-        );
-      }
-    }
     return account;
   }
 
@@ -306,21 +357,85 @@ export class AccountsService {
     const account = await this.findOne(id);
     await this.log(`Updated Account '${account.name}'`, account.id, requestingUserId);
 
-    // When the Account Manager changes, auto-register the NEW manager as a
-    // SERVICE_PROVIDER stakeholder on this account. The previous manager's
-    // stakeholder is intentionally left intact so historical activity stays
-    // attributable. registerForAccount is idempotent + Account-Manager-role
-    // gated, and is never allowed to fail the update.
-    if (accountManagerId && accountManagerId !== existing.accountManagerId) {
+    // Process client stakeholders if clientStakeholderIds is explicitly supplied
+    if (data.clientStakeholderIds !== undefined) {
+      const newClientIds: string[] = Array.isArray(data.clientStakeholderIds) ? data.clientStakeholderIds : [];
+      // 1. Detach client stakeholders who were on this account but are no longer selected
+      await this.db.query(
+        `UPDATE stakeholders SET account_id = NULL, updated_at = NOW() 
+         WHERE account_id = $1 AND stakeholder_type = 'CLIENT' AND NOT (id = ANY($2))`,
+        [account.id, newClientIds],
+      );
+      // 2. Attach newly selected client stakeholders to this account
+      if (newClientIds.length > 0) {
+        await this.db.query(
+          `UPDATE stakeholders SET account_id = $1, updated_at = NOW() 
+           WHERE id = ANY($2) AND stakeholder_type = 'CLIENT'`,
+          [account.id, newClientIds],
+        );
+      }
+      this.logger.log(`Updated client stakeholders for account [accountId=${account.id} count=${newClientIds.length}]`);
+    } else if (data.clientStakeholderId) {
+      await this.db.query(
+        `UPDATE stakeholders SET account_id = $1, updated_at = NOW() WHERE id = $2`,
+        [account.id, data.clientStakeholderId],
+      );
+      this.logger.log(`Associated existing client stakeholder [id=${data.clientStakeholderId} accountId=${account.id}]`);
+    }
+
+    // Create a new client stakeholder
+    if (data.clientStakeholderDraft) {
+      const draft = data.clientStakeholderDraft;
+      await this.db.query(
+        `INSERT INTO stakeholders
+           (id, name, account_id, designation, influence, relationship, email, phone, stakeholder_type, department)
+         VALUES (gen_random_uuid()::TEXT, $1, $2, $3, $4, $5, $6, $7, 'CLIENT', $8)`,
+        [
+          draft.name,
+          account.id,
+          draft.designation || '',
+          draft.influence || 'Medium',
+          draft.relationship || 'Neutral',
+          draft.email || '',
+          draft.phone || '',
+          draft.department || '',
+        ],
+      );
+      this.logger.log(`Created new client stakeholder [name=${draft.name} accountId=${account.id}]`);
+    }
+
+    // Process service provider stakeholders if serviceProviderUserIds is explicitly supplied
+    if (data.serviceProviderUserIds !== undefined) {
+      const newSpUserIds: string[] = Array.isArray(data.serviceProviderUserIds) ? data.serviceProviderUserIds : [];
+      // 1. Mark as deleted any service providers who are no longer selected
+      await this.db.query(
+        `UPDATE stakeholders SET is_deleted = TRUE, updated_at = NOW()
+         WHERE account_id = $1 AND stakeholder_type = 'SERVICE_PROVIDER' AND is_deleted = FALSE AND NOT (user_id = ANY($2))`,
+        [account.id, newSpUserIds],
+      );
+      // 2. Resolve/register selected service providers
+      for (const spUserId of newSpUserIds) {
+        try {
+          await this.serviceProvider.resolveOrCreate(spUserId, account.id);
+        } catch (err) {
+          this.logger.error(
+            `Service Provider auto-registration failed [userId=${spUserId} accountId=${account.id}]`,
+            err instanceof Error ? err.stack : String(err),
+          );
+        }
+      }
+    } else if (data.serviceProviderUserId) {
       try {
-        await this.serviceProvider.registerForAccount(accountManagerId, id);
+        await this.serviceProvider.resolveOrCreate(data.serviceProviderUserId, account.id);
       } catch (err) {
         this.logger.error(
-          `Service Provider auto-registration failed on manager change [userId=${accountManagerId} accountId=${id}]`,
+          `Service Provider auto-registration failed [userId=${data.serviceProviderUserId} accountId=${account.id}]`,
           err instanceof Error ? err.stack : String(err),
         );
       }
     }
+
+
 
     if (account.ownerId) {
       this.logger.log(`Emitting Account:Updated notification [userId=${account.ownerId} accountId=${account.id}]`);

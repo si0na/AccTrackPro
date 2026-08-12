@@ -1,9 +1,9 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import { useCRMData } from '@/hooks/useCRMData';
-import { authApi, rbacApi } from '@/api/crm.api';
+import { authApi, rbacApi, serviceProvidersApi, projectManagersApi } from '@/api/crm.api';
 import type {
   Account, Opportunity, ActionItem, Stakeholder, Activity, Comment, CustomColumn, ColumnConfig,
-  User, FinancialYear, FinancialCalendar, AdminSettings, Project, MyPermissions,
+  User, FinancialYear, FinancialCalendar, AdminSettings, Project, MyPermissions, ServiceProviderUser,
 } from '@/types';
 
 // ─── User profiles ────────────────────────────────────────────────────────────
@@ -27,6 +27,7 @@ export type ViewType =
   | 'projects'
   | 'project-details'
   | 'actionItems'
+  | 'projectActionItems'
   | 'stakeholders'
   | 'forecast'
   | 'executive'
@@ -71,6 +72,10 @@ interface CRMContextProps {
   activities: Activity[];
   comments: Comment[];
   loading: boolean;
+  /** All system users as Service Provider options (no is_active filter). */
+  serviceProviders: ServiceProviderUser[];
+  /** Active System Users who hold the Project Manager role. */
+  projectManagers: ServiceProviderUser[];
 
   // Auth
   currentUser: string;
@@ -151,10 +156,6 @@ interface CRMContextProps {
   sidebarCollapsed: boolean;
   setSidebarCollapsed: (collapsed: boolean) => void;
 
-  // Service Provider profile modal (first-time prompt + later edits share it)
-  isServiceProviderProfileOpen: boolean;
-  openServiceProviderProfile: () => void;
-  closeServiceProviderProfile: () => void;
   /** Re-read the signed-in user (/auth/me) so identity edits reflect immediately. */
   refreshCurrentUser: () => Promise<void>;
 
@@ -208,6 +209,7 @@ interface CRMContextProps {
   addStakeholder: (stakeholder: Omit<Stakeholder, 'id'>) => Promise<Stakeholder>;
   updateStakeholder: (stakeholder: Stakeholder) => Promise<void>;
   deleteStakeholder: (id: string) => Promise<void>;
+  associateServiceProvider: (userId: string, accountId: string) => Promise<void>;
   addComment: (targetType: Comment['targetType'], targetId: string, text: string) => Promise<void>;
   deleteComment: (id: string) => Promise<void>;
 }
@@ -414,6 +416,26 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const openServiceProviderProfile = () => setServiceProviderProfileOpen(true);
   const closeServiceProviderProfile = () => setServiceProviderProfileOpen(false);
 
+  // Service Providers — all system users regardless of active status
+  const [serviceProviders, setServiceProviders] = useState<ServiceProviderUser[]>([]);
+
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    serviceProvidersApi.getAll()
+      .then(setServiceProviders)
+      .catch(() => {}); // non-blocking
+  }, [isLoggedIn]);
+
+  // Project Managers — active users with the project-manager role
+  const [projectManagers, setProjectManagers] = useState<ServiceProviderUser[]>([]);
+
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    projectManagersApi.getAll()
+      .then(setProjectManagers)
+      .catch(() => {}); // non-blocking
+  }, [isLoggedIn]);
+
   const setSelectedYear = (year: string) => {
     setSelectedYearState(year);
     localStorage.setItem('crm_selected_year', year);
@@ -542,10 +564,9 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setGlobalAccountId,
         sidebarCollapsed,
         setSidebarCollapsed,
-        isServiceProviderProfileOpen,
-        openServiceProviderProfile,
-        closeServiceProviderProfile,
         refreshCurrentUser,
+        serviceProviders,
+        projectManagers,
       }}
     >
       {children}

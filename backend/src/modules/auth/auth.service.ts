@@ -129,6 +129,23 @@ export class AuthService {
       designation: authorized.designation ?? null,
     });
 
+    // Copy multiple preassigned roles from employee_roles to user_roles
+    const { rows: preassignedRoles } = await this.db.query(
+      `SELECT role_id FROM employee_roles WHERE employee_id = $1`,
+      [authorized.id],
+    );
+    const roleIdsToAssign = new Set<string>(preassignedRoles.map((r) => r.role_id));
+    if (authorized.roleId) {
+      roleIdsToAssign.add(authorized.roleId);
+    }
+    for (const rId of roleIdsToAssign) {
+      await this.db.query(
+        `INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)
+         ON CONFLICT (user_id, role_id) DO NOTHING`,
+        [user.id, rId],
+      );
+    }
+
     await this.audit('register', user.id, email, '', '', true, {});
 
     this.bus.emit({

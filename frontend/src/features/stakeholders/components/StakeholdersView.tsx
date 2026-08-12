@@ -44,6 +44,7 @@ export const StakeholdersView: React.FC = () => {
     globalAccountId: accountFilter,
     loading,
     can,
+    serviceProviders,
   } = useCRM();
 
   // Single-record focus set when the user opens a stakeholder notification
@@ -52,27 +53,20 @@ export const StakeholdersView: React.FC = () => {
     ? stakeholders.find(s => s.id === focusedStakeholderId)
     : undefined;
 
-  // Client Stakeholders vs Service Providers are shown in two independent tabs
-  // (owned by StakeholderTabs). Track the tab the create dialog should default
-  // to; StakeholderTabs reports it via onAdd(type).
   const [createType, setCreateType] = useState<StakeholderType>('CLIENT');
 
   const resolveAccount = (accountId: string): Account | undefined =>
     accounts.find(a => a.id === accountId) || deactivatedAccounts.find(a => a.id === accountId);
 
-  // When a specific account is active in the Global Account Selector, new
-  // stakeholders lock to it — same mechanism Account Details already uses.
   const lockedAccount = accountFilter !== 'All'
     ? { id: accountFilter, name: accounts.find(a => a.id === accountFilter)?.name ?? '' }
     : undefined;
 
-  // Create/edit/delete dialog state (shared StakeholderFormModal)
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Stakeholder | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; label: string } | null>(null);
 
-  // Base list shared by both tabs: respect the global account selector and the
-  // single-record notification focus. Type filtering happens per-tab.
+  // Client Stakeholders: respect global account filter and notification focus
   const baseStakeholders = stakeholders.filter(s => {
     if (focusedStakeholderId && s.id !== focusedStakeholderId) return false;
     if (accountFilter !== 'All' && s.accountId !== accountFilter) return false;
@@ -80,12 +74,11 @@ export const StakeholdersView: React.FC = () => {
   });
 
   const clientStks = baseStakeholders.filter(s => s.stakeholderType === 'CLIENT');
-  const serviceProviderStks = baseStakeholders.filter(s => s.stakeholderType === 'SERVICE_PROVIDER');
 
-  // Counts (unfocused) for the tab labels — always reflect the full directory
-  // even while a single record is focused from a notification.
+  // Service Providers: ALL system users regardless of active status
+  // (not filtered by account — this is the global directory)
   const clientCount = stakeholders.filter(s => s.stakeholderType === 'CLIENT').length;
-  const spCount = stakeholders.filter(s => s.stakeholderType === 'SERVICE_PROVIDER').length;
+  const spCount = serviceProviders.length;
 
   if (loading) return <LoadingState label="Loading stakeholders…" />;
 
@@ -137,8 +130,9 @@ export const StakeholdersView: React.FC = () => {
 
       <StakeholderTabs
         clientRows={clientStks}
-        serviceProviderRows={serviceProviderStks}
+        serviceProviders={serviceProviders}
         resolveAccount={resolveAccount}
+        hideSpAdd={true}
         storageKeyPrefix="stakeholders"
         focusTab={focusedStakeholder?.stakeholderType ?? null}
         clientCount={clientCount}
@@ -150,7 +144,7 @@ export const StakeholdersView: React.FC = () => {
         onEdit={setEditTarget}
         onDelete={(s) => setDeleteTarget({ id: s.id, label: s.name })}
         clientEmptyMessage="No Client Stakeholders found."
-        serviceProviderEmptyMessage="No Service Providers found. Service Providers are created automatically when an Account Manager creates an account, or manually here."
+        serviceProviderEmptyMessage="No System Users found. Add users in the Administration page."
       />
 
       {/* Add stakeholder modal — type is fixed to the tab the user added from. */}

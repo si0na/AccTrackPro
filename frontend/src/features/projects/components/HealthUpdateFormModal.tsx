@@ -1,9 +1,10 @@
 import React from 'react';
 import { FormModal, FormGrid, FormField, SELECT_CLS, INPUT_CLS } from '@/components/ui';
-import { ProjectHealthUpdate, AdminUser } from '@/types';
+import { AdminUser } from '@/types';
+import type { ProjectHealthUpdateInput } from '@/api/crm.api';
 import { PROJECT_HEALTH_CHOICES } from '@/constants';
 
-export type HealthUpdateDraft = Omit<ProjectHealthUpdate, 'id' | 'projectId' | 'createdAt' | 'updatedById' | 'updatedByName' | 'reviewedByName'>;
+export type HealthUpdateDraft = ProjectHealthUpdateInput;
 
 export const emptyHealthUpdateDraft: HealthUpdateDraft = {
   health: 'Green',
@@ -13,7 +14,7 @@ export const emptyHealthUpdateDraft: HealthUpdateDraft = {
   risksImpactingHealth: '',
   mitigationPlan: '',
   supportRequired: '',
-  nextReviewDate: '',
+  nextReviewDate: undefined,
   overallConfidencePct: undefined,
   reviewedById: '',
 };
@@ -26,10 +27,12 @@ interface HealthUpdateFormModalProps {
   setDraft: React.Dispatch<React.SetStateAction<HealthUpdateDraft>>;
   isSaving: boolean;
   users: AdminUser[];
+  /** Editing an existing tracker entry rather than appending a new one. */
+  isEditing?: boolean;
 }
 
 export const HealthUpdateFormModal: React.FC<HealthUpdateFormModalProps> = ({
-  isOpen, onClose, onSave, draft, setDraft, isSaving, users
+  isOpen, onClose, onSave, draft, setDraft, isSaving, users, isEditing = false
 }) => {
   const isFormValid = draft.health && draft.statusSummary.trim();
 
@@ -37,10 +40,10 @@ export const HealthUpdateFormModal: React.FC<HealthUpdateFormModalProps> = ({
     <FormModal
       isOpen={isOpen}
       onClose={onClose}
-      title="Update Project Health"
+      title={isEditing ? 'Edit Health Update' : 'Update Project Health'}
       isSubmitting={isSaving}
       onSubmit={onSave}
-      submitLabel="Update Health"
+      submitLabel={isEditing ? 'Save Changes' : 'Update Health'}
       maxWidth="max-w-3xl"
     >
       <FormGrid columns={2}>
@@ -140,7 +143,7 @@ export const HealthUpdateFormModal: React.FC<HealthUpdateFormModalProps> = ({
                   type="date"
                   className={INPUT_CLS}
                   value={draft.nextReviewDate || ''}
-                  onChange={(e) => setDraft((d) => ({ ...d, nextReviewDate: e.target.value }))}
+                  onChange={(e) => setDraft((d) => ({ ...d, nextReviewDate: e.target.value || undefined }))}
                 />
               </FormField>
 

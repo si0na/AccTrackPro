@@ -5,12 +5,14 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
-import { usersApi, serviceProviderApi } from '@/api/crm.api';
-import { Account, AccountType, AccountHealth, User } from '@/types';
+import { usersApi } from '@/api/crm.api';
+import { Account, AccountType, AccountHealth, User, Stakeholder } from '@/types';
 import { Plus, Building2, Settings2, HeartPulse, X } from 'lucide-react';
 import { CustomizeColumnsSidebar } from '@/components/table/CustomizeColumnsSidebar';
 import { InlineEditModal } from '@/components/InlineEditModal';
 import { LoadingState } from '@/components/common/LoadingState';
+import { StakeholderFormModal } from '@/features/stakeholders/components/StakeholderFormModal';
+import { MultiStakeholderPicker } from '@/components/MultiStakeholderPicker';
 import { compareForSort, getCustomerSinceYearOptions, mapLocationToOption, matchesGlobalAccount, SortDirection } from '@/utils';
 import { ACCOUNT_TYPE_OPTIONS, ACCOUNT_HEALTH_OPTIONS, LOCATION_OPTIONS } from '@/constants';
 import {
@@ -45,6 +47,7 @@ import {
   TableHead,
   TableHeadCell,
   TableRow,
+  InlineCreateField,
 } from '@/components/ui';
 
 export const AccountsListView: React.FC = () => {
@@ -54,6 +57,7 @@ export const AccountsListView: React.FC = () => {
     opportunities,
     stakeholders,
     addAccount,
+    addStakeholder,
     deleteAccount,
     restoreAccount,
     setView,
@@ -71,7 +75,7 @@ export const AccountsListView: React.FC = () => {
     loading,
     can,
     refreshData,
-    openServiceProviderProfile,
+    serviceProviders,
   } = useCRM();
 
   // Users list — backs the four role-filtered "owner" dropdowns on the create
@@ -86,15 +90,15 @@ export const AccountsListView: React.FC = () => {
   // create form; the backend assigns the logged-in creator when they hold the
   // Account Manager role. It remains editable afterwards (see InlineEditModal).
   const practiceLeadOptions = useMemo(
-    () => users.filter(u => u.roleKey === 'practice-lead').map(u => ({ value: u.id, label: u.name })),
+    () => users.filter(u => u.roleKey === 'practice-lead' || (u.roleKeys && u.roleKeys.includes('practice-lead'))).map(u => ({ value: u.id, label: u.name })),
     [users],
   );
   const clientPartnerOptions = useMemo(
-    () => users.filter(u => u.roleKey === 'client-partner').map(u => ({ value: u.id, label: u.name })),
+    () => users.filter(u => u.roleKey === 'client-partner' || (u.roleKeys && u.roleKeys.includes('client-partner'))).map(u => ({ value: u.id, label: u.name })),
     [users],
   );
   const verticalHeadOptions = useMemo(
-    () => users.filter(u => u.roleKey === 'vertical-head').map(u => ({ value: u.id, label: u.name })),
+    () => users.filter(u => u.roleKey === 'vertical-head' || (u.roleKeys && u.roleKeys.includes('vertical-head'))).map(u => ({ value: u.id, label: u.name })),
     [users],
   );
 
@@ -176,6 +180,11 @@ export const AccountsListView: React.FC = () => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newAccount, setNewAccount] = useState<Omit<Account, 'id'>>(EMPTY_ACCOUNT);
 
+  // Multi-stakeholder selection states for account creation
+  const [selectedClientStakeholderIds, setSelectedClientStakeholderIds] = useState<string[]>([]);
+  const [selectedSpUserIds, setSelectedSpUserIds] = useState<string[]>([]);
+  const [showAddClientModal, setShowAddClientModal] = useState<boolean>(false);
+
   // Dropdown options derived from live data (deduped, sorted).
   const industryOptions = Array.from(new Set(accounts.map(a => a.industry?.trim()).filter(Boolean))).sort();
   const locationOptions = Array.from(new Set(accounts.map(a => a.location?.trim()).filter(Boolean))).sort();
@@ -208,32 +217,22 @@ export const AccountsListView: React.FC = () => {
     e.preventDefault();
     if (!newAccount.name.trim() || !newAccount.type || !newAccount.health) return;
     try {
-      // Empty selection → null so the backend leaves the FK unset rather than
-      // storing an empty string. Account Manager is never sent from creation —
-      // the backend assigns the logged-in creator (when they are an Account
-      // Manager) and ignores any account_manager_id in the request.
+      // Account Manager is never sent from creation — the backend assigns the
+      // logged-in creator (when they are an Account Manager).
       const { accountManagerId: _omitAm, ...rest } = newAccount;
-      const payload: Omit<Account, 'id'> = {
+      const payload: Omit<Account, 'id'> & Record<string, any> = {
         ...rest,
         practiceLeadId: newAccount.practiceLeadId || null,
         clientPartnerId: newAccount.clientPartnerId || null,
         verticalHeadId: newAccount.verticalHeadId || null,
+        clientStakeholderIds: selectedClientStakeholderIds.length ? selectedClientStakeholderIds : null,
+        serviceProviderUserIds: selectedSpUserIds.length ? selectedSpUserIds : null,
       };
       const created = await addAccount(payload);
       setIsAddModalOpen(false);
       setNewAccount(EMPTY_ACCOUNT);
-
-      // The account's Account Manager was auto-registered as a Service Provider
-      // stakeholder on the new account. Refresh so it shows on the account, and —
-      // when the current user is that Service Provider and their profile is still
-      // missing a required field — prompt them to complete it.
-      refreshData();
-      try {
-        const profile = await serviceProviderApi.getMine();
-        if (profile.isServiceProvider && !profile.isComplete) openServiceProviderProfile();
-      } catch {
-        // Non-blocking: a failed profile check never interrupts account creation.
-      }
+      setSelectedClientStakeholderIds([]);
+      setSelectedSpUserIds([]);
 
       // Jump straight to details
       setSelectedAccountId(created.id);
@@ -306,9 +305,12 @@ export const AccountsListView: React.FC = () => {
             </Button>
             {can('accounts', 'create') && (
               <Button
-                size="md"
-                icon={<Plus className="w-4 h-4" aria-hidden="true" />}
-                onClick={() => setIsAddModalOpen(true)}
+                icon={<Plus className="w-3.5 h-3.5" />}
+                onClick={() => {
+                  setSelectedClientStakeholderIds([]);
+                  setSelectedSpUserIds([]);
+                  setIsAddModalOpen(true);
+                }}
               >
                 New Account
               </Button>
@@ -548,7 +550,13 @@ export const AccountsListView: React.FC = () => {
                         entityLabel={`account ${acc.name}`}
                         onView={() => handleRowClick(acc.id)}
                         onEdit={can('accounts', 'update')
-                          ? () => { setEditingAccount({ ...acc, location: mapLocationToOption(acc.location) }); setIsEditModalOpen(true); }
+                          ? () => {
+                              setEditingAccount({
+                                ...acc,
+                                location: mapLocationToOption(acc.location),
+                              });
+                              setIsEditModalOpen(true);
+                            }
                           : undefined}
                         onDelete={can('accounts', 'delete')
                           ? () => setDeleteTarget({ id: acc.id, label: acc.name })
@@ -685,7 +693,7 @@ export const AccountsListView: React.FC = () => {
       >
         <div className="space-y-5">
           <FormSection title="Identity">
-            <FormGrid>
+            <FormGrid columns={3}>
               <FormField label="Account Name" required wide>
                 <input
                   type="text"
@@ -790,6 +798,54 @@ export const AccountsListView: React.FC = () => {
               </FormField>
             </FormGrid>
           </FormSection>
+
+          <FormSection title="Stakeholders (Optional)">
+            <FormGrid columns={2}>
+              <FormField label="Service Provider Stakeholders">
+                <MultiStakeholderPicker
+                  mode="service-provider"
+                  selectedIds={selectedSpUserIds}
+                  onChange={setSelectedSpUserIds}
+                  serviceProviders={serviceProviders}
+                  tone="blue"
+                />
+              </FormField>
+              <InlineCreateField
+                label="Client Stakeholders"
+                createLabel="client stakeholder"
+                onCreate={() => setShowAddClientModal(true)}
+              >
+                <MultiStakeholderPicker
+                  mode="client"
+                  selectedIds={selectedClientStakeholderIds}
+                  onChange={setSelectedClientStakeholderIds}
+                  stakeholders={stakeholders}
+                  tone="blue"
+                />
+              </InlineCreateField>
+            </FormGrid>
+          </FormSection>
+
+          {showAddClientModal && (
+            <StakeholderFormModal
+              isOpen={true}
+              mode="create"
+              accounts={[]}
+              lockedAccount={{ id: 'temp-new-account', name: newAccount.name || 'New Account' }}
+              lockedType="CLIENT"
+              onClose={() => setShowAddClientModal(false)}
+              onSubmit={async (draft) => {
+                // Create the new CLIENT stakeholder right away (it'll temporarily
+                // have account_id='temp-new-account' until the account is saved,
+                // then the backend reassociates it via clientStakeholderIds).
+                try {
+                  const created = await addStakeholder({ ...draft, accountId: '' });
+                  setSelectedClientStakeholderIds(ids => [...ids, created.id]);
+                } catch { /* silently ignore — user can retry */ }
+                setShowAddClientModal(false);
+              }}
+            />
+          )}
         </div>
       </FormModal>
     </div>

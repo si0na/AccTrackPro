@@ -115,22 +115,27 @@ class MockDatabaseService {
       return { rows: [{ count }], rowCount: 1 };
     }
 
-    // ── markRead (single) ─────────────────────────────────────────────────
-    if (s.startsWith('update notifications') && s.includes('is_read = true') && !s.includes('user_id')) {
-      const id = params?.[0];
-      const n = this.notifications.find((n) => n.id === id);
-      if (n) { n.is_read = true; n.read_at = new Date(); }
-      return { rows: [], rowCount: n ? 1 : 0 };
-    }
-
-    // ── markAllRead ───────────────────────────────────────────────────────
-    if (s.startsWith('update notifications') && s.includes('user_id')) {
-      const userId = params?.[0];
-      let cnt = 0;
-      this.notifications.forEach((n) => {
-        if (n.user_id === userId && !n.is_read) { n.is_read = true; n.read_at = new Date(); cnt++; }
-      });
-      return { rows: [], rowCount: cnt };
+    // ── update notifications ──────────────────────────────────────────────
+    if (s.includes('update notifications')) {
+      if (s.includes(' id = $1')) {
+        // markRead (single)
+        const id = params?.[0];
+        const n = this.notifications.find((n) => n.id === id);
+        if (n) { n.is_read = true; n.read_at = new Date(); }
+        return { rows: [], rowCount: n ? 1 : 0 };
+      } else if (s.includes('user_id = $1')) {
+        // markAllRead
+        const userId = params?.[0];
+        let cnt = 0;
+        this.notifications.forEach((n) => {
+          if (n.user_id === userId && !n.is_read) {
+            n.is_read = true;
+            n.read_at = new Date();
+            cnt++;
+          }
+        });
+        return { rows: [], rowCount: cnt };
+      }
     }
 
     // ── remove (single) ───────────────────────────────────────────────────

@@ -7,7 +7,7 @@ import type { OwnerFilter } from '@/api/crm.api';
 import {
   accountsApi, opportunitiesApi, actionItemsApi, stakeholdersApi,
   activitiesApi, commentsApi, customColumnsApi, columnConfigsApi, financialYearsApi,
-  notificationsApi, administrationApi, projectsApi,
+  notificationsApi, administrationApi, projectsApi, serviceProvidersApi,
 } from '@/api/crm.api';
 
 const DEFAULT_ACCOUNTS_COLUMNS: ColumnConfig[] = [
@@ -25,6 +25,7 @@ const DEFAULT_OPPORTUNITIES_COLUMNS: ColumnConfig[] = [
   { key: 'name',        name: 'Opportunity Name', isStandard: true, isPinned: true,  isDisplayed: true, type: 'text'   },
   { key: 'accountId',   name: 'Account',          isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
   { key: 'stage',       name: 'Stage',            isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
+  { key: 'serviceProviderPmName', name: 'Project Manager', isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
   { key: 'value',       name: 'Deal Size',        isStandard: true, isPinned: false, isDisplayed: true, type: 'number' },
   { key: 'probability', name: 'Probability',      isStandard: true, isPinned: false, isDisplayed: true, type: 'number' },
   { key: 'allocationStartDate', name: 'Allocation Start Date', isStandard: true, isPinned: false, isDisplayed: true, type: 'date' },
@@ -300,6 +301,14 @@ export const useCRMData = (
     const f = buildOwnerFilter(currentUserId);
     opportunitiesApi.getAll(f).then(setOpportunities);
     activitiesApi.getAll(f).then(setActivities);
+    // The edit form can attach/detach client stakeholders and add/remove
+    // service providers, so the stakeholder lists must be refetched (removed
+    // service providers are soft-deleted, hence the deactivated list too).
+    if (updated.clientStakeholderIds !== undefined || updated.serviceProviderUserIds !== undefined) {
+      stakeholdersApi.getAll(f).then(setStakeholders);
+      stakeholdersApi.getDeactivated(f).then(setDeactivatedStakeholders);
+      scheduleCountRefresh();
+    }
   };
 
   const deleteAccount = async (id: string): Promise<void> => {
@@ -499,7 +508,12 @@ export const useCRMData = (
     const f = buildOwnerFilter(currentUserId);
     activitiesApi.getAll(f).then(setActivities);
   };
-
+  const associateServiceProvider = async (userId: string, accountId: string): Promise<void> => {
+    await serviceProvidersApi.associate(userId, accountId);
+    const f = buildOwnerFilter(currentUserId);
+    stakeholdersApi.getAll(f).then(setStakeholders);
+    activitiesApi.getAll(f).then(setActivities);
+  };
   // ─── Comment actions ───────────────────────────────────────────────────────
 
   const addComment = async (targetType: Comment['targetType'], targetId: string, text: string): Promise<void> => {
@@ -585,7 +599,7 @@ export const useCRMData = (
     addOpportunity, updateOpportunity, deleteOpportunity, restoreOpportunity,
     addProject, updateProject, deleteProject, restoreProject, createProjectFromOpportunity, refreshProject,
     addActionItem, updateActionItem, deleteActionItem,
-    addStakeholder, updateStakeholder, deleteStakeholder,
+    addStakeholder, updateStakeholder, deleteStakeholder, associateServiceProvider,
     addComment, deleteComment,
     addCustomColumn, deleteCustomColumn,
     updateColumnConfig, resetColumnConfig,

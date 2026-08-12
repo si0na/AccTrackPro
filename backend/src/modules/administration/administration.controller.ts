@@ -1,6 +1,6 @@
-import { Controller, Get, Put, Body, Param } from '@nestjs/common';
+import { Controller, Get, Put, Post, Body, Param } from '@nestjs/common';
 import { AdministrationService } from './administration.service';
-import { UpdateFinancialCalendarDto, UpdateSettingsDto, UpdateUserDto } from './dto/administration.dto';
+import { UpdateFinancialCalendarDto, UpdateSettingsDto, UpdateUserDto, CreateUserDto } from './dto/administration.dto';
 import { RequirePermission } from '../rbac/require-permission.decorator';
 import { AuthUser, JwtPayload } from '../auth/auth-user.decorator';
 
@@ -18,6 +18,12 @@ export class AdministrationController {
   @RequirePermission('administration', 'view')
   getUsers() {
     return this.service.getUsers();
+  }
+
+  @Post('users')
+  @RequirePermission('administration', 'manage')
+  createUser(@Body() dto: CreateUserDto, @AuthUser() user: JwtPayload) {
+    return this.service.createUser(dto, user.sub);
   }
 
   @Put('users/:id')

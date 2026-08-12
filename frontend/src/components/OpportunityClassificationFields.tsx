@@ -21,25 +21,28 @@ export interface OpportunityClassificationFieldsProps {
  */
 export const OpportunityClassificationFields: React.FC<OpportunityClassificationFieldsProps> = ({ value, onChange }) => (
   <>
-    <FormField label="Opportunity Type">
+    <FormField label="Opportunity Type" required>
       <select
-        value={value.opportunityType}
+        required
+        value={value.opportunityType ?? ''}
         onChange={(e) => onChange({ opportunityType: e.target.value as OpportunityType })}
         className={SELECT_CLS}
       >
+        <option value="" disabled>— Select —</option>
         {OPPORTUNITY_TYPE_OPTIONS.map((t) => (
           <option key={t} value={t}>{t}</option>
         ))}
       </select>
     </FormField>
 
-    <FormField label="Service Line">
+    <FormField label="Service Line" required>
       <select
+        required
         value={value.serviceLine ?? ''}
         onChange={(e) => onChange({ serviceLine: (e.target.value || undefined) as ServiceLine | undefined })}
         className={SELECT_CLS}
       >
-        <option value="">— Select —</option>
+        <option value="" disabled>— Select —</option>
         {SERVICE_LINE_OPTIONS.map((l) => (
           <option key={l} value={l}>{l}</option>
         ))}

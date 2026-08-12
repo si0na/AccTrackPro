@@ -12,6 +12,7 @@ import { AopYearFields } from '@/components/AopYearFields';
 import { StakeholderAssignmentFields } from '@/components/StakeholderAssignmentFields';
 import { OpportunityClassificationFields } from '@/components/OpportunityClassificationFields';
 import { CustomColumnFields } from '@/components/CustomColumnFields';
+import { useCRM } from '@/contexts/CRMContext';
 import {
   FormField,
   FormGrid,
@@ -58,8 +59,18 @@ export const OpportunityFormModal: React.FC<OpportunityFormModalProps> = ({
   opportunityColumns,
   opportunitiesColumnConfig,
   lockedAccount,
-}) => (
-  <FormModal
+}) => {
+  const { projectManagers } = useCRM();
+  const pmOptions = React.useMemo(() =>
+    projectManagers.map((pm) => ({
+      value: pm.id,
+      label: pm.name || pm.email,
+    })),
+    [projectManagers],
+  );
+
+  return (
+    <FormModal
     isOpen={isOpen}
     title="Create Corporate Opportunity"
     icon={<TrendingUp className="w-5 h-5 text-indigo-600" aria-hidden="true" />}
@@ -113,12 +124,14 @@ export const OpportunityFormModal: React.FC<OpportunityFormModalProps> = ({
 
       <FormSection title="Classification">
         <FormGrid columns={3}>
-          <FormField label="Stage">
+          <FormField label="Stage" required>
             <select
-              value={value.stage}
+              required
+              value={value.stage ?? ''}
               onChange={(e) => onChange(stageChangePatch(e.target.value as OpportunityStage))}
               className={SELECT_CLS}
             >
+              <option value="" disabled>— Select —</option>
               {OPPORTUNITY_STAGE_OPTIONS.map((s) => (
                 <option key={s} value={s}>{s}</option>
               ))}
@@ -289,13 +302,28 @@ export const OpportunityFormModal: React.FC<OpportunityFormModalProps> = ({
       </FormSection>
 
       <FormSection title="Stakeholders">
-        <FormGrid>
+        <FormGrid columns={3}>
           <StakeholderAssignmentFields
             accountId={value.accountId}
             stakeholders={stakeholders}
             value={value}
             onChange={onChange}
           />
+          {/* Service Provider Project Manager — only users with the Project Manager role */}
+          <FormField label="Service Provider Project Manager">
+            <SearchableSelect
+              value={value.serviceProviderPmId ?? ''}
+              onChange={(v) => onChange({ serviceProviderPmId: v || undefined })}
+              options={pmOptions}
+              placeholder="Search Project Managers…"
+              aria-label="Service Provider Project Manager"
+            />
+            {pmOptions.length === 0 && (
+              <p className="text-xs text-slate-400 italic mt-1">
+                No users with the Project Manager role found. Assign the role in Administration → System Users.
+              </p>
+            )}
+          </FormField>
         </FormGrid>
       </FormSection>
 
@@ -341,4 +369,5 @@ export const OpportunityFormModal: React.FC<OpportunityFormModalProps> = ({
       />
     </div>
   </FormModal>
-);
+  );
+};

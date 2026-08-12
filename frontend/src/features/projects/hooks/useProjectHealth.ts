@@ -21,6 +21,8 @@ export function useProjectHealth(projectId: string) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [draft, setDraft] = useState<HealthUpdateDraft>(emptyHealthUpdateDraft);
   const [isSaving, setIsSaving] = useState(false);
+  /** Id of the entry being corrected; null while composing a new update. */
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   /** Users with 'projects:update' can add health updates. */
   const canUpdate = can('projects', 'update') || roleKey === 'admin';
@@ -39,22 +41,51 @@ export function useProjectHealth(projectId: string) {
 
   /** Pre-seeds the RAG status with the current health so a summary-only update keeps it. */
   const openModal = useCallback(() => {
+    setEditingId(null);
     setDraft({ ...emptyHealthUpdateDraft, health: latest?.health ?? 'Green' });
     setIsModalOpen(true);
   }, [latest?.health]);
 
-  const closeModal = useCallback(() => setIsModalOpen(false), []);
+  /** Opens the same modal loaded with an existing entry, to correct it in place. */
+  const openEditModal = useCallback((update: ProjectHealthUpdate) => {
+    setEditingId(update.id);
+    setDraft({
+      health: update.health,
+      statusSummary: update.statusSummary ?? '',
+      keyAchievements: update.keyAchievements ?? '',
+      currentChallenges: update.currentChallenges ?? '',
+      risksImpactingHealth: update.risksImpactingHealth ?? '',
+      mitigationPlan: update.mitigationPlan ?? '',
+      supportRequired: update.supportRequired ?? '',
+      // The input is type="date"; trim a full timestamp down to yyyy-MM-dd.
+      nextReviewDate: update.nextReviewDate ? update.nextReviewDate.slice(0, 10) : undefined,
+      overallConfidencePct: update.overallConfidencePct,
+      reviewedById: update.reviewedById ?? '',
+    });
+    setIsModalOpen(true);
+  }, []);
+
+  const closeModal = useCallback(() => {
+    setIsModalOpen(false);
+    setEditingId(null);
+  }, []);
 
   const save = async (e: FormEvent) => {
     e.preventDefault();
     if (!draft.statusSummary.trim()) return;
     setIsSaving(true);
     try {
-      await projectHealthApi.create(projectId, draft);
+      if (editingId) {
+        await projectHealthApi.update(projectId, editingId, draft);
+      } else {
+        await projectHealthApi.create(projectId, draft);
+      }
       setIsModalOpen(false);
+      setEditingId(null);
       loadHistory();
-      // The backend also moves projects.health, so pull the project back in to
-      // keep the detail header badge and the Projects list in step.
+      // The backend also moves projects.health (on edit, only when the newest
+      // entry changed), so pull the project back in to keep the detail header
+      // badge and the Projects list in step.
       await refreshProject(projectId).catch(() => undefined);
     } finally {
       setIsSaving(false);
@@ -63,7 +94,8 @@ export function useProjectHealth(projectId: string) {
 
   return {
     history, latest, loading, canUpdate,
-    isModalOpen, openModal, closeModal,
+    isModalOpen, openModal, openEditModal, closeModal,
+    isEditing: editingId !== null,
     draft, setDraft, isSaving, save,
     reload: loadHistory,
   };

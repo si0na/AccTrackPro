@@ -100,6 +100,14 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
                 className={`${INPUT_CLS} resize-none`}
               />
             </FormField>
+            <FormField label="Deal Value ($)">
+              <input
+                type="number"
+                value={value.dealValue ?? ''}
+                onChange={(e) => onChange({ dealValue: e.target.value === '' ? undefined : Number(e.target.value) })}
+                className={INPUT_CLS}
+              />
+            </FormField>
           </FormGrid>
         </FormSection>
 
@@ -158,7 +166,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
                 ))}
               </select>
             </FormField>
-            <FormField label="Client Name">
+            <FormField label="Client Partner Name">
               <select
                 value={value.clientStakeholderId ?? ''}
                 onChange={(e) => onChange({ clientStakeholderId: e.target.value || undefined })}

@@ -18,7 +18,7 @@ const KNOWN = new Set([
   'status', 'health', 'asOnDate',
   'plannedCompletionPct', 'actualCompletionPct',
   'plannedEffortHours', 'actualEffortHours',
-  'plannedCost', 'actualCost',
+  'plannedCost', 'actualCost', 'dealValue',
 ]);
 
 function rowToProject(row: any): Project {
@@ -35,7 +35,7 @@ function rowToProject(row: any): Project {
     as_on_date,
     planned_completion_pct, actual_completion_pct,
     planned_effort_hours, actual_effort_hours,
-    planned_cost, actual_cost,
+    planned_cost, actual_cost, deal_value,
     ...base
   } = row;
   return {
@@ -66,6 +66,7 @@ function rowToProject(row: any): Project {
     actualEffortHours:    actual_effort_hours    !== null && actual_effort_hours    !== undefined ? Number(actual_effort_hours)    : undefined,
     plannedCost:          planned_cost           !== null && planned_cost           !== undefined ? Number(planned_cost)           : undefined,
     actualCost:           actual_cost            !== null && actual_cost            !== undefined ? Number(actual_cost)            : undefined,
+    dealValue:            deal_value             !== null && deal_value             !== undefined ? Number(deal_value)             : undefined,
     ...(custom_data || {}),
   } as Project;
 }
@@ -187,8 +188,8 @@ export class ProjectsService {
             status, health, as_on_date,
             planned_completion_pct, actual_completion_pct,
             planned_effort_hours, actual_effort_hours,
-            planned_cost, actual_cost, custom_data)
-         VALUES (gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
+            planned_cost, actual_cost, custom_data, deal_value)
+         VALUES (gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
          RETURNING id`,
         [
           data.name, data.description ?? '', data.accountId, data.opportunityId, data.ownerId ?? null,
@@ -198,7 +199,7 @@ export class ProjectsService {
           data.status || 'Active', health, data.asOnDate || null,
           data.plannedCompletionPct ?? null, data.actualCompletionPct ?? null,
           data.plannedEffortHours ?? null, data.actualEffortHours ?? null,
-          data.plannedCost ?? null, data.actualCost ?? null, JSON.stringify(cd),
+          data.plannedCost ?? null, data.actualCost ?? null, JSON.stringify(cd), data.dealValue ?? null,
         ],
       );
       // No summary text is invented here — the history entry records the health
@@ -253,8 +254,8 @@ export class ProjectsService {
            planned_completion_pct=$16, actual_completion_pct=$17,
            planned_effort_hours=$18, actual_effort_hours=$19,
            planned_cost=$20, actual_cost=$21,
-           custom_data=$22, updated_at=NOW()
-         WHERE id=$23 AND is_deleted=FALSE`,
+           custom_data=$22, deal_value=$23, updated_at=NOW()
+         WHERE id=$24 AND is_deleted=FALSE`,
         [
           data.name ?? existing.name, data.description ?? existing.description ?? '',
           data.accountId ?? existing.accountId, data.opportunityId ?? existing.opportunityId, effectiveOwnerId,
@@ -264,7 +265,7 @@ export class ProjectsService {
           data.status || existing.status || 'Active', health, data.asOnDate || null,
           data.plannedCompletionPct ?? null, data.actualCompletionPct ?? null,
           data.plannedEffortHours ?? null, data.actualEffortHours ?? null,
-          data.plannedCost ?? null, data.actualCost ?? null, JSON.stringify(cd),
+          data.plannedCost ?? null, data.actualCost ?? null, JSON.stringify(cd), data.dealValue ?? null,
           id,
         ],
       );
@@ -341,6 +342,13 @@ export class ProjectsService {
    * conversions can never produce a duplicate project for the same deal.
    */
   async createFromOpportunity(opp: any, data: any = {}, requestingUserId?: string): Promise<Project> {
+    // Retrieve parent account's practice_lead_id
+    const { rows: accountRows } = await this.db.query(
+      `SELECT practice_lead_id FROM accounts WHERE id = $1 AND is_deleted = FALSE`,
+      [opp.accountId],
+    );
+    const parentPracticeLeadId = accountRows.length ? accountRows[0].practice_lead_id : null;
+
     const merged = {
       ...data,
       accountId:     opp.accountId,
@@ -351,6 +359,9 @@ export class ProjectsService {
       startDate:     data.startDate ?? opp.allocationStartDate ?? undefined,
       endDate:       data.endDate ?? opp.allocationEndDate ?? undefined,
       clientStakeholderId: data.clientStakeholderId ?? opp.clientStakeholderId ?? undefined,
+      dealValue:     data.dealValue ?? opp.value ?? undefined,
+      serviceProviderPmId: data.serviceProviderPmId ?? opp.serviceProviderPmId ?? undefined,
+      practiceLeadId: data.practiceLeadId ?? parentPracticeLeadId ?? undefined,
     };
     const project = await this.insertProject(merged, requestingUserId);
     this.logger.log(`Project created from Won Opportunity [projectId=${project.id} opportunityId=${opp.id}]`);

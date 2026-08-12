@@ -20,13 +20,6 @@ export class ServiceProviderBackfillRunner implements OnApplicationBootstrap {
   constructor(private readonly service: ServiceProviderService) {}
 
   async onApplicationBootstrap(): Promise<void> {
-    try {
-      await this.service.backfillServiceProviders();
-    } catch (err) {
-      this.logger.error(
-        'Service Provider startup backfill failed — continuing startup',
-        err instanceof Error ? err.stack : String(err),
-      );
-    }
+    this.logger.log('Service Provider startup backfill has been disabled.');
   }
 }

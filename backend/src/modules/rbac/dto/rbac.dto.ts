@@ -21,9 +21,13 @@ export class CreateRoleDto {
 
   @IsString() @IsOptional() @MaxLength(500)
   description?: string;
+
+  @IsString() @IsOptional() @MaxLength(50)
+  accountScopeField?: string;
 }
 
 export class UpdateRoleDto {
   @IsString() @IsOptional() @MaxLength(80) name?: string;
   @IsString() @IsOptional() @MaxLength(500) description?: string;
+  @IsString() @IsOptional() @MaxLength(50) accountScopeField?: string | null;
 }

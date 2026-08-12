@@ -72,6 +72,9 @@ export class CreateProjectDto {
 
   @IsNumber() @IsOptional() @Min(0, { message: 'Actual Cost cannot be negative' })
   actualCost?: number;
+
+  @IsNumber() @IsOptional() @Min(0, { message: 'Deal Value cannot be negative' })
+  dealValue?: number;
 }
 
 export class UpdateProjectDto extends CreateProjectDto {

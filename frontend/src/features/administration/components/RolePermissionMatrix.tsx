@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Lock, ChevronRight, ChevronDown, Plus, Pencil, Trash2, Save,
-  RefreshCw, RotateCcw, ShieldCheck,
+  RefreshCw, RotateCcw, ShieldCheck, ShieldAlert,
 } from 'lucide-react';
 import {
   Button,
@@ -13,7 +13,6 @@ import {
   FormModal,
   INPUT_CLS,
   RowActionButton,
-  SearchBar,
   SELECT_CLS,
   StatusBadge,
   Table,
@@ -38,12 +37,36 @@ function extractError(err: unknown, fallback: string): string {
 }
 
 const ROLE_TYPE_COLORS: Record<string, string> = {
-  System: 'bg-indigo-100 text-indigo-700',
-  Custom: 'bg-slate-100 text-slate-600',
+  System: 'bg-indigo-100 text-indigo-700 font-semibold',
+  Custom: 'bg-slate-100 text-slate-600 font-semibold',
 };
 
+const SUPPORTED_PERMISSIONS: Record<string, string[]> = {
+  dashboard:      ['view'],
+  accounts:       ['view', 'view-all', 'create', 'update', 'delete', 'import', 'export'],
+  opportunities:  ['view', 'view-all', 'create', 'update', 'delete', 'export'],
+  'action-items': ['view', 'view-all', 'create', 'update', 'delete'],
+  stakeholders:   ['view', 'view-all', 'create', 'update', 'delete'],
+  projects:       ['view', 'view-all', 'create', 'update', 'delete'],
+  forecast:       ['view', 'export'],
+  reports:        ['view', 'export'],
+  performance:    ['view', 'create', 'update', 'delete'],
+  'import-export':['view', 'import', 'export'],
+  administration: ['view', 'create', 'update', 'delete', 'manage'],
+};
+
+const DISPLAY_PERMISSIONS = [
+  { key: 'view', label: 'View' },
+  { key: 'view-all', label: 'View All' },
+  { key: 'create', label: 'Create' },
+  { key: 'update', label: 'Edit' },
+  { key: 'delete', label: 'Delete' },
+  { key: 'import', label: 'Import' },
+  { key: 'export', label: 'Export' },
+  { key: 'manage', label: 'Manage' },
+];
+
 interface RolePermissionMatrixProps {
-  /** Called after any change that could affect the current admin's own permissions. */
   onPermissionsChanged: () => void;
 }
 
@@ -54,11 +77,8 @@ export const RolePermissionMatrix: React.FC<RolePermissionMatrixProps> = ({ onPe
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
 
-  // Controls
-  const [search, setSearch] = useState('');
-  const [moduleFilter, setModuleFilter] = useState<string>('ALL');
-  const [roleFilter, setRoleFilter] = useState<string>('ALL');
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  // Selected Role for Permissions Configuration
+  const [selectedRoleId, setSelectedRoleId] = useState<string>('');
 
   // Save flow
   const [saving, setSaving] = useState(false);
@@ -69,6 +89,7 @@ export const RolePermissionMatrix: React.FC<RolePermissionMatrixProps> = ({ onPe
   const [editingRole, setEditingRole] = useState<Role | null>(null);
   const [roleName, setRoleName] = useState('');
   const [roleDesc, setRoleDesc] = useState('');
+  const [roleScope, setRoleScope] = useState('');
   const [roleSaving, setRoleSaving] = useState(false);
   const [roleError, setRoleError] = useState('');
   const [deleteRoleTarget, setDeleteRoleTarget] = useState<Role | null>(null);
@@ -92,55 +113,42 @@ export const RolePermissionMatrix: React.FC<RolePermissionMatrixProps> = ({ onPe
       setMatrix(m);
       setRoles(r);
       setCellMap(buildCellMap(m));
-      // Expand all modules by default so the grid is immediately usable.
-      setExpanded(Object.fromEntries(m.modules.map((mod) => [mod.key, true])));
+      if (r.length > 0 && !selectedRoleId) {
+        setSelectedRoleId(r[0].id);
+      }
     } catch (err: unknown) {
       setLoadError(extractError(err, 'Failed to load the permission matrix.'));
     } finally {
       setLoading(false);
     }
-  }, [buildCellMap]);
+  }, [buildCellMap, selectedRoleId]);
 
   useEffect(() => {
     loadAll();
   }, [loadAll]);
 
-  // ── Derived: which roles / modules / permissions are visible ────────────────
-  const visibleRoles = useMemo(() => {
-    if (!matrix) return [];
-    return roleFilter === 'ALL' ? matrix.roles : matrix.roles.filter((r) => r.id === roleFilter);
-  }, [matrix, roleFilter]);
+  // Selected role object
+  const selectedRole = useMemo(() => {
+    return roles.find((r) => r.id === selectedRoleId);
+  }, [roles, selectedRoleId]);
 
-  const searchLc = search.trim().toLowerCase();
-
-  const visibleModules = useMemo(() => {
-    if (!matrix) return [];
-    let mods = matrix.modules;
-    if (moduleFilter !== 'ALL') mods = mods.filter((m) => m.key === moduleFilter);
-    if (searchLc) {
-      mods = mods.filter((m) => {
-        const moduleMatches = m.name.toLowerCase().includes(searchLc);
-        const anyPermMatches = matrix.permissions.some((p) => p.name.toLowerCase().includes(searchLc));
-        return moduleMatches || anyPermMatches;
-      });
+  // Allowed permissions count for the selected role
+  const allowedCount = useMemo(() => {
+    if (!matrix || !selectedRoleId) return 0;
+    let count = 0;
+    for (const mod of matrix.modules) {
+      const supported = SUPPORTED_PERMISSIONS[mod.key] ?? [];
+      for (const p of matrix.permissions) {
+        if (supported.includes(p.key)) {
+          const k = keyOf(selectedRoleId, mod.key, p.key);
+          if (cellMap[k]?.isAllowed) {
+            count++;
+          }
+        }
+      }
     }
-    return [...mods].sort((a, b) => a.sortOrder - b.sortOrder);
-  }, [matrix, moduleFilter, searchLc]);
-
-  const sortedPermissions = useMemo(
-    () => (matrix ? [...matrix.permissions].sort((a, b) => a.sortOrder - b.sortOrder) : []),
-    [matrix],
-  );
-
-  const permissionsForModule = useCallback(
-    (moduleName: string) => {
-      if (!searchLc) return sortedPermissions;
-      const moduleMatches = moduleName.toLowerCase().includes(searchLc);
-      if (moduleMatches) return sortedPermissions;
-      return sortedPermissions.filter((p) => p.name.toLowerCase().includes(searchLc));
-    },
-    [searchLc, sortedPermissions],
-  );
+    return count;
+  }, [matrix, selectedRoleId, cellMap]);
 
   // ── Diff vs the loaded snapshot ─────────────────────────────────────────────
   const changes = useMemo(() => {
@@ -173,21 +181,6 @@ export const RolePermissionMatrix: React.FC<RolePermissionMatrixProps> = ({ onPe
     });
   };
 
-  /** Toggle a whole permission row across all NON-LOCKED visible roles. */
-  const togglePermissionRow = (moduleKey: string, permissionKey: string) => {
-    setCellMap((prev) => {
-      const editable = visibleRoles
-        .map((r) => keyOf(r.id, moduleKey, permissionKey))
-        .filter((k) => prev[k] && !prev[k].isLocked);
-      if (editable.length === 0) return prev;
-      const allOn = editable.every((k) => prev[k].isAllowed);
-      const target = !allOn;
-      const next = { ...prev };
-      for (const k of editable) next[k] = { ...next[k], isAllowed: target };
-      return next;
-    });
-  };
-
   const handleReset = () => {
     if (matrix) setCellMap(buildCellMap(matrix));
   };
@@ -212,14 +205,17 @@ export const RolePermissionMatrix: React.FC<RolePermissionMatrixProps> = ({ onPe
     setEditingRole(null);
     setRoleName('');
     setRoleDesc('');
+    setRoleScope('');
     setRoleError('');
     setRoleModalOpen(true);
   };
 
+  // Editing is limited to the description — name, type and scope stay fixed.
   const openEditRole = (role: Role) => {
     setEditingRole(role);
     setRoleName(role.name);
     setRoleDesc(role.description ?? '');
+    setRoleScope(role.accountScopeField ?? '');
     setRoleError('');
     setRoleModalOpen(true);
   };
@@ -227,7 +223,7 @@ export const RolePermissionMatrix: React.FC<RolePermissionMatrixProps> = ({ onPe
   const handleSaveRole = async (e: React.FormEvent) => {
     e.preventDefault();
     const name = roleName.trim();
-    if (!name) {
+    if (!editingRole && !name) {
       setRoleError('Role name is required.');
       return;
     }
@@ -235,10 +231,14 @@ export const RolePermissionMatrix: React.FC<RolePermissionMatrixProps> = ({ onPe
     setRoleError('');
     try {
       if (editingRole) {
-        await rbacApi.updateRole(editingRole.id, { name, description: roleDesc.trim() });
-        showToast({ kind: 'success', message: 'Role updated.' });
+        await rbacApi.updateRole(editingRole.id, { description: roleDesc.trim() });
+        showToast({ kind: 'success', message: 'Role description updated.' });
       } else {
-        await rbacApi.createRole({ name, description: roleDesc.trim() || undefined });
+        await rbacApi.createRole({
+          name,
+          description: roleDesc.trim() || undefined,
+          accountScopeField: roleScope.trim() || null,
+        });
         showToast({ kind: 'success', message: 'Role created.' });
       }
       setRoleModalOpen(false);
@@ -256,6 +256,9 @@ export const RolePermissionMatrix: React.FC<RolePermissionMatrixProps> = ({ onPe
     try {
       await rbacApi.deleteRole(deleteRoleTarget.id);
       showToast({ kind: 'success', message: `Role "${deleteRoleTarget.name}" deleted.` });
+      if (selectedRoleId === deleteRoleTarget.id) {
+        setSelectedRoleId('');
+      }
       setDeleteRoleTarget(null);
       await loadAll();
       onPermissionsChanged();
@@ -265,7 +268,6 @@ export const RolePermissionMatrix: React.FC<RolePermissionMatrixProps> = ({ onPe
     }
   };
 
-  // ── Render ──────────────────────────────────────────────────────────────────
   if (loading) {
     return <p className="text-xs text-slate-400 italic py-6 text-center">Loading permission matrix…</p>;
   }
@@ -281,18 +283,15 @@ export const RolePermissionMatrix: React.FC<RolePermissionMatrixProps> = ({ onPe
     );
   }
 
-  const leftColSpan = 2;
-  const totalCols = leftColSpan + visibleRoles.length;
-
   return (
     <div className="space-y-6">
-      {/* ── Roles management ── */}
+      {/* ── 1. Roles Management Card ── */}
       <Card
-        title="Roles"
-        subtitle="System roles are protected — they cannot be renamed or deleted. Create custom roles to fit your organisation."
+        title="Roles Configuration"
+        subtitle="Manage custom roles and view system roles. System roles are protected and cannot be edited or deleted."
         actions={
-          <Button size="xs" icon={<Plus className="w-3.5 h-3.5" aria-hidden="true" />} onClick={openCreateRole}>
-            Create Role
+          <Button size="sm" icon={<Plus className="w-3.5 h-3.5" aria-hidden="true" />} onClick={openCreateRole}>
+            Add Role
           </Button>
         }
         padding="cozy"
@@ -300,49 +299,47 @@ export const RolePermissionMatrix: React.FC<RolePermissionMatrixProps> = ({ onPe
         <div className="overflow-x-auto">
           <Table>
             <TableHead>
-              <TableHeadCell>Role</TableHeadCell>
+              <TableHeadCell>Role Name</TableHeadCell>
               <TableHeadCell>Description</TableHeadCell>
               <TableHeadCell>Type</TableHeadCell>
-              <TableHeadCell>Account Scope</TableHeadCell>
               <TableHeadCell>Actions</TableHeadCell>
             </TableHead>
             <tbody>
               {roles.length === 0 ? (
-                <EmptyRow colSpan={5} message="No roles configured." />
+                <EmptyRow colSpan={4} message="No roles configured." />
               ) : (
                 roles.map((role) => (
                   <TableRow key={role.id} className="hover:bg-slate-50/50">
                     <TableCell className="font-semibold text-slate-800">
-                      <div className="flex items-center gap-2">
-                        <ShieldCheck className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden="true" />
-                        {role.name}
-                      </div>
+                      {role.name}
                     </TableCell>
-                    <TableCell className="text-slate-500">
-                      {role.description || <span className="text-slate-400 italic text-[10px]">No description</span>}
+                    <TableCell className="text-slate-600 text-xs">
+                      {role.description || <span className="text-slate-400 italic">—</span>}
                     </TableCell>
                     <TableCell>
-                      <StatusBadge value={role.isSystem ? 'System' : 'Custom'} colorMap={ROLE_TYPE_COLORS} />
-                    </TableCell>
-                    <TableCell className="text-slate-500 font-mono text-[11px]">
-                      {role.accountScopeField || <span className="text-slate-400 italic">—</span>}
+                      <StatusBadge
+                        value={role.isSystem ? 'System' : 'Custom'}
+                        colorMap={ROLE_TYPE_COLORS}
+                      />
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1.5">
                         <RowActionButton
                           intent="edit"
-                          label={role.isSystem ? 'System roles cannot be edited' : `Edit role ${role.name}`}
+                          label={`Edit description of role ${role.name}`}
                           icon={<Pencil className="w-3.5 h-3.5" />}
                           onClick={() => openEditRole(role)}
-                          disabled={role.isSystem}
                         />
-                        <RowActionButton
-                          intent="delete"
-                          label={role.isSystem ? 'System roles cannot be deleted' : `Delete role ${role.name}`}
-                          icon={<Trash2 className="w-3.5 h-3.5" />}
-                          onClick={() => setDeleteRoleTarget(role)}
-                          disabled={role.isSystem}
-                        />
+                        {role.isSystem ? (
+                          <span className="text-[10px] text-slate-400 italic">Protected</span>
+                        ) : (
+                          <RowActionButton
+                            intent="delete"
+                            label={`Delete role ${role.name}`}
+                            icon={<Trash2 className="w-3.5 h-3.5" />}
+                            onClick={() => setDeleteRoleTarget(role)}
+                          />
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>
@@ -353,49 +350,12 @@ export const RolePermissionMatrix: React.FC<RolePermissionMatrixProps> = ({ onPe
         </div>
       </Card>
 
-      {/* ── Permission matrix ── */}
+      {/* ── 2. Roles Selector Cards & Permissions Grid ── */}
       <Card
-        title="Permission Matrix"
-        subtitle="Toggle module/permission access per role. Cells locked by a business rule cannot be changed."
+        title="Permissions Matrix"
+        subtitle="Manage allowed actions for each role. Select a role below to configure its permissions."
         actions={
-          <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded font-bold font-mono">
-            {dirty ? `${changes.length} UNSAVED` : 'NO CHANGES'}
-          </span>
-        }
-        padding="cozy"
-      >
-        {/* Controls */}
-        <div className="flex flex-wrap items-end gap-3 pb-5 mb-5 border-b border-slate-100">
-          <div className="flex-1 min-w-56">
-            <FormField label="Search">
-              <SearchBar value={search} onChange={setSearch} placeholder="Filter by module or permission…" />
-            </FormField>
-          </div>
-          <FormField label="Module" className="min-w-44">
-            <select
-              value={moduleFilter}
-              onChange={(e) => setModuleFilter(e.target.value)}
-              className={SELECT_CLS}
-            >
-              <option value="ALL">All Modules</option>
-              {[...matrix.modules].sort((a, b) => a.sortOrder - b.sortOrder).map((m) => (
-                <option key={m.key} value={m.key}>{m.name}</option>
-              ))}
-            </select>
-          </FormField>
-          <FormField label="Role" className="min-w-44">
-            <select
-              value={roleFilter}
-              onChange={(e) => setRoleFilter(e.target.value)}
-              className={SELECT_CLS}
-            >
-              <option value="ALL">All Roles</option>
-              {matrix.roles.map((r) => (
-                <option key={r.id} value={r.id}>{r.name}</option>
-              ))}
-            </select>
-          </FormField>
-          <div className="flex items-center gap-2 ml-auto">
+          <div className="flex items-center gap-3">
             <Button
               variant="secondary"
               size="sm"
@@ -403,7 +363,7 @@ export const RolePermissionMatrix: React.FC<RolePermissionMatrixProps> = ({ onPe
               onClick={handleReset}
               disabled={!dirty || saving}
             >
-              Reset changes
+              Reset Changes
             </Button>
             <Button
               size="sm"
@@ -416,131 +376,131 @@ export const RolePermissionMatrix: React.FC<RolePermissionMatrixProps> = ({ onPe
               {saving ? 'Saving…' : 'Save Changes'}
             </Button>
           </div>
+        }
+        padding="cozy"
+      >
+        {/* Roles Selectable Cards Section */}
+        <div className="mb-6">
+          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2.5 block">
+            Select Role to Configure
+          </label>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+            {roles.map((r) => {
+              const isSelected = r.id === selectedRoleId;
+              return (
+                <button
+                  type="button"
+                  key={r.id}
+                  onClick={() => setSelectedRoleId(r.id)}
+                  className={`flex flex-col text-left p-3.5 rounded-xl border transition-all cursor-pointer select-none relative overflow-hidden h-28 ${
+                    isSelected
+                      ? 'border-indigo-600 bg-indigo-50/50 ring-2 ring-indigo-600/10'
+                      : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
+                  }`}
+                >
+                  <span className="font-bold text-xs text-slate-800 mb-1 line-clamp-1">{r.name}</span>
+                  <span className="text-[10px] text-slate-500 line-clamp-2 leading-relaxed flex-grow">
+                    {r.description || 'No description provided.'}
+                  </span>
+                  <div className="mt-auto flex items-center justify-between w-full pt-1.5">
+                    <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider ${
+                      r.isSystem ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600'
+                    }`}>
+                      {r.isSystem ? 'System' : 'Custom'}
+                    </span>
+                    {isSelected && (
+                      <ShieldCheck className="w-4 h-4 text-indigo-600 shrink-0" />
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHead>
-              <TableHeadCell>Module</TableHeadCell>
-              <TableHeadCell>Permission</TableHeadCell>
-              {visibleRoles.map((r) => (
-                <TableHeadCell key={r.id}>
-                  <span className="whitespace-nowrap">{r.name}</span>
-                </TableHeadCell>
-              ))}
-            </TableHead>
-            <tbody>
-              {visibleModules.length === 0 ? (
-                <EmptyRow colSpan={totalCols} message="No modules match the current filters." />
-              ) : (
-                visibleModules.map((mod) => {
-                  const isExpanded = expanded[mod.key] !== false;
-                  const perms = permissionsForModule(mod.name);
-                  return (
-                    <React.Fragment key={mod.key}>
-                      <tr className="bg-slate-50 border-b border-slate-200">
-                        <td colSpan={totalCols} className="py-2.5 px-4">
-                          <button
-                            type="button"
-                            onClick={() => setExpanded((prev) => ({ ...prev, [mod.key]: !isExpanded }))}
-                            aria-expanded={isExpanded}
-                            className="flex items-center gap-2 text-xs font-bold text-slate-700 hover:text-slate-900 cursor-pointer"
-                          >
-                            {isExpanded
-                              ? <ChevronDown className="w-4 h-4" aria-hidden="true" />
-                              : <ChevronRight className="w-4 h-4" aria-hidden="true" />}
-                            <span className="uppercase tracking-wider">{mod.name}</span>
-                            <span className="text-[10px] font-mono font-medium text-slate-400">
-                              {perms.length} permission{perms.length === 1 ? '' : 's'}
-                            </span>
-                          </button>
-                        </td>
-                      </tr>
-                      {isExpanded && (perms.length === 0 ? (
-                        <tr>
-                          <td colSpan={totalCols} className="py-2 px-4 text-[11px] text-slate-400 italic">
-                            No permissions match the search.
-                          </td>
-                        </tr>
-                      ) : (
-                        perms.map((perm) => (
-                          <TableRow key={`${mod.key}:${perm.key}`} className="hover:bg-slate-50/50">
-                            <TableCell className="text-slate-400 text-[11px]" />
-                            <TableCell className="text-slate-700">
-                              <div className="flex items-center gap-2">
-                                <span>{perm.name}</span>
-                                <button
-                                  type="button"
-                                  onClick={() => togglePermissionRow(mod.key, perm.key)}
-                                  title="Toggle this permission for all unlocked roles"
-                                  className="text-[10px] font-bold text-indigo-500 hover:text-indigo-700 hover:underline cursor-pointer"
-                                >
-                                  toggle all
-                                </button>
-                              </div>
-                            </TableCell>
-                            {visibleRoles.map((role) => {
-                              const k = keyOf(role.id, mod.key, perm.key);
-                              const cell = cellMap[k];
-                              const isAllowed = cell?.isAllowed ?? false;
-                              const isLocked = cell?.isLocked ?? false;
-                              return (
-                                <TableCell key={role.id} className="text-center">
-                                  {isLocked ? (
-                                    <span
-                                      className="inline-flex items-center justify-center gap-1 text-slate-400"
-                                      title="Locked by business rule"
-                                    >
-                                      <input
-                                        type="checkbox"
-                                        checked={isAllowed}
-                                        disabled
-                                        aria-label={`${role.name} — ${mod.name} ${perm.name} (locked)`}
-                                        className="w-4 h-4 rounded border-slate-300 cursor-not-allowed opacity-60"
-                                      />
-                                      <Lock className="w-3 h-3" aria-hidden="true" />
-                                    </span>
-                                  ) : (
+        {/* Selected Role Summary header and Matrix */}
+        {selectedRole ? (
+          <div className="space-y-4">
+            <div className="flex items-center gap-2 p-3 rounded-lg bg-indigo-50/60 border border-indigo-100 text-xs font-semibold text-indigo-900">
+              <ShieldAlert className="w-4 h-4 text-indigo-600 shrink-0" />
+              <span>Active Role:</span>
+              <span className="font-bold">{selectedRole.name}</span>
+              <span className="mx-1 text-slate-300">|</span>
+              <span className="text-[11px] font-mono text-slate-500">
+                {matrix.modules.length} Modules &amp; {allowedCount} Active Permissions
+              </span>
+            </div>
+
+            <div className="overflow-x-auto border border-slate-200 rounded-xl">
+              <Table>
+                <TableHead>
+                  <TableHeadCell>Module</TableHeadCell>
+                  {DISPLAY_PERMISSIONS.map((p) => (
+                    <TableHeadCell key={p.key} className="text-center">
+                      <span className="whitespace-nowrap">{p.label}</span>
+                    </TableHeadCell>
+                  ))}
+                </TableHead>
+                <tbody>
+                  {matrix.modules.map((mod) => {
+                    const supported = SUPPORTED_PERMISSIONS[mod.key] ?? [];
+                    return (
+                      <TableRow key={mod.key} className="hover:bg-slate-50/40">
+                        <TableCell className="font-bold text-slate-800 uppercase tracking-wide text-xs">
+                          {mod.name}
+                        </TableCell>
+                        {DISPLAY_PERMISSIONS.map((p) => {
+                          const isSupported = supported.includes(p.key);
+                          const k = keyOf(selectedRoleId, mod.key, p.key);
+                          const cell = cellMap[k];
+                          const isAllowed = cell?.isAllowed ?? false;
+                          const isLocked = cell?.isLocked ?? false;
+
+                          return (
+                            <TableCell key={p.key} className="text-center py-3">
+                              {isSupported ? (
+                                <div className="inline-flex items-center justify-center">
+                                  <label className="relative flex items-center p-1 rounded-full cursor-pointer">
                                     <input
                                       type="checkbox"
                                       checked={isAllowed}
-                                      onChange={() => toggleCell(role.id, mod.key, perm.key)}
-                                      aria-label={`${role.name} — ${mod.name} ${perm.name}`}
-                                      className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500/30 cursor-pointer"
+                                      disabled={isLocked}
+                                      onChange={() => toggleCell(selectedRoleId, mod.key, p.key)}
+                                      title={isLocked ? 'Locked by system business rules' : `Allow ${p.label} on ${mod.name}`}
+                                      className={`w-4 h-4 rounded text-blue-600 border-slate-300 focus:ring-blue-500 cursor-pointer ${
+                                        isLocked ? 'cursor-not-allowed opacity-50' : ''
+                                      }`}
                                     />
+                                  </label>
+                                  {isLocked && (
+                                    <Lock className="w-2.5 h-2.5 text-slate-400 absolute translate-x-2.5 -translate-y-2" />
                                   )}
-                                </TableCell>
-                              );
-                            })}
-                          </TableRow>
-                        ))
-                      ))}
-                    </React.Fragment>
-                  );
-                })
-              )}
-            </tbody>
-          </Table>
-        </div>
+                                </div>
+                              ) : (
+                                <span className="text-slate-300 font-medium">—</span>
+                              )}
+                            </TableCell>
+                          );
+                        })}
+                      </TableRow>
+                    );
+                  })}
+                </tbody>
+              </Table>
+            </div>
+          </div>
+        ) : (
+          <p className="text-xs text-slate-400 italic py-6 text-center bg-slate-50 rounded-xl border border-dashed border-slate-200">
+            Please select a role card above to configure permissions.
+          </p>
+        )}
       </Card>
 
-      {/* ── Save confirmation ── */}
-      <ConfirmDialog
-        isOpen={showSaveConfirm}
-        title="Apply permission changes"
-        tone="default"
-        confirmLabel="Apply"
-        message={`Apply ${changes.length} permission change(s)? This updates access immediately for the affected roles.`}
-        onConfirm={handleSave}
-        onCancel={() => setShowSaveConfirm(false)}
-      />
-
-      {/* ── Role create / edit ── */}
+      {/* Role creation & edit modal */}
       <FormModal
         isOpen={roleModalOpen}
-        title={editingRole ? 'Edit Role' : 'Create Role'}
-        icon={<ShieldCheck className="w-5 h-5 text-blue-500" aria-hidden="true" />}
-        submitLabel={editingRole ? 'Save Role' : 'Create Role'}
+        title={editingRole ? `Edit ${editingRole.name} Description` : 'Create Custom Role'}
+        submitLabel={editingRole ? 'Save Changes' : 'Create Role'}
         submitVariant={editingRole ? 'warning' : 'primary'}
         isSubmitting={roleSaving}
         onClose={() => setRoleModalOpen(false)}
@@ -548,35 +508,77 @@ export const RolePermissionMatrix: React.FC<RolePermissionMatrixProps> = ({ onPe
       >
         <div className="space-y-4">
           {roleError && <ErrorBanner message={roleError} />}
-          <FormField label="Role Name" required>
-            <input
-              type="text"
-              value={roleName}
-              onChange={(e) => { setRoleName(e.target.value); setRoleError(''); }}
-              placeholder="e.g., Regional Manager"
-              className={INPUT_CLS}
-              autoFocus
-            />
+          <FormField label="Role Name *" required={!editingRole}>
+            {editingRole ? (
+              <p className="text-xs font-semibold text-slate-700 px-3 py-2 rounded-lg bg-slate-50 border border-slate-200">
+                {editingRole.name}
+              </p>
+            ) : (
+              <input
+                type="text"
+                required
+                value={roleName}
+                onChange={(e) => { setRoleName(e.target.value); setRoleError(''); }}
+                placeholder="e.g., Vertical Head"
+                className={INPUT_CLS}
+              />
+            )}
           </FormField>
-          <FormField label="Description" hint="Optional — shown in the roles list.">
+          <FormField label="Description">
             <textarea
               value={roleDesc}
-              onChange={(e) => setRoleDesc(e.target.value)}
-              placeholder="What this role is for…"
-              rows={3}
-              className={`${INPUT_CLS} resize-none`}
+              onChange={(e) => { setRoleDesc(e.target.value); setRoleError(''); }}
+              placeholder="Explain the responsibilities of this role…"
+              className={`${INPUT_CLS} min-h-20 py-2`}
             />
           </FormField>
+          {!editingRole && (
+            <FormField label="Account Scope Field" hint="Restricts account visibility to rows where this field matches the user's ID.">
+              <select
+                value={roleScope}
+                onChange={(e) => { setRoleScope(e.target.value); setRoleError(''); }}
+                className={SELECT_CLS}
+              >
+                <option value="">(None - Unscoped/Global)</option>
+                <option value="account_manager_id">account_manager_id (Account Manager)</option>
+                <option value="practice_lead_id">practice_lead_id (Practice Lead)</option>
+                <option value="client_partner_id">client_partner_id (Client Partner)</option>
+                <option value="vertical_head_id">vertical_head_id (Vertical Head)</option>
+              </select>
+            </FormField>
+          )}
         </div>
       </FormModal>
 
-      {/* ── Delete role confirmation ── */}
+      {/* Save permissions matrix confirmation dialog */}
+      <ConfirmDialog
+        isOpen={showSaveConfirm}
+        title="Save Permission Changes"
+        confirmLabel="Save"
+        tone="default"
+        message={
+          <>
+            Are you sure you want to save the <strong>{changes.length}</strong> permission modification(s)?
+            This will take effect immediately for all users with the affected roles.
+          </>
+        }
+        onConfirm={handleSave}
+        onCancel={() => setShowSaveConfirm(false)}
+      />
+
+      {/* Delete custom role confirmation dialog */}
       <ConfirmDialog
         isOpen={!!deleteRoleTarget}
-        title="Delete role"
+        title="Delete Custom Role"
+        tone="danger"
         confirmLabel="Delete"
         message={
-          <>Delete role <strong>{deleteRoleTarget?.name}</strong>? This cannot be undone. Roles assigned to users or system roles cannot be deleted.</>
+          deleteRoleTarget ? (
+            <>
+              Delete custom role <strong>{deleteRoleTarget.name}</strong>?
+              All users currently assigned to this role will lose their associated permissions.
+            </>
+          ) : undefined
         }
         onConfirm={handleDeleteRole}
         onCancel={() => setDeleteRoleTarget(null)}
