@@ -6,7 +6,7 @@
 import React, { useState, useEffect } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
 import { usersApi } from '@/api/crm.api';
-import { Account, Opportunity, ActionItem, Stakeholder, StakeholderType, ActionItemStatus, PriorityLevel, User as UserRecord } from '@/types';
+import { Account, Opportunity, OpportunityStage, ActionItem, Stakeholder, StakeholderType, ActionItemStatus, PriorityLevel, User as UserRecord } from '@/types';
 import { InlineEditModal } from '@/components/InlineEditModal';
 import { DocumentsPanel } from '@/components/documents/DocumentsPanel';
 import { OpportunityActionsCommentsPanel } from '@/features/opportunities/components/OpportunityActionsCommentsPanel';
@@ -41,10 +41,14 @@ import {
   TableCell,
   TableRow,
   ExpandableTextCell,
+  FormModal,
+  INPUT_CLS,
+  SELECT_CLS,
+  InlineCreateField,
 } from '@/components/ui';
 import { StakeholderFormModal } from '@/features/stakeholders/components/StakeholderFormModal';
 import { StakeholderTabs } from '@/features/stakeholders/components/StakeholderTabs';
-import { LOCATION_OPTIONS, STAGE_DEFAULT_PROBABILITY } from '@/constants';
+import { LOCATION_OPTIONS, STAGE_DEFAULT_PROBABILITY, stageChangePatch } from '@/constants';
 import {
   deriveOppStatus,
   getTodayISODate,
@@ -120,6 +124,10 @@ export const AccountDetailsView: React.FC = () => {
     navSource,
     currentUser,
     can,
+    serviceProviders,
+    associateServiceProvider,
+    projects,
+    setCreateProjectIntent,
   } = useCRM();
 
   // Find current account
@@ -140,6 +148,16 @@ export const AccountDetailsView: React.FC = () => {
   // Edit Opportunity Modal State
   const [isEditOppModalOpen, setIsEditOppModalOpen] = useState(false);
   const [editingOpp, setEditingOpp] = useState<Opportunity | null>(null);
+  const [promptConvertProject, setPromptConvertProject] = useState<string | null>(null);
+
+  // Stage change modal state
+  const [closeDialog, setCloseDialog] = useState<{ outcome: 'Won' | 'Lost'; opp: Opportunity } | null>(null);
+  const [closeReasonDraft, setCloseReasonDraft] = useState('');
+  const [isClosingOpp, setIsClosingOpp] = useState(false);
+
+  const [stageReasonDialog, setStageReasonDialog] = useState<{ stage: 'Blocked' | 'Delayed'; opp: Opportunity } | null>(null);
+  const [stageReasonDraft, setStageReasonDraft] = useState('');
+  const [isSavingStageReason, setIsSavingStageReason] = useState(false);
 
   // Edit Action Item Modal State
   const [isEditAiModalOpen, setIsEditAiModalOpen] = useState(false);
@@ -151,7 +169,7 @@ export const AccountDetailsView: React.FC = () => {
   const [newOpp, setNewOpp] = useState<Omit<Opportunity, 'id'>>({
     name: '',
     accountId: '',
-    stage: 'Lead',
+    stage: undefined as any,
     value: 0,
     probability: STAGE_DEFAULT_PROBABILITY.Lead ?? 0,
     description: '',
@@ -166,7 +184,8 @@ export const AccountDetailsView: React.FC = () => {
     team: [],
     clientStakeholderId: '',
     serviceProviderStakeholderId: '',
-    opportunityType: 'Growth',
+    serviceProviderUserId: '',
+    opportunityType: undefined as any,
     aopAvailable: false,
     aopYear: null,
     serviceLine: undefined,
@@ -197,12 +216,80 @@ export const AccountDetailsView: React.FC = () => {
     setIsEditOppModalOpen(true);
   };
 
-  const handleUpdateOpportunityForm = (e: React.FormEvent) => {
+  const handleUpdateOpportunityForm = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingOpp || !editingOpp.name.trim()) return;
-    updateOpportunity(editingOpp);
+    const original = opportunities.find(o => o.id === editingOpp.id);
+    const stageBecameWon = editingOpp.stage === 'Won' && (!original || original.stage !== 'Won') && !editingOpp.projectId;
+    await updateOpportunity(editingOpp);
     setIsEditOppModalOpen(false);
     setEditingOpp(null);
+    if (stageBecameWon) {
+      setPromptConvertProject(editingOpp.id);
+    }
+  };
+
+  const handleStageChange = async (opp: Opportunity, newStage: OpportunityStage) => {
+    if (newStage === 'Won' || newStage === 'Lost') {
+      setCloseReasonDraft(opp.closeReason || '');
+      setCloseDialog({ outcome: newStage, opp });
+    } else if (newStage === 'Blocked' || newStage === 'Delayed') {
+      setStageReasonDraft((newStage === 'Blocked' ? opp.blockedReason : opp.delayedReason) || '');
+      setStageReasonDialog({ stage: newStage, opp });
+    } else {
+      try {
+        await updateOpportunity({
+          ...opp,
+          ...stageChangePatch(newStage),
+        });
+      } catch {
+        // Central error handling
+      }
+    }
+  };
+
+  const handleCloseDialogSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!closeDialog) return;
+    const { outcome, opp } = closeDialog;
+    setIsClosingOpp(true);
+    try {
+      const stageBecameWon = outcome === 'Won' && opp.stage !== 'Won' && !opp.projectId;
+      await updateOpportunity({
+        ...opp,
+        ...stageChangePatch(outcome),
+        closeReason: closeReasonDraft.trim(),
+      });
+      setCloseDialog(null);
+      if (stageBecameWon) {
+        setPromptConvertProject(opp.id);
+      }
+    } catch {
+      // Central error handling
+    } finally {
+      setIsClosingOpp(false);
+    }
+  };
+
+  const handleStageReasonDialogSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!stageReasonDialog) return;
+    const { stage, opp } = stageReasonDialog;
+    setIsSavingStageReason(true);
+    try {
+      await updateOpportunity({
+        ...opp,
+        ...stageChangePatch(stage),
+        ...(stage === 'Blocked'
+          ? { blockedReason: stageReasonDraft.trim() }
+          : { delayedReason: stageReasonDraft.trim() }),
+      });
+      setStageReasonDialog(null);
+    } catch {
+      // Central error handling
+    } finally {
+      setIsSavingStageReason(false);
+    }
   };
 
   const handleEditAiClick = (item: ActionItem) => {
@@ -229,7 +316,16 @@ export const AccountDetailsView: React.FC = () => {
   const [commentText, setCommentText] = useState('');
 
   // Stakeholder create/edit dialog state (shared StakeholderFormModal)
-  const [showAddStakeholder, setShowAddStakeholder] = useState(false);
+  const [showAddClientStk, setShowAddClientStk] = useState(false);
+  const [showAddSpStk, setShowAddSpStk] = useState(false);
+
+  // Client stakeholder modal selection/draft state
+  const [selectedClientStkId, setSelectedClientStkId] = useState('');
+  const [showInnerCreateModal, setShowInnerCreateModal] = useState(false);
+
+  // Service Provider modal selection state
+  const [selectedSpUserIdInDetail, setSelectedSpUserIdInDetail] = useState('');
+
   const [editingStk, setEditingStk] = useState<Stakeholder | null>(null);
 
   // Stakeholders are split into two independent sub-tabs (Client Stakeholders /
@@ -296,7 +392,7 @@ export const AccountDetailsView: React.FC = () => {
     setNewOpp({
       name: '',
       accountId: account.id,
-      stage: 'Lead',
+      stage: undefined as any,
       value: 0,
       probability: STAGE_DEFAULT_PROBABILITY.Lead ?? 0,
       description: '',
@@ -311,7 +407,8 @@ export const AccountDetailsView: React.FC = () => {
       team: [],
       clientStakeholderId: '',
       serviceProviderStakeholderId: '',
-      opportunityType: 'Growth',
+      serviceProviderUserId: '',
+      opportunityType: undefined as any,
       aopAvailable: false,
       aopYear: null,
       serviceLine: undefined,
@@ -446,7 +543,13 @@ export const AccountDetailsView: React.FC = () => {
             <Button
               variant="warning"
               icon={<Pencil className="w-3.5 h-3.5" />}
-              onClick={() => { setAccountDraft({ ...account, location: mapLocationToOption(account.location) }); setIsEditingAccount(true); }}
+              onClick={() => {
+                setAccountDraft({
+                  ...account,
+                  location: mapLocationToOption(account.location),
+                });
+                setIsEditingAccount(true);
+              }}
             >
               Edit Account
             </Button>
@@ -599,6 +702,25 @@ export const AccountDetailsView: React.FC = () => {
                   ) : (
                     <p className="text-xs text-slate-300 italic min-h-[100px]">No summary added yet. Click Edit to add one.</p>
                   )}
+                </div>
+              </Card>
+
+              <Card
+                padding="none"
+                title="Account Leadership"
+              >
+                <div className="p-5 divide-y divide-slate-100">
+                  {[
+                    { label: 'Client Partner', name: account.clientPartnerName },
+                    { label: 'Vertical Head', name: account.verticalHeadName },
+                    { label: 'Account Manager', name: account.accountManagerName },
+                    { label: 'Practice Lead', name: account.practiceLeadName },
+                  ].map((row) => (
+                    <div key={row.label} className="py-3.5 first:pt-0 last:pb-0 flex items-center justify-between text-xs">
+                      <span className="font-bold text-slate-400 uppercase tracking-wider">{row.label}</span>
+                      <span className="font-semibold text-slate-800">{row.name || <span className="text-slate-400 font-normal italic">Not assigned</span>}</span>
+                    </div>
+                  ))}
                 </div>
               </Card>
 
@@ -794,7 +916,7 @@ export const AccountDetailsView: React.FC = () => {
                         >
                           {opportunitiesColumnConfig.filter(c => c.isDisplayed).map(col => (
                             <TableCell key={col.key}>
-                              {renderOpportunityCell(col, opp, account.name)}
+                              {renderOpportunityCell(col, opp, account.name, can('opportunities', 'update') ? handleStageChange : undefined)}
                             </TableCell>
                           ))}
                           <TableCell
@@ -1156,8 +1278,6 @@ export const AccountDetailsView: React.FC = () => {
         {/* Stakeholders Workspace */}
         {activeTab === 'stakeholders' && (
           <div className="space-y-6">
-            {/* Two-tab layout (Client Stakeholders / Service Providers), scoped to
-                this account — same StakeholderTabs component as the directory. */}
             <StakeholderTabs
               title="Stakeholders"
               clientRows={clientStks}
@@ -1168,23 +1288,113 @@ export const AccountDetailsView: React.FC = () => {
               canCreate={can('stakeholders', 'create')}
               canEdit={can('stakeholders', 'update')}
               canDelete={can('stakeholders', 'delete')}
-              onAdd={(type) => { setStkSubTab(type); setShowAddStakeholder(true); }}
+              onAdd={(type) => {
+                if (type === 'CLIENT') {
+                  setSelectedClientStkId('');
+                  setShowAddClientStk(true);
+                } else {
+                  setSelectedSpUserIdInDetail('');
+                  setShowAddSpStk(true);
+                }
+              }}
               onEdit={setEditingStk}
               onDelete={(s) => setDeleteTarget({ type: 'stakeholder', id: s.id, label: s.name })}
               clientEmptyMessage="No Client Stakeholders found."
-              serviceProviderEmptyMessage="No Service Providers found. One is created automatically when an Account Manager creates this account, or add one manually above."
+              serviceProviderEmptyMessage="No Service Providers found. Add one manually above."
             />
 
-            {/* Add stakeholder modal (account + type locked to this context) */}
-            <StakeholderFormModal
-              isOpen={showAddStakeholder}
-              mode="create"
-              accounts={accounts}
-              lockedAccount={{ id: account.id, name: account.name }}
-              lockedType={stkSubTab}
-              onClose={() => setShowAddStakeholder(false)}
-              onSubmit={async (draft) => { await addStakeholder(draft); }}
-            />
+            {/* Custom Client Stakeholder Modal */}
+            <FormModal
+              isOpen={showAddClientStk}
+              title="Add Client Stakeholder"
+              icon={<Building2 className="w-5 h-5 text-blue-600" aria-hidden="true" />}
+              onClose={() => setShowAddClientStk(false)}
+              onSubmit={async (e: React.FormEvent) => {
+                e.preventDefault();
+                if (selectedClientStkId) {
+                  const existing = stakeholders.find(s => s.id === selectedClientStkId);
+                  if (existing) {
+                    await updateStakeholder({
+                      ...existing,
+                      accountId: account.id,
+                    });
+                  }
+                }
+                setShowAddClientStk(false);
+              }}
+              submitLabel="Add Client Stakeholder"
+            >
+              <div className="space-y-4">
+                <InlineCreateField
+                  label="Select Client Stakeholder"
+                  createLabel="client stakeholder"
+                  onCreate={() => setShowInnerCreateModal(true)}
+                >
+                  <select
+                    value={selectedClientStkId}
+                    onChange={(e) => setSelectedClientStkId(e.target.value)}
+                    className={SELECT_CLS}
+                    required
+                  >
+                    <option value="" disabled>— Select existing Client Stakeholder —</option>
+                    {stakeholders
+                      .filter((s) => s.stakeholderType === 'CLIENT' && s.accountId !== account.id)
+                      .map((s) => (
+                        <option key={s.id} value={s.id}>{s.name} ({s.designation})</option>
+                      ))}
+                  </select>
+                </InlineCreateField>
+              </div>
+            </FormModal>
+
+            {showInnerCreateModal && (
+              <StakeholderFormModal
+                isOpen={true}
+                mode="create"
+                accounts={accounts}
+                lockedAccount={{ id: account.id, name: account.name }}
+                lockedType="CLIENT"
+                onClose={() => setShowInnerCreateModal(false)}
+                onSubmit={async (draft) => {
+                  await addStakeholder(draft);
+                  setShowInnerCreateModal(false);
+                  setShowAddClientStk(false);
+                }}
+              />
+            )}
+
+            {/* Custom Service Provider Modal */}
+            <FormModal
+              isOpen={showAddSpStk}
+              title="Add Service Provider"
+              icon={<Settings2 className="w-5 h-5 text-indigo-600" aria-hidden="true" />}
+              onClose={() => setShowAddSpStk(false)}
+              onSubmit={async (e: React.FormEvent) => {
+                e.preventDefault();
+                if (selectedSpUserIdInDetail) {
+                  await associateServiceProvider(selectedSpUserIdInDetail, account.id);
+                }
+                setShowAddSpStk(false);
+              }}
+              submitLabel="Add Service Provider"
+            >
+              <div className="space-y-4">
+                <label className="block text-xs font-semibold text-slate-600">Select Service Provider (System User)</label>
+                <select
+                  value={selectedSpUserIdInDetail}
+                  onChange={(e) => setSelectedSpUserIdInDetail(e.target.value)}
+                  className={SELECT_CLS}
+                  required
+                >
+                  <option value="" disabled>— Select System User —</option>
+                  {serviceProviders.map((sp) => (
+                    <option key={sp.id} value={sp.id}>
+                      {sp.name || sp.email}{sp.designation ? ` (${sp.designation})` : ''}{!sp.isActive ? ' [Inactive]' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </FormModal>
 
             {/* Edit stakeholder modal */}
             <StakeholderFormModal
@@ -1282,6 +1492,7 @@ export const AccountDetailsView: React.FC = () => {
             displayedConfigs={actionItemsColumnConfig.filter(c => c.isDisplayed)}
             accounts={accounts}
             opportunities={opportunities}
+            projects={projects}
             stakeholders={stakeholders}
             onChange={(patch) => setEditingAi({ ...editingAi, ...patch })}
             onSave={handleUpdateActionItemForm}
@@ -1304,6 +1515,85 @@ export const AccountDetailsView: React.FC = () => {
           opportunitiesColumnConfig={opportunitiesColumnConfig}
           lockedAccount={{ id: account.id, name: account.name }}
         />
+
+        <ConfirmDialog
+          isOpen={!!promptConvertProject}
+          title="Convert to Project"
+          message="Opportunity stage has been set to Won. Would you like to convert this opportunity to a project now?"
+          confirmLabel="Yes, Convert"
+          cancelLabel="No, Later"
+          onConfirm={() => {
+            if (promptConvertProject) {
+              setSelectedOpportunityId(promptConvertProject);
+              setCreateProjectIntent(true);
+              setView('opportunity-details');
+              setPromptConvertProject(null);
+            }
+          }}
+          onCancel={() => setPromptConvertProject(null)}
+        />
+
+        {/* Won/Lost Close-out Dialog */}
+        <FormModal
+          isOpen={!!closeDialog}
+          title={closeDialog?.outcome === 'Won' ? 'Mark Opportunity as Won' : 'Mark Opportunity as Lost'}
+          onClose={() => setCloseDialog(null)}
+          onSubmit={handleCloseDialogSubmit}
+          submitLabel={isClosingOpp ? 'Saving…' : `Mark ${closeDialog?.outcome ?? ''}`}
+          submitVariant={closeDialog?.outcome === 'Won' ? 'success' : 'danger'}
+          isSubmitting={isClosingOpp}
+          maxWidth="max-w-md"
+        >
+          <div className="space-y-2">
+            <label className="text-label font-semibold text-slate-600 uppercase tracking-wide block">
+              {closeDialog?.outcome === 'Won' ? 'Win Reason' : 'Loss Reason'}
+            </label>
+            <textarea
+              autoFocus
+              rows={3}
+              value={closeReasonDraft}
+              onChange={(e) => setCloseReasonDraft(e.target.value)}
+              placeholder={closeDialog?.outcome === 'Won'
+                ? 'e.g., Strong technical fit and competitive pricing'
+                : 'e.g., Lost to competitor on price'}
+              className={`${INPUT_CLS} resize-none`}
+            />
+            <p className="text-[10px] text-slate-400 font-medium">
+              Recorded on the opportunity for win/loss analysis.
+            </p>
+          </div>
+        </FormModal>
+
+        {/* Blocked/Delayed reason dialog */}
+        <FormModal
+          isOpen={!!stageReasonDialog}
+          title={stageReasonDialog?.stage === 'Blocked' ? 'Mark Opportunity as Blocked' : 'Mark Opportunity as Delayed'}
+          onClose={() => setStageReasonDialog(null)}
+          onSubmit={handleStageReasonDialogSubmit}
+          submitLabel={isSavingStageReason ? 'Saving…' : `Mark ${stageReasonDialog?.stage ?? ''}`}
+          submitVariant="warning"
+          isSubmitting={isSavingStageReason}
+          maxWidth="max-w-md"
+        >
+          <div className="space-y-2">
+            <label className="text-label font-semibold text-slate-600 uppercase tracking-wide block">
+              {stageReasonDialog?.stage === 'Blocked' ? 'Blocked Reason' : 'Delayed Reason'}
+            </label>
+            <textarea
+              autoFocus
+              rows={3}
+              value={stageReasonDraft}
+              onChange={(e) => setStageReasonDraft(e.target.value)}
+              placeholder={stageReasonDialog?.stage === 'Blocked'
+                ? 'Describe why this opportunity is currently blocked...'
+                : 'Describe why this opportunity has been delayed...'}
+              className={`${INPUT_CLS} resize-none`}
+            />
+            <p className="text-[10px] text-slate-400 font-medium">
+              Optional — separate from Risks &amp; Dependencies.
+            </p>
+          </div>
+        </FormModal>
 
         {/* Add Action Item Modal */}
         <ActionItemFormModal

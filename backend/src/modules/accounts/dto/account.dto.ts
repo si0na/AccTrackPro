@@ -1,6 +1,6 @@
 import {
   IsString, IsNumber, IsOptional, IsIn, IsEmail,
-  IsNotEmpty, Min, Max, MaxLength, Matches,
+  IsNotEmpty, Min, Max, MaxLength, Matches, IsArray,
 } from 'class-validator';
 import { EmptyToUndefined } from '../../../common/utils/dto-transforms.util';
 
@@ -53,6 +53,9 @@ export class CreateAccountDto {
   @IsString() @IsOptional() @MaxLength(1000) address?: string;
   @IsString() @IsOptional() @MaxLength(1000) location?: string;
   @IsString() @IsOptional() @MaxLength(5000) description?: string;
+
+  @IsArray() @IsOptional() clientStakeholderIds?: string[];
+  @IsArray() @IsOptional() serviceProviderUserIds?: string[];
 }
 
 export class UpdateAccountDto extends CreateAccountDto {

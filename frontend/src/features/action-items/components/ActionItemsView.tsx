@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
 import { ActionItem, ActionItemStatus, PriorityLevel } from '@/types';
 import {
@@ -48,11 +48,12 @@ import { compareForSort, getTodayISODate, isDueThisWeek, isOpenActionItemStatus,
 
 export const ActionItemsView: React.FC = () => {
   const {
-    actionItems,
-    deactivatedActionItems,
+    actionItems: rawActionItems,
+    deactivatedActionItems: rawDeactivatedActionItems,
     accounts,
     deactivatedAccounts,
     opportunities,
+    projects,
     stakeholders,
     addActionItem,
     updateActionItem,
@@ -76,7 +77,22 @@ export const ActionItemsView: React.FC = () => {
     globalAccountId: selectedAccountFilter,
     loading,
     can,
+    currentView,
   } = useCRM();
+
+  const isProjectMode = currentView === 'projectActionItems';
+
+  const actionItems = useMemo(() => {
+    return isProjectMode
+      ? rawActionItems.filter(ai => !!ai.projectId)
+      : rawActionItems.filter(ai => !ai.projectId);
+  }, [rawActionItems, isProjectMode]);
+
+  const deactivatedActionItems = useMemo(() => {
+    return isProjectMode
+      ? rawDeactivatedActionItems.filter(ai => !!ai.projectId)
+      : rawDeactivatedActionItems.filter(ai => !ai.projectId);
+  }, [rawDeactivatedActionItems, isProjectMode]);
 
   // Single-record focus set when the user opens an action-item notification
   const focusedActionItemId = focusedRecord?.type === 'actionItem' ? focusedRecord.id : null;
@@ -100,6 +116,7 @@ export const ActionItemsView: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedOwner, setSelectedOwner] = useState<string>('All');
   const [selectedOpportunityFilter, setSelectedOpportunityFilter] = useState<string>('All');
+  const [selectedProjectFilter, setSelectedProjectFilter] = useState<string>('All');
   const [selectedStatus, setSelectedStatus] = useState<string>('All');
   const [selectedPriority, setSelectedPriority] = useState<string>('All');
   /** Quick due-date filter: All | Overdue | Due Today | Due This Week */
@@ -116,6 +133,7 @@ export const ActionItemsView: React.FC = () => {
   useEffect(() => {
     setSearchQuery('');
     setSelectedOpportunityFilter('All');
+    setSelectedProjectFilter('All');
     setExpandedItemId(null);
     setPage(1);
   }, [selectedAccountFilter]);
@@ -140,6 +158,7 @@ export const ActionItemsView: React.FC = () => {
   const getSortValue = (item: ActionItem, key: string) => {
     if (key === 'accountId') return resolveAccount(item.accountId)?.name || item.accountName || '';
     if (key === 'opportunityId') return opportunities.find(o => o.id === item.opportunityId)?.name || '';
+    if (key === 'projectId') return projects.find(p => p.id === item.projectId)?.name || '';
     if (key === 'owner') return item.ownerName || item.owner || '';
     return (item as any)[key];
   };
@@ -169,6 +188,7 @@ export const ActionItemsView: React.FC = () => {
     title: '',
     accountId: '',
     opportunityId: '',
+    projectId: '',
     ownerStakeholderId: '',
     openDate: getTodayISODate(),
     dueDate: '',
@@ -186,10 +206,10 @@ export const ActionItemsView: React.FC = () => {
   };
 
   // Owners actually assigned in the current list — deduped by stakeholder id.
-  const ownersList = Array.from(
+  const ownersList: { id: string; label: string }[] = Array.from(
     new Map(
       actionItems
-        .filter(ai => ai.ownerStakeholderId)
+        .filter(ai => !!ai.ownerStakeholderId)
         .map(ai => [ai.ownerStakeholderId as string, ai.ownerName || ai.owner || 'Unknown']),
     ).entries(),
   ).map(([id, label]) => ({ id, label }));
@@ -211,7 +231,8 @@ export const ActionItemsView: React.FC = () => {
     }
     if (selectedOwner !== 'All' && ai.ownerStakeholderId !== selectedOwner) return false;
     if (!matchesGlobalAccount(ai.accountId, selectedAccountFilter)) return false;
-    if (selectedOpportunityFilter !== 'All' && ai.opportunityId !== selectedOpportunityFilter) return false;
+    if (!isProjectMode && selectedOpportunityFilter !== 'All' && ai.opportunityId !== selectedOpportunityFilter) return false;
+    if (isProjectMode && selectedProjectFilter !== 'All' && ai.projectId !== selectedProjectFilter) return false;
     if (selectedStatus !== 'All' && ai.status !== selectedStatus) return false;
     if (selectedPriority !== 'All' && ai.priority !== selectedPriority) return false;
     // Quick due-date filters apply to open (not completed/cancelled) items with a valid date.
@@ -262,7 +283,19 @@ export const ActionItemsView: React.FC = () => {
     updateActionItem(updated);
   };
 
-  const displayedConfigs = actionItemsColumnConfig.filter(col => col.isDisplayed);
+  const displayedConfigs = useMemo(() => {
+    const cols = actionItemsColumnConfig.filter(col => col.isDisplayed);
+    if (isProjectMode) {
+      return cols.map(col => {
+        if (col.key === 'opportunityId') {
+          return { ...col, key: 'projectId', name: 'Project' };
+        }
+        return col;
+      });
+    }
+    return cols;
+  }, [actionItemsColumnConfig, isProjectMode]);
+
   // User-added (non-standard) columns widen the table past the viewport and
   // trigger horizontal scroll; the default column set always fits the screen.
   const extraColumnCount = displayedConfigs.filter(col => !col.isStandard).length;
@@ -312,8 +345,8 @@ export const ActionItemsView: React.FC = () => {
       )}
 
       <PageHeader
-        title="Governance & Action Items"
-        subtitle="Coordinate delivery, track critical dependencies, and resolve blocks instantly."
+        title={isProjectMode ? "Project Action Items" : "Governance & Action Items"}
+        subtitle={isProjectMode ? "Coordinate delivery, track critical project tasks, and resolve blocks instantly." : "Coordinate delivery, track critical dependencies, and resolve blocks instantly."}
         actions={
           <>
             <Button
@@ -372,16 +405,31 @@ export const ActionItemsView: React.FC = () => {
           className="w-full"
         />
 
-        <FilterSelect
-          label="Opportunity"
-          hideLabel
-          value={selectedOpportunityFilter}
-          onChange={setSelectedOpportunityFilter}
-          options={[
-            { value: 'All', label: 'All Opportunities' },
-            ...opportunityFilterOptions.map(opp => ({ value: opp.id, label: opp.name })),
-          ]}
-        />
+        {isProjectMode ? (
+          <FilterSelect
+            label="Project"
+            hideLabel
+            value={selectedProjectFilter}
+            onChange={setSelectedProjectFilter}
+            options={[
+              { value: 'All', label: 'All Projects' },
+              ...projects
+                .filter(p => matchesGlobalAccount(p.accountId, selectedAccountFilter))
+                .map(p => ({ value: p.id, label: p.name })),
+            ]}
+          />
+        ) : (
+          <FilterSelect
+            label="Opportunity"
+            hideLabel
+            value={selectedOpportunityFilter}
+            onChange={setSelectedOpportunityFilter}
+            options={[
+              { value: 'All', label: 'All Opportunities' },
+              ...opportunityFilterOptions.map(opp => ({ value: opp.id, label: opp.name })),
+            ]}
+          />
+        )}
 
         <FilterSelect
           label="Owner"
@@ -534,6 +582,14 @@ export const ActionItemsView: React.FC = () => {
                             </TableCell>
                           );
                         }
+                        if (col.key === 'projectId') {
+                          const proj = projects.find(p => p.id === item.projectId);
+                          return (
+                            <TableCell key={col.key} className="text-slate-600 font-semibold text-xs">
+                              {proj ? proj.name : '—'}
+                            </TableCell>
+                          );
+                        }
                         if (col.key === 'owner') {
                           return (
                             <TableCell key={col.key} className="text-slate-600 font-semibold">
@@ -633,6 +689,7 @@ export const ActionItemsView: React.FC = () => {
         lockedAccount={lockedAccount}
         accounts={accounts}
         opportunities={opportunities}
+        projects={isProjectMode ? projects : undefined}
         stakeholders={stakeholders}
         actionItemColumns={actionItemColumns}
         actionItemsColumnConfig={actionItemsColumnConfig}
@@ -645,6 +702,7 @@ export const ActionItemsView: React.FC = () => {
           displayedConfigs={displayedConfigs}
           accounts={accounts}
           opportunities={opportunities}
+          projects={projects}
           stakeholders={stakeholders}
           onChange={(patch) => setEditingAi({ ...editingAi, ...patch })}
           onSave={handleUpdateActionItem}

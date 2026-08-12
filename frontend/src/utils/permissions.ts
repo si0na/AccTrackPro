@@ -17,6 +17,7 @@ export const VIEW_MODULE: Record<ViewType, string | null> = {
   projects:                 'projects',
   'project-details':        'projects',
   actionItems:              'action-items',
+  projectActionItems:       'action-items',
   stakeholders:             'stakeholders',
   forecast:                 'forecast',
   executive:                'reports',

@@ -7,10 +7,10 @@ import { isValidPhone, normalizePhone } from '../../common/utils/phone.util';
 const ACCOUNT_MANAGER_SCOPE_FIELD = 'account_manager_id';
 
 /** The five fields that make a Service Provider profile "complete". */
-export type ServiceProviderField = 'name' | 'department' | 'designation' | 'email' | 'phone';
+export type ServiceProviderField = 'name' | 'department' | 'designation' | 'email';
 
 export const SERVICE_PROVIDER_REQUIRED_FIELDS: ServiceProviderField[] = [
-  'name', 'department', 'designation', 'email', 'phone',
+  'name', 'department', 'designation', 'email',
 ];
 
 export interface ServiceProviderProfile {
@@ -19,7 +19,7 @@ export interface ServiceProviderProfile {
   designation: string;
   email: string;
   phone: string;
-  /** True once the user has at least one linked SERVICE_PROVIDER stakeholder. */
+  /** True — under the new model every System User is a Service Provider. */
   isServiceProvider: boolean;
   /** Required fields still missing (null / empty / whitespace). */
   missingFields: ServiceProviderField[];
@@ -73,50 +73,55 @@ export class ServiceProviderService {
   ) {}
 
   /**
-   * Auto-register a user as a SERVICE_PROVIDER stakeholder on an account.
-   * Idempotent per (account, user) and safe to call on every account creation.
-   * Skips silently for missing/inactive users so it never blocks account
-   * creation. Returns the stakeholder id, or null when nothing was created.
+   * All system users as Service Provider options — no is_active filter.
+   * Every person who exists as a System User is a Service Provider.
    */
-  async registerForAccount(userId: string, accountId: string): Promise<string | null> {
+  async findAllAsServiceProviders(): Promise<any[]> {
+    const { rows } = await this.db.query(
+      `SELECT u.id, u.name, u.email, u.department, u.designation, u.is_active
+       FROM users u
+       ORDER BY u.name ASC NULLS LAST, u.email ASC`,
+    );
+    return rows.map((r) => ({
+      id:          r.id,
+      name:        r.name ?? '',
+      email:       r.email ?? '',
+      department:  r.department ?? '',
+      designation: r.designation ?? '',
+      isActive:    r.is_active,
+    }));
+  }
+
+  /**
+   * Universal registration path: create/reuse a SERVICE_PROVIDER stakeholder
+   * for (userId, accountId). Works for ANY system user regardless of role,
+   * active status, or profile completeness. Idempotent per (account, user).
+   */
+  async resolveOrCreate(userId: string, accountId: string): Promise<string | null> {
     if (!userId || !accountId) return null;
 
-    // Inactive users are excluded from future auto-registration; their existing
-    // stakeholders are left untouched.
+    // Fetch user details (no is_active filter — all system users are valid SPs)
     const { rows: userRows } = await this.db.query(
-      `SELECT name, department, designation, email, is_active
-       FROM users WHERE id = $1`,
+      `SELECT name, department, designation, email FROM users WHERE id = $1`,
       [userId],
     );
     const user = userRows[0];
-    if (!user || user.is_active === false) {
-      this.logger.log(`Skipping Service Provider registration [userId=${userId} reason=${user ? 'inactive' : 'missing'}]`);
+    if (!user) {
+      this.logger.log(`Skipping Service Provider registration [userId=${userId} reason=user-not-found]`);
       return null;
     }
 
-    // Only genuine Account Managers become Service Providers. "Account Manager"
-    // is resolved from RBAC config (the role scoped by account_manager_id), never
-    // a hardcoded role name — the same signal the create flow uses to stamp the
-    // FK. Centralising the check here makes registerForAccount the single, self-
-    // guarding creation path for every caller (create / update / backfill).
-    if (!(await this.isAccountManager(userId))) {
-      this.logger.log(`Skipping Service Provider registration [userId=${userId} reason=not-account-manager]`);
-      return null;
-    }
-
-    // Dedup: one Service Provider stakeholder per (account, user).
+    // Dedup: one SERVICE_PROVIDER stakeholder per (account, user).
     const { rows: existing } = await this.db.query(
       `SELECT id FROM stakeholders
-       WHERE account_id = $1 AND user_id = $2 AND is_deleted = FALSE
+       WHERE account_id = $1 AND user_id = $2 AND stakeholder_type = 'SERVICE_PROVIDER' AND is_deleted = FALSE
        LIMIT 1`,
       [accountId, userId],
     );
     if (existing.length) return existing[0].id;
 
     // Adopt an existing SERVICE_PROVIDER stakeholder with the same official
-    // email on this account (e.g. added manually before): link it to the user
-    // and align its identity fields rather than inserting a duplicate (also
-    // avoids the per-account email clash).
+    // email on this account (e.g. added manually before): link it to the user.
     const email = String(user.email ?? '').trim();
     if (email) {
       const { rows: sameEmail } = await this.db.query(
@@ -146,6 +151,8 @@ export class ServiceProviderService {
       `INSERT INTO stakeholders
          (id, name, account_id, designation, influence, relationship, email, phone, stakeholder_type, department, user_id)
        VALUES (gen_random_uuid()::TEXT, $1, $2, $3, 'High', 'Strong', $4, $5, 'SERVICE_PROVIDER', $6, $7)
+       ON CONFLICT (account_id, user_id) WHERE stakeholder_type = 'SERVICE_PROVIDER' AND is_deleted = FALSE
+       DO UPDATE SET name = EXCLUDED.name
        RETURNING id`,
       [
         user.name ?? '',
@@ -164,15 +171,11 @@ export class ServiceProviderService {
   }
 
   /**
-   * Whether the user holds the Account Manager role, using the existing RBAC
-   * implementation. The Account Manager role is the one configured to scope
-   * accounts by the account_manager_id FK (roles.account_scope_field) — resolved
-   * from the data model, never a hardcoded role name. A user may hold several
-   * roles at once, so we test the full set of scope fields their roles grant.
+   * Backward-compatible wrapper: delegates to resolveOrCreate().
+   * No longer restricted to Account Managers or active users.
    */
-  private async isAccountManager(userId: string): Promise<boolean> {
-    const ctx = await this.permissions.getUserAccessContext(userId);
-    return ctx.accountScopeFields.includes(ACCOUNT_MANAGER_SCOPE_FIELD);
+  async registerForAccount(userId: string, accountId: string): Promise<string | null> {
+    return this.resolveOrCreate(userId, accountId);
   }
 
   /**
@@ -270,13 +273,13 @@ export class ServiceProviderService {
       department:  String(user.department ?? ''),
       designation: String(user.designation ?? ''),
       email:       String(user.email ?? ''),
-      phone,
     };
 
     const missingFields = SERVICE_PROVIDER_REQUIRED_FIELDS.filter((f) => isBlank(values[f]));
 
     return {
       ...values,
+      phone,
       isServiceProvider,
       missingFields,
       isComplete: missingFields.length === 0,

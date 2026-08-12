@@ -5,7 +5,7 @@ import {
 } from '@/api/crm.api';
 import type { UserRbacAttrs } from '@/api/crm.api';
 import type {
-  AdminSystemOverview, AdminUser, FinancialCalendar, FYQuarterDef, EmployeeMaster, Role,
+  AdminSystemOverview, AdminUser, FinancialCalendar, FYQuarterDef, Role,
 } from '@/types';
 import {
   Users, BarChart3, Briefcase, FileText, Bell,
@@ -13,7 +13,7 @@ import {
   RefreshCw, CalendarDays,
   Pencil, Trash2, ShieldCheck, ShieldAlert,
   ClipboardList, SlidersHorizontal,
-  KeyRound, Power, PowerOff, UserCog,
+  KeyRound, Power, PowerOff, UserCog, UserPlus,
 } from 'lucide-react';
 import {
   Button,
@@ -43,9 +43,14 @@ import { RolePermissionMatrix } from './RolePermissionMatrix';
 
 // ─── Local status color maps (admin-only enums) ──────────────────────────────
 
+const REG_STATUS_COLORS: Record<string, string> = {
+  Registered: 'bg-green-100 text-green-700 font-semibold',
+  'Pending Registration': 'bg-amber-100 text-amber-700 font-semibold',
+};
+
 const USER_STATUS_COLORS: Record<string, string> = {
-  Active: 'bg-green-100 text-green-700',
-  Inactive: 'bg-slate-100 text-slate-500',
+  Active: 'bg-green-100 text-green-700 font-semibold',
+  Inactive: 'bg-slate-100 text-slate-500 font-semibold',
 };
 
 const FY_STATUS_COLORS: Record<string, string> = {
@@ -89,9 +94,8 @@ const StatCard: React.FC<StatCardProps> = ({ icon, label, value, tone }) => (
 // ─── Tab bar ──────────────────────────────────────────────────────────────────
 
 const TABS = [
-  { id: 'users', label: 'User Management', icon: Users },
+  { id: 'users', label: 'System Users', icon: Users },
   { id: 'roles', label: 'Roles & Permissions', icon: KeyRound },
-  { id: 'employees', label: 'Employee Master', icon: ShieldCheck },
   { id: 'financial-years', label: 'Financial Years', icon: CalendarDays },
   { id: 'calendar', label: 'Calendar Configuration', icon: ClipboardList },
   { id: 'settings', label: 'Application Settings', icon: SlidersHorizontal },
@@ -101,7 +105,7 @@ type AdminTab = typeof TABS[number]['id'];
 
 /** A form/action row that sits above a table — visually separated so buttons don't crowd the table. */
 const Toolbar: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <div className="flex flex-wrap items-end gap-3 pb-5 mb-5 border-b border-slate-100">
+  <div className="flex flex-wrap items-end justify-between gap-3 pb-5 mb-5 border-b border-slate-100">
     {children}
   </div>
 );
@@ -109,31 +113,47 @@ const Toolbar: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export const AdministrationPage: React.FC = () => {
-  const { financialYears, financialCalendar, adminSettings, refreshData, refreshPermissions } = useCRM();
+  const { financialYears, financialCalendar, adminSettings, refreshData, refreshPermissions, can } = useCRM();
 
   const [activeTab, setActiveTab] = useState<AdminTab>('users');
 
-  // Roles (shared dropdown source for User + Employee Master forms)
+  // Roles (shared dropdown source for User forms)
   const [roles, setRoles] = useState<Role[]>([]);
 
-  // User Management — edit / activate flows
+  // User Management — Edit State
   const [editingUser, setEditingUser]         = useState<AdminUser | null>(null);
-  // Multi-role: a user may hold several roles at once. The first entry is treated
-  // as the primary role server-side (JWT display claim).
+  const [userName, setUserName]               = useState('');
   const [userRoleIds, setUserRoleIds]         = useState<string[]>([]);
   const [userDepartment, setUserDepartment]   = useState('');
   const [userDesignation, setUserDesignation] = useState('');
   const [userEmployeeId, setUserEmployeeId]   = useState('');
   const [userSaving, setUserSaving]           = useState(false);
   const [userError, setUserError]             = useState('');
-  const [togglingUserId, setTogglingUserId]   = useState<string | null>(null);
+
+  // User Management — Add State
+  const [isAddingUser, setIsAddingUser]       = useState(false);
+  const [newEmail, setNewEmail]               = useState('');
+  const [newName, setNewName]                 = useState('');
+  const [newEmployeeId, setNewEmployeeId]     = useState('');
+  const [newDepartment, setNewDepartment]     = useState('');
+  const [newDesignation, setNewDesignation]   = useState('');
+  const [newRoleIds, setNewRoleIds]           = useState<string[]>([]);
+  const [addSaving, setAddSaving]             = useState(false);
+  const [addError, setAddError]               = useState('');
+
+  // User Management — Deactivate State (Registered Users)
   const [statusTarget, setStatusTarget]       = useState<AdminUser | null>(null);
+  const [togglingUserId, setTogglingUserId]   = useState<string | null>(null);
+
+  // User Management — Delete Whitelist Entry State (Pending Users)
+  const [deletePendingTarget, setDeletePendingTarget] = useState<AdminUser | null>(null);
+  const [deletingUserId, setDeletingUserId]           = useState<string | null>(null);
 
   // System Overview
   const [overview, setOverview] = useState<AdminSystemOverview | null>(null);
   const [overviewLoading, setOverviewLoading] = useState(true);
 
-  // User Management
+  // User Management List
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [usersLoading, setUsersLoading] = useState(true);
 
@@ -161,30 +181,6 @@ export const AdministrationPage: React.FC = () => {
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsSuccess, setSettingsSuccess] = useState('');
 
-  // Employee Master
-  const [employees, setEmployees]               = useState<EmployeeMaster[]>([]);
-  const [empLoading, setEmpLoading]             = useState(true);
-  const [newEmpEmail, setNewEmpEmail]           = useState('');
-  const [newEmpName, setNewEmpName]             = useState('');
-  const [newEmpRoleId, setNewEmpRoleId]         = useState('');
-  const [newEmpEmployeeId, setNewEmpEmployeeId] = useState('');
-  const [newEmpDepartment, setNewEmpDepartment] = useState('');
-  const [newEmpDesignation, setNewEmpDesignation] = useState('');
-  const [empAddError, setEmpAddError]           = useState('');
-  const [empAddSuccess, setEmpAddSuccess]       = useState('');
-  const [empAdding, setEmpAdding]               = useState(false);
-  const [editingEmpId, setEditingEmpId]         = useState<string | null>(null);
-  const [editEmpEmail, setEditEmpEmail]         = useState('');
-  const [editEmpName, setEditEmpName]           = useState('');
-  const [editEmpRoleId, setEditEmpRoleId]       = useState('');
-  const [editEmpEmployeeId, setEditEmpEmployeeId] = useState('');
-  const [editEmpDepartment, setEditEmpDepartment] = useState('');
-  const [editEmpDesignation, setEditEmpDesignation] = useState('');
-  const [empEditError, setEmpEditError]         = useState('');
-  const [empEditSaving, setEmpEditSaving]       = useState(false);
-  const [deletingEmpId, setDeletingEmpId]       = useState<string | null>(null);
-  const [empDeleteError, setEmpDeleteError]     = useState<Record<string, string>>({});
-
   // ── Load overview + users ──────────────────────────────────────────────────
   const loadOverview = useCallback(async () => {
     setOverviewLoading(true);
@@ -206,16 +202,6 @@ export const AdministrationPage: React.FC = () => {
     }
   }, []);
 
-  const loadEmployees = useCallback(async () => {
-    setEmpLoading(true);
-    try {
-      const data = await employeeMasterApi.getAll();
-      setEmployees(data);
-    } catch { /* swallow */ } finally {
-      setEmpLoading(false);
-    }
-  }, []);
-
   const loadRoles = useCallback(async () => {
     try {
       const data = await rbacApi.getRoles();
@@ -226,9 +212,8 @@ export const AdministrationPage: React.FC = () => {
   useEffect(() => {
     loadOverview();
     loadUsers();
-    loadEmployees();
     loadRoles();
-  }, [loadOverview, loadUsers, loadEmployees, loadRoles]);
+  }, [loadOverview, loadUsers, loadRoles]);
 
   const roleOptions = roles.map((r) => ({ value: r.id, label: r.name }));
   const roleNameById = (id?: string | null) => roles.find((r) => r.id === id)?.name ?? null;
@@ -240,10 +225,9 @@ export const AdministrationPage: React.FC = () => {
     return names.join(', ') || u.roleName || u.role || '';
   };
 
-  /** Toggle a role in the edit modal's multi-select selection. */
-  const toggleUserRole = (roleId: string) => {
-    setUserError('');
-    setUserRoleIds((prev) =>
+  /** Toggle a role in the edit/add modal's multi-select selection. */
+  const toggleUserRole = (roleId: string, setRoleIds: React.Dispatch<React.SetStateAction<string[]>>) => {
+    setRoleIds((prev) =>
       prev.includes(roleId) ? prev.filter((id) => id !== roleId) : [...prev, roleId],
     );
   };
@@ -323,8 +307,54 @@ export const AdministrationPage: React.FC = () => {
 
   // ── User Management handlers ───────────────────────────────────────────────
 
+  const handleStartAddUser = () => {
+    setNewEmail('');
+    setNewName('');
+    setNewEmployeeId('');
+    setNewDepartment('');
+    setNewDesignation('');
+    setNewRoleIds([]);
+    setAddError('');
+    setIsAddingUser(true);
+  };
+
+  const handleCreateUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const email = newEmail.trim().toLowerCase();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setAddError('Please enter a valid email address.');
+      return;
+    }
+    if (!newRoleIds.length) {
+      setAddError('Please assign at least one role to the user.');
+      return;
+    }
+    setAddSaving(true);
+    setAddError('');
+    try {
+      const payload = {
+        email,
+        name: newName.trim() || undefined,
+        employeeId: newEmployeeId.trim() || undefined,
+        department: newDepartment.trim() || undefined,
+        designation: newDesignation.trim() || undefined,
+        roleIds: newRoleIds,
+      };
+      await administrationApi.createUser(payload);
+      setIsAddingUser(false);
+      await loadUsers();
+      showToast({ kind: 'success', message: 'System User authorized and whitelisted successfully.' });
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
+      setAddError(typeof msg === 'string' ? msg : 'Failed to whitelist system user.');
+    } finally {
+      setAddSaving(false);
+    }
+  };
+
   const handleStartEditUser = (u: AdminUser) => {
     setEditingUser(u);
+    setUserName(u.name ?? '');
     setUserRoleIds(u.roleIds?.length ? u.roleIds : (u.roleId ? [u.roleId] : []));
     setUserDepartment(u.department ?? '');
     setUserDesignation(u.designation ?? '');
@@ -335,10 +365,15 @@ export const AdministrationPage: React.FC = () => {
   const handleSaveUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingUser) return;
+    if (!userRoleIds.length) {
+      setUserError('Please assign at least one role.');
+      return;
+    }
     setUserSaving(true);
     setUserError('');
     try {
       const payload: UserRbacAttrs & { roleIds?: string[] } = {
+        name: userName.trim() || undefined,
         roleIds: userRoleIds,
         department: userDepartment.trim() || undefined,
         designation: userDesignation.trim() || undefined,
@@ -377,93 +412,18 @@ export const AdministrationPage: React.FC = () => {
     }
   };
 
-  // ── Employee Master handlers ───────────────────────────────────────────────
-
-  const handleAddEmployee = async () => {
-    const email = newEmpEmail.trim().toLowerCase();
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      setEmpAddError('Please enter a valid email address.');
-      return;
-    }
-    setEmpAdding(true);
-    setEmpAddError('');
-    setEmpAddSuccess('');
+  const handleDeletePendingUser = async (u: AdminUser) => {
+    setDeletePendingTarget(null);
+    setDeletingUserId(u.id);
     try {
-      const attrs: UserRbacAttrs = {
-        roleId: newEmpRoleId || undefined,
-        employeeId: newEmpEmployeeId.trim() || undefined,
-        department: newEmpDepartment.trim() || undefined,
-        designation: newEmpDesignation.trim() || undefined,
-      };
-      await employeeMasterApi.create(email, newEmpName.trim(), attrs);
-      setNewEmpEmail('');
-      setNewEmpName('');
-      setNewEmpRoleId('');
-      setNewEmpEmployeeId('');
-      setNewEmpDepartment('');
-      setNewEmpDesignation('');
-      setEmpAddSuccess('Employee added successfully.');
-      await loadEmployees();
+      await employeeMasterApi.delete(u.id);
+      await loadUsers();
+      showToast({ kind: 'success', message: `Authorized email for ${u.email} deleted.` });
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      setEmpAddError(typeof msg === 'string' ? msg : 'Failed to add employee. The email may already exist.');
+      showToast({ kind: 'error', message: typeof msg === 'string' ? msg : 'Failed to delete whitelist entry.' });
     } finally {
-      setEmpAdding(false);
-    }
-  };
-
-  const handleStartEditEmployee = (emp: EmployeeMaster) => {
-    setEditingEmpId(emp.id);
-    setEditEmpEmail(emp.email);
-    setEditEmpName(emp.name || '');
-    setEditEmpRoleId(emp.roleId ?? '');
-    setEditEmpEmployeeId(emp.employeeId ?? '');
-    setEditEmpDepartment(emp.department ?? '');
-    setEditEmpDesignation(emp.designation ?? '');
-    setEmpEditError('');
-  };
-
-  const handleSaveEditEmployee = async () => {
-    if (!editingEmpId) return;
-    const email = editEmpEmail.trim().toLowerCase();
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      setEmpEditError('Please enter a valid email address.');
-      return;
-    }
-    setEmpEditSaving(true);
-    setEmpEditError('');
-    try {
-      const attrs: UserRbacAttrs = {
-        roleId: editEmpRoleId || undefined,
-        employeeId: editEmpEmployeeId.trim() || undefined,
-        department: editEmpDepartment.trim() || undefined,
-        designation: editEmpDesignation.trim() || undefined,
-      };
-      await employeeMasterApi.update(editingEmpId, email, editEmpName.trim(), attrs);
-      setEditingEmpId(null);
-      await loadEmployees();
-    } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      setEmpEditError(typeof msg === 'string' ? msg : 'Failed to update email.');
-    } finally {
-      setEmpEditSaving(false);
-    }
-  };
-
-  const handleDeleteEmployee = async (id: string) => {
-    setDeletingEmpId(id);
-    setEmpDeleteError((prev) => ({ ...prev, [id]: '' }));
-    try {
-      await employeeMasterApi.delete(id);
-      setEmployees((prev) => prev.filter((e) => e.id !== id));
-    } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message;
-      setEmpDeleteError((prev) => ({
-        ...prev,
-        [id]: typeof msg === 'string' ? msg : 'Cannot delete this employee.',
-      }));
-    } finally {
-      setDeletingEmpId(null);
+      setDeletingUserId(null);
     }
   };
 
@@ -559,6 +519,7 @@ export const AdministrationPage: React.FC = () => {
           return (
             <button
               key={tab.id}
+              type="button"
               onClick={() => setActiveTab(tab.id)}
               className={`flex items-center gap-2 px-4 py-3 -mb-px border-b-2 rounded-t-lg text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
                 isActive
@@ -573,11 +534,32 @@ export const AdministrationPage: React.FC = () => {
         })}
       </div>
 
-      {/* ── User Management ── */}
+      <div className="space-y-6">
+
+      {/* ── System Users Tab ── */}
       {activeTab === 'users' && (
-      <Card title="User Management" actions={<span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded font-bold font-mono">{users.length} USERS</span>} padding="cozy">
+      <Card
+        title="System Users"
+        subtitle="Whitelist authorized employee emails and pre-assign multiple roles. Authorized users register later using their whitelisted email."
+        actions={
+          <div className="flex items-center gap-3">
+            <Button
+              size="sm"
+              variant="primary"
+              icon={<UserPlus className="w-4 h-4" />}
+              onClick={handleStartAddUser}
+            >
+              Add User
+            </Button>
+            <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded font-bold font-mono">
+              {users.length} TOTAL
+            </span>
+          </div>
+        }
+        padding="cozy"
+      >
         {usersLoading ? (
-          <p className="text-xs text-slate-400 italic py-4 text-center">Loading users…</p>
+          <p className="text-xs text-slate-400 italic py-4 text-center">Loading system users…</p>
         ) : (
           <div className="overflow-x-auto">
             <Table>
@@ -587,34 +569,34 @@ export const AdministrationPage: React.FC = () => {
                 <TableHeadCell>Employee ID</TableHeadCell>
                 <TableHeadCell>Department</TableHeadCell>
                 <TableHeadCell>Designation</TableHeadCell>
-                <TableHeadCell>Role</TableHeadCell>
-                <TableHeadCell>Status</TableHeadCell>
-                <TableHeadCell>Security</TableHeadCell>
-                <TableHeadCell>Created</TableHeadCell>
-                <TableHeadCell>Last Login</TableHeadCell>
+                <TableHeadCell>Role(s)</TableHeadCell>
+                <TableHeadCell>Registration Status</TableHeadCell>
+                <TableHeadCell>Active/Inactive Status</TableHeadCell>
                 <TableHeadCell>Actions</TableHeadCell>
               </TableHead>
               <tbody>
                 {users.length === 0 ? (
-                  <EmptyRow colSpan={11} message="No users found." />
+                  <EmptyRow colSpan={9} message="No whitelisted system users found." />
                 ) : (
                   users.map((u) => {
-                    const isLocked = !!(u.lockedUntil && new Date(u.lockedUntil).getTime() > Date.now());
                     const isToggling = togglingUserId === u.id;
+                    const isDeleting = deletingUserId === u.id;
                     return (
                     <TableRow key={u.id} className="hover:bg-slate-50/50">
                       <TableCell className="font-semibold text-slate-800">
                         <div className="flex items-center gap-2">
                           <div
-                            className="w-6 h-6 rounded-full bg-indigo-100 flex items-center justify-center text-[10px] font-bold text-indigo-700 shrink-0"
+                            className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
+                              u.isPending ? 'bg-amber-100 text-amber-700' : 'bg-indigo-100 text-indigo-700'
+                            }`}
                             aria-hidden="true"
                           >
-                            {u.name.charAt(0).toUpperCase()}
+                            {(u.name || u.email).charAt(0).toUpperCase()}
                           </div>
-                          {u.name}
+                          {u.name || <span className="text-slate-400 italic text-[11px]">Pending self-registration</span>}
                         </div>
                       </TableCell>
-                      <TableCell className="text-slate-500 font-mono">{u.email}</TableCell>
+                      <TableCell className="text-slate-500 font-mono text-xs">{u.email}</TableCell>
                       <TableCell className="text-slate-600 font-mono text-[11px]">
                         {u.employeeId || <span className="text-slate-400 italic">—</span>}
                       </TableCell>
@@ -624,53 +606,56 @@ export const AdministrationPage: React.FC = () => {
                       <TableCell className="text-slate-600">
                         {u.designation || <span className="text-slate-400 italic">—</span>}
                       </TableCell>
-                      <TableCell className="text-slate-600">
+                      <TableCell className="text-slate-600 text-xs">
                         {roleNamesFor(u) || <span className="text-slate-400 italic">—</span>}
                       </TableCell>
                       <TableCell>
                         <StatusBadge
-                          value={u.isActive ? 'Active' : 'Inactive'}
-                          colorMap={USER_STATUS_COLORS}
+                          value={u.isPending ? 'Pending Registration' : 'Registered'}
+                          colorMap={REG_STATUS_COLORS}
                         />
                       </TableCell>
                       <TableCell>
-                        {isLocked ? (
-                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-100 text-red-700">
-                            <ShieldAlert className="w-3 h-3" aria-hidden="true" /> Locked
-                          </span>
-                        ) : u.failedAttempts ? (
-                          <span className="text-[10px] font-semibold text-amber-600">
-                            {u.failedAttempts} failed attempt{u.failedAttempts === 1 ? '' : 's'}
-                          </span>
+                        {u.isPending ? (
+                          <span className="text-slate-300 italic text-[11px]">—</span>
                         ) : (
-                          <span className="text-[10px] text-slate-400 italic">Clear</span>
+                          <StatusBadge
+                            value={u.isActive ? 'Active' : 'Inactive'}
+                            colorMap={USER_STATUS_COLORS}
+                          />
                         )}
-                      </TableCell>
-                      <TableCell className="text-slate-400 font-mono text-[11px]">
-                        {new Date(u.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
-                      </TableCell>
-                      <TableCell className="text-slate-400 font-mono">
-                        {u.lastLogin
-                          ? new Date(u.lastLogin).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-                          : <span className="italic">Never</span>}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1.5">
-                          <RowActionButton
-                            intent="edit"
-                            label={`Edit user ${u.name}`}
-                            icon={<Pencil className="w-3.5 h-3.5" />}
-                            onClick={() => handleStartEditUser(u)}
-                          />
-                          <RowActionButton
-                            intent={u.isActive ? 'delete' : 'view'}
-                            label={u.isActive ? `Deactivate ${u.name}` : `Activate ${u.name}`}
-                            icon={u.isActive
-                              ? <PowerOff className="w-3.5 h-3.5" />
-                              : <Power className="w-3.5 h-3.5" />}
-                            onClick={() => setStatusTarget(u)}
-                            disabled={isToggling}
-                          />
+                          {can('administration', 'update') && (
+                            <RowActionButton
+                              intent="edit"
+                              label={`Edit user ${u.email}`}
+                              icon={<Pencil className="w-3.5 h-3.5" />}
+                              onClick={() => handleStartEditUser(u)}
+                            />
+                          )}
+                          {can('administration', 'delete') && (
+                            u.isPending ? (
+                              <RowActionButton
+                                intent="delete"
+                                label={`Delete whitelist entry for ${u.email}`}
+                                icon={<Trash2 className="w-3.5 h-3.5" />}
+                                onClick={() => setDeletePendingTarget(u)}
+                                disabled={isDeleting}
+                              />
+                            ) : (
+                              <RowActionButton
+                                intent={u.isActive ? 'delete' : 'view'}
+                                label={u.isActive ? `Deactivate ${u.name}` : `Activate ${u.name}`}
+                                icon={u.isActive
+                                  ? <PowerOff className="w-3.5 h-3.5" />
+                                  : <Power className="w-3.5 h-3.5" />}
+                                onClick={() => setStatusTarget(u)}
+                                disabled={isToggling}
+                              />
+                            )
+                          )}
                         </div>
                       </TableCell>
                     </TableRow>
@@ -687,275 +672,6 @@ export const AdministrationPage: React.FC = () => {
       {/* ── Roles & Permissions ── */}
       {activeTab === 'roles' && (
         <RolePermissionMatrix onPermissionsChanged={refreshPermissions} />
-      )}
-
-      {/* ── Employee Master ── */}
-      {activeTab === 'employees' && (
-      <Card
-        title="Employee Master"
-        subtitle="Only employees listed here are authorized to create an account. Deleting an entry is blocked if the employee has already registered."
-        padding="cozy"
-      >
-        <Toolbar>
-          <FormField label="Email Address" className="flex-1 min-w-48">
-            <input
-              type="email"
-              value={newEmpEmail}
-              onChange={(e) => { setNewEmpEmail(e.target.value); setEmpAddError(''); setEmpAddSuccess(''); }}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleAddEmployee(); }}
-              placeholder="employee@reflectionsinfos.com"
-              className={`${INPUT_CLS} font-mono`}
-            />
-          </FormField>
-          <FormField
-            label="Name"
-            className="flex-1 min-w-48"
-          >
-            <input
-              type="text"
-              value={newEmpName}
-              onChange={(e) => { setNewEmpName(e.target.value); setEmpAddError(''); setEmpAddSuccess(''); }}
-              onKeyDown={(e) => { if (e.key === 'Enter') handleAddEmployee(); }}
-              placeholder="e.g., John Smith"
-              className={INPUT_CLS}
-            />
-          </FormField>
-          <FormField label="Role"  className="min-w-44">
-            <SearchableSelect
-              value={newEmpRoleId}
-              onChange={(v) => { setNewEmpRoleId(v); setEmpAddError(''); setEmpAddSuccess(''); }}
-              options={roleOptions}
-              placeholder="Select role…"
-              aria-label="Pre-assigned role"
-            />
-          </FormField>
-          <FormField label="Employee ID" className="min-w-32">
-            <input
-              type="text"
-              value={newEmpEmployeeId}
-              onChange={(e) => { setNewEmpEmployeeId(e.target.value); setEmpAddError(''); setEmpAddSuccess(''); }}
-              placeholder="e.g., EMP-001"
-              className={`${INPUT_CLS} font-mono`}
-            />
-          </FormField>
-          <FormField label="Department" className="min-w-40">
-            <input
-              type="text"
-              value={newEmpDepartment}
-              onChange={(e) => { setNewEmpDepartment(e.target.value); setEmpAddError(''); setEmpAddSuccess(''); }}
-              placeholder="e.g., Sales"
-              className={INPUT_CLS}
-            />
-          </FormField>
-          <FormField label="Designation" className="min-w-40">
-            <input
-              type="text"
-              value={newEmpDesignation}
-              onChange={(e) => { setNewEmpDesignation(e.target.value); setEmpAddError(''); setEmpAddSuccess(''); }}
-              placeholder="e.g., Account Manager"
-              className={INPUT_CLS}
-            />
-          </FormField>
-          <Button
-            size="sm"
-            icon={<Plus className="w-3.5 h-3.5" aria-hidden="true" />}
-            onClick={handleAddEmployee}
-            disabled={empAdding}
-          >
-            {empAdding ? 'Adding…' : 'Add Employee'}
-          </Button>
-        </Toolbar>
-
-        {empAddError   && <div className="mb-4"><ErrorBanner message={empAddError} /></div>}
-        {empAddSuccess && <p className="text-xs text-green-600 font-medium mb-4">{empAddSuccess}</p>}
-
-        {/* Employee list */}
-        {empLoading ? (
-          <p className="text-xs text-slate-400 italic py-4 text-center">Loading employees…</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHead>
-                <TableHeadCell>Email</TableHeadCell>
-                <TableHeadCell>Name</TableHeadCell>
-                <TableHeadCell>Role</TableHeadCell>
-                <TableHeadCell>Registered User</TableHeadCell>
-                <TableHeadCell>Added</TableHeadCell>
-                <TableHeadCell>Actions</TableHeadCell>
-              </TableHead>
-              <tbody>
-                {employees.length === 0 ? (
-                  <EmptyRow colSpan={6} message="No authorized employees configured." />
-                ) : (
-                  employees.map((emp) => {
-                    const registeredUser = users.find((u) => u.email.toLowerCase() === emp.email.toLowerCase());
-                    const isEditing  = editingEmpId === emp.id;
-                    const isDeleting = deletingEmpId === emp.id;
-                    const deleteErr  = empDeleteError[emp.id];
-                    return (
-                      <React.Fragment key={emp.id}>
-                        <TableRow className="hover:bg-slate-50/50">
-                          <TableCell className="font-mono text-slate-700">
-                            {isEditing ? (
-                              <input
-                                type="email"
-                                value={editEmpEmail}
-                                onChange={(e) => { setEditEmpEmail(e.target.value); setEmpEditError(''); }}
-                                onKeyDown={(e) => { if (e.key === 'Enter') handleSaveEditEmployee(); if (e.key === 'Escape') setEditingEmpId(null); }}
-                                autoFocus
-                                aria-label="Employee email"
-                                className="w-full border border-blue-300 rounded-lg px-2 py-1 text-xs font-mono text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                              />
-                            ) : (
-                              <div className="flex items-center gap-2">
-                                <ShieldCheck className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden="true" />
-                                {emp.email}
-                              </div>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-slate-700">
-                            {isEditing ? (
-                              <input
-                                type="text"
-                                value={editEmpName}
-                                onChange={(e) => { setEditEmpName(e.target.value); setEmpEditError(''); }}
-                                onKeyDown={(e) => { if (e.key === 'Enter') handleSaveEditEmployee(); if (e.key === 'Escape') setEditingEmpId(null); }}
-                                placeholder="e.g., John Smith"
-                                aria-label="Employee name"
-                                className="w-full border border-blue-300 rounded-lg px-2 py-1 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                              />
-                            ) : (
-                              emp.name || <span className="text-slate-400 italic text-[10px]">No name set</span>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-slate-600">
-                            {roleNameById(emp.roleId) || <span className="text-slate-400 italic text-[10px]">Not set</span>}
-                          </TableCell>
-                          <TableCell>
-                            {registeredUser ? (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-700">
-                                {registeredUser.name}
-                              </span>
-                            ) : (
-                              <span className="text-slate-400 italic text-[10px]">Not registered</span>
-                            )}
-                          </TableCell>
-                          <TableCell className="text-slate-400 font-mono text-[10px]">
-                            {new Date(emp.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
-                          </TableCell>
-                          <TableCell>
-                            <div className="flex items-center gap-1.5">
-                              {isEditing ? (
-                                <>
-                                  <Button
-                                    variant="success"
-                                    size="xs"
-                                    icon={<CheckCircle className="w-3 h-3" aria-hidden="true" />}
-                                    onClick={handleSaveEditEmployee}
-                                    disabled={empEditSaving}
-                                  >
-                                    {empEditSaving ? 'Saving…' : 'Save'}
-                                  </Button>
-                                  <Button
-                                    variant="secondary"
-                                    size="xs"
-                                    icon={<XCircle className="w-3 h-3" aria-hidden="true" />}
-                                    onClick={() => { setEditingEmpId(null); setEmpEditError(''); }}
-                                  >
-                                    Cancel
-                                  </Button>
-                                </>
-                              ) : (
-                                <>
-                                  <RowActionButton
-                                    intent="edit"
-                                    label={`Edit employee ${emp.email}`}
-                                    icon={<Pencil className="w-3.5 h-3.5" />}
-                                    onClick={() => handleStartEditEmployee(emp)}
-                                  />
-                                  <RowActionButton
-                                    intent="delete"
-                                    label={registeredUser ? 'Cannot delete — user has an account' : `Delete employee ${emp.email}`}
-                                    icon={<Trash2 className="w-3.5 h-3.5" />}
-                                    onClick={() => handleDeleteEmployee(emp.id)}
-                                    disabled={isDeleting}
-                                  />
-                                </>
-                              )}
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                        {isEditing && (
-                          <tr className="bg-indigo-50/40 border-b border-indigo-100">
-                            <td colSpan={6} className="py-3 px-4">
-                              <div className="flex flex-wrap items-end gap-3">
-                                <FormField label="Role" className="min-w-44">
-                                  <SearchableSelect
-                                    value={editEmpRoleId}
-                                    onChange={(v) => { setEditEmpRoleId(v); setEmpEditError(''); }}
-                                    options={roleOptions}
-                                    placeholder="Select role…"
-                                    tone="amber"
-                                    aria-label="Pre-assigned role"
-                                  />
-                                </FormField>
-                                <FormField label="Employee ID" className="min-w-32">
-                                  <input
-                                    type="text"
-                                    value={editEmpEmployeeId}
-                                    onChange={(e) => { setEditEmpEmployeeId(e.target.value); setEmpEditError(''); }}
-                                    placeholder="e.g., EMP-001"
-                                    aria-label="Employee ID"
-                                    className={`${INPUT_CLS} font-mono`}
-                                  />
-                                </FormField>
-                                <FormField label="Department" className="min-w-40">
-                                  <input
-                                    type="text"
-                                    value={editEmpDepartment}
-                                    onChange={(e) => { setEditEmpDepartment(e.target.value); setEmpEditError(''); }}
-                                    placeholder="e.g., Sales"
-                                    aria-label="Department"
-                                    className={INPUT_CLS}
-                                  />
-                                </FormField>
-                                <FormField label="Designation" className="min-w-40">
-                                  <input
-                                    type="text"
-                                    value={editEmpDesignation}
-                                    onChange={(e) => { setEditEmpDesignation(e.target.value); setEmpEditError(''); }}
-                                    placeholder="e.g., Account Manager"
-                                    aria-label="Designation"
-                                    className={INPUT_CLS}
-                                  />
-                                </FormField>
-                              </div>
-                            </td>
-                          </tr>
-                        )}
-                        {(isEditing && empEditError) && (
-                          <tr>
-                            <td colSpan={6} className="pb-2">
-                              <ErrorBanner message={empEditError} />
-                            </td>
-                          </tr>
-                        )}
-                        {deleteErr && (
-                          <tr>
-                            <td colSpan={6} className="pb-2">
-                              <ErrorBanner message={deleteErr} />
-                            </td>
-                          </tr>
-                        )}
-                      </React.Fragment>
-                    );
-                  })
-                )}
-              </tbody>
-            </Table>
-          </div>
-        )}
-      </Card>
       )}
 
       {/* ── Financial Year Management ── */}
@@ -1228,11 +944,108 @@ export const AdministrationPage: React.FC = () => {
         </div>
       </Card>
       )}
+      </div>
 
-      {/* ── User edit modal ── */}
+      {/* ── Add User Modal (Registration Whitelist) ── */}
+      <FormModal
+        isOpen={isAddingUser}
+        title="Authorize & Whitelist System User"
+        icon={<UserPlus className="w-5 h-5 text-indigo-500" aria-hidden="true" />}
+        submitLabel="Add User"
+        submitVariant="primary"
+        isSubmitting={addSaving}
+        onClose={() => setIsAddingUser(false)}
+        onSubmit={handleCreateUser}
+      >
+        <div className="space-y-4">
+          {addError && <ErrorBanner message={addError} />}
+          <FormGrid>
+            <FormField label="Official Email Address *" required>
+              <input
+                type="email"
+                required
+                value={newEmail}
+                onChange={(e) => { setNewEmail(e.target.value); setAddError(''); }}
+                placeholder="employee@company.com"
+                className={`${INPUT_CLS} font-mono`}
+              />
+            </FormField>
+            <FormField label="Full Name">
+              <input
+                type="text"
+                value={newName}
+                onChange={(e) => { setNewName(e.target.value); setAddError(''); }}
+                placeholder="e.g., John Smith"
+                className={INPUT_CLS}
+              />
+            </FormField>
+          </FormGrid>
+
+          <FormField label="Role(s) *" required>
+            <div className="grid grid-cols-2 gap-2 rounded-lg border border-slate-200 bg-slate-50/60 p-3 max-h-56 overflow-y-auto">
+              {roles.map((r) => {
+                const checked = newRoleIds.includes(r.id);
+                return (
+                  <label
+                    key={r.id}
+                    className={`flex items-center gap-2 rounded-md border px-2.5 py-2 text-xs font-semibold cursor-pointer transition-colors ${
+                      checked
+                        ? 'border-blue-300 bg-blue-50 text-blue-900'
+                        : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => toggleUserRole(r.id, setNewRoleIds)}
+                      className="h-3.5 w-3.5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span className="truncate">{r.name}</span>
+                  </label>
+                );
+              })}
+            </div>
+            <p className="mt-1.5 text-[11px] text-slate-400">
+              Select one or more roles. The first selected role is used as the primary role.
+            </p>
+          </FormField>
+
+          <FormGrid>
+            <FormField label="Employee ID">
+              <input
+                type="text"
+                value={newEmployeeId}
+                onChange={(e) => { setNewEmployeeId(e.target.value); setAddError(''); }}
+                placeholder="e.g., EMP-001"
+                className={`${INPUT_CLS} font-mono`}
+              />
+            </FormField>
+            <FormField label="Department">
+              <input
+                type="text"
+                value={newDepartment}
+                onChange={(e) => { setNewDepartment(e.target.value); setAddError(''); }}
+                placeholder="e.g., Sales"
+                className={INPUT_CLS}
+              />
+            </FormField>
+            <FormField label="Designation">
+              <input
+                type="text"
+                value={newDesignation}
+                onChange={(e) => { setNewDesignation(e.target.value); setAddError(''); }}
+                placeholder="e.g., Account Manager"
+                className={INPUT_CLS}
+              />
+            </FormField>
+          </FormGrid>
+        </div>
+      </FormModal>
+
+      {/* ── User Edit Modal (Registered & Pending) ── */}
       <FormModal
         isOpen={!!editingUser}
-        title={editingUser ? `Edit ${editingUser.name}` : 'Edit User'}
+        title={editingUser ? `Edit ${editingUser.name || editingUser.email}` : 'Edit User'}
         icon={<UserCog className="w-5 h-5 text-amber-500" aria-hidden="true" />}
         submitLabel="Save Changes"
         submitVariant="warning"
@@ -1242,9 +1055,27 @@ export const AdministrationPage: React.FC = () => {
       >
         <div className="space-y-4">
           {userError && <ErrorBanner message={userError} />}
+          <FormGrid>
+            <FormField label="Name">
+              <input
+                type="text"
+                value={userName}
+                onChange={(e) => { setUserName(e.target.value); setUserError(''); }}
+                placeholder="e.g., John Smith"
+                className={INPUT_CLS}
+              />
+            </FormField>
+            <FormField label="Email Address">
+              <input
+                type="email"
+                disabled
+                value={editingUser?.email ?? ''}
+                className={`${INPUT_CLS} font-mono bg-slate-100 text-slate-500 cursor-not-allowed`}
+              />
+            </FormField>
+          </FormGrid>
+
           <FormField label="Roles">
-            {/* Multi-role: a user may hold several roles at once (e.g. Admin +
-                Account Manager). The first selected role is the primary one. */}
             <div className="grid grid-cols-2 gap-2 rounded-lg border border-slate-200 bg-slate-50/60 p-3 max-h-56 overflow-y-auto">
               {roles.map((r) => {
                 const checked = userRoleIds.includes(r.id);
@@ -1261,7 +1092,7 @@ export const AdministrationPage: React.FC = () => {
                     <input
                       type="checkbox"
                       checked={checked}
-                      onChange={() => toggleUserRole(r.id)}
+                      onChange={() => toggleUserRole(r.id, setUserRoleIds)}
                       className="h-3.5 w-3.5 rounded border-slate-300 text-amber-600 focus:ring-amber-500"
                     />
                     <span className="truncate">{r.name}</span>
@@ -1310,7 +1141,7 @@ export const AdministrationPage: React.FC = () => {
         </div>
       </FormModal>
 
-      {/* ── Activate / deactivate confirmation ── */}
+      {/* ── Activate / Deactivate Confirmation ── */}
       <ConfirmDialog
         isOpen={!!statusTarget}
         title={statusTarget?.isActive ? 'Deactivate user' : 'Activate user'}
@@ -1325,6 +1156,21 @@ export const AdministrationPage: React.FC = () => {
         }
         onConfirm={() => { if (statusTarget) return handleToggleUserActive(statusTarget); }}
         onCancel={() => setStatusTarget(null)}
+      />
+
+      {/* ── Delete Pending Whitelist Entry Confirmation ── */}
+      <ConfirmDialog
+        isOpen={!!deletePendingTarget}
+        title="Delete Whitelist Entry"
+        tone="danger"
+        confirmLabel="Delete"
+        message={
+          deletePendingTarget
+            ? <>Delete the authorization whitelist entry for <strong>{deletePendingTarget.email}</strong>? They will no longer be allowed to register.</>
+            : undefined
+        }
+        onConfirm={() => { if (deletePendingTarget) return handleDeletePendingUser(deletePendingTarget); }}
+        onCancel={() => setDeletePendingTarget(null)}
       />
     </div>
   );

@@ -50,6 +50,8 @@ export interface Account {
   address: string;
   location: string;
   description: string;
+  clientStakeholderIds?: string[];
+  serviceProviderUserIds?: string[];
   [key: string]: any;
 }
 
@@ -104,6 +106,8 @@ export interface Opportunity {
   cost?: number;
   grossMargin?: number;
   /** Linked Project id (joined server-side), populated once this opportunity has gone Won. Null when none exists. */
+  /** Service Provider Project Manager (FK to users) */
+  serviceProviderPmId?: string;
   projectId?: string | null;
   // Persisted forecast + actuals (joined from opportunity_forecasts). Read-only
   // on this payload — edited via the dedicated opportunity-forecast endpoint.
@@ -133,6 +137,7 @@ export interface Project {
   startDate?: string;
   endDate?: string;
   methodology: ProjectMethodology;
+  dealValue?: number;
   /** Service Provider Project Manager — FK to users. */
   serviceProviderPmId?: string;
   serviceProviderPmName?: string;

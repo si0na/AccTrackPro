@@ -27,7 +27,7 @@ import { SignUpPage } from '@/features/auth/components/SignUpPage';
 import { ForgotPasswordPage } from '@/features/auth/components/ForgotPasswordPage';
 import { ResetPasswordPage } from '@/features/auth/components/ResetPasswordPage';
 import { FullPageLoading } from '@/components/common/LoadingState';
-import { ServiceProviderProfileModal } from '@/components/ServiceProviderProfileModal';
+
 import {
   Bell, Settings, LogOut, Camera, UserCog,
 } from 'lucide-react';
@@ -42,7 +42,6 @@ const InnerLayout: React.FC = () => {
     updateProfilePicture,
     unreadNotificationCount,
     can, permissionsLoaded,
-    isServiceProviderProfileOpen, openServiceProviderProfile, closeServiceProviderProfile,
     refreshCurrentUser, refreshData,
   } = useCRM();
 
@@ -204,13 +203,6 @@ const InnerLayout: React.FC = () => {
                         </button>
                       )}
                       <button
-                        onClick={() => { setIsProfileOpen(false); openServiceProviderProfile(); }}
-                        className="w-full flex items-center space-x-2 px-3 py-1.5 rounded-lg text-left text-xs font-semibold text-slate-700 hover:bg-slate-50 hover:text-slate-900 transition-colors cursor-pointer"
-                      >
-                        <UserCog className="w-3.5 h-3.5 text-slate-400" />
-                        <span>My Service Provider Profile</span>
-                      </button>
-                      <button
                         onClick={() => { setIsProfileOpen(false); logout(); }}
                         className="w-full flex items-center space-x-2 px-3 py-1.5 rounded-lg text-left text-xs font-bold text-red-600 hover:bg-red-50 hover:text-red-700 transition-colors cursor-pointer"
                       >
@@ -242,6 +234,7 @@ const InnerLayout: React.FC = () => {
           {currentView === 'projects'                && <ProjectsListView />}
           {currentView === 'project-details'         && <ProjectDetailsView />}
           {currentView === 'actionItems'            && <ActionItemsView />}
+          {currentView === 'projectActionItems'     && <ActionItemsView />}
           {currentView === 'stakeholders'           && <StakeholdersView />}
           {currentView === 'forecast'               && <OpportunityForecastView mode="portfolio" />}
           {currentView === 'executive'              && <ExecutiveDashboardView />}
@@ -254,19 +247,6 @@ const InnerLayout: React.FC = () => {
           )}
         </main>
       </div>
-
-      <ServiceProviderProfileModal
-        isOpen={isServiceProviderProfileOpen}
-        onClose={closeServiceProviderProfile}
-        onSaved={() => {
-          // Identity edits may have changed the user record; the phone was
-          // written onto the Service Provider stakeholders. Refresh both the
-          // signed-in user and the CRM data (accounts/stakeholders) so the
-          // current account and header reflect the change immediately.
-          void refreshCurrentUser();
-          void refreshData();
-        }}
-      />
     </div>
   );
 };

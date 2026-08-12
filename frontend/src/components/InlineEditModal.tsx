@@ -6,6 +6,7 @@ import { AopYearFields } from '@/components/AopYearFields';
 import { StakeholderAssignmentFields } from '@/components/StakeholderAssignmentFields';
 import { ActionItemOwnerField } from '@/components/ActionItemOwnerField';
 import { getCustomerSinceYearOptions } from '@/utils';
+import { useCRM } from '@/contexts/CRMContext';
 import { ACTION_ITEM_STATUS_OPTIONS, OPPORTUNITY_STAGE_OPTIONS, OPPORTUNITY_TYPE_OPTIONS, SERVICE_LINE_OPTIONS, ACCOUNT_TYPE_OPTIONS, ACCOUNT_HEALTH_OPTIONS, LOCATION_OPTIONS, OPPORTUNITY_HEALTH_OPTIONS, REVENUE_MODEL_OPTIONS, stageChangePatch } from '@/constants';
 import type {
   Account,
@@ -32,6 +33,7 @@ export interface InlineEditModalProps {
   stakeholders: Stakeholder[];
   /** Users list — backs the role-filtered "owner" dropdowns on the account edit form. */
   users?: User[];
+  projects?: any[];
   onChange: (patch: Record<string, any>) => void;
   onSave: (e: React.FormEvent) => void;
   onCancel: () => void;
@@ -84,13 +86,23 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
   opportunities,
   stakeholders,
   users = [],
+  projects = [],
   onChange,
   onSave,
   onCancel,
   isSaving = false,
 }) => {
   const { title, primaryKey } = MODE_META[mode];
+  const { projectManagers } = useCRM();
   const inputCls = INPUT_CLS_AMBER;
+
+  const pmOptions = useMemo(() =>
+    projectManagers.map((pm: any) => ({
+      value: pm.id,
+      label: pm.name || pm.email,
+    })),
+    [projectManagers],
+  );
 
   // Role-filtered option lists ({ value: id, label: name }) backing the four
   // account "owner" dropdowns — one per role. Only rendered for accounts mode.
@@ -133,16 +145,31 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
     // Risks & Dependencies must always be editable, even when the user has
     // hidden its table column, so force-include it in the Action Item form.
     if (mode === 'actionItems') {
+      const isProjectActionItem = !!entity.projectId;
+      let finalCols = cols;
+      if (isProjectActionItem) {
+        finalCols = cols.filter((c) => c.key !== 'opportunityId');
+        if (!finalCols.some((c) => c.key === 'projectId')) {
+          finalCols.push({
+            key: 'projectId',
+            name: 'Associated Project',
+            isStandard: true,
+            isPinned: false,
+            isDisplayed: true,
+            type: 'text',
+          });
+        }
+      }
       const risksCol: ColumnConfig = {
         key: 'risksAndDependencies', name: 'Risks & Dependencies', isStandard: true, isPinned: false, isDisplayed: true, type: 'text',
       };
-      return cols.some((c) => c.key === risksCol.key) ? cols : [...cols, risksCol];
+      return finalCols.some((c) => c.key === risksCol.key) ? finalCols : [...finalCols, risksCol];
     }
 
     // Opportunities render the dedicated sectioned form below (mirroring the
     // Create Opportunity dialog) instead of this flat column-driven list.
     return cols;
-  }, [displayedConfigs, primaryKey, mode]);
+  }, [displayedConfigs, primaryKey, mode, entity.projectId]);
 
   // Synthetic column descriptor for opportunity fields that renderInput keys on.
   const editCol = (key: string, name: string, type: ColumnConfig['type'] = 'text'): ColumnConfig => ({
@@ -393,6 +420,17 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
               ))}
           </select>
         );
+
+      case 'projectId': {
+        const projectName =
+          projects.find((p) => p.id === val)?.name ?? entity.projectName ?? '—';
+        return (
+          <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg">
+            <span className="text-xs font-medium text-slate-700">{projectName}</span>
+            <span className="text-[10px] text-slate-400 font-medium">(read-only)</span>
+          </div>
+        );
+      }
 
       case 'priority':
         return (
@@ -736,7 +774,7 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
           </FormSection>
 
           <FormSection title="Stakeholders">
-            <FormGrid>
+            <FormGrid columns={3}>
               {/* Same shared assignment fields as the Create Opportunity dialog,
                   so the inline "+ New Stakeholder" workflow (account + type
                   pre-filled and locked, form preserved, new record auto-selected)
@@ -747,11 +785,27 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
                 stakeholders={stakeholders}
                 value={{
                   clientStakeholderId: entity.clientStakeholderId,
+                  serviceProviderUserId: entity.serviceProviderUserId,
                   serviceProviderStakeholderId: entity.serviceProviderStakeholderId,
                 }}
                 onChange={onChange}
                 tone="amber"
               />
+              {/* Service Provider Project Manager — only users with the Project Manager role */}
+              <FormField label="Service Provider Project Manager">
+                <SearchableSelect
+                  value={entity.serviceProviderPmId ?? ''}
+                  onChange={(v) => onChange({ serviceProviderPmId: v || null })}
+                  options={pmOptions}
+                  placeholder="Search Project Managers…"
+                  aria-label="Service Provider Project Manager"
+                />
+                {pmOptions.length === 0 && (
+                  <p className="text-xs text-slate-400 italic mt-1">
+                    No users with the Project Manager role found. Assign the role in Administration → System Users.
+                  </p>
+                )}
+              </FormField>
             </FormGrid>
           </FormSection>
 
@@ -785,6 +839,7 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
           )}
         </div>
       ) : (
+        <>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {formConfigs.map((col) => (
             <div
@@ -817,6 +872,8 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
             </div>
           ))}
         </div>
+
+        </>
       )}
     </FormModal>
   );

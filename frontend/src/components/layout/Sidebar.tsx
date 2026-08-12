@@ -75,22 +75,33 @@ export const Sidebar: React.FC = () => {
           badge: opportunities.length,
         },
         {
-          id: 'projects' as ViewType,
-          label: 'Projects',
-          icon: FolderKanban,
-          badge: projects.length,
-        },
-        {
           id: 'actionItems' as ViewType,
           label: 'Action Items',
           icon: CheckSquare,
-          badge: actionItems.filter(ai => isOpenActionItemStatus(ai.status)).length,
+          badge: actionItems.filter(ai => !ai.projectId && isOpenActionItemStatus(ai.status)).length,
         },
         {
           id: 'stakeholders' as ViewType,
           label: 'Stakeholders',
           icon: Users,
           badge: stakeholders.length,
+        },
+      ],
+    },
+    {
+      label: 'Delivery',
+      items: [
+        {
+          id: 'projects' as ViewType,
+          label: 'Projects',
+          icon: FolderKanban,
+          badge: projects.length,
+        },
+        {
+          id: 'projectActionItems' as ViewType,
+          label: 'Project Action Items',
+          icon: CheckSquare,
+          badge: actionItems.filter(ai => ai.projectId && isOpenActionItemStatus(ai.status)).length,
         },
       ],
     },

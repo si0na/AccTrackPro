@@ -12,6 +12,7 @@ import type {
 
 /** Attributes an administrator can pre-assign / edit on a user or whitelist row. */
 export interface UserRbacAttrs {
+  name?: string;
   roleId?: string;
   employeeId?: string;
   department?: string;
@@ -177,11 +178,19 @@ export const projectsApi = {
   delete: (id: string) => apiClient.delete<{ success: boolean }>(`/projects/${id}`).then((r) => r.data),
 };
 
+/** Fields a user supplies; the server owns ids, authorship and timestamps. */
+export type ProjectHealthUpdateInput = Omit<
+  ProjectHealthUpdate,
+  'id' | 'projectId' | 'createdAt' | 'updatedById' | 'updatedByName' | 'reviewedByName' | 'editedAt' | 'editedByName'
+>;
+
 export const projectHealthApi = {
   getAllForProject: (projectId: string) =>
     apiClient.get<ProjectHealthUpdate[]>(`/projects/${projectId}/health`).then((r) => r.data),
-  create: (projectId: string, data: Omit<ProjectHealthUpdate, 'id' | 'projectId' | 'createdAt' | 'updatedById' | 'updatedByName' | 'reviewedByName'>) =>
+  create: (projectId: string, data: ProjectHealthUpdateInput) =>
     apiClient.post<ProjectHealthUpdate>(`/projects/${projectId}/health`, data).then((r) => r.data),
+  update: (projectId: string, id: string, data: ProjectHealthUpdateInput) =>
+    apiClient.put<ProjectHealthUpdate>(`/projects/${projectId}/health/${id}`, data).then((r) => r.data),
 };
 
 export const projectTeamApi = {
@@ -331,6 +340,9 @@ export const administrationApi = {
     apiClient.get<AdminSettings>('/administration/settings').then((r) => r.data),
   updateSettings:           (data: Partial<AdminSettings>) =>
     apiClient.put<AdminSettings>('/administration/settings', data).then((r) => r.data),
+  /** Whitelist / add a new authorized user. */
+  createUser:               (data: UserRbacAttrs & { email: string; roleIds: string[] }) =>
+    apiClient.post<AdminUser>('/administration/users', data).then((r) => r.data),
   /** Assign role, edit department/designation/employeeId, activate/deactivate. */
   updateUser:               (id: string, data: UserRbacAttrs & { roleIds?: string[]; isActive?: boolean }) =>
     apiClient.put<AdminUser>(`/administration/users/${id}`, data).then((r) => r.data),
@@ -342,8 +354,39 @@ export const usersApi = {
   getAll: () => apiClient.get<User[]>('/users').then((r) => r.data),
 };
 
+// ── Service Providers (all System Users as SP options) ───────────────────────
+
+export interface ServiceProviderUserDto {
+  id: string;
+  name: string;
+  email: string;
+  department: string;
+  designation: string;
+  /** False for deactivated accounts \u2014 shown with an Inactive badge in pickers. */
+  isActive: boolean;
+}
+
+export const serviceProvidersApi = {
+  /** All system users as Service Provider options \u2014 no is_active filter. */
+  getAll: () =>
+    apiClient.get<ServiceProviderUserDto[]>('/service-providers').then((r) => r.data),
+  /** Associate a system user as a service provider stakeholder on an account */
+  associate: (userId: string, accountId: string) =>
+    apiClient.post<string>('/service-providers/associate', { userId, accountId }).then((r) => r.data),
+};
+
+/**
+ * Project Manager users — active System Users who hold the 'project-manager' role.
+ * Used to populate the Service Provider Project Manager picker on Opportunities.
+ */
+export const projectManagersApi = {
+  getAll: () =>
+    apiClient.get<ServiceProviderUserDto[]>('/users', { params: { role: 'project-manager' } }).then((r) => r.data),
+};
+
 // ── Service Provider profile (the logged-in user's own record) ───────────────
 export type ServiceProviderField = 'name' | 'department' | 'designation' | 'email' | 'phone';
+
 
 export interface ServiceProviderProfile {
   name: string;
@@ -391,9 +434,9 @@ export const rbacApi = {
     apiClient.put<{ updated: number }>('/rbac/matrix', { changes }).then((r) => r.data),
   getRoles: () =>
     apiClient.get<Role[]>('/rbac/roles').then((r) => r.data),
-  createRole: (data: { name: string; description?: string }) =>
+  createRole: (data: { name: string; description?: string; accountScopeField?: string | null }) =>
     apiClient.post<{ id: string }>('/rbac/roles', data).then((r) => r.data),
-  updateRole: (id: string, data: { name?: string; description?: string }) =>
+  updateRole: (id: string, data: { name?: string; description?: string; accountScopeField?: string | null }) =>
     apiClient.put<{ id: string }>(`/rbac/roles/${id}`, data).then((r) => r.data),
   deleteRole: (id: string) =>
     apiClient.delete<{ success: boolean }>(`/rbac/roles/${id}`).then((r) => r.data),

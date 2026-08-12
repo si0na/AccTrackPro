@@ -12,6 +12,7 @@ export const VIEW_PATHS: Record<ViewType, string> = {
   projects: '/projects',
   'project-details': '/projects/:id',
   actionItems: '/action-items',
+  projectActionItems: '/project-action-items',
   stakeholders: '/stakeholders',
   forecast: '/forecast',
   executive: '/reports',

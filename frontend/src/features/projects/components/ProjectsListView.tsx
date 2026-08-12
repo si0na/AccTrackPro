@@ -147,7 +147,7 @@ export const ProjectsListView: React.FC = () => {
         <SearchBar
           value={searchQuery}
           onChange={setSearchQuery}
-          placeholder="Search projects, accounts, or clients..."
+          placeholder="Search projects, accounts, or client partners..."
           className="w-full"
         />
 
@@ -198,7 +198,7 @@ export const ProjectsListView: React.FC = () => {
               <TableHeadCell columnId="accountId">
                 <SortableHeader label="Account" field="accountId" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
               </TableHeadCell>
-              <TableHeadCell columnId="clientStakeholderName">Client</TableHeadCell>
+              <TableHeadCell columnId="clientStakeholderName">Client Partner Name</TableHeadCell>
               <TableHeadCell columnId="serviceProviderPmName">Service Provider PM</TableHeadCell>
               <TableHeadCell columnId="practiceLeadName">Practice Lead</TableHeadCell>
               <TableHeadCell columnId="methodology">Methodology</TableHeadCell>

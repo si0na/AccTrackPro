@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
 import {
   ActionItem, ActionItemStatus, AdminUser, PriorityLevel, ProjectHealth, ProjectTeamMember,
@@ -12,6 +12,7 @@ import {
 import {
   AlertOctagon,
   Briefcase,
+  DollarSign,
   Calendar,
   CheckSquare,
   Edit2,
@@ -618,7 +619,9 @@ export const ProjectDetailsView: React.FC = () => {
   const formatCur = (val: number) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(val);
 
-  const displayedActionCols = actionItemsColumnConfig.filter((col) => col.isDisplayed);
+  const displayedActionCols = useMemo(() => {
+    return actionItemsColumnConfig.filter((col) => col.isDisplayed && col.key !== 'opportunityId' && col.key !== 'projectId');
+  }, [actionItemsColumnConfig]);
   const extraActionColCount = displayedActionCols.filter((col) => !col.isStandard).length;
   const filteredActions = projectActions.filter((item) => {
     const q = aiSearch.trim().toLowerCase();
@@ -711,7 +714,8 @@ export const ProjectDetailsView: React.FC = () => {
               </button>
             ),
           },
-          { icon: <Users className="w-4 h-4" />, label: 'Client', value: project.clientStakeholderName || 'Not assigned' },
+          { icon: <Users className="w-4 h-4" />, label: 'Client Partner Name', value: project.clientStakeholderName || 'Not assigned' },
+          { icon: <DollarSign className="w-4 h-4" />, label: 'Deal Value', mono: true, value: formatCur(project.dealValue ?? 0) },
           { icon: <Settings2 className="w-4 h-4" />, label: 'Methodology', value: project.methodology },
           {
             icon: <Calendar className="w-4 h-4" />,
@@ -720,7 +724,7 @@ export const ProjectDetailsView: React.FC = () => {
             value: `${project.startDate || 'N/A'} → ${project.endDate || 'N/A'}`,
           },
         ]}
-        attributesClassName="grid-cols-2 lg:grid-cols-4"
+        attributesClassName="grid-cols-2 lg:grid-cols-5"
       />
 
       <DetailTabBar
@@ -766,7 +770,7 @@ export const ProjectDetailsView: React.FC = () => {
                 {([
                   { label: 'Service Provider Project Manager', name: project.serviceProviderPmName },
                   { label: 'Practice Lead', name: project.practiceLeadName },
-                  { label: 'Client Name', name: project.clientStakeholderName, designation: project.clientStakeholderDesignation },
+                  { label: 'Client Partner Name', name: project.clientStakeholderName, designation: project.clientStakeholderDesignation },
                   { label: 'Client Project Manager', name: project.clientPmStakeholderName, designation: project.clientPmStakeholderDesignation },
                 ]).map((row) => (
                   <div key={row.label} className="rounded-lg border border-slate-100 p-3.5">
@@ -1526,6 +1530,7 @@ export const ProjectDetailsView: React.FC = () => {
           displayedConfigs={actionItemsColumnConfig.filter((c) => c.isDisplayed)}
           accounts={accounts}
           opportunities={opportunities}
+          projects={projects}
           stakeholders={stakeholders}
           onChange={(patch) => setEditingAi({ ...editingAi, ...patch })}
           onSave={handleUpdateAi}

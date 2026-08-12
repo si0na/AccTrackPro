@@ -7,6 +7,12 @@ import type { Stakeholder, StakeholderType } from '@/types';
 
 export interface StakeholderAssignmentValue {
   clientStakeholderId?: string;
+  /**
+   * New user-based selection: the user id of the chosen Service Provider.
+   * The backend resolves this to a SERVICE_PROVIDER stakeholder FK on save.
+   */
+  serviceProviderUserId?: string;
+  /** Legacy FK kept for backward-compat read (existing saved records). */
   serviceProviderStakeholderId?: string;
 }
 
@@ -27,24 +33,18 @@ export interface StakeholderAssignmentFieldsProps {
 /** Amber-focused select variant, mirroring SELECT_CLS for edit contexts. */
 const SELECT_CLS_AMBER = `${INPUT_CLS_AMBER} bg-white cursor-pointer`;
 
-/** Shown on the "+ New" button (tooltip + hint) until an account is chosen. */
+/** Shown on the "+" button (tooltip + hint) until an account is chosen. */
 const NO_ACCOUNT_MSG = 'Please select an Account before creating a Stakeholder.';
 
 /**
- * Client/Service Provider stakeholder assignment — options are scoped to the
- * selected account and the matching stakeholder type. Shared across every
- * Opportunity create AND edit entry point (the Create dialog, plus the
- * InlineEditModal used by the Opportunities table, Account Details, and
- * Opportunity Details) so the filtering logic and the inline "+ New Stakeholder"
- * workflow can't drift between them.
+ * Client/Service Provider assignment shared across every Opportunity create
+ * and edit entry point.
  *
- * Each field carries a "+ New" action that opens the shared Create Stakeholder
- * dialog inline (account + type pre-filled and locked), so a missing contact can
- * be added without leaving — or losing — the Opportunity form. The dialog is
- * portaled to `document.body` so it stacks above the Opportunity form and never
- * nests one `<form>` inside another. On success the new record is auto-selected;
- * the option lists refresh automatically because `addStakeholder` updates the
- * shared context that feeds the `stakeholders` prop above.
+ * - **Client Stakeholder**: unchanged — filtered stakeholder rows for the account.
+ * - **Service Provider**: populated from ALL System Users (via serviceProviders
+ *   in CRMContext). Every System User is a Service Provider regardless of their
+ *   active status. Inactive users are shown with an [Inactive] label.
+ *   No manual "Create Service Provider" action.
  */
 export const StakeholderAssignmentFields: React.FC<StakeholderAssignmentFieldsProps> = ({
   accountId,
@@ -53,28 +53,21 @@ export const StakeholderAssignmentFields: React.FC<StakeholderAssignmentFieldsPr
   onChange,
   tone = 'blue',
 }) => {
-  const { accounts, addStakeholder } = useCRM();
-  // Which stakeholder type is being created inline (null = no dialog open).
+  const { accounts, addStakeholder, serviceProviders } = useCRM();
   const [creatingType, setCreatingType] = useState<StakeholderType | null>(null);
 
   const selectCls = tone === 'amber' ? SELECT_CLS_AMBER : SELECT_CLS;
   const account = accounts.find((a) => a.id === accountId);
-  // Creation needs a resolvable account — gate on the found record, not just the id.
   const createDisabledReason = account ? undefined : NO_ACCOUNT_MSG;
 
   const handleCreated = async (draft: Omit<Stakeholder, 'id'>) => {
-    // Awaited by StakeholderFormModal — a throw keeps its dialog open. On
-    // success the created record is auto-selected into the matching field.
     const created = await addStakeholder(draft);
-    if (created.stakeholderType === 'SERVICE_PROVIDER') {
-      onChange({ serviceProviderStakeholderId: created.id });
-    } else {
-      onChange({ clientStakeholderId: created.id });
-    }
+    onChange({ clientStakeholderId: created.id });
   };
 
   return (
     <>
+      {/* Client Stakeholder — unchanged */}
       <InlineCreateField
         label="Client Stakeholder"
         createLabel="client stakeholder"
@@ -96,28 +89,29 @@ export const StakeholderAssignmentFields: React.FC<StakeholderAssignmentFieldsPr
         </select>
       </InlineCreateField>
 
-      <InlineCreateField
-        label="Service Provider Stakeholder"
-        createLabel="service provider stakeholder"
-        createDisabledReason={createDisabledReason}
-        onCreate={() => setCreatingType('SERVICE_PROVIDER')}
-      >
+      {/* Service Provider — all System Users as options, no inline create */}
+      <div className="space-y-1">
+        <label className="block text-xs font-semibold text-slate-600">
+          Service Provider Stakeholder
+        </label>
         <select
-          value={value.serviceProviderStakeholderId ?? ''}
-          onChange={(e) => onChange({ serviceProviderStakeholderId: e.target.value })}
-          disabled={!accountId}
+          value={value.serviceProviderUserId ?? ''}
+          onChange={(e) => onChange({ serviceProviderUserId: e.target.value || undefined })}
           className={selectCls}
         >
           <option value="">— None —</option>
-          {stakeholders
-            .filter((s) => s.accountId === accountId && s.stakeholderType === 'SERVICE_PROVIDER')
-            .map((s) => (
-              <option key={s.id} value={s.id}>{s.name} ({s.designation})</option>
-            ))}
+          {serviceProviders.map((sp) => (
+            <option key={sp.id} value={sp.id}>
+              {sp.name || sp.email}{sp.designation ? ` (${sp.designation})` : ''}{!sp.isActive ? ' [Inactive]' : ''}
+            </option>
+          ))}
         </select>
-      </InlineCreateField>
+        {serviceProviders.length === 0 && (
+          <p className="text-xs text-slate-400 italic">No system users found.</p>
+        )}
+      </div>
 
-      {creatingType && account &&
+      {creatingType === 'CLIENT' && account &&
         createPortal(
           <StakeholderFormModal
             isOpen

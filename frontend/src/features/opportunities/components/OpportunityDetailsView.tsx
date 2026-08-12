@@ -27,6 +27,7 @@ import {
   Users,
   X,
   Pencil,
+  Building2,
 } from 'lucide-react';
 import { CustomizeColumnsSidebar } from '@/components/table/CustomizeColumnsSidebar';
 import { DocumentsPanel } from '@/components/documents/DocumentsPanel';
@@ -107,6 +108,11 @@ export const OpportunityDetailsView: React.FC = () => {
     navSource,
     dashboardStageHighlight,
     currentUser,
+    serviceProviders,
+    associateServiceProvider,
+    addStakeholder,
+    updateStakeholder,
+    projects,
   } = useCRM();
 
   // Find current opportunity
@@ -128,6 +134,26 @@ export const OpportunityDetailsView: React.FC = () => {
   // Customizable column sidebar & comment states for action items
   const [isColumnsSidebarOpen, setIsColumnsSidebarOpen] = useState(false);
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
+
+  // Opportunity Stakeholder modals state
+  const [showOppClientModal, setShowOppClientModal] = useState(false);
+  const [showOppSpModal, setShowOppSpModal] = useState(false);
+
+  // Client stakeholder modal states
+  const [selectedOppClientStkId, setSelectedOppClientStkId] = useState('');
+  const [createOppNewClient, setCreateOppNewClient] = useState(false);
+  const [oppClientDraft, setOppClientDraft] = useState({
+    name: '',
+    designation: '',
+    department: '',
+    email: '',
+    phone: '',
+    influence: 'Medium' as const,
+    relationship: 'Neutral' as const,
+  });
+
+  // Service Provider modal state
+  const [selectedOppSpUserId, setSelectedOppSpUserId] = useState('');
 
   // Action Items tab: search / filter / sort / pagination
   const [aiSearch, setAiSearch] = useState('');
@@ -176,6 +202,7 @@ export const OpportunityDetailsView: React.FC = () => {
   const [stageReasonDialog, setStageReasonDialog] = useState<{ stage: 'Blocked' | 'Delayed' } | null>(null);
   const [stageReasonDraft, setStageReasonDraft] = useState('');
   const [isSavingStageReason, setIsSavingStageReason] = useState(false);
+  const [promptConvertProject, setPromptConvertProject] = useState(false);
 
   // Edit Opportunity Modal state — shares InlineEditModal with the
   // Opportunities page and Account Detail view so all three entry points
@@ -190,12 +217,16 @@ export const OpportunityDetailsView: React.FC = () => {
     setActiveTab('overview');
   };
 
-  const handleSaveOpp = (e: React.FormEvent) => {
+  const handleSaveOpp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!oppDraft || !oppDraft.name.trim()) return;
-    updateOpportunity(oppDraft);
+    const stageBecameWon = oppDraft.stage === 'Won' && (!opp || opp.stage !== 'Won') && !oppDraft.projectId;
+    await updateOpportunity(oppDraft);
     setIsEditOppModalOpen(false);
     setOppDraft(null);
+    if (stageBecameWon) {
+      setPromptConvertProject(true);
+    }
   };
 
   // ── Create Project (manual conversion of a Won opportunity) ──────────────────
@@ -207,23 +238,32 @@ export const OpportunityDetailsView: React.FC = () => {
     administrationApi.getUsers().then(setUsers).catch(() => setUsers([]));
   }, []);
 
+  const pmUser = opp && users ? users.find((u) => u.id === opp.serviceProviderPmId) : null;
+  const pmDisplayName = opp ? (opp.serviceProviderPmName || pmUser?.name) : undefined;
+
   const [isCreateProjectOpen, setIsCreateProjectOpen] = useState(false);
   const [projectDraft, setProjectDraft] = useState<Project | null>(null);
   const [isCreatingProject, setIsCreatingProject] = useState(false);
 
-  const buildProjectDraft = (o: Opportunity): Project => ({
-    id: '',
-    name: o.name,
-    description: o.description ?? '',
-    accountId: o.accountId,
-    opportunityId: o.id,
-    methodology: 'Agile',
-    status: 'Active',
-    health: 'Green',
-    startDate: o.allocationStartDate || undefined,
-    endDate: o.allocationEndDate || undefined,
-    clientStakeholderId: o.clientStakeholderId,
-  });
+  const buildProjectDraft = (o: Opportunity): Project => {
+    const parentAccount = accounts.find((a) => a.id === o.accountId);
+    return {
+      id: '',
+      name: o.name,
+      description: o.description ?? '',
+      accountId: o.accountId,
+      opportunityId: o.id,
+      methodology: 'Agile',
+      status: 'Active',
+      health: 'Green',
+      startDate: o.allocationStartDate || undefined,
+      endDate: o.allocationEndDate || undefined,
+      clientStakeholderId: o.clientStakeholderId,
+      dealValue: o.value,
+      serviceProviderPmId: o.serviceProviderPmId,
+      practiceLeadId: parentAccount?.practiceLeadId || undefined,
+    };
+  };
 
   const openCreateProject = () => {
     if (!opp) return;
@@ -527,8 +567,13 @@ export const OpportunityDetailsView: React.FC = () => {
           { icon: <DollarSign className="w-4 h-4" />, label: 'CRM Value', mono: true, value: formatCur(opp.crmValue) },
           { icon: <TrendingUp className="w-4 h-4" />, label: 'Probability', mono: true, value: `${opp.probability}%` },
           { icon: <Calendar className="w-4 h-4" />, label: 'Allocation End Date', mono: true, value: opp.allocationEndDate || 'N/A' },
+          {
+            icon: <Users className="w-4 h-4" />,
+            label: 'Project Manager',
+            value: pmDisplayName || <span className="text-slate-400 italic">Not assigned</span>,
+          },
         ]}
-        attributesClassName="grid-cols-2 lg:grid-cols-4"
+        attributesClassName="grid-cols-2 lg:grid-cols-5"
       />
 
       {/* Won opportunities are permanently read-only — the backend rejects any
@@ -769,6 +814,12 @@ export const OpportunityDetailsView: React.FC = () => {
                       <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1">Revenue Model</span>
                       <p className="text-sm text-slate-800 font-semibold">{opp.revenueModel || <span className="text-slate-400 font-medium italic">Not set</span>}</p>
                     </div>
+                    <div>
+                      <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1">Service Provider Project Manager</span>
+                      <p className="text-sm text-slate-800 font-semibold">
+                        {pmDisplayName || <span className="text-slate-400 font-medium italic">Not assigned</span>}
+                      </p>
+                    </div>
                   </div>
                 </FormSection>
 
@@ -820,6 +871,45 @@ export const OpportunityDetailsView: React.FC = () => {
                 resolveAccount={(id) => accounts.find(a => a.id === id)}
                 hideAccountColumn
                 storageKeyPrefix={`opp-${opp.id}-stk`}
+                canCreate={true}
+                canEdit={false}
+                canDelete={true}
+                onAdd={(type) => {
+                  if (type === 'CLIENT') {
+                    setSelectedOppClientStkId('');
+                    setCreateOppNewClient(false);
+                    setOppClientDraft({
+                      name: '',
+                      designation: '',
+                      department: '',
+                      email: '',
+                      phone: '',
+                      influence: 'Medium',
+                      relationship: 'Neutral',
+                    });
+                    setShowOppClientModal(true);
+                  } else {
+                    setSelectedOppSpUserId('');
+                    setShowOppSpModal(true);
+                  }
+                }}
+                onDelete={async (s) => {
+                  if (s.stakeholderType === 'CLIENT') {
+                    await updateOpportunity({
+                      ...opp,
+                      clientStakeholderId: undefined,
+                      clientStakeholderName: undefined,
+                      clientStakeholderDesignation: undefined,
+                    });
+                  } else {
+                    await updateOpportunity({
+                      ...opp,
+                      serviceProviderStakeholderId: undefined,
+                      serviceProviderStakeholderName: undefined,
+                      serviceProviderStakeholderDesignation: undefined,
+                    });
+                  }
+                }}
                 onRowClick={(s) => {
                   setFocusedRecord({ type: 'stakeholder', id: s.id });
                   setView('stakeholders');
@@ -828,6 +918,175 @@ export const OpportunityDetailsView: React.FC = () => {
                 serviceProviderEmptyMessage="No Service Providers linked to this opportunity."
               />
             </Card>
+
+            {/* Custom Opportunity Client Stakeholder Modal */}
+            <FormModal
+              isOpen={showOppClientModal}
+              title="Add Client Stakeholder to Opportunity"
+              icon={<Building2 className="w-5 h-5 text-blue-600" aria-hidden="true" />}
+              onClose={() => setShowOppClientModal(false)}
+              onSubmit={async (e: React.FormEvent) => {
+                e.preventDefault();
+                let clientStkId = selectedOppClientStkId;
+                if (createOppNewClient) {
+                  const created = await addStakeholder({
+                    ...oppClientDraft,
+                    accountId: opp.accountId,
+                    stakeholderType: 'CLIENT',
+                  });
+                  clientStkId = created.id;
+                }
+                if (clientStkId) {
+                  const s = stakeholders.find(st => st.id === clientStkId) || (createOppNewClient ? { name: oppClientDraft.name, designation: oppClientDraft.designation } : null);
+                  await updateOpportunity({
+                    ...opp,
+                    clientStakeholderId: clientStkId,
+                    clientStakeholderName: s?.name || '',
+                    clientStakeholderDesignation: s?.designation || '',
+                  });
+                }
+                setShowOppClientModal(false);
+              }}
+              submitLabel="Add Client Stakeholder"
+            >
+              <div className="space-y-4">
+                <div className="flex items-center space-x-2">
+                  <input
+                    type="checkbox"
+                    id="createOppNewClient"
+                    checked={createOppNewClient}
+                    onChange={(e) => setCreateOppNewClient(e.target.checked)}
+                    className="w-4 h-4 text-blue-600 border-slate-300 rounded cursor-pointer"
+                  />
+                  <label htmlFor="createOppNewClient" className="text-xs font-semibold text-slate-700 cursor-pointer select-none">
+                    Create new Client Stakeholder
+                  </label>
+                </div>
+
+                {createOppNewClient ? (
+                  <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 border border-slate-200 rounded-lg">
+                    <div className="col-span-2">
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Name</label>
+                      <input
+                        type="text"
+                        required={createOppNewClient}
+                        value={oppClientDraft.name}
+                        onChange={(e) => setOppClientDraft({ ...oppClientDraft, name: e.target.value })}
+                        placeholder="Jane Doe"
+                        className={INPUT_CLS}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Designation</label>
+                      <input
+                        type="text"
+                        value={oppClientDraft.designation}
+                        onChange={(e) => setOppClientDraft({ ...oppClientDraft, designation: e.target.value })}
+                        placeholder="Director"
+                        className={INPUT_CLS}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Department</label>
+                      <input
+                        type="text"
+                        value={oppClientDraft.department}
+                        onChange={(e) => setOppClientDraft({ ...oppClientDraft, department: e.target.value })}
+                        placeholder="Procurement"
+                        className={INPUT_CLS}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Email</label>
+                      <input
+                        type="email"
+                        value={oppClientDraft.email}
+                        onChange={(e) => setOppClientDraft({ ...oppClientDraft, email: e.target.value })}
+                        placeholder="jane@tesla.com"
+                        className={INPUT_CLS}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Phone</label>
+                      <input
+                        type="text"
+                        value={oppClientDraft.phone}
+                        onChange={(e) => setOppClientDraft({ ...oppClientDraft, phone: e.target.value })}
+                        placeholder="+1-555-0199"
+                        className={INPUT_CLS}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <select
+                    value={selectedOppClientStkId}
+                    onChange={(e) => setSelectedOppClientStkId(e.target.value)}
+                    className={SELECT_CLS}
+                    required
+                  >
+                    <option value="" disabled>— Select existing Client Stakeholder —</option>
+                    {stakeholders
+                      .filter((s) => s.stakeholderType === 'CLIENT')
+                      .map((s) => (
+                        <option key={s.id} value={s.id}>{s.name} ({s.designation})</option>
+                      ))}
+                  </select>
+                )}
+              </div>
+            </FormModal>
+
+            {/* Custom Opportunity Service Provider Modal */}
+            <FormModal
+              isOpen={showOppSpModal}
+              title="Add Service Provider to Opportunity"
+              icon={<Settings2 className="w-5 h-5 text-indigo-600" aria-hidden="true" />}
+              onClose={() => setShowOppSpModal(false)}
+              onSubmit={async (e: React.FormEvent) => {
+                e.preventDefault();
+                if (selectedOppSpUserId) {
+                  // Resolve/create the SP stakeholder row for the account of this opportunity
+                  await associateServiceProvider(selectedOppSpUserId, opp.accountId);
+                  // Find that created SERVICE_PROVIDER stakeholder for this account and user
+                  const associatedStk = stakeholders.find(s => s.accountId === opp.accountId && (s as any).userId === selectedOppSpUserId && s.stakeholderType === 'SERVICE_PROVIDER');
+                  const spUser = serviceProviders.find(u => u.id === selectedOppSpUserId);
+                  if (associatedStk) {
+                    await updateOpportunity({
+                      ...opp,
+                      serviceProviderStakeholderId: associatedStk.id,
+                      serviceProviderStakeholderName: associatedStk.name,
+                      serviceProviderStakeholderDesignation: associatedStk.designation || '',
+                    });
+                  } else if (spUser) {
+                    // Fallback to updating directly if we can't find it instantly in the cache
+                    await updateOpportunity({
+                      ...opp,
+                      serviceProviderStakeholderId: `sp-${selectedOppSpUserId}-${opp.accountId}`, // predictable ID convention of resolveOrCreate
+                      serviceProviderStakeholderName: spUser.name || spUser.email,
+                      serviceProviderStakeholderDesignation: spUser.designation || '',
+                    });
+                  }
+                }
+                setShowOppSpModal(false);
+              }}
+              submitLabel="Add Service Provider"
+            >
+              <div className="space-y-4">
+                <label className="block text-xs font-semibold text-slate-600">Select Service Provider (System User)</label>
+                <select
+                  value={selectedOppSpUserId}
+                  onChange={(e) => setSelectedOppSpUserId(e.target.value)}
+                  className={SELECT_CLS}
+                  required
+                >
+                  <option value="" disabled>— Select System User —</option>
+                  {serviceProviders.map((sp) => (
+                    <option key={sp.id} value={sp.id}>
+                      {sp.name || sp.email}{sp.designation ? ` (${sp.designation})` : ''}{!sp.isActive ? ' [Inactive]' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </FormModal>
           </div>
         )}
 
@@ -1226,6 +1485,7 @@ export const OpportunityDetailsView: React.FC = () => {
           displayedConfigs={actionItemsColumnConfig.filter(c => c.isDisplayed)}
           accounts={accounts}
           opportunities={opportunities}
+          projects={projects}
           stakeholders={stakeholders}
           onChange={(patch) => setEditingAi({ ...editingAi, ...patch })}
           onSave={handleUpdateActionItem}
@@ -1384,6 +1644,7 @@ export const OpportunityDetailsView: React.FC = () => {
           // The win/loss reason is optional — captured when provided.
           setIsClosingOpp(true);
           try {
+            const stageBecameWon = closeDialog.outcome === 'Won' && (!opp || opp.stage !== 'Won') && !opp?.projectId;
             await updateOpportunity({
               ...opp,
               // The close target is the chosen outcome (Won/Lost) regardless of
@@ -1393,6 +1654,9 @@ export const OpportunityDetailsView: React.FC = () => {
               closeReason: closeReasonDraft.trim(),
             });
             setCloseDialog(null);
+            if (stageBecameWon) {
+              setPromptConvertProject(true);
+            }
           } finally {
             setIsClosingOpp(false);
           }
@@ -1469,6 +1733,19 @@ export const OpportunityDetailsView: React.FC = () => {
           </p>
         </div>
       </FormModal>
+
+      <ConfirmDialog
+        isOpen={promptConvertProject}
+        title="Convert to Project"
+        message="Opportunity stage has been set to Won. Would you like to convert this opportunity to a project now?"
+        confirmLabel="Yes, Convert"
+        cancelLabel="No, Later"
+        onConfirm={() => {
+          setPromptConvertProject(false);
+          openCreateProject();
+        }}
+        onCancel={() => setPromptConvertProject(false)}
+      />
     </div>
   );
 };

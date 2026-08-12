@@ -54,6 +54,13 @@ export class AccessScopeService {
         params.push(ctx.userId);
         return clause;
       });
+
+      // Include base ownership check specifically for the Account Manager scope
+      if (scopeFields.includes('account_manager_id')) {
+        ors.push(`${alias}.owner_id = $${idx++}`);
+        params.push(ctx.userId);
+      }
+
       conditions.push(ors.length === 1 ? ors[0] : `(${ors.join(' OR ')})`);
       return { conditions, params, nextIdx: idx };
     }

@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
-import { Opportunity } from '@/types';
+import { Opportunity, OpportunityStage } from '@/types';
 import { Plus, Eye, Trash2, TrendingUp, X, FileSpreadsheet, Settings2, Pencil, Calendar, FolderKanban, LineChart } from 'lucide-react';
 import { CustomizeColumnsSidebar } from '@/components/table/CustomizeColumnsSidebar';
 import { OpportunityActionsCommentsPanel } from '@/features/opportunities/components/OpportunityActionsCommentsPanel';
@@ -13,7 +13,7 @@ import { OpportunityFormModal } from '@/features/opportunities/components/Opport
 import { renderOpportunityCell } from '@/features/opportunities/components/OpportunityTableCells';
 import { InlineEditModal } from '@/components/InlineEditModal';
 import { LoadingState } from '@/components/common/LoadingState';
-import { OPPORTUNITY_STAGE_OPTIONS, STAGE_DEFAULT_PROBABILITY, OPPORTUNITY_HEALTH_OPTIONS, REVENUE_MODEL_OPTIONS, SERVICE_LINE_OPTIONS } from '@/constants';
+import { OPPORTUNITY_STAGE_OPTIONS, STAGE_DEFAULT_PROBABILITY, OPPORTUNITY_HEALTH_OPTIONS, REVENUE_MODEL_OPTIONS, SERVICE_LINE_OPTIONS, stageChangePatch } from '@/constants';
 import { compareForSort, deriveOppStatus, matchesGlobalAccount, SortDirection } from '@/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -40,6 +40,8 @@ import {
   TableHead,
   TableHeadCell,
   TableRow,
+  FormModal,
+  INPUT_CLS,
 } from '@/components/ui';
 
 // Empty draft for the "New Opportunity" modal — a module constant so it can be
@@ -47,7 +49,7 @@ import {
 const EMPTY_OPPORTUNITY: Omit<Opportunity, 'id'> = {
   name: '',
   accountId: '',
-  stage: 'Lead',
+  stage: undefined as any,
   value: 0,
   crmValue: 0,
   probability: STAGE_DEFAULT_PROBABILITY.Lead ?? 0,
@@ -62,7 +64,8 @@ const EMPTY_OPPORTUNITY: Omit<Opportunity, 'id'> = {
   team: [],
   clientStakeholderId: '',
   serviceProviderStakeholderId: '',
-  opportunityType: 'Growth',
+  serviceProviderUserId: '',
+  opportunityType: undefined as any,
   aopAvailable: false,
   aopYear: null,
   serviceLine: undefined,
@@ -157,6 +160,7 @@ export const OpportunitiesView: React.FC = () => {
   // Edit Opportunity Modal State
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingOpp, setEditingOpp] = useState<Opportunity | null>(null);
+  const [promptConvertProject, setPromptConvertProject] = useState<string | null>(null);
 
   // Refresh from DB on mount
   useEffect(() => {
@@ -168,12 +172,89 @@ export const OpportunitiesView: React.FC = () => {
     setIsEditModalOpen(true);
   };
 
-  const handleUpdateOpportunity = (e: React.FormEvent) => {
+  const handleUpdateOpportunity = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingOpp || !editingOpp.name.trim()) return;
-    updateOpportunity(editingOpp);
+    const original = opportunities.find(o => o.id === editingOpp.id);
+    const stageBecameWon = editingOpp.stage === 'Won' && (!original || original.stage !== 'Won') && !editingOpp.projectId;
+    await updateOpportunity(editingOpp);
     setIsEditModalOpen(false);
     setEditingOpp(null);
+    if (stageBecameWon) {
+      setPromptConvertProject(editingOpp.id);
+    }
+  };
+
+  // Stage change modal state
+  const [closeDialog, setCloseDialog] = useState<{ outcome: 'Won' | 'Lost'; opp: Opportunity } | null>(null);
+  const [closeReasonDraft, setCloseReasonDraft] = useState('');
+  const [isClosingOpp, setIsClosingOpp] = useState(false);
+
+  const [stageReasonDialog, setStageReasonDialog] = useState<{ stage: 'Blocked' | 'Delayed'; opp: Opportunity } | null>(null);
+  const [stageReasonDraft, setStageReasonDraft] = useState('');
+  const [isSavingStageReason, setIsSavingStageReason] = useState(false);
+
+  const handleStageChange = async (opp: Opportunity, newStage: OpportunityStage) => {
+    if (newStage === 'Won' || newStage === 'Lost') {
+      setCloseReasonDraft(opp.closeReason || '');
+      setCloseDialog({ outcome: newStage, opp });
+    } else if (newStage === 'Blocked' || newStage === 'Delayed') {
+      setStageReasonDraft((newStage === 'Blocked' ? opp.blockedReason : opp.delayedReason) || '');
+      setStageReasonDialog({ stage: newStage, opp });
+    } else {
+      try {
+        await updateOpportunity({
+          ...opp,
+          ...stageChangePatch(newStage),
+        });
+      } catch {
+        // Central error handling
+      }
+    }
+  };
+
+  const handleCloseDialogSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!closeDialog) return;
+    const { outcome, opp } = closeDialog;
+    setIsClosingOpp(true);
+    try {
+      const stageBecameWon = outcome === 'Won' && opp.stage !== 'Won' && !opp.projectId;
+      await updateOpportunity({
+        ...opp,
+        ...stageChangePatch(outcome),
+        closeReason: closeReasonDraft.trim(),
+      });
+      setCloseDialog(null);
+      if (stageBecameWon) {
+        setPromptConvertProject(opp.id);
+      }
+    } catch {
+      // Central error handling
+    } finally {
+      setIsClosingOpp(false);
+    }
+  };
+
+  const handleStageReasonDialogSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!stageReasonDialog) return;
+    const { stage, opp } = stageReasonDialog;
+    setIsSavingStageReason(true);
+    try {
+      await updateOpportunity({
+        ...opp,
+        ...stageChangePatch(stage),
+        ...(stage === 'Blocked'
+          ? { blockedReason: stageReasonDraft.trim() }
+          : { delayedReason: stageReasonDraft.trim() }),
+      });
+      setStageReasonDialog(null);
+    } catch {
+      // Central error handling
+    } finally {
+      setIsSavingStageReason(false);
+    }
   };
 
   // Modal State
@@ -533,6 +614,7 @@ export const OpportunitiesView: React.FC = () => {
                             col,
                             opp,
                             associatedAccount ? associatedAccount.name : (opp.accountName ?? 'Unknown Account'),
+                            can('opportunities', 'update') ? handleStageChange : undefined,
                           )}
                         </TableCell>
                       ))}
@@ -696,6 +778,85 @@ export const OpportunitiesView: React.FC = () => {
           }}
         />
       )}
+
+      <ConfirmDialog
+        isOpen={!!promptConvertProject}
+        title="Convert to Project"
+        message="Opportunity stage has been set to Won. Would you like to convert this opportunity to a project now?"
+        confirmLabel="Yes, Convert"
+        cancelLabel="No, Later"
+        onConfirm={() => {
+          if (promptConvertProject) {
+            setSelectedOpportunityId(promptConvertProject);
+            setCreateProjectIntent(true);
+            setView('opportunity-details');
+            setPromptConvertProject(null);
+          }
+        }}
+        onCancel={() => setPromptConvertProject(null)}
+      />
+
+      {/* Won/Lost Close-out Dialog */}
+      <FormModal
+        isOpen={!!closeDialog}
+        title={closeDialog?.outcome === 'Won' ? 'Mark Opportunity as Won' : 'Mark Opportunity as Lost'}
+        onClose={() => setCloseDialog(null)}
+        onSubmit={handleCloseDialogSubmit}
+        submitLabel={isClosingOpp ? 'Saving…' : `Mark ${closeDialog?.outcome ?? ''}`}
+        submitVariant={closeDialog?.outcome === 'Won' ? 'success' : 'danger'}
+        isSubmitting={isClosingOpp}
+        maxWidth="max-w-md"
+      >
+        <div className="space-y-2">
+          <label className="text-label font-semibold text-slate-600 uppercase tracking-wide block">
+            {closeDialog?.outcome === 'Won' ? 'Win Reason' : 'Loss Reason'}
+          </label>
+          <textarea
+            autoFocus
+            rows={3}
+            value={closeReasonDraft}
+            onChange={(e) => setCloseReasonDraft(e.target.value)}
+            placeholder={closeDialog?.outcome === 'Won'
+              ? 'e.g., Strong technical fit and competitive pricing'
+              : 'e.g., Lost to competitor on price'}
+            className={`${INPUT_CLS} resize-none`}
+          />
+          <p className="text-[10px] text-slate-400 font-medium">
+            Recorded on the opportunity for win/loss analysis.
+          </p>
+        </div>
+      </FormModal>
+
+      {/* Blocked/Delayed reason dialog */}
+      <FormModal
+        isOpen={!!stageReasonDialog}
+        title={stageReasonDialog?.stage === 'Blocked' ? 'Mark Opportunity as Blocked' : 'Mark Opportunity as Delayed'}
+        onClose={() => setStageReasonDialog(null)}
+        onSubmit={handleStageReasonDialogSubmit}
+        submitLabel={isSavingStageReason ? 'Saving…' : `Mark ${stageReasonDialog?.stage ?? ''}`}
+        submitVariant="warning"
+        isSubmitting={isSavingStageReason}
+        maxWidth="max-w-md"
+      >
+        <div className="space-y-2">
+          <label className="text-label font-semibold text-slate-600 uppercase tracking-wide block">
+            {stageReasonDialog?.stage === 'Blocked' ? 'Blocked Reason' : 'Delayed Reason'}
+          </label>
+          <textarea
+            autoFocus
+            rows={3}
+            value={stageReasonDraft}
+            onChange={(e) => setStageReasonDraft(e.target.value)}
+            placeholder={stageReasonDialog?.stage === 'Blocked'
+              ? 'Describe why this opportunity is currently blocked...'
+              : 'Describe why this opportunity has been delayed...'}
+            className={`${INPUT_CLS} resize-none`}
+          />
+          <p className="text-[10px] text-slate-400 font-medium">
+            Optional — separate from Risks &amp; Dependencies.
+          </p>
+        </div>
+      </FormModal>
 
       {/* Deactivated Opportunities Section */}
       {deactivatedOpportunities.length > 0 && (

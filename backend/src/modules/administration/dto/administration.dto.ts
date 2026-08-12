@@ -44,6 +44,7 @@ export class UpdateSettingsDto {
 }
 
 export class UpdateUserDto {
+  @IsOptional() @IsString() name?: string;
   @IsOptional() @IsString() roleId?: string;
   /**
    * The full set of roles to assign (multi-role). When present it is
@@ -55,4 +56,13 @@ export class UpdateUserDto {
   @IsOptional() @IsString() designation?: string;
   @IsOptional() @IsString() employeeId?: string;
   @IsOptional() @IsBoolean() isActive?: boolean;
+}
+
+export class CreateUserDto {
+  @IsString() email!: string;
+  @IsOptional() @IsString() name?: string;
+  @IsOptional() @IsString() employeeId?: string;
+  @IsOptional() @IsString() department?: string;
+  @IsOptional() @IsString() designation?: string;
+  @IsArray() @IsString({ each: true }) roleIds!: string[];
 }

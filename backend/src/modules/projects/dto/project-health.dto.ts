@@ -43,3 +43,6 @@ export class CreateProjectHealthDto {
   @IsOptional()
   reviewedById?: string;
 }
+
+/** PUT replaces the whole entry, so it carries the same shape as create. */
+export class UpdateProjectHealthDto extends CreateProjectHealthDto {}

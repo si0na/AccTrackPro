@@ -14,6 +14,20 @@ export type ActionItemStatus = 'To Do' | 'In Progress' | 'Blocked' | 'Completed'
 export type InfluenceLevel = 'High' | 'Medium' | 'Low';
 export type RelationshipStatus = 'Strong' | 'Neutral' | 'Weak';
 export type StakeholderType = 'CLIENT' | 'SERVICE_PROVIDER';
+
+/**
+ * A System User exposed as a Service Provider option.
+ * All system users are Service Providers regardless of is_active status.
+ */
+export interface ServiceProviderUser {
+  id: string;
+  name: string;
+  email: string;
+  department: string;
+  designation: string;
+  /** False for deactivated users — shown as an Inactive badge in pickers. */
+  isActive: boolean;
+}
 export type ProjectStatus = 'Active' | 'On Hold' | 'Completed' | 'Cancelled';
 export type ProjectMethodology = 'Agile' | 'Waterfall';
 export type ProjectHealth = 'Green' | 'Amber' | 'Red';
@@ -48,6 +62,8 @@ export interface Account {
   address: string;
   location: string;
   description: string;
+  clientStakeholderIds?: string[];
+  serviceProviderUserIds?: string[];
   /** Read-only, set by backend — used for "Recently Updated Accounts". */
   updatedAt?: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -113,6 +129,16 @@ export interface Opportunity {
   serviceProviderStakeholderId?: string;
   serviceProviderStakeholderName?: string;
   serviceProviderStakeholderDesignation?: string;
+  /**
+   * New user-picker selection. When set on save, the backend auto-resolves
+   * this to a SERVICE_PROVIDER stakeholder FK (resolveOrCreate).
+   * Read back on fetch as the user_id of the linked stakeholder (if present).
+   */
+  serviceProviderUserId?: string;
+  /** FK to the System User acting as the Service Provider Project Manager. */
+  serviceProviderPmId?: string;
+  /** Joined display name for the Service Provider Project Manager (server-side). */
+  serviceProviderPmName?: string;
   opportunityType: OpportunityType;
   /** Whether this opportunity has an approved AOP (Annual Operating Plan) year. */
   aopAvailable: boolean;
@@ -187,6 +213,7 @@ export interface Project {
   id: string;
   name: string;
   description: string;
+  dealValue?: number;
   accountId: string;
   /** Parent account display name (joined server-side). */
   accountName?: string;
@@ -205,7 +232,7 @@ export interface Project {
   serviceProviderPmName?: string;
   practiceLeadId?: string;
   practiceLeadName?: string;
-  /** "Client Name" contact — FK to stakeholders. */
+  /** "Client Partner Name" contact — FK to stakeholders. */
   clientStakeholderId?: string;
   clientStakeholderName?: string;
   clientStakeholderDesignation?: string;
@@ -243,6 +270,9 @@ export interface ProjectHealthUpdate {
   updatedById?: string;
   updatedByName?: string;
   createdAt: string;
+  /** Set once the entry has been corrected; absent means as-first-written. */
+  editedAt?: string;
+  editedByName?: string;
 }
 
 export interface ProjectTeamMember {
@@ -412,6 +442,7 @@ export interface Stakeholder {
   phone: string;
   stakeholderType: StakeholderType;
   department?: string;
+  userId?: string;
 }
 
 export interface Activity {
@@ -470,6 +501,8 @@ export interface User {
   role: string;
   roleId?: string | null;
   roleKey?: string | null;
+  roleIds?: string[];
+  roleKeys?: string[];
   employeeId?: string | null;
   department?: string | null;
   designation?: string | null;
@@ -628,6 +661,7 @@ export interface AdminUser {
   createdAt: string;
   failedAttempts?: number;
   lockedUntil?: string | null;
+  isPending: boolean;
 }
 
 export interface AdminSettings {

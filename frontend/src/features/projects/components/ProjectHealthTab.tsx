@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { AdminUser } from '@/types';
 import { Card, Button, StatusBadge, HEALTH_COLORS } from '@/components/ui';
-import { Plus } from 'lucide-react';
+import { Plus, Pencil } from 'lucide-react';
 import { HealthUpdateFormModal } from './HealthUpdateFormModal';
 import { useProjectHealth } from '../hooks/useProjectHealth';
 
@@ -22,7 +22,7 @@ interface ProjectHealthTabProps {
 export const ProjectHealthTab: React.FC<ProjectHealthTabProps> = ({ projectId, users, openModalTrigger = 0 }) => {
   const {
     history, loading, canUpdate,
-    isModalOpen, openModal, closeModal,
+    isModalOpen, openModal, openEditModal, closeModal, isEditing,
     draft, setDraft, isSaving, save,
   } = useProjectHealth(projectId);
 
@@ -110,9 +110,29 @@ export const ProjectHealthTab: React.FC<ProjectHealthTabProps> = ({ projectId, u
                   <h3 className="text-lg font-semibold text-slate-800 whitespace-pre-wrap">{update.statusSummary}</h3>
                 )}
               </div>
-              <div className="text-right text-sm">
-                <div className="text-slate-500">Updated by <span className="font-medium text-slate-700">{update.updatedByName || 'Unknown'}</span></div>
-                <div className="text-slate-400">{formatDate(update.createdAt)}</div>
+              <div className="flex items-start gap-3 md:justify-end">
+                <div className="text-right text-sm">
+                  <div className="text-slate-500">Updated by <span className="font-medium text-slate-700">{update.updatedByName || 'Unknown'}</span></div>
+                  <div className="text-slate-400">{formatDate(update.createdAt)}</div>
+                  {/* An amended entry says so — the trail never silently rewrites itself. */}
+                  {update.editedAt && (
+                    <div className="text-xs text-slate-400 italic mt-0.5">
+                      Edited {formatDate(update.editedAt)}
+                      {update.editedByName ? ` by ${update.editedByName}` : ''}
+                    </div>
+                  )}
+                </div>
+                {canUpdate && (
+                  <Button
+                    variant="secondary"
+                    size="xs"
+                    icon={<Pencil className="w-3.5 h-3.5" />}
+                    onClick={() => openEditModal(update)}
+                    aria-label="Edit health update"
+                  >
+                    Edit
+                  </Button>
+                )}
               </div>
             </div>
 
@@ -181,6 +201,7 @@ export const ProjectHealthTab: React.FC<ProjectHealthTabProps> = ({ projectId, u
           setDraft={setDraft}
           isSaving={isSaving}
           users={users}
+          isEditing={isEditing}
         />
       )}
     </div>

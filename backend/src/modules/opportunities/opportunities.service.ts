@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, Logger, NotFoundExc
 import { DatabaseService } from '../../database/database.service';
 import { FilterContextService, FilterParams, FiscalContext } from '../../common/services/filter-context.service';
 import { AccessScopeService } from '../rbac/access-scope.service';
+import { PermissionsService } from '../rbac/permissions.service';
 import { NotificationEventBus } from '../../common/events/notification-event-bus.service';
 import { ProjectsService } from '../projects/projects.service';
 import { Opportunity, Project } from '../../types';
@@ -44,6 +45,7 @@ function rowToOpportunity(row: any, derive: (date: string) => { financialYear: s
     owner_id,
     client_stakeholder_id, client_stakeholder_name, client_stakeholder_designation,
     service_provider_stakeholder_id, service_provider_stakeholder_name, service_provider_stakeholder_designation,
+    service_provider_pm_id, service_provider_pm_name,
     aop_available, aop_year, opportunity_type, service_line,
     opportunity_health, revenue_model, location, cost, gross_margin,
     project_id,
@@ -78,6 +80,8 @@ function rowToOpportunity(row: any, derive: (date: string) => { financialYear: s
     serviceProviderStakeholderId:          service_provider_stakeholder_id ?? undefined,
     serviceProviderStakeholderName:        service_provider_stakeholder_name ?? undefined,
     serviceProviderStakeholderDesignation: service_provider_stakeholder_designation ?? undefined,
+    serviceProviderPmId:                  service_provider_pm_id ?? undefined,
+    serviceProviderPmName:                service_provider_pm_name ?? undefined,
     aopAvailable:  aop_available,
     aopYear:       aop_year ?? null,
     opportunityType: opportunity_type,
@@ -123,12 +127,14 @@ const OPP_SELECT = `
   SELECT o.*, a.name AS account_name,
          cs.name AS client_stakeholder_name, cs.designation AS client_stakeholder_designation,
          sps.name AS service_provider_stakeholder_name, sps.designation AS service_provider_stakeholder_designation,
+         pm.name AS service_provider_pm_name,
          proj.id AS project_id,
 ${OPP_FORECAST_SELECT}
   FROM opportunities o
   LEFT JOIN accounts a ON o.account_id = a.id
   LEFT JOIN stakeholders cs  ON o.client_stakeholder_id           = cs.id
   LEFT JOIN stakeholders sps ON o.service_provider_stakeholder_id = sps.id
+  LEFT JOIN users pm ON o.service_provider_pm_id = pm.id
   LEFT JOIN projects proj ON proj.opportunity_id = o.id AND proj.is_deleted = FALSE${OPP_FORECAST_JOIN}
 `;
 
@@ -218,6 +224,7 @@ export class OpportunitiesService {
     private readonly db: DatabaseService,
     private readonly filter: FilterContextService,
     private readonly access: AccessScopeService,
+    private readonly permissions: PermissionsService,
     private readonly bus: NotificationEventBus,
     private readonly projectsService: ProjectsService,
   ) {}
@@ -228,6 +235,15 @@ export class OpportunitiesService {
    * When userId is absent (internal calls, e.g. re-reading a row just written)
    * no scoping is applied; view-all roles get no restriction.
    */
+  private async validatePm(pmId: string | undefined | null): Promise<void> {
+    if (!pmId) return;
+    const hasRole = await this.permissions.userHasRole(pmId, 'project-manager');
+    if (!hasRole) {
+      throw new BadRequestException(
+        'The selected Service Provider Project Manager does not have the Project Manager role.',
+      );
+    }
+  }
   private async childScope(userId: string | null, startIdx: number) {
     if (!userId) return { conditions: [], params: [], nextIdx: startIdx };
     const ctx = await this.access.getContext(userId);
@@ -303,12 +319,14 @@ export class OpportunitiesService {
       `SELECT o.*, a.name AS account_name,
               cs.name AS client_stakeholder_name, cs.designation AS client_stakeholder_designation,
               sps.name AS service_provider_stakeholder_name, sps.designation AS service_provider_stakeholder_designation,
+              pm.name AS service_provider_pm_name,
               proj.id AS project_id,
 ${OPP_FORECAST_SELECT}${totalCol}
        FROM opportunities o
        INNER JOIN accounts a ON o.account_id = a.id AND a.is_deleted = FALSE
        LEFT  JOIN stakeholders cs  ON o.client_stakeholder_id           = cs.id
        LEFT  JOIN stakeholders sps ON o.service_provider_stakeholder_id = sps.id
+       LEFT  JOIN users pm ON o.service_provider_pm_id = pm.id
        LEFT  JOIN projects proj ON proj.opportunity_id = o.id AND proj.is_deleted = FALSE${OPP_FORECAST_JOIN}
        WHERE ${where}
        ORDER BY o.created_at DESC${limitClause}`,
@@ -343,6 +361,7 @@ ${OPP_FORECAST_SELECT}${totalCol}
     await this.assertAccountExists(data.accountId, data.ownerId);
     assertDateOrder(data.allocationStartDate, data.allocationEndDate, data.dealStartDate, data.dealCloseDate);
     await this.assertStakeholderAssignment(data.clientStakeholderId, data.accountId, 'CLIENT', 'client stakeholder');
+    await this.validatePm(data.serviceProviderPmId);
     await this.assertStakeholderAssignment(data.serviceProviderStakeholderId, data.accountId, 'SERVICE_PROVIDER', 'service provider stakeholder');
 
     const stage = data.stage || 'Lead';
@@ -359,10 +378,10 @@ ${OPP_FORECAST_SELECT}${totalCol}
           allocation_start_date, allocation_end_date, deal_start_date, deal_close_date, crm_value, description, next_step,
           risks_and_dependencies,
           close_reason, blocked_reason, delayed_reason, closed_at, tags, team, custom_data,
-          client_stakeholder_id, service_provider_stakeholder_id,
+          client_stakeholder_id, service_provider_stakeholder_id, service_provider_pm_id,
           aop_available, aop_year, opportunity_type, service_line,
           opportunity_health, revenue_model, location, cost, gross_margin)
-       VALUES (gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32)
+       VALUES (gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33)
        RETURNING id`,
       [
         data.name, data.accountId, stage,
@@ -373,7 +392,7 @@ ${OPP_FORECAST_SELECT}${totalCol}
         data.risksAndDependencies ?? '',
         closeReason, blockedReason, delayedReason, closedAt,
         data.tags ?? [], data.team ?? [], JSON.stringify(cd),
-        data.clientStakeholderId ?? null, data.serviceProviderStakeholderId ?? null,
+        data.clientStakeholderId ?? null, data.serviceProviderStakeholderId ?? null, data.serviceProviderPmId ?? null,
         data.aopAvailable ?? false, data.aopAvailable ? (data.aopYear ?? null) : null,
         data.opportunityType ?? null, data.serviceLine ?? null,
         data.opportunityHealth ?? null, data.revenueModel ?? null, data.location ?? null,
@@ -426,6 +445,11 @@ ${OPP_FORECAST_SELECT}${totalCol}
     assertDateOrder(data.allocationStartDate, data.allocationEndDate, data.dealStartDate, data.dealCloseDate);
     await this.assertStakeholderAssignment(data.clientStakeholderId, data.accountId, 'CLIENT', 'client stakeholder');
     await this.assertStakeholderAssignment(data.serviceProviderStakeholderId, data.accountId, 'SERVICE_PROVIDER', 'service provider stakeholder');
+    const pmId = 'serviceProviderPmId' in data ? (data.serviceProviderPmId ?? null) : (existing.serviceProviderPmId ?? null);
+    const pmName = 'serviceProviderPmName' in data ? (data.serviceProviderPmName ?? null) : (existing.serviceProviderPmName ?? null);
+    if ('serviceProviderPmId' in data && data.serviceProviderPmId) {
+      await this.validatePm(data.serviceProviderPmId);
+    }
     const cd    = extractCustomData(data, KNOWN);
     const stage = data.stage ?? existing.stage;
     assertAllocationEndDateValid(data.allocationEndDate, data.allocationStartDate, stage, existing.allocationEndDate);
@@ -470,12 +494,12 @@ ${OPP_FORECAST_SELECT}${totalCol}
          blocked_reason=$16, delayed_reason=$17, closed_at=$18,
          tags=$19, team=$20,
          custom_data=$21,
-         client_stakeholder_id=$22, service_provider_stakeholder_id=$23,
-         aop_available=$24, aop_year=$25, opportunity_type=$26,
-         service_line=$27,
-         opportunity_health=$28, revenue_model=$29, location=$30, cost=$31, gross_margin=$32,
+         client_stakeholder_id=$22, service_provider_stakeholder_id=$23, service_provider_pm_id=$24,
+         aop_available=$25, aop_year=$26, opportunity_type=$27,
+         service_line=$28,
+         opportunity_health=$29, revenue_model=$30, location=$31, cost=$32, gross_margin=$33,
          updated_at=NOW()
-       WHERE id=$33 AND is_deleted=FALSE`,
+       WHERE id=$34 AND is_deleted=FALSE`,
       [
         data.name, data.accountId, stage,
         data.value ?? existing.value ?? 0, data.probability ?? existing.probability ?? 0,
@@ -485,7 +509,7 @@ ${OPP_FORECAST_SELECT}${totalCol}
         data.risksAndDependencies ?? '',
         closeReason, blockedReason, delayedReason, closedAt,
         data.tags ?? [], data.team ?? [], JSON.stringify(cd),
-        data.clientStakeholderId ?? null, data.serviceProviderStakeholderId ?? null,
+        data.clientStakeholderId ?? null, data.serviceProviderStakeholderId ?? null, pmId,
         aopAvailable, aopYear, opportunityType,
         serviceLine,
         opportunityHealth, revenueModel, location, cost, grossMargin,

@@ -5,11 +5,133 @@
 
 import React from 'react';
 import { TrendingUp, FolderKanban } from 'lucide-react';
-import type { ColumnConfig, Opportunity } from '@/types';
+import type { ColumnConfig, Opportunity, OpportunityStage } from '@/types';
 import { ExpandableTextCell, STAGE_COLORS, StatusBadge, HEALTH_COLORS } from '@/components/ui';
 
 const formatCurrency = (val: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(val);
+
+interface InlineStageSelectorProps {
+  opp: Opportunity;
+  onStageChange: (opp: Opportunity, newStage: OpportunityStage) => void;
+}
+
+const InlineStageSelector: React.FC<InlineStageSelectorProps> = ({ opp, onStageChange }) => {
+  const [isOpen, setIsOpen] = React.useState(false);
+  const [openUp, setOpenUp] = React.useState(false);
+  const [coords, setCoords] = React.useState({ top: 0, left: 0 });
+  const dropdownRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  React.useEffect(() => {
+    if (isOpen) {
+      const handleScroll = (event: Event) => {
+        if (dropdownRef.current && dropdownRef.current.contains(event.target as Node)) {
+          return;
+        }
+        setIsOpen(false);
+      };
+      window.addEventListener('scroll', handleScroll, { passive: true });
+      document.addEventListener('scroll', handleScroll, { capture: true, passive: true });
+      return () => {
+        window.removeEventListener('scroll', handleScroll);
+        document.removeEventListener('scroll', handleScroll, { capture: true });
+      };
+    }
+  }, [isOpen]);
+
+  const handleToggle = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!isOpen && dropdownRef.current) {
+      const rect = dropdownRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const spaceAbove = rect.top;
+      const dropdownHeight = 242;
+
+      let isUp = false;
+      if (spaceBelow < dropdownHeight && spaceAbove > spaceBelow) {
+        isUp = true;
+      }
+      setOpenUp(isUp);
+
+      let targetTop = 0;
+      if (isUp) {
+        targetTop = rect.top - 4 - dropdownHeight;
+        if (targetTop < 10) {
+          targetTop = 10;
+        }
+      } else {
+        targetTop = rect.bottom + 4;
+        if (targetTop + dropdownHeight > window.innerHeight - 10) {
+          targetTop = window.innerHeight - 10 - dropdownHeight;
+        }
+      }
+
+      setCoords({
+        top: targetTop,
+        left: rect.left,
+      });
+    }
+    setIsOpen(!isOpen);
+  };
+
+  const colorClass = STAGE_COLORS[opp.stage] || 'bg-slate-100 text-slate-700';
+
+  return (
+    <div className="relative inline-block text-left" ref={dropdownRef} onClick={(e) => e.stopPropagation()}>
+      <button
+        type="button"
+        onClick={handleToggle}
+        className={`cursor-pointer px-1 py-0.5 w-[75px] whitespace-normal break-words leading-tight text-center rounded-full text-[10px] font-semibold border border-transparent hover:brightness-95 transition-all outline-none ${colorClass}`}
+      >
+        {opp.stage}
+      </button>
+
+      {isOpen && (
+        <div
+          style={{
+            position: 'fixed',
+            top: `${coords.top}px`,
+            left: `${coords.left}px`,
+          }}
+          className="w-44 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 divide-y divide-slate-100 focus:outline-none z-[100]"
+        >
+          <div className="py-1 max-h-[240px] overflow-y-auto">
+            {Object.keys(STAGE_COLORS).map((stg) => {
+              const stageVal = stg as OpportunityStage;
+              const isSelected = opp.stage === stageVal;
+              return (
+                <button
+                  key={stg}
+                  type="button"
+                  onClick={() => {
+                    onStageChange(opp, stageVal);
+                    setIsOpen(false);
+                  }}
+                  className={`flex items-center w-full px-3 py-1.5 text-xs font-semibold hover:bg-slate-50 transition-colors ${
+                    isSelected ? 'text-indigo-600 bg-indigo-50/50' : 'text-slate-700'
+                  }`}
+                >
+                  <span className={`w-2 h-2 rounded-full mr-2 ${STAGE_COLORS[stageVal]}`} />
+                  {stageVal}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 /**
  * Renders a single `<td>` for a given opportunity column — the one place
@@ -21,6 +143,7 @@ export const renderOpportunityCell = (
   col: ColumnConfig,
   opp: Opportunity,
   accountName: string,
+  onStageChange?: (opp: Opportunity, newStage: OpportunityStage) => void,
 ): React.ReactNode => {
   if (col.key === 'name') {
     return (
@@ -40,21 +163,31 @@ export const renderOpportunityCell = (
   }
 
   if (col.key === 'stage') {
-    // Won opportunities that have already transitioned into a Project are kept
-    // in the list but flagged with a compact indigo pill (mirroring the
-    // "Project Created" badge on the opportunity detail header) so users can
-    // tell at a glance which Won deals are still pending project setup.
     const hasProject = opp.stage === 'Won' && !!opp.projectId;
+    if (onStageChange) {
+      return (
+        <div className="flex items-center gap-1.5">
+          <InlineStageSelector opp={opp} onStageChange={onStageChange} />
+          {hasProject && (
+            <span
+              className="inline-flex items-center justify-center p-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 shrink-0"
+              title="This opportunity has an associated project"
+            >
+              <FolderKanban className="w-3.5 h-3.5" aria-hidden="true" />
+            </span>
+          )}
+        </div>
+      );
+    }
     return (
       <div className="flex items-center gap-1.5">
         <StatusBadge value={opp.stage} colorMap={STAGE_COLORS} />
         {hasProject && (
           <span
-            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200 whitespace-nowrap"
+            className="inline-flex items-center justify-center p-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 shrink-0"
             title="This opportunity has an associated project"
           >
-            <FolderKanban className="w-3 h-3" aria-hidden="true" />
-            Project
+            <FolderKanban className="w-3.5 h-3.5" aria-hidden="true" />
           </span>
         )}
       </div>
