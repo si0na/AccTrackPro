@@ -52,13 +52,10 @@ describe('validateEnvironment', () => {
     expect(prod.errors.some((e) => e.includes('32 characters'))).toBe(true);
   });
 
-  it('requires FRONTEND_URL, UPLOAD_DIR, and Azure credentials in production', () => {
+  it('requires FRONTEND_URL and UPLOAD_DIR in production', () => {
     const result = validateEnvironment(baseEnv({ NODE_ENV: 'production' }));
     expect(result.errors.some((e) => e.startsWith('FRONTEND_URL is required'))).toBe(true);
     expect(result.errors.some((e) => e.startsWith('UPLOAD_DIR is required'))).toBe(true);
-    expect(result.errors.some((e) => e.includes('AZURE_TENANT_ID is required'))).toBe(true);
-    expect(result.errors.some((e) => e.includes('AZURE_CLIENT_ID is required'))).toBe(true);
-    expect(result.errors.some((e) => e.includes('AZURE_CLIENT_SECRET is required'))).toBe(true);
   });
 
   it('accepts a fully configured production environment', () => {
@@ -73,6 +70,18 @@ describe('validateEnvironment', () => {
       }),
     );
     expect(result.errors).toEqual([]);
+  });
+
+  it('accepts a production environment with missing Azure credentials (warning only)', () => {
+    const result = validateEnvironment(
+      baseEnv({
+        NODE_ENV: 'production',
+        FRONTEND_URL: 'https://crm.example.com',
+        UPLOAD_DIR: '/var/lib/acctrack/uploads',
+      }),
+    );
+    expect(result.errors).toEqual([]);
+    expect(result.warnings.some((w) => w.includes('Microsoft Graph email delivery is NOT configured'))).toBe(true);
   });
 
   it('warns in development if Graph config is partial', () => {
