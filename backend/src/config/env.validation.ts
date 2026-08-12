@@ -123,6 +123,32 @@ export function validateEnvironment(
     summary.push(`UPLOAD_DIR=${resolved}`);
   }
 
+  // ── Microsoft Graph (required in production, warning in dev) ────────────────
+  const azureTenantId = env.AZURE_TENANT_ID;
+  const azureClientId = env.AZURE_CLIENT_ID;
+  const azureClientSecret = env.AZURE_CLIENT_SECRET;
+  const graphSenderEmail = env.GRAPH_SENDER_EMAIL ?? 'noreply@reflectionsinfos.com';
+
+  if (isProduction) {
+    if (!azureTenantId) errors.push('AZURE_TENANT_ID is required');
+    if (!azureClientId) errors.push('AZURE_CLIENT_ID is required');
+    if (!azureClientSecret) errors.push('AZURE_CLIENT_SECRET is required');
+  } else {
+    const hasAny = azureTenantId || azureClientId || azureClientSecret;
+    if (hasAny) {
+      if (!azureTenantId) warnings.push('AZURE_TENANT_ID is missing');
+      if (!azureClientId) warnings.push('AZURE_CLIENT_ID is missing');
+      if (!azureClientSecret) warnings.push('AZURE_CLIENT_SECRET is missing');
+    } else {
+      warnings.push('Microsoft Graph email delivery is NOT configured (password reset emails will not be sent)');
+    }
+  }
+
+  if (azureTenantId) summary.push(`AZURE_TENANT_ID=${azureTenantId}`);
+  if (azureClientId) summary.push(`AZURE_CLIENT_ID=${azureClientId}`);
+  if (azureClientSecret) summary.push(`AZURE_CLIENT_SECRET=*** (${azureClientSecret.length} chars)`);
+  summary.push(`GRAPH_SENDER_EMAIL=${graphSenderEmail}`);
+
   // ── Numeric tuning vars: only validated when explicitly set ────────────────
   for (const name of POSITIVE_INT_VARS) {
     const raw = env[name];

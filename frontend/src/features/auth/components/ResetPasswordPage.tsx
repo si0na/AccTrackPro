@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { authApi } from '@/api/crm.api';
 import { Lock, CheckCircle2, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import { Card, Button, ErrorBanner, FormField, INPUT_CLS } from '@/components/ui';
@@ -36,19 +37,22 @@ function PasswordStrength({ password }: { password: string }) {
 }
 
 export const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({ onBack, onSuccess }) => {
-  const [token, setToken]               = useState('');
+  const [searchParams] = useSearchParams();
+  const token = searchParams.get('token') || '';
   const [newPassword, setNewPassword]   = useState('');
   const [confirmPassword, setConfirm]   = useState('');
   const [showPass, setShowPass]         = useState(false);
   const [isLoading, setIsLoading]       = useState(false);
-  const [error, setError]               = useState<string | null>(null);
+  const [error, setError]               = useState<string | null>(
+    !token ? 'No password reset token was found in the URL. Please use the link sent to your email.' : null
+  );
   const [success, setSuccess]           = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
-    if (!token.trim()) { setError('Please enter your reset token.'); return; }
+    if (!token.trim()) { setError('No password reset token was found in the URL.'); return; }
     if (newPassword.length < 8) { setError('Password must be at least 8 characters.'); return; }
     if (!/\d/.test(newPassword)) { setError('Password must contain at least one number.'); return; }
     if (newPassword !== confirmPassword) { setError('Passwords do not match.'); return; }
@@ -57,7 +61,7 @@ export const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({ onBack, on
     try {
       await authApi.resetPassword(token.trim(), newPassword);
       setSuccess(true);
-      setTimeout(onSuccess, 2500);
+      setTimeout(onSuccess, 3000);
     } catch (err: any) {
       const raw = err?.response?.data?.message;
       setError(typeof raw === 'string' ? raw : (Array.isArray(raw) ? raw[0] : 'Invalid or expired token.'));
@@ -80,7 +84,9 @@ export const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({ onBack, on
             </div>
             <div>
               <h2 className="text-lg font-bold text-slate-800">Password reset!</h2>
-              <p className="text-xs text-slate-500 mt-1.5">Redirecting you to sign in…</p>
+              <p className="text-xs text-slate-500 mt-2 leading-relaxed">
+                Your password has been reset successfully. You can now sign in with your new password.
+              </p>
             </div>
           </div>
         </Card>
@@ -102,30 +108,20 @@ export const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({ onBack, on
             </div>
             <div>
               <h1 className="text-xl font-bold text-slate-800 tracking-tight">Set new password</h1>
-              <p className="text-xs text-slate-500 mt-1.5">Paste your reset token and choose a new password.</p>
+              <p className="text-xs text-slate-500 mt-1.5">Choose a secure new password for your account.</p>
             </div>
           </div>
 
           {error && <ErrorBanner message={error} />}
 
           <form onSubmit={handleSubmit} className="space-y-5">
-            <FormField label="Reset Token" required>
-              <input
-                type="text"
-                required
-                value={token}
-                onChange={(e) => setToken(e.target.value)}
-                placeholder="Paste token from your email / backend console"
-                className={`${INPUT_CLS} font-mono`}
-              />
-            </FormField>
-
             <FormField label="New Password" required>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <input
                   type={showPass ? 'text' : 'password'}
                   required
+                  disabled={!token}
                   value={newPassword}
                   onChange={(e) => setNewPassword(e.target.value)}
                   placeholder="Min. 8 characters, at least 1 number"
@@ -149,6 +145,7 @@ export const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({ onBack, on
                 <input
                   type="password"
                   required
+                  disabled={!token}
                   value={confirmPassword}
                   onChange={(e) => setConfirm(e.target.value)}
                   placeholder="Re-enter new password"
@@ -157,7 +154,7 @@ export const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({ onBack, on
               </div>
             </FormField>
 
-            <Button type="submit" variant="primary" size="md" disabled={isLoading} className="w-full">
+            <Button type="submit" variant="primary" size="md" disabled={isLoading || !token} className="w-full">
               {isLoading ? 'Resetting…' : 'Reset Password'}
             </Button>
           </form>
