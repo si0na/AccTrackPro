@@ -714,7 +714,7 @@ export const ProjectDetailsView: React.FC = () => {
               </button>
             ),
           },
-          { icon: <Users className="w-4 h-4" />, label: 'Client Partner Name', value: project.clientStakeholderName || 'Not assigned' },
+          { icon: <Users className="w-4 h-4" />, label: 'Client Partner Name', value: project.clientPartnerName || 'Not assigned' },
           { icon: <DollarSign className="w-4 h-4" />, label: 'Deal Value', mono: true, value: formatCur(project.dealValue ?? 0) },
           { icon: <Settings2 className="w-4 h-4" />, label: 'Methodology', value: project.methodology },
           {
@@ -770,16 +770,13 @@ export const ProjectDetailsView: React.FC = () => {
                 {([
                   { label: 'Service Provider Project Manager', name: project.serviceProviderPmName },
                   { label: 'Practice Lead', name: project.practiceLeadName },
-                  { label: 'Client Partner Name', name: project.clientStakeholderName, designation: project.clientStakeholderDesignation },
-                  { label: 'Client Project Manager', name: project.clientPmStakeholderName, designation: project.clientPmStakeholderDesignation },
+                  { label: 'Client Partner Name', name: project.clientPartnerName },
+                  { label: 'Client Project Manager', name: project.clientPmName },
                 ]).map((row) => (
                   <div key={row.label} className="rounded-lg border border-slate-100 p-3.5">
                     <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">{row.label}</span>
                     {row.name ? (
-                      <>
                         <p className="text-sm text-slate-800 font-semibold">{row.name}</p>
-                        {row.designation && <p className="text-xs text-slate-500 font-medium mt-0.5">{row.designation}</p>}
-                      </>
                     ) : (
                       <p className="text-sm text-slate-400 font-medium italic">Not assigned</p>
                     )}

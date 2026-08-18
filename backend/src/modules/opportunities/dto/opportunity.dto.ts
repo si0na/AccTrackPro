@@ -74,7 +74,6 @@ export class CreateOpportunityDto {
   @IsOptional() @IsString()
   serviceProviderPmId?: string;
 
-
   @IsBoolean() @IsOptional()
   aopAvailable?: boolean;
 

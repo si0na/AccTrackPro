@@ -101,7 +101,7 @@ export const ProjectsListView: React.FC = () => {
     const matchesSearch = !q
       || p.name.toLowerCase().includes(q)
       || (account?.name || p.accountName || '').toLowerCase().includes(q)
-      || (p.clientStakeholderName || '').toLowerCase().includes(q);
+      || (p.clientPartnerName || '').toLowerCase().includes(q);
     const matchesAccount = matchesGlobalAccount(p.accountId, selectedAccountFilter);
     const matchesHealth = healthFilter === 'All' || p.health === healthFilter;
     const matchesMethodology = methodologyFilter === 'All' || p.methodology === methodologyFilter;
@@ -198,7 +198,7 @@ export const ProjectsListView: React.FC = () => {
               <TableHeadCell columnId="accountId">
                 <SortableHeader label="Account" field="accountId" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
               </TableHeadCell>
-              <TableHeadCell columnId="clientStakeholderName">Client Partner Name</TableHeadCell>
+              <TableHeadCell columnId="clientPartnerName">Client Partner Name</TableHeadCell>
               <TableHeadCell columnId="serviceProviderPmName">Service Provider PM</TableHeadCell>
               <TableHeadCell columnId="practiceLeadName">Practice Lead</TableHeadCell>
               <TableHeadCell columnId="methodology">Methodology</TableHeadCell>
@@ -229,7 +229,7 @@ export const ProjectsListView: React.FC = () => {
                       <TableCell className="text-slate-600 font-semibold">
                         {account?.name || p.accountName || 'Unknown Account'}
                       </TableCell>
-                      <TableCell className="text-slate-600">{p.clientStakeholderName || '—'}</TableCell>
+                      <TableCell className="text-slate-600">{p.clientPartnerName || '—'}</TableCell>
                       <TableCell className="text-slate-600">{p.serviceProviderPmName || '—'}</TableCell>
                       <TableCell className="text-slate-600">{p.practiceLeadName || '—'}</TableCell>
                       <TableCell className="text-slate-600">{p.methodology}</TableCell>

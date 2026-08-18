@@ -135,9 +135,7 @@ export interface Opportunity {
    * Read back on fetch as the user_id of the linked stakeholder (if present).
    */
   serviceProviderUserId?: string;
-  /** FK to the System User acting as the Service Provider Project Manager. */
   serviceProviderPmId?: string;
-  /** Joined display name for the Service Provider Project Manager (server-side). */
   serviceProviderPmName?: string;
   opportunityType: OpportunityType;
   /** Whether this opportunity has an approved AOP (Annual Operating Plan) year. */
@@ -232,14 +230,11 @@ export interface Project {
   serviceProviderPmName?: string;
   practiceLeadId?: string;
   practiceLeadName?: string;
-  /** "Client Partner Name" contact — FK to stakeholders. */
-  clientStakeholderId?: string;
-  clientStakeholderName?: string;
-  clientStakeholderDesignation?: string;
-  /** Client Project Manager — FK to stakeholders. */
-  clientPmStakeholderId?: string;
-  clientPmStakeholderName?: string;
-  clientPmStakeholderDesignation?: string;
+  /** Client Partner — FK to users. */
+  clientPartnerId?: string;
+  clientPartnerName?: string;
+  /** Client Project Manager — manually entered text. */
+  clientPmName?: string;
   status: ProjectStatus;
   health: ProjectHealth;
   asOnDate?: string;
