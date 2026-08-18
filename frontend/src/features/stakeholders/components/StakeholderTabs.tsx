@@ -23,7 +23,7 @@ import {
   TableCell,
   TableRow,
 } from '@/components/ui';
-import { compareForSort, SortDirection } from '@/utils';
+import { compareForSort, serviceProviderStatus, SortDirection } from '@/utils';
 
 export interface StakeholderTabsProps {
   /** Client (stakeholderType === 'CLIENT') rows to display in the Client tab. */
@@ -84,8 +84,10 @@ export interface StakeholderTabsProps {
  * The canonical two-tab stakeholder view — Client Stakeholders vs Service
  * Providers.
  *
- * The Service Providers tab shows all System Users in a sortable, searchable,
- * paginated table — identical in format to the Client Stakeholders table.
+ * The Service Providers tab shows the whole Service Provider directory —
+ * registered System Users *and* whitelisted employees still pending
+ * self-registration — in a sortable, searchable, paginated table, identical in
+ * format to the Client Stakeholders table.
  * Columns: Name, Department, Designation, Email, Status.
  */
 export const StakeholderTabs: React.FC<StakeholderTabsProps> = ({
@@ -108,7 +110,7 @@ export const StakeholderTabs: React.FC<StakeholderTabsProps> = ({
   clientCount,
   serviceProviderCount,
   clientEmptyMessage = 'No Client Stakeholders found.',
-  serviceProviderEmptyMessage = 'No System Users found.',
+  serviceProviderEmptyMessage = 'No Service Providers found.',
 }) => {
   const [activeTab, setActiveTab] = useState<StakeholderType>('CLIENT');
 
@@ -238,11 +240,15 @@ interface SystemUserServiceProviderTableProps {
 const STATUS_COLORS: Record<string, string> = {
   Active: 'bg-green-100 text-green-700',
   Inactive: 'bg-slate-100 text-slate-500',
+  'Pending Registration': 'bg-amber-100 text-amber-700',
 };
 
 /**
- * Sortable, searchable, paginated table for System User service providers —
- * mirrors the StakeholderTable layout used for Client Stakeholders.
+ * Sortable, searchable, paginated table for the Service Provider directory —
+ * mirrors the StakeholderTable layout used for Client Stakeholders. Pending
+ * registrations are listed alongside registered users and carry an amber
+ * "Pending Registration" status; they have no name on record yet, so the Name
+ * cell falls back to their whitelisted email.
  * Columns: Name | Department | Designation | Email | Status
  */
 const SystemUserServiceProviderTable: React.FC<SystemUserServiceProviderTableProps> = ({
@@ -269,18 +275,20 @@ const SystemUserServiceProviderTable: React.FC<SystemUserServiceProviderTablePro
         u.name.toLowerCase().includes(q) ||
         u.email.toLowerCase().includes(q) ||
         (u.department || '').toLowerCase().includes(q) ||
-        (u.designation || '').toLowerCase().includes(q)
+        (u.designation || '').toLowerCase().includes(q) ||
+        // Searching "pending" surfaces everyone still to register.
+        serviceProviderStatus(u).toLowerCase().includes(q)
       );
     }),
     [users, q],
   );
 
   const sorted = useMemo(() => {
-    return [...filtered].sort((a, b) => {
-      const aVal = sortField === 'isActive' ? (a.isActive ? 'Active' : 'Inactive') : ((a as any)[sortField] ?? '');
-      const bVal = sortField === 'isActive' ? (b.isActive ? 'Active' : 'Inactive') : ((b as any)[sortField] ?? '');
-      return compareForSort(aVal, bVal, sortDirection);
-    });
+    // The Status column sorts on the resolved label so the three states
+    // (Active / Inactive / Pending Registration) group together.
+    const value = (u: ServiceProviderUser) =>
+      sortField === 'isActive' ? serviceProviderStatus(u) : ((u as any)[sortField] ?? '');
+    return [...filtered].sort((a, b) => compareForSort(value(a), value(b), sortDirection));
   }, [filtered, sortField, sortDirection]);
 
   const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
@@ -328,7 +336,11 @@ const SystemUserServiceProviderTable: React.FC<SystemUserServiceProviderTablePro
                 paged.map(u => (
                   <TableRow key={u.id} className="hover:bg-slate-50/50">
                     <TableCell className="font-extrabold text-slate-900">
-                      {u.name || '(No name)'}
+                      {u.name || (
+                        <span className="text-slate-400 italic font-semibold">
+                          {u.email || '(No name)'}
+                        </span>
+                      )}
                     </TableCell>
                     <TableCell className="text-slate-500 font-semibold">
                       {u.department || '—'}
@@ -346,7 +358,7 @@ const SystemUserServiceProviderTable: React.FC<SystemUserServiceProviderTablePro
                     </TableCell>
                     <TableCell align="center">
                       <StatusBadge
-                        value={u.isActive ? 'Active' : 'Inactive'}
+                        value={serviceProviderStatus(u)}
                         colorMap={STATUS_COLORS}
                         shape="rounded"
                       />

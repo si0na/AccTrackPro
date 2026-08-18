@@ -54,6 +54,7 @@ import {
   getTodayISODate,
   isOpenActionItemStatus,
   mapLocationToOption,
+  serviceProviderOptionLabel,
 } from '@/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -1388,9 +1389,7 @@ export const AccountDetailsView: React.FC = () => {
                 >
                   <option value="" disabled>— Select System User —</option>
                   {serviceProviders.map((sp) => (
-                    <option key={sp.id} value={sp.id}>
-                      {sp.name || sp.email}{sp.designation ? ` (${sp.designation})` : ''}{!sp.isActive ? ' [Inactive]' : ''}
-                    </option>
+                    <option key={sp.id} value={sp.id}>{serviceProviderOptionLabel(sp)}</option>
                   ))}
                 </select>
               </div>

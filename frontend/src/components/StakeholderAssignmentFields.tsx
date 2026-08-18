@@ -4,6 +4,7 @@ import { InlineCreateField, INPUT_CLS_AMBER, SELECT_CLS } from '@/components/ui'
 import { StakeholderFormModal } from '@/features/stakeholders/components/StakeholderFormModal';
 import { useCRM } from '@/contexts/CRMContext';
 import type { Stakeholder, StakeholderType } from '@/types';
+import { serviceProviderOptionLabel } from '@/utils';
 
 export interface StakeholderAssignmentValue {
   clientStakeholderId?: string;
@@ -41,10 +42,11 @@ const NO_ACCOUNT_MSG = 'Please select an Account before creating a Stakeholder.'
  * and edit entry point.
  *
  * - **Client Stakeholder**: unchanged — filtered stakeholder rows for the account.
- * - **Service Provider**: populated from ALL System Users (via serviceProviders
- *   in CRMContext). Every System User is a Service Provider regardless of their
- *   active status. Inactive users are shown with an [Inactive] label.
- *   No manual "Create Service Provider" action.
+ * - **Service Provider**: populated from the full Service Provider directory
+ *   (via serviceProviders in CRMContext) — every System User plus every
+ *   whitelisted employee who has not registered yet. Neither active status nor
+ *   pending registration removes anyone from the list; both are labelled
+ *   inline. No manual "Create Service Provider" action.
  */
 export const StakeholderAssignmentFields: React.FC<StakeholderAssignmentFieldsProps> = ({
   accountId,
@@ -101,9 +103,7 @@ export const StakeholderAssignmentFields: React.FC<StakeholderAssignmentFieldsPr
         >
           <option value="">— None —</option>
           {serviceProviders.map((sp) => (
-            <option key={sp.id} value={sp.id}>
-              {sp.name || sp.email}{sp.designation ? ` (${sp.designation})` : ''}{!sp.isActive ? ' [Inactive]' : ''}
-            </option>
+            <option key={sp.id} value={sp.id}>{serviceProviderOptionLabel(sp)}</option>
           ))}
         </select>
         {serviceProviders.length === 0 && (

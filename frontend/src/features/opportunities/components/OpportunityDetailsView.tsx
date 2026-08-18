@@ -69,7 +69,7 @@ import {
   TableCell,
   TableRow,
 } from '@/components/ui';
-import { compareForSort, getTodayISODate, isOpenActionItemStatus, SortDirection } from '@/utils';
+import { compareForSort, getTodayISODate, isOpenActionItemStatus, serviceProviderOptionLabel, SortDirection } from '@/utils';
 
 type OppTab = 'overview' | 'action-items' | 'stakeholders' | 'comments' | 'documents';
 
@@ -1033,25 +1033,18 @@ export const OpportunityDetailsView: React.FC = () => {
               onSubmit={async (e: React.FormEvent) => {
                 e.preventDefault();
                 if (selectedOppSpUserId) {
-                  // Resolve/create the SP stakeholder row for the account of this opportunity
-                  await associateServiceProvider(selectedOppSpUserId, opp.accountId);
-                  // Find that created SERVICE_PROVIDER stakeholder for this account and user
-                  const associatedStk = stakeholders.find(s => s.accountId === opp.accountId && (s as any).userId === selectedOppSpUserId && s.stakeholderType === 'SERVICE_PROVIDER');
+                  // Resolve/create the SP stakeholder row on this opportunity's
+                  // account. The selected id is a user id, or an employee_master
+                  // id when the person has not registered yet — the backend
+                  // resolves both and hands back the stakeholder id.
+                  const stakeholderId = await associateServiceProvider(selectedOppSpUserId, opp.accountId);
                   const spUser = serviceProviders.find(u => u.id === selectedOppSpUserId);
-                  if (associatedStk) {
+                  if (stakeholderId) {
                     await updateOpportunity({
                       ...opp,
-                      serviceProviderStakeholderId: associatedStk.id,
-                      serviceProviderStakeholderName: associatedStk.name,
-                      serviceProviderStakeholderDesignation: associatedStk.designation || '',
-                    });
-                  } else if (spUser) {
-                    // Fallback to updating directly if we can't find it instantly in the cache
-                    await updateOpportunity({
-                      ...opp,
-                      serviceProviderStakeholderId: `sp-${selectedOppSpUserId}-${opp.accountId}`, // predictable ID convention of resolveOrCreate
-                      serviceProviderStakeholderName: spUser.name || spUser.email,
-                      serviceProviderStakeholderDesignation: spUser.designation || '',
+                      serviceProviderStakeholderId: stakeholderId,
+                      serviceProviderStakeholderName: spUser?.name || spUser?.email || '',
+                      serviceProviderStakeholderDesignation: spUser?.designation || '',
                     });
                   }
                 }
@@ -1069,9 +1062,7 @@ export const OpportunityDetailsView: React.FC = () => {
                 >
                   <option value="" disabled>— Select System User —</option>
                   {serviceProviders.map((sp) => (
-                    <option key={sp.id} value={sp.id}>
-                      {sp.name || sp.email}{sp.designation ? ` (${sp.designation})` : ''}{!sp.isActive ? ' [Inactive]' : ''}
-                    </option>
+                    <option key={sp.id} value={sp.id}>{serviceProviderOptionLabel(sp)}</option>
                   ))}
                 </select>
               </div>

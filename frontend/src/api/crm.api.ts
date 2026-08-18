@@ -364,6 +364,8 @@ export interface ServiceProviderUserDto {
   designation: string;
   /** False for deactivated accounts \u2014 shown with an Inactive badge in pickers. */
   isActive: boolean;
+  /** True for whitelisted employees who have not completed self-registration. */
+  isPending?: boolean;
 }
 
 export const serviceProvidersApi = {

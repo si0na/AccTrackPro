@@ -27,6 +27,19 @@ export interface ServiceProviderProfile {
   isComplete: boolean;
 }
 
+/** Identity behind a Service Provider directory id — a registered user or a pending whitelist entry. */
+interface ServiceProviderIdentity {
+  name: string;
+  department: string | null;
+  designation: string;
+  email: string;
+  /** Set for registered System Users; null while the person is pending registration. */
+  userId: string | null;
+  /** Set whenever the person has an employee_master (whitelist) row. */
+  employeeId: string | null;
+  isPending: boolean;
+}
+
 export interface UpdateServiceProviderInput {
   phone: string;
   name?: string;
@@ -73,14 +86,31 @@ export class ServiceProviderService {
   ) {}
 
   /**
-   * All system users as Service Provider options — no is_active filter.
-   * Every person who exists as a System User is a Service Provider.
+   * All Service Provider options — no is_active filter.
+   *
+   * The directory is the union of two populations, matched on email exactly as
+   * the Administration user list does:
+   *   • registered System Users (`users`), and
+   *   • whitelisted employees who have not registered yet (`employee_master`
+   *     rows with no matching user) — flagged `isPending`.
+   *
+   * A pending person is a real, assignable Service Provider: their `id` is the
+   * employee_master id, and resolveOrCreate() links the stakeholder row through
+   * `stakeholders.employee_id` until they register.
    */
   async findAllAsServiceProviders(): Promise<any[]> {
     const { rows } = await this.db.query(
-      `SELECT u.id, u.name, u.email, u.department, u.designation, u.is_active
-       FROM users u
-       ORDER BY u.name ASC NULLS LAST, u.email ASC`,
+      `SELECT
+         COALESCE(u.id, em.id)                                  AS id,
+         COALESCE(NULLIF(u.name, ''), NULLIF(em.name, ''), '')  AS name,
+         COALESCE(u.email, em.email)                            AS email,
+         COALESCE(u.department, em.department)                  AS department,
+         COALESCE(u.designation, em.designation)                AS designation,
+         COALESCE(u.is_active, TRUE)                            AS is_active,
+         (u.id IS NULL)                                         AS is_pending
+       FROM employee_master em
+       FULL OUTER JOIN users u ON LOWER(u.email) = LOWER(em.email)
+       ORDER BY COALESCE(NULLIF(u.name, ''), NULLIF(em.name, ''), u.email, em.email) ASC NULLS LAST`,
     );
     return rows.map((r) => ({
       id:          r.id,
@@ -89,40 +119,93 @@ export class ServiceProviderService {
       department:  r.department ?? '',
       designation: r.designation ?? '',
       isActive:    r.is_active,
+      isPending:   r.is_pending ?? false,
     }));
   }
 
   /**
-   * Universal registration path: create/reuse a SERVICE_PROVIDER stakeholder
-   * for (userId, accountId). Works for ANY system user regardless of role,
-   * active status, or profile completeness. Idempotent per (account, user).
+   * Resolve a Service Provider directory id — which is either a `users.id` (a
+   * registered System User) or an `employee_master.id` (a whitelisted person who
+   * has not registered yet) — to the identity fields and the link column the
+   * stakeholder row should carry. Returns null when the id matches neither.
    */
-  async resolveOrCreate(userId: string, accountId: string): Promise<string | null> {
-    if (!userId || !accountId) return null;
-
-    // Fetch user details (no is_active filter — all system users are valid SPs)
+  private async resolveIdentity(id: string): Promise<ServiceProviderIdentity | null> {
     const { rows: userRows } = await this.db.query(
       `SELECT name, department, designation, email FROM users WHERE id = $1`,
-      [userId],
+      [id],
     );
-    const user = userRows[0];
-    if (!user) {
-      this.logger.log(`Skipping Service Provider registration [userId=${userId} reason=user-not-found]`);
+    if (userRows.length) {
+      const u = userRows[0];
+      // Carry the whitelist id too (when the user has one) so the provenance
+      // link is populated for registered users as well.
+      const { rows: empRows } = await this.db.query(
+        `SELECT id FROM employee_master WHERE LOWER(email) = LOWER($1)`,
+        [String(u.email ?? '')],
+      );
+      return {
+        name:        u.name ?? '',
+        department:  u.department ?? null,
+        designation: u.designation ?? '',
+        email:       String(u.email ?? '').trim(),
+        userId:      id,
+        employeeId:  empRows[0]?.id ?? null,
+        isPending:   false,
+      };
+    }
+
+    const { rows: empRows } = await this.db.query(
+      `SELECT id, name, department, designation, email FROM employee_master WHERE id = $1`,
+      [id],
+    );
+    if (empRows.length) {
+      const e = empRows[0];
+      return {
+        name:        e.name ?? '',
+        department:  e.department ?? null,
+        designation: e.designation ?? '',
+        email:       String(e.email ?? '').trim(),
+        userId:      null,
+        employeeId:  e.id,
+        isPending:   true,
+      };
+    }
+
+    return null;
+  }
+
+  /**
+   * Universal registration path: create/reuse a SERVICE_PROVIDER stakeholder for
+   * (serviceProviderId, accountId). Works for ANY system user regardless of
+   * role, active status or profile completeness, and equally for a whitelisted
+   * employee who has not registered yet — in which case the row is linked via
+   * `employee_id` and upgraded to a `user_id` link on registration.
+   *
+   * Idempotent per (account, user) and per (account, pending employee).
+   */
+  async resolveOrCreate(serviceProviderId: string, accountId: string): Promise<string | null> {
+    if (!serviceProviderId || !accountId) return null;
+
+    const identity = await this.resolveIdentity(serviceProviderId);
+    if (!identity) {
+      this.logger.log(`Skipping Service Provider registration [id=${serviceProviderId} reason=not-a-user-or-employee]`);
       return null;
     }
 
-    // Dedup: one SERVICE_PROVIDER stakeholder per (account, user).
+    // Dedup: one SERVICE_PROVIDER stakeholder per (account, person). Registered
+    // users are keyed on user_id, pending employees on employee_id.
+    const linkColumn = identity.userId ? 'user_id' : 'employee_id';
+    const linkValue = identity.userId ?? identity.employeeId;
     const { rows: existing } = await this.db.query(
       `SELECT id FROM stakeholders
-       WHERE account_id = $1 AND user_id = $2 AND stakeholder_type = 'SERVICE_PROVIDER' AND is_deleted = FALSE
+       WHERE account_id = $1 AND ${linkColumn} = $2 AND stakeholder_type = 'SERVICE_PROVIDER' AND is_deleted = FALSE
        LIMIT 1`,
-      [accountId, userId],
+      [accountId, linkValue],
     );
     if (existing.length) return existing[0].id;
 
     // Adopt an existing SERVICE_PROVIDER stakeholder with the same official
-    // email on this account (e.g. added manually before): link it to the user.
-    const email = String(user.email ?? '').trim();
+    // email on this account (e.g. added manually before): link it to the person.
+    const email = identity.email;
     if (email) {
       const { rows: sameEmail } = await this.db.query(
         `SELECT id FROM stakeholders
@@ -134,40 +217,89 @@ export class ServiceProviderService {
       if (sameEmail.length) {
         await this.db.query(
           `UPDATE stakeholders SET
-             user_id = $1, name = $2, department = $3, designation = $4,
+             user_id = COALESCE($1, user_id), employee_id = COALESCE($2, employee_id),
+             name = $3, department = $4, designation = $5,
              updated_at = NOW()
-           WHERE id = $5`,
-          [userId, user.name ?? '', user.department ?? null, user.designation ?? '', sameEmail[0].id],
+           WHERE id = $6`,
+          [identity.userId, identity.employeeId, identity.name, identity.department, identity.designation, sameEmail[0].id],
         );
-        this.logger.log(`Adopted existing Service Provider stakeholder [id=${sameEmail[0].id} userId=${userId} accountId=${accountId}]`);
+        this.logger.log(`Adopted existing Service Provider stakeholder [id=${sameEmail[0].id} ${linkColumn}=${linkValue} accountId=${accountId}]`);
         return sameEmail[0].id;
       }
     }
 
-    // Reuse the phone already saved on any of the user's Service Provider records.
-    const phone = await this.currentPhone(userId);
+    // Reuse the phone already saved on any of this person's Service Provider records.
+    const phone = identity.userId ? await this.currentPhone(identity.userId) : '';
 
+    // The conflict target must match the link actually used so each population
+    // hits its own partial unique index (uq_stk_account_user / uq_stk_account_employee).
+    const conflictTarget = identity.userId ? '(account_id, user_id)' : '(account_id, employee_id)';
     const { rows } = await this.db.query(
       `INSERT INTO stakeholders
-         (id, name, account_id, designation, influence, relationship, email, phone, stakeholder_type, department, user_id)
-       VALUES (gen_random_uuid()::TEXT, $1, $2, $3, 'High', 'Strong', $4, $5, 'SERVICE_PROVIDER', $6, $7)
-       ON CONFLICT (account_id, user_id) WHERE stakeholder_type = 'SERVICE_PROVIDER' AND is_deleted = FALSE
+         (id, name, account_id, designation, influence, relationship, email, phone, stakeholder_type, department, user_id, employee_id)
+       VALUES (gen_random_uuid()::TEXT, $1, $2, $3, 'High', 'Strong', $4, $5, 'SERVICE_PROVIDER', $6, $7, $8)
+       ON CONFLICT ${conflictTarget} WHERE stakeholder_type = 'SERVICE_PROVIDER' AND is_deleted = FALSE
        DO UPDATE SET name = EXCLUDED.name
        RETURNING id`,
       [
-        user.name ?? '',
+        identity.name,
         accountId,
-        user.designation ?? '',
+        identity.designation,
         email,
         phone,
-        user.department ?? null,
-        userId,
+        identity.department,
+        identity.userId,
+        identity.employeeId,
       ],
     );
     const id = rows[0].id;
-    this.logger.log(`Auto-registered Service Provider stakeholder [id=${id} userId=${userId} accountId=${accountId}]`);
-    await this.log(`Registered '${user.name ?? 'user'}' as Service Provider`, accountId);
+    this.logger.log(
+      `Auto-registered Service Provider stakeholder [id=${id} ${linkColumn}=${linkValue} ` +
+      `accountId=${accountId} pending=${identity.isPending}]`,
+    );
+    await this.log(
+      `Registered '${identity.name || email || 'user'}' as Service Provider` +
+      (identity.isPending ? ' (pending registration)' : ''),
+      accountId,
+    );
     return id;
+  }
+
+  /**
+   * Called right after a whitelisted employee completes registration: upgrade
+   * every Service Provider stakeholder created for them while pending
+   * (employee_id link, no user_id) to a full user link, then push their now
+   * complete identity onto those rows.
+   *
+   * Never throws — a failure here must not fail the registration itself.
+   */
+  async linkRegisteredUser(userId: string, email: string): Promise<number> {
+    const address = String(email ?? '').trim();
+    if (!userId || !address) return 0;
+    try {
+      const { rowCount } = await this.db.query(
+        `UPDATE stakeholders s SET user_id = $1, updated_at = NOW()
+         FROM employee_master em
+         WHERE s.employee_id = em.id
+           AND s.user_id IS NULL
+           AND s.stakeholder_type = 'SERVICE_PROVIDER'
+           AND s.is_deleted = FALSE
+           AND LOWER(em.email) = LOWER($2)`,
+        [userId, address],
+      );
+      const linked = rowCount ?? 0;
+      if (linked) {
+        await this.syncFromUser(userId);
+        this.logger.log(`Linked ${linked} pending Service Provider stakeholder(s) to newly registered user [userId=${userId}]`);
+      }
+      return linked;
+    } catch (err) {
+      this.logger.error(
+        `Failed to link pending Service Provider stakeholders on registration [userId=${userId}]`,
+        err instanceof Error ? err.stack : String(err),
+      );
+      return 0;
+    }
   }
 
   /**

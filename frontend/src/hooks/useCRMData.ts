@@ -507,11 +507,27 @@ export const useCRMData = (
     const f = buildOwnerFilter(currentUserId);
     activitiesApi.getAll(f).then(setActivities);
   };
-  const associateServiceProvider = async (userId: string, accountId: string): Promise<void> => {
-    await serviceProvidersApi.associate(userId, accountId);
+  /**
+   * Register a person from the Service Provider directory on an account. The
+   * id is either a user id or — for someone still pending registration — an
+   * employee_master id; the backend resolves both.
+   *
+   * Returns the resolved SERVICE_PROVIDER stakeholder id and awaits the
+   * stakeholder refetch, so callers that need to reference the new row (e.g.
+   * setting an opportunity's Service Provider) can use it immediately instead
+   * of racing an in-flight refresh.
+   */
+  const associateServiceProvider = async (
+    serviceProviderId: string, accountId: string,
+  ): Promise<string | null> => {
+    const stakeholderId = await serviceProvidersApi.associate(serviceProviderId, accountId);
     const f = buildOwnerFilter(currentUserId);
-    stakeholdersApi.getAll(f).then(setStakeholders);
-    activitiesApi.getAll(f).then(setActivities);
+    const [refreshed] = await Promise.all([
+      stakeholdersApi.getAll(f),
+      activitiesApi.getAll(f).then(setActivities).catch(() => undefined),
+    ]);
+    setStakeholders(refreshed);
+    return stakeholderId || null;
   };
   // ─── Comment actions ───────────────────────────────────────────────────────
 

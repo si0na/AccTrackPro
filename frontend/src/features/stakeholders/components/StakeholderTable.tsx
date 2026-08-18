@@ -50,7 +50,9 @@ export interface StakeholderTableProps {
  * stakeholders tab so both entry points look and behave identically.
  *
  * Service Providers carry no Influence / Relationship dimension, so those
- * columns are omitted from that variant rather than rendered blank.
+ * columns are omitted from that variant rather than rendered blank. A Service
+ * Provider assigned before they completed self-registration is marked with a
+ * "Pending Registration" chip next to their name.
  */
 export const StakeholderTable: React.FC<StakeholderTableProps> = ({
   rows, type, resolveAccount, canEdit, canDelete, onEdit, onDelete, onRowClick, emptyMessage,
@@ -78,6 +80,8 @@ export const StakeholderTable: React.FC<StakeholderTableProps> = ({
   const filtered = useMemo(() => rows.filter(s => {
     if (!q) return true;
     const account = resolveAccount(s.accountId);
+    // Searching "pending" surfaces Service Providers who have not registered.
+    if (s.pendingRegistration && 'pending registration'.includes(q)) return true;
     return s.name.toLowerCase().includes(q) ||
       s.designation.toLowerCase().includes(q) ||
       (s.department || '').toLowerCase().includes(q) ||
@@ -141,17 +145,27 @@ export const StakeholderTable: React.FC<StakeholderTableProps> = ({
                   return (
                     <TableRow key={s.id} className="hover:bg-slate-50/50">
                       <TableCell className="font-extrabold text-slate-900">
-                        {onRowClick ? (
-                          <button
-                            type="button"
-                            onClick={() => onRowClick(s)}
-                            className="text-left text-blue-600 hover:underline cursor-pointer"
-                          >
-                            {s.name}
-                          </button>
-                        ) : (
-                          s.name
-                        )}
+                        <span className="flex items-center gap-2">
+                          {onRowClick ? (
+                            <button
+                              type="button"
+                              onClick={() => onRowClick(s)}
+                              className="text-left text-blue-600 hover:underline cursor-pointer"
+                            >
+                              {s.name || s.email}
+                            </button>
+                          ) : (
+                            s.name || s.email
+                          )}
+                          {s.pendingRegistration && (
+                            <span
+                              className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-extrabold text-amber-700"
+                              title="Whitelisted employee who has not completed self-registration yet"
+                            >
+                              Pending Registration
+                            </span>
+                          )}
+                        </span>
                       </TableCell>
                       {!hideAccountColumn && (
                         <TableCell className="text-slate-600 font-bold">{account?.name || s.accountName || 'Unknown'}</TableCell>

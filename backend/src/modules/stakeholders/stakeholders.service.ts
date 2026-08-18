@@ -10,13 +10,20 @@ import { STAKEHOLDER_FIELDS } from '../import-export/import-field-schemas';
 import { BulkModuleAdapter } from '../import-export/bulk-adapter';
 
 function rowToStakeholder(row: any): Stakeholder {
-  const { is_deleted, created_at, updated_at, account_id, account_name, stakeholder_type, user_id, ...base } = row;
+  const {
+    is_deleted, created_at, updated_at, account_id, account_name,
+    stakeholder_type, user_id, employee_id, ...base
+  } = row;
   return {
     ...base,
     accountId:       account_id,
     accountName:     account_name ?? undefined,
     stakeholderType: stakeholder_type,
     userId:          user_id ?? undefined,
+    employeeId:      employee_id ?? undefined,
+    // A whitelist link with no user link means the person was assigned as a
+    // Service Provider before completing registration.
+    pendingRegistration: !!employee_id && !user_id,
   } as Stakeholder;
 }
 

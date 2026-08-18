@@ -62,7 +62,7 @@ function rowToActionItem(row: any, derive: (date: string) => { financialYear: st
 
 const AI_SELECT = `
   SELECT ai.*, u.name AS owner_name, a.name AS account_name, proj.name AS project_name,
-         os.name AS stakeholder_owner_name, os.designation AS stakeholder_owner_designation,
+         COALESCE(NULLIF(os.name, ''), os.email) AS stakeholder_owner_name, os.designation AS stakeholder_owner_designation,
          os.stakeholder_type AS stakeholder_owner_type
   FROM action_items ai
   LEFT JOIN accounts     a ON ai.account_id = a.id
@@ -159,7 +159,7 @@ export class ActionItemsService {
 
     const { rows } = await this.db.query(
       `SELECT ai.*, u.name AS owner_name, a.name AS account_name, proj.name AS project_name,
-              os.name AS stakeholder_owner_name, os.designation AS stakeholder_owner_designation,
+              COALESCE(NULLIF(os.name, ''), os.email) AS stakeholder_owner_name, os.designation AS stakeholder_owner_designation,
               os.stakeholder_type AS stakeholder_owner_type${totalCol}
        FROM action_items ai
        INNER JOIN accounts     a ON ai.account_id = a.id AND a.is_deleted = FALSE

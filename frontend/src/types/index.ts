@@ -16,8 +16,9 @@ export type RelationshipStatus = 'Strong' | 'Neutral' | 'Weak';
 export type StakeholderType = 'CLIENT' | 'SERVICE_PROVIDER';
 
 /**
- * A System User exposed as a Service Provider option.
- * All system users are Service Providers regardless of is_active status.
+ * A person exposed as a Service Provider option — either a registered System
+ * User or a whitelisted employee who has not registered yet (`isPending`).
+ * Active status never removes anyone from the list.
  */
 export interface ServiceProviderUser {
   id: string;
@@ -27,6 +28,12 @@ export interface ServiceProviderUser {
   designation: string;
   /** False for deactivated users — shown as an Inactive badge in pickers. */
   isActive: boolean;
+  /**
+   * True for whitelisted employees who have not completed self-registration.
+   * Their `id` is the employee_master id; the backend links the resulting
+   * Service Provider stakeholder to it until they register.
+   */
+  isPending?: boolean;
 }
 export type ProjectStatus = 'Active' | 'On Hold' | 'Completed' | 'Cancelled';
 export type ProjectMethodology = 'Agile' | 'Waterfall';
@@ -438,6 +445,10 @@ export interface Stakeholder {
   stakeholderType: StakeholderType;
   department?: string;
   userId?: string;
+  /** Whitelist (employee_master) row a Service Provider represents, set even before they register. */
+  employeeId?: string;
+  /** True while the linked person is whitelisted but has not completed self-registration. */
+  pendingRegistration?: boolean;
 }
 
 export interface Activity {

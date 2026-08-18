@@ -5,6 +5,7 @@ import { Modal } from '@/components/ui/Modal';
 import { StakeholderFormModal } from '@/features/stakeholders/components/StakeholderFormModal';
 import { useCRM } from '@/contexts/CRMContext';
 import type { Stakeholder } from '@/types';
+import { serviceProviderStatus, type ServiceProviderStatus } from '@/utils';
 
 export interface ActionItemOwnerFieldProps {
   accountId: string;
@@ -16,6 +17,20 @@ export interface ActionItemOwnerFieldProps {
   required?: boolean;
 }
 
+/** One row in the Service Providers column of the owner picker. */
+interface ServiceProviderOption {
+  /** Stable React key — the directory or stakeholder id it was built from. */
+  key: string;
+  /** Directory id (user or pending employee); absent for hand-created SP rows. */
+  directoryId?: string;
+  /** The SERVICE_PROVIDER stakeholder on this account, once one exists. */
+  stakeholderId?: string;
+  name: string;
+  designation: string;
+  /** Registration / activation state; null for rows with no directory entry. */
+  status: ServiceProviderStatus | null;
+}
+
 /** Shown as tooltip/hint until an account is chosen. */
 const NO_ACCOUNT_MSG = 'Please select an Account before assigning an Owner.';
 
@@ -23,6 +38,17 @@ const NO_ACCOUNT_MSG = 'Please select an Account before assigning an Owner.';
  * Simplified Owner picker for Action Items.
  * A single styled button shows the current selection (or a placeholder).
  * Clicking it opens the global stakeholder modal – no inline dropdown.
+ *
+ * The two columns are sourced differently on purpose:
+ *   • Client Stakeholders — existing CLIENT stakeholder rows, as before.
+ *   • Service Providers — the full Service Provider directory (every System
+ *     User *plus* every whitelisted employee still pending self-registration),
+ *     so it matches the Service Providers tab and every other SP picker rather
+ *     than showing only people already attached to some account.
+ *
+ * An action item's owner is a `stakeholders` FK, so picking a directory person
+ * who has no Service Provider stakeholder row on this account yet materialises
+ * one first (idempotent server-side) and stores the resulting id.
  */
 export const ActionItemOwnerField: React.FC<ActionItemOwnerFieldProps> = ({
   accountId,
@@ -31,10 +57,12 @@ export const ActionItemOwnerField: React.FC<ActionItemOwnerFieldProps> = ({
   onChange,
   required = true,
 }) => {
-  const { accounts, addStakeholder } = useCRM();
+  const { accounts, addStakeholder, serviceProviders, associateServiceProvider } = useCRM();
   const [isPickerOpen, setPickerOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
+  /** Key of the Service Provider row currently being registered on the account. */
+  const [resolvingKey, setResolvingKey] = useState<string | null>(null);
 
   const account = accounts.find((a) => a.id === accountId);
   const createDisabledReason = account ? undefined : NO_ACCOUNT_MSG;
@@ -45,40 +73,81 @@ export const ActionItemOwnerField: React.FC<ActionItemOwnerFieldProps> = ({
     [stakeholders, value],
   );
 
-  // Deduplicate stakeholders by name + type (keep first occurrence)
-  const uniqueStakeholders = React.useMemo(() => {
+  const query = globalSearchQuery.toLowerCase().trim();
+
+  // Client column: existing CLIENT rows, deduplicated by name (keep first).
+  const globalClients = React.useMemo(() => {
     const seen = new Set<string>();
-    const unique: Stakeholder[] = [];
-    for (const s of stakeholders) {
-      const key = `${s.name.toLowerCase().trim()}_${s.stakeholderType}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        unique.push(s);
-      }
-    }
-    return unique;
+    return stakeholders.filter((s) => {
+      if (s.stakeholderType !== 'CLIENT') return false;
+      const key = s.name.toLowerCase().trim();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   }, [stakeholders]);
 
-  // Filter by search
-  const filteredStakeholders = React.useMemo(() => {
-    const q = globalSearchQuery.toLowerCase().trim();
-    if (!q) return uniqueStakeholders;
-    return uniqueStakeholders.filter(
+  const filteredClients = React.useMemo(() => {
+    if (!query) return globalClients;
+    return globalClients.filter(
       (s) =>
-        s.name.toLowerCase().includes(q) ||
-        (s.designation ?? '').toLowerCase().includes(q),
+        s.name.toLowerCase().includes(query) ||
+        (s.designation ?? '').toLowerCase().includes(query),
     );
-  }, [uniqueStakeholders, globalSearchQuery]);
+  }, [globalClients, query]);
 
-  const globalClients = React.useMemo(
-    () => filteredStakeholders.filter((s) => s.stakeholderType === 'CLIENT'),
-    [filteredStakeholders],
-  );
+  // Service Provider column: the whole directory, plus any hand-created SP
+  // stakeholder rows that predate the directory link so nothing disappears.
+  const serviceProviderOptions = React.useMemo<ServiceProviderOption[]>(() => {
+    const rowFor = (personId: string) =>
+      stakeholders.find(
+        (s) =>
+          s.stakeholderType === 'SERVICE_PROVIDER' &&
+          s.accountId === accountId &&
+          (s.userId === personId || s.employeeId === personId),
+      );
 
-  const globalServiceProviders = React.useMemo(
-    () => filteredStakeholders.filter((s) => s.stakeholderType === 'SERVICE_PROVIDER'),
-    [filteredStakeholders],
-  );
+    const fromDirectory: ServiceProviderOption[] = serviceProviders.map((sp) => ({
+      key:           `dir-${sp.id}`,
+      directoryId:   sp.id,
+      stakeholderId: rowFor(sp.id)?.id,
+      // Pending people have no name on record yet — their email is the label.
+      name:          sp.name || sp.email,
+      designation:   sp.designation,
+      status:        serviceProviderStatus(sp),
+    }));
+
+    const linked = new Set(serviceProviders.map((sp) => sp.id));
+    const seen = new Set<string>();
+    const unlinked: ServiceProviderOption[] = [];
+    for (const s of stakeholders) {
+      if (s.stakeholderType !== 'SERVICE_PROVIDER') continue;
+      if ((s.userId && linked.has(s.userId)) || (s.employeeId && linked.has(s.employeeId))) continue;
+      const key = s.name.toLowerCase().trim();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      unlinked.push({
+        key:           `stk-${s.id}`,
+        stakeholderId: s.id,
+        name:          s.name || s.email,
+        designation:   s.designation,
+        status:        null,
+      });
+    }
+
+    return [...fromDirectory, ...unlinked];
+  }, [serviceProviders, stakeholders, accountId]);
+
+  const filteredServiceProviders = React.useMemo(() => {
+    if (!query) return serviceProviderOptions;
+    return serviceProviderOptions.filter(
+      (o) =>
+        o.name.toLowerCase().includes(query) ||
+        (o.designation ?? '').toLowerCase().includes(query) ||
+        // Searching "pending" surfaces everyone still to register.
+        (o.status ?? '').toLowerCase().includes(query),
+    );
+  }, [serviceProviderOptions, query]);
 
   const handleCreated = async (draft: Omit<Stakeholder, 'id'>) => {
     const created = await addStakeholder(draft);
@@ -90,6 +159,26 @@ export const ActionItemOwnerField: React.FC<ActionItemOwnerFieldProps> = ({
   const handleSelect = (id: string) => {
     onChange(id);
     setPickerOpen(false);
+  };
+
+  /**
+   * Picking a Service Provider. Rows that already exist on this account are
+   * assigned straight away; a directory person without one is registered on the
+   * account first, and the stakeholder id that comes back becomes the owner.
+   */
+  const handleSelectServiceProvider = async (option: ServiceProviderOption) => {
+    if (option.stakeholderId) {
+      handleSelect(option.stakeholderId);
+      return;
+    }
+    if (!option.directoryId || !accountId) return;
+    setResolvingKey(option.key);
+    try {
+      const stakeholderId = await associateServiceProvider(option.directoryId, accountId);
+      if (stakeholderId) handleSelect(stakeholderId);
+    } finally {
+      setResolvingKey(null);
+    }
   };
 
   const handleClear = (e: React.MouseEvent) => {
@@ -123,8 +212,13 @@ export const ActionItemOwnerField: React.FC<ActionItemOwnerFieldProps> = ({
         <span className="flex items-center gap-2 min-w-0">
           <User className="w-3.5 h-3.5 shrink-0 text-slate-400" aria-hidden="true" />
           <span className={`truncate font-medium ${selected ? 'text-slate-700' : 'text-slate-400'}`}>
-            {selected ? selected.name : 'Select task owner…'}
+            {selected ? (selected.name || selected.email) : 'Select task owner…'}
           </span>
+          {selected?.pendingRegistration && (
+            <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-extrabold text-amber-700">
+              Pending
+            </span>
+          )}
           {selected?.designation && (
             <span className="shrink-0 text-[10px] text-slate-400 font-normal hidden sm:inline">
               · {selected.designation}
@@ -199,11 +293,11 @@ export const ActionItemOwnerField: React.FC<ActionItemOwnerFieldProps> = ({
                   <div className="px-4 py-3 bg-blue-50/40 border-b border-slate-200 font-bold text-slate-700 text-[10px] uppercase tracking-wider select-none shrink-0 flex items-center justify-between">
                     <span>Client Stakeholders</span>
                     <span className="bg-blue-100/80 text-blue-800 text-[9px] px-2 py-0.5 rounded-full font-bold">
-                      {globalClients.length}
+                      {filteredClients.length}
                     </span>
                   </div>
                   <div className="overflow-y-auto flex-1 divide-y divide-slate-100/60">
-                    {globalClients.map((s) => {
+                    {filteredClients.map((s) => {
                       const isSelected = s.id === value;
                       return (
                         <div
@@ -225,7 +319,7 @@ export const ActionItemOwnerField: React.FC<ActionItemOwnerFieldProps> = ({
                         </div>
                       );
                     })}
-                    {globalClients.length === 0 && (
+                    {filteredClients.length === 0 && (
                       <div className="p-12 text-center text-slate-400 text-xs italic">
                         No client stakeholders found.
                       </div>
@@ -236,37 +330,57 @@ export const ActionItemOwnerField: React.FC<ActionItemOwnerFieldProps> = ({
                 {/* Service Provider Stakeholders */}
                 <div className="border border-slate-200 rounded-xl overflow-hidden flex flex-col h-[380px] bg-white shadow-sm">
                   <div className="px-4 py-3 bg-emerald-50/40 border-b border-slate-200 font-bold text-slate-700 text-[10px] uppercase tracking-wider select-none shrink-0 flex items-center justify-between">
-                    <span>Service Provider Stakeholders</span>
+                    <span>Service Providers</span>
                     <span className="bg-emerald-100/80 text-emerald-800 text-[9px] px-2 py-0.5 rounded-full font-bold">
-                      {globalServiceProviders.length}
+                      {filteredServiceProviders.length}
                     </span>
                   </div>
                   <div className="overflow-y-auto flex-1 divide-y divide-slate-100/60">
-                    {globalServiceProviders.map((s) => {
-                      const isSelected = s.id === value;
+                    {filteredServiceProviders.map((o) => {
+                      const isSelected = !!o.stakeholderId && o.stakeholderId === value;
+                      const isResolving = resolvingKey === o.key;
+                      const busy = resolvingKey !== null;
                       return (
                         <div
-                          key={s.id}
-                          onClick={() => handleSelect(s.id)}
-                          className={`px-4 py-3 cursor-pointer flex flex-col gap-0.5 transition-all group ${
-                            isSelected ? 'bg-emerald-50' : 'hover:bg-slate-50/85'
-                          }`}
+                          key={o.key}
+                          onClick={() => { if (!busy) void handleSelectServiceProvider(o); }}
+                          className={`px-4 py-3 flex flex-col gap-0.5 transition-all group ${
+                            busy ? 'cursor-wait opacity-60' : 'cursor-pointer'
+                          } ${isSelected ? 'bg-emerald-50' : 'hover:bg-slate-50/85'}`}
                         >
-                          <span className={`font-bold text-xs transition-colors ${isSelected ? 'text-emerald-600' : 'text-slate-800 group-hover:text-blue-600'}`}>
-                            {s.name}
-                            {isSelected && <span className="ml-2 text-[9px] font-semibold text-emerald-500 uppercase tracking-wide">Selected</span>}
+                          <span className={`font-bold text-xs transition-colors flex items-center gap-2 ${isSelected ? 'text-emerald-600' : 'text-slate-800 group-hover:text-blue-600'}`}>
+                            <span className="truncate">{o.name}</span>
+                            {o.status === 'Pending Registration' && (
+                              <span
+                                className="shrink-0 rounded-full bg-amber-100 px-2 py-0.5 text-[9px] font-extrabold text-amber-700"
+                                title="Whitelisted employee who has not completed self-registration yet"
+                              >
+                                Pending Registration
+                              </span>
+                            )}
+                            {o.status === 'Inactive' && (
+                              <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-extrabold text-slate-500">
+                                Inactive
+                              </span>
+                            )}
+                            {isResolving && (
+                              <span className="ml-1 text-[9px] font-semibold text-slate-400 uppercase tracking-wide">Adding…</span>
+                            )}
+                            {isSelected && (
+                              <span className="ml-1 text-[9px] font-semibold text-emerald-500 uppercase tracking-wide">Selected</span>
+                            )}
                           </span>
-                          {s.designation && (
+                          {o.designation && (
                             <span className="text-[10px] text-slate-400 font-medium">
-                              {s.designation}
+                              {o.designation}
                             </span>
                           )}
                         </div>
                       );
                     })}
-                    {globalServiceProviders.length === 0 && (
+                    {filteredServiceProviders.length === 0 && (
                       <div className="p-12 text-center text-slate-400 text-xs italic">
-                        No service provider stakeholders found.
+                        No service providers found.
                       </div>
                     )}
                   </div>
