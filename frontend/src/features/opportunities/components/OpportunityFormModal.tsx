@@ -60,14 +60,7 @@ export const OpportunityFormModal: React.FC<OpportunityFormModalProps> = ({
   opportunitiesColumnConfig,
   lockedAccount,
 }) => {
-  const { projectManagers } = useCRM();
-  const pmOptions = React.useMemo(() =>
-    projectManagers.map((pm) => ({
-      value: pm.id,
-      label: pm.name || pm.email,
-    })),
-    [projectManagers],
-  );
+
 
   return (
     <FormModal
@@ -309,21 +302,7 @@ export const OpportunityFormModal: React.FC<OpportunityFormModalProps> = ({
             value={value}
             onChange={onChange}
           />
-          {/* Service Provider Project Manager — only users with the Project Manager role */}
-          <FormField label="Service Provider Project Manager">
-            <SearchableSelect
-              value={value.serviceProviderPmId ?? ''}
-              onChange={(v) => onChange({ serviceProviderPmId: v || undefined })}
-              options={pmOptions}
-              placeholder="Search Project Managers…"
-              aria-label="Service Provider Project Manager"
-            />
-            {pmOptions.length === 0 && (
-              <p className="text-xs text-slate-400 italic mt-1">
-                No users with the Project Manager role found. Assign the role in Administration → System Users.
-              </p>
-            )}
-          </FormField>
+
         </FormGrid>
       </FormSection>
 

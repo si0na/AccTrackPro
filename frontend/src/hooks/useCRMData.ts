@@ -25,7 +25,6 @@ const DEFAULT_OPPORTUNITIES_COLUMNS: ColumnConfig[] = [
   { key: 'name',        name: 'Opportunity Name', isStandard: true, isPinned: true,  isDisplayed: true, type: 'text'   },
   { key: 'accountId',   name: 'Account',          isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
   { key: 'stage',       name: 'Stage',            isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
-  { key: 'serviceProviderPmName', name: 'Project Manager', isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
   { key: 'value',       name: 'Deal Size',        isStandard: true, isPinned: false, isDisplayed: true, type: 'number' },
   { key: 'probability', name: 'Probability',      isStandard: true, isPinned: false, isDisplayed: true, type: 'number' },
   { key: 'allocationStartDate', name: 'Allocation Start Date', isStandard: true, isPinned: false, isDisplayed: true, type: 'date' },

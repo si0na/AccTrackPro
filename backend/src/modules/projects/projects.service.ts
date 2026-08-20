@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
 import { FilterContextService, FilterParams } from '../../common/services/filter-context.service';
+import { PermissionsService } from '../rbac/permissions.service';
 import { Project } from '../../types';
 import { extractCustomData } from '../../common/utils/db-mapping.util';
 import { Pagination, Paginated, extractTotal } from '../../common/utils/pagination.util';
@@ -13,8 +14,8 @@ const KNOWN = new Set([
   'startDate', 'endDate', 'methodology',
   'serviceProviderPmId', 'serviceProviderPmName',
   'practiceLeadId', 'practiceLeadName',
-  'clientStakeholderId', 'clientStakeholderName', 'clientStakeholderDesignation',
-  'clientPmStakeholderId', 'clientPmStakeholderName', 'clientPmStakeholderDesignation',
+  'clientPartnerId', 'clientPartnerName',
+  'clientPmName',
   'status', 'health', 'asOnDate',
   'plannedCompletionPct', 'actualCompletionPct',
   'plannedEffortHours', 'actualEffortHours',
@@ -30,8 +31,8 @@ function rowToProject(row: any): Project {
     start_date, end_date,
     service_provider_pm_id, service_provider_pm_name,
     practice_lead_id, practice_lead_name,
-    client_stakeholder_id, client_stakeholder_name, client_stakeholder_designation,
-    client_pm_stakeholder_id, client_pm_stakeholder_name, client_pm_stakeholder_designation,
+    client_partner_id, client_partner_name,
+    client_pm_name,
     as_on_date,
     planned_completion_pct, actual_completion_pct,
     planned_effort_hours, actual_effort_hours,
@@ -53,12 +54,9 @@ function rowToProject(row: any): Project {
     serviceProviderPmName: service_provider_pm_name ?? undefined,
     practiceLeadId:   practice_lead_id ?? undefined,
     practiceLeadName: practice_lead_name ?? undefined,
-    clientStakeholderId:          client_stakeholder_id ?? undefined,
-    clientStakeholderName:        client_stakeholder_name ?? undefined,
-    clientStakeholderDesignation: client_stakeholder_designation ?? undefined,
-    clientPmStakeholderId:          client_pm_stakeholder_id ?? undefined,
-    clientPmStakeholderName:        client_pm_stakeholder_name ?? undefined,
-    clientPmStakeholderDesignation: client_pm_stakeholder_designation ?? undefined,
+    clientPartnerId:          client_partner_id ?? undefined,
+    clientPartnerName:        client_partner_name ?? undefined,
+    clientPmName:                 client_pm_name ?? undefined,
     asOnDate: as_on_date ?? undefined,
     plannedCompletionPct: planned_completion_pct !== null && planned_completion_pct !== undefined ? Number(planned_completion_pct) : undefined,
     actualCompletionPct:  actual_completion_pct  !== null && actual_completion_pct  !== undefined ? Number(actual_completion_pct)  : undefined,
@@ -76,16 +74,14 @@ function rowToProject(row: any): Project {
 const PROJECT_SELECT = `
   SELECT p.*, a.name AS account_name, o.name AS opportunity_name,
          ou.name AS owner_name, spu.name AS service_provider_pm_name, plu.name AS practice_lead_name,
-         cs.name AS client_stakeholder_name, cs.designation AS client_stakeholder_designation,
-         cps.name AS client_pm_stakeholder_name, cps.designation AS client_pm_stakeholder_designation
+         cpu.name AS client_partner_name
   FROM projects p
   LEFT JOIN accounts      a   ON p.account_id = a.id
   LEFT JOIN opportunities o   ON p.opportunity_id = o.id
   LEFT JOIN users         ou  ON p.owner_id = ou.id
   LEFT JOIN users         spu ON p.service_provider_pm_id = spu.id
   LEFT JOIN users         plu ON p.practice_lead_id = plu.id
-  LEFT JOIN stakeholders  cs  ON p.client_stakeholder_id    = cs.id
-  LEFT JOIN stakeholders  cps ON p.client_pm_stakeholder_id = cps.id
+  LEFT JOIN users         cpu ON p.client_partner_id  = cpu.id
 `;
 
 @Injectable()
@@ -95,6 +91,7 @@ export class ProjectsService {
   constructor(
     private readonly db: DatabaseService,
     private readonly filter: FilterContextService,
+    private readonly permissions: PermissionsService,
   ) {}
 
   /**
@@ -117,16 +114,14 @@ export class ProjectsService {
     const { rows } = await this.db.query(
       `SELECT p.*, a.name AS account_name, o.name AS opportunity_name,
               ou.name AS owner_name, spu.name AS service_provider_pm_name, plu.name AS practice_lead_name,
-              cs.name AS client_stakeholder_name, cs.designation AS client_stakeholder_designation,
-              cps.name AS client_pm_stakeholder_name, cps.designation AS client_pm_stakeholder_designation${totalCol}
+              cpu.name AS client_partner_name${totalCol}
        FROM projects p
        INNER JOIN accounts      a   ON p.account_id = a.id AND a.is_deleted = FALSE
        LEFT  JOIN opportunities o   ON p.opportunity_id = o.id
        LEFT  JOIN users         ou  ON p.owner_id = ou.id
        LEFT  JOIN users         spu ON p.service_provider_pm_id = spu.id
        LEFT  JOIN users         plu ON p.practice_lead_id = plu.id
-       LEFT  JOIN stakeholders  cs  ON p.client_stakeholder_id    = cs.id
-       LEFT  JOIN stakeholders  cps ON p.client_pm_stakeholder_id = cps.id
+       LEFT  JOIN users         cpu ON p.client_partner_id  = cpu.id
        WHERE ${where}
        ORDER BY p.created_at DESC${limitClause}`,
       qParams,
@@ -170,8 +165,9 @@ export class ProjectsService {
    * than at the first manual update.
    */
   private async insertProject(data: any, requestingUserId?: string): Promise<Project> {
-    await this.assertStakeholderAssignment(data.clientStakeholderId, data.accountId, 'client stakeholder');
-    await this.assertStakeholderAssignment(data.clientPmStakeholderId, data.accountId, 'client PM stakeholder');
+    await this.validatePm(data.serviceProviderPmId);
+    await this.validatePracticeLead(data.practiceLeadId);
+    await this.validateClientPartner(data.clientPartnerId);
 
     const cd = extractCustomData(data, KNOWN);
     const health = data.health || 'Green';
@@ -184,7 +180,7 @@ export class ProjectsService {
            (id, name, description, account_id, opportunity_id, owner_id,
             start_date, end_date, methodology,
             service_provider_pm_id, practice_lead_id,
-            client_stakeholder_id, client_pm_stakeholder_id,
+            client_partner_id, client_pm_name,
             status, health, as_on_date,
             planned_completion_pct, actual_completion_pct,
             planned_effort_hours, actual_effort_hours,
@@ -195,7 +191,7 @@ export class ProjectsService {
           data.name, data.description ?? '', data.accountId, data.opportunityId, data.ownerId ?? null,
           data.startDate || null, data.endDate || null, data.methodology || 'Agile',
           data.serviceProviderPmId ?? null, data.practiceLeadId ?? null,
-          data.clientStakeholderId ?? null, data.clientPmStakeholderId ?? null,
+          data.clientPartnerId ?? null, data.clientPmName ?? null,
           data.status || 'Active', health, data.asOnDate || null,
           data.plannedCompletionPct ?? null, data.actualCompletionPct ?? null,
           data.plannedEffortHours ?? null, data.actualEffortHours ?? null,
@@ -229,8 +225,15 @@ export class ProjectsService {
     if (data.opportunityId && data.opportunityId !== existing.opportunityId) {
       await this.assertOpportunityBelongsToAccount(data.opportunityId, data.accountId ?? existing.accountId, requestingUserId);
     }
-    await this.assertStakeholderAssignment(data.clientStakeholderId, data.accountId ?? existing.accountId, 'client stakeholder');
-    await this.assertStakeholderAssignment(data.clientPmStakeholderId, data.accountId ?? existing.accountId, 'client PM stakeholder');
+    if ('serviceProviderPmId' in data) {
+      await this.validatePm(data.serviceProviderPmId);
+    }
+    if ('practiceLeadId' in data) {
+      await this.validatePracticeLead(data.practiceLeadId);
+    }
+    if ('clientPartnerId' in data) {
+      await this.validateClientPartner(data.clientPartnerId);
+    }
 
     const cd = extractCustomData(data, KNOWN);
 
@@ -243,13 +246,15 @@ export class ProjectsService {
     const health = data.health || existing.health || 'Green';
     const healthChanged = health !== existing.health;
 
+    const clientPmName = 'clientPmName' in data ? (data.clientPmName ?? null) : (existing.clientPmName ?? null);
+
     await this.db.withTransaction(async (client) => {
       await client.query(
         `UPDATE projects SET
            name=$1, description=$2, account_id=$3, opportunity_id=$4, owner_id=$5,
            start_date=$6, end_date=$7, methodology=$8,
            service_provider_pm_id=$9, practice_lead_id=$10,
-           client_stakeholder_id=$11, client_pm_stakeholder_id=$12,
+           client_partner_id=$11, client_pm_name=$12,
            status=$13, health=$14, as_on_date=$15,
            planned_completion_pct=$16, actual_completion_pct=$17,
            planned_effort_hours=$18, actual_effort_hours=$19,
@@ -261,7 +266,7 @@ export class ProjectsService {
           data.accountId ?? existing.accountId, data.opportunityId ?? existing.opportunityId, effectiveOwnerId,
           data.startDate || null, data.endDate || null, data.methodology || existing.methodology || 'Agile',
           data.serviceProviderPmId ?? null, data.practiceLeadId ?? null,
-          data.clientStakeholderId ?? null, data.clientPmStakeholderId ?? null,
+          data.clientPartnerId ?? null, clientPmName,
           data.status || existing.status || 'Active', health, data.asOnDate || null,
           data.plannedCompletionPct ?? null, data.actualCompletionPct ?? null,
           data.plannedEffortHours ?? null, data.actualEffortHours ?? null,
@@ -342,12 +347,13 @@ export class ProjectsService {
    * conversions can never produce a duplicate project for the same deal.
    */
   async createFromOpportunity(opp: any, data: any = {}, requestingUserId?: string): Promise<Project> {
-    // Retrieve parent account's practice_lead_id
+    // Retrieve parent account's practice_lead_id and client_partner_id
     const { rows: accountRows } = await this.db.query(
-      `SELECT practice_lead_id FROM accounts WHERE id = $1 AND is_deleted = FALSE`,
+      `SELECT practice_lead_id, client_partner_id FROM accounts WHERE id = $1 AND is_deleted = FALSE`,
       [opp.accountId],
     );
     const parentPracticeLeadId = accountRows.length ? accountRows[0].practice_lead_id : null;
+    const parentClientPartnerId = accountRows.length ? accountRows[0].client_partner_id : null;
 
     const merged = {
       ...data,
@@ -358,7 +364,7 @@ export class ProjectsService {
       description:   data.description ?? opp.description ?? '',
       startDate:     data.startDate ?? opp.allocationStartDate ?? undefined,
       endDate:       data.endDate ?? opp.allocationEndDate ?? undefined,
-      clientStakeholderId: data.clientStakeholderId ?? opp.clientStakeholderId ?? undefined,
+      clientPartnerId: data.clientPartnerId ?? parentClientPartnerId ?? undefined,
       dealValue:     data.dealValue ?? opp.value ?? undefined,
       serviceProviderPmId: data.serviceProviderPmId ?? opp.serviceProviderPmId ?? undefined,
       practiceLeadId: data.practiceLeadId ?? parentPracticeLeadId ?? undefined,
@@ -391,15 +397,34 @@ export class ProjectsService {
     }
   }
 
-  /** Relational rule: an assigned client stakeholder must belong to the same account and be a CLIENT-type stakeholder. */
-  private async assertStakeholderAssignment(id: string | undefined, accountId: string, label: string): Promise<void> {
-    if (!id) return;
-    const { rows } = await this.db.query(
-      `SELECT id FROM stakeholders
-       WHERE id = $1 AND account_id = $2 AND stakeholder_type = 'CLIENT' AND is_deleted = FALSE`,
-      [id, accountId],
-    );
-    if (!rows.length) throw new BadRequestException(`The selected ${label} is invalid for this account`);
+  private async validatePm(pmId: string | undefined | null): Promise<void> {
+    if (!pmId) return;
+    const hasRole = await this.permissions.userHasRole(pmId, 'project-manager');
+    if (!hasRole) {
+      throw new BadRequestException(
+        'The selected Service Provider Project Manager does not have the Project Manager role.',
+      );
+    }
+  }
+
+  private async validatePracticeLead(practiceLeadId: string | undefined | null): Promise<void> {
+    if (!practiceLeadId) return;
+    const hasRole = await this.permissions.userHasRole(practiceLeadId, 'practice-lead');
+    if (!hasRole) {
+      throw new BadRequestException(
+        'The selected Practice Lead does not have the Practice Lead role.',
+      );
+    }
+  }
+
+  private async validateClientPartner(clientPartnerId: string | undefined | null): Promise<void> {
+    if (!clientPartnerId) return;
+    const hasRole = await this.permissions.userHasRole(clientPartnerId, 'client-partner');
+    if (!hasRole) {
+      throw new BadRequestException(
+        'The selected Client Partner does not have the Client Partner role.',
+      );
+    }
   }
 
   /** Maps the uq_project_opportunity unique-index violation (concurrent Won-transitions) to a friendly 409. */

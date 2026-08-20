@@ -397,13 +397,13 @@ export class ActionItemsService {
     }
   }
 
-  /** Owner must be an active stakeholder (Client or Service Provider) on the same account. */
+  /** Owner must be an active stakeholder (Client or Service Provider). */
   private async assertOwnerStakeholder(stakeholderId: string, accountId: string): Promise<void> {
     const { rows } = await this.db.query(
-      `SELECT id FROM stakeholders WHERE id = $1 AND account_id = $2 AND is_deleted = FALSE`,
-      [stakeholderId, accountId],
+      `SELECT id FROM stakeholders WHERE id = $1 AND is_deleted = FALSE`,
+      [stakeholderId],
     );
-    if (!rows.length) throw new BadRequestException('The selected Owner is not a stakeholder of this account');
+    if (!rows.length) throw new BadRequestException('The selected Owner is not a valid active stakeholder');
   }
 
   private async log(text: string, accountId?: string, userId?: string): Promise<void> {

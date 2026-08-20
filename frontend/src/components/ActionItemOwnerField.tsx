@@ -1,34 +1,10 @@
-import React, {
-  useCallback,
-  useEffect,
-  useId,
-  useLayoutEffect,
-  useRef,
-  useState,
-} from 'react';
+import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Check, ChevronsUpDown, Plus } from 'lucide-react';
-import { STAKEHOLDER_TYPE_LABELS } from '@/components/ui';
+import { Plus, Search, Info, User, X, ChevronDown } from 'lucide-react';
+import { Modal } from '@/components/ui/Modal';
 import { StakeholderFormModal } from '@/features/stakeholders/components/StakeholderFormModal';
 import { useCRM } from '@/contexts/CRMContext';
 import type { Stakeholder } from '@/types';
-
-const TONE_CLS = {
-  blue: 'focus:ring-blue-500/20 focus:border-blue-500',
-  amber: 'focus:ring-amber-500/20 focus:border-amber-500',
-} as const;
-
-const MENU_GAP = 4;
-const MENU_MAX_HEIGHT = 208;
-const VIEWPORT_MARGIN = 8;
-
-interface MenuPosition {
-  left: number;
-  width: number;
-  top?: number;
-  bottom?: number;
-  maxHeight: number;
-}
 
 export interface ActionItemOwnerFieldProps {
   accountId: string;
@@ -36,239 +12,305 @@ export interface ActionItemOwnerFieldProps {
   /** The selected stakeholder's id (the Action Item's ownerStakeholderId). */
   value?: string;
   onChange: (stakeholderId: string) => void;
-  tone?: keyof typeof TONE_CLS;
+  tone?: 'blue' | 'amber';
   required?: boolean;
 }
 
-/** Shown on the "+ New" button (tooltip + hint) until an account is chosen. */
+/** Shown as tooltip/hint until an account is chosen. */
 const NO_ACCOUNT_MSG = 'Please select an Account before assigning an Owner.';
 
 /**
- * Searchable Owner picker for Action Items — a single combined dropdown of
- * every stakeholder (Client AND Service Provider) on the selected account,
- * each labelled "{name} ({Client|Service Provider})" so the two are easy to
- * tell apart. Owner must always be a real stakeholder on the account, so this
- * never accepts free text; typing only filters the list.
- *
- * Carries the same inline "+ New Stakeholder" affordance as
- * `StakeholderAssignmentFields` (portal to the shared create dialog, account
- * pre-filled and locked, new record auto-selected) so an account with no
- * stakeholders yet isn't a dead end.
+ * Simplified Owner picker for Action Items.
+ * A single styled button shows the current selection (or a placeholder).
+ * Clicking it opens the global stakeholder modal – no inline dropdown.
  */
 export const ActionItemOwnerField: React.FC<ActionItemOwnerFieldProps> = ({
   accountId,
   stakeholders,
   value,
   onChange,
-  tone = 'blue',
   required = true,
 }) => {
   const { accounts, addStakeholder } = useCRM();
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState('');
-  const [activeIndex, setActiveIndex] = useState(0);
-  const [menuPos, setMenuPos] = useState<MenuPosition | null>(null);
+  const [isPickerOpen, setPickerOpen] = useState(false);
   const [creating, setCreating] = useState(false);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-  const listRef = useRef<HTMLUListElement>(null);
-  const listId = useId();
+  const [globalSearchQuery, setGlobalSearchQuery] = useState('');
 
   const account = accounts.find((a) => a.id === accountId);
   const createDisabledReason = account ? undefined : NO_ACCOUNT_MSG;
 
-  const options = stakeholders
-    .filter((s) => s.accountId === accountId)
-    .map((s) => ({
-      id: s.id,
-      label: `${s.name} (${STAKEHOLDER_TYPE_LABELS[s.stakeholderType]})`,
-    }));
+  // The currently-selected stakeholder (resolved from all stakeholders)
+  const selected = React.useMemo(
+    () => stakeholders.find((s) => s.id === value),
+    [stakeholders, value],
+  );
 
-  const filtered = query.trim()
-    ? options.filter((o) => o.label.toLowerCase().includes(query.trim().toLowerCase()))
-    : options;
-
-  const selected = options.find((o) => o.id === value);
-
-  useEffect(() => {
-    setActiveIndex(0);
-  }, [query, open]);
-
-  const updatePosition = useCallback(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    const spaceBelow = window.innerHeight - rect.bottom - MENU_GAP - VIEWPORT_MARGIN;
-    const spaceAbove = rect.top - MENU_GAP - VIEWPORT_MARGIN;
-    const openUp = spaceBelow < Math.min(MENU_MAX_HEIGHT, 160) && spaceAbove > spaceBelow;
-    const maxHeight = Math.max(120, Math.min(MENU_MAX_HEIGHT, openUp ? spaceAbove : spaceBelow));
-    setMenuPos({
-      left: rect.left,
-      width: rect.width,
-      top: openUp ? undefined : rect.bottom + MENU_GAP,
-      bottom: openUp ? window.innerHeight - rect.top + MENU_GAP : undefined,
-      maxHeight,
-    });
-  }, []);
-
-  useLayoutEffect(() => {
-    if (!open) {
-      setMenuPos(null);
-      return;
-    }
-    updatePosition();
-    const onScrollOrResize = () => updatePosition();
-    window.addEventListener('scroll', onScrollOrResize, true);
-    window.addEventListener('resize', onScrollOrResize);
-    return () => {
-      window.removeEventListener('scroll', onScrollOrResize, true);
-      window.removeEventListener('resize', onScrollOrResize);
-    };
-  }, [open, updatePosition]);
-
-  useEffect(() => {
-    if (!open) return;
-    const activeEl = listRef.current?.children[activeIndex] as HTMLElement | undefined;
-    activeEl?.scrollIntoView({ block: 'nearest' });
-  }, [activeIndex, open]);
-
-  const commit = (id: string) => {
-    onChange(id);
-    setOpen(false);
-    setQuery('');
-  };
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (!open) {
-      if (e.key === 'ArrowDown' || e.key === 'Enter' || e.key === ' ') {
-        e.preventDefault();
-        setOpen(true);
+  // Deduplicate stakeholders by name + type (keep first occurrence)
+  const uniqueStakeholders = React.useMemo(() => {
+    const seen = new Set<string>();
+    const unique: Stakeholder[] = [];
+    for (const s of stakeholders) {
+      const key = `${s.name.toLowerCase().trim()}_${s.stakeholderType}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        unique.push(s);
       }
-      return;
     }
-    if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      setActiveIndex((i) => Math.min(i + 1, filtered.length - 1));
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      setActiveIndex((i) => Math.max(i - 1, 0));
-    } else if (e.key === 'Enter') {
-      e.preventDefault();
-      if (filtered[activeIndex]) commit(filtered[activeIndex].id);
-    } else if (e.key === 'Escape') {
-      e.stopPropagation();
-      setOpen(false);
-      setQuery('');
-    }
-  };
+    return unique;
+  }, [stakeholders]);
 
-  const fieldCls =
-    `w-full text-xs pl-3 pr-9 py-2 border border-slate-200 rounded-lg bg-white cursor-text ` +
-    `focus:outline-none focus:ring-2 ${TONE_CLS[tone]}`;
+  // Filter by search
+  const filteredStakeholders = React.useMemo(() => {
+    const q = globalSearchQuery.toLowerCase().trim();
+    if (!q) return uniqueStakeholders;
+    return uniqueStakeholders.filter(
+      (s) =>
+        s.name.toLowerCase().includes(q) ||
+        (s.designation ?? '').toLowerCase().includes(q),
+    );
+  }, [uniqueStakeholders, globalSearchQuery]);
+
+  const globalClients = React.useMemo(
+    () => filteredStakeholders.filter((s) => s.stakeholderType === 'CLIENT'),
+    [filteredStakeholders],
+  );
+
+  const globalServiceProviders = React.useMemo(
+    () => filteredStakeholders.filter((s) => s.stakeholderType === 'SERVICE_PROVIDER'),
+    [filteredStakeholders],
+  );
 
   const handleCreated = async (draft: Omit<Stakeholder, 'id'>) => {
     const created = await addStakeholder(draft);
     onChange(created.id);
+    setCreating(false);
+    setPickerOpen(false);
+  };
+
+  const handleSelect = (id: string) => {
+    onChange(id);
+    setPickerOpen(false);
+  };
+
+  const handleClear = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onChange('');
   };
 
   return (
     <div className="space-y-1">
-      <div className="flex items-stretch gap-2">
-        <div className="relative flex-1 min-w-0" ref={containerRef}>
-        <input
-          ref={inputRef}
-          type="text"
-          role="combobox"
-          aria-expanded={open}
-          aria-controls={listId}
-          aria-autocomplete="list"
-          aria-label="Owner"
-          required={required}
-          disabled={!accountId}
-          value={open ? query : (selected?.label ?? '')}
-          placeholder="Search stakeholders…"
-          onFocus={() => setOpen(true)}
-          onClick={() => setOpen(true)}
-          onBlur={() => {
-            setOpen(false);
-            setQuery('');
-          }}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={handleKeyDown}
-          autoComplete="off"
-          className={fieldCls}
-        />
-        <ChevronsUpDown
-          className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400"
-          aria-hidden="true"
-        />
-        {open &&
-          menuPos &&
-          createPortal(
-            <ul
-              ref={listRef}
-              id={listId}
-              role="listbox"
-              style={{
-                position: 'fixed',
-                left: menuPos.left,
-                width: menuPos.width,
-                top: menuPos.top,
-                bottom: menuPos.bottom,
-                maxHeight: menuPos.maxHeight,
-              }}
-              className="z-[300] overflow-auto rounded-lg border border-slate-200 bg-white shadow-lg text-xs py-0.5"
-            >
-              {filtered.length === 0 ? (
-                <li className="px-3 py-1.5 text-slate-400">
-                  {options.length === 0 ? 'No stakeholders on this account yet' : 'No matches'}
-                </li>
-              ) : (
-                filtered.map((option, i) => (
-                  <li
-                    key={option.id}
-                    role="option"
-                    aria-selected={option.id === value}
-                    onMouseDown={(e) => {
-                      e.preventDefault();
-                      commit(option.id);
-                    }}
-                    className={`px-2.5 py-1 cursor-pointer flex items-center justify-between ${
-                      i === activeIndex ? 'bg-blue-50' : ''
-                    } ${option.id === value ? 'font-semibold text-blue-600' : 'text-slate-700'}`}
-                  >
-                    {option.label}
-                    {option.id === value && <Check className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />}
-                  </li>
-                ))
-              )}
-            </ul>,
-            document.body,
+      {/* Single trigger button */}
+      <button
+        type="button"
+        onClick={() => {
+          setGlobalSearchQuery('');
+          setPickerOpen(true);
+        }}
+        disabled={!accountId}
+        title={!accountId ? NO_ACCOUNT_MSG : 'Click to select task owner'}
+        className={`
+          w-full flex items-center justify-between gap-2
+          text-xs pl-3 pr-2.5 py-2 rounded-lg border transition-all
+          ${
+            selected
+              ? 'border-blue-200 bg-blue-50/60 text-slate-800 hover:border-blue-400'
+              : 'border-slate-200 bg-white text-slate-400 hover:border-slate-300'
+          }
+          disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer
+          focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500
+        `}
+      >
+        <span className="flex items-center gap-2 min-w-0">
+          <User className="w-3.5 h-3.5 shrink-0 text-slate-400" aria-hidden="true" />
+          <span className={`truncate font-medium ${selected ? 'text-slate-700' : 'text-slate-400'}`}>
+            {selected ? selected.name : 'Select task owner…'}
+          </span>
+          {selected?.designation && (
+            <span className="shrink-0 text-[10px] text-slate-400 font-normal hidden sm:inline">
+              · {selected.designation}
+            </span>
           )}
-        </div>
-        <button
-          type="button"
-          onClick={() => setCreating(true)}
-          disabled={!!createDisabledReason}
-          title={createDisabledReason ? createDisabledReason : 'Create a new stakeholder'}
-          aria-label="Create a new stakeholder"
-          className="shrink-0 inline-flex items-center gap-1 px-3 py-2 rounded-lg border border-blue-200 bg-blue-50 text-blue-600 text-xs font-semibold hover:bg-blue-100 hover:border-blue-300 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-blue-50 disabled:hover:border-blue-200 cursor-pointer transition-colors whitespace-nowrap"
+        </span>
+        <span className="flex items-center gap-1 shrink-0">
+          {selected && (
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={handleClear}
+              onKeyDown={(e) => e.key === 'Enter' && handleClear(e as any)}
+              className="p-0.5 rounded hover:bg-slate-200 text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+              title="Clear selection"
+              aria-label="Clear owner selection"
+            >
+              <X className="w-3 h-3" aria-hidden="true" />
+            </span>
+          )}
+          <ChevronDown className="w-3.5 h-3.5 text-slate-400" aria-hidden="true" />
+        </span>
+      </button>
+
+      {/* Global Stakeholder Picker Modal */}
+      {isPickerOpen && (
+        <Modal
+          isOpen={isPickerOpen}
+          title={
+            <div className="flex flex-col">
+              <span className="font-bold text-slate-800 text-base">Select Task Owner</span>
+              <span className="text-[11px] text-slate-400 font-medium font-sans">
+                Choose from existing stakeholders or create a new client stakeholder.
+              </span>
+            </div>
+          }
+          onClose={() => setPickerOpen(false)}
+          maxWidth="max-w-4xl"
         >
-          <Plus className="w-3.5 h-3.5" aria-hidden="true" />
-          New
-        </button>
-      </div>
-      {createDisabledReason && (
-        <span className="block text-micro text-slate-400 font-medium">{createDisabledReason}</span>
+          <div className="flex flex-col h-[560px]">
+            {/* Scrollable content */}
+            <div className="flex-1 p-6 space-y-5 overflow-y-auto min-h-0">
+              {/* Search + Create row */}
+              <div className="flex gap-3">
+                <div className="relative flex-1">
+                  <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search by name or designation..."
+                    value={globalSearchQuery}
+                    onChange={(e) => setGlobalSearchQuery(e.target.value)}
+                    autoFocus
+                    className="w-full text-xs pl-10 pr-3.5 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCreating(true)}
+                  disabled={!!createDisabledReason}
+                  title={createDisabledReason ?? 'Create a new client stakeholder'}
+                  className="shrink-0 inline-flex items-center gap-2 px-5 py-2.5 rounded-lg border border-blue-600 hover:bg-blue-50 text-blue-600 text-xs font-semibold disabled:opacity-50 disabled:cursor-not-allowed transition-all cursor-pointer shadow-sm bg-white"
+                >
+                  <Plus className="w-4 h-4" aria-hidden="true" />
+                  Create Client Stakeholder
+                </button>
+              </div>
+
+              {/* Two-column list */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 min-h-0 flex-1">
+                {/* Client Stakeholders */}
+                <div className="border border-slate-200 rounded-xl overflow-hidden flex flex-col h-[380px] bg-white shadow-sm">
+                  <div className="px-4 py-3 bg-blue-50/40 border-b border-slate-200 font-bold text-slate-700 text-[10px] uppercase tracking-wider select-none shrink-0 flex items-center justify-between">
+                    <span>Client Stakeholders</span>
+                    <span className="bg-blue-100/80 text-blue-800 text-[9px] px-2 py-0.5 rounded-full font-bold">
+                      {globalClients.length}
+                    </span>
+                  </div>
+                  <div className="overflow-y-auto flex-1 divide-y divide-slate-100/60">
+                    {globalClients.map((s) => {
+                      const isSelected = s.id === value;
+                      return (
+                        <div
+                          key={s.id}
+                          onClick={() => handleSelect(s.id)}
+                          className={`px-4 py-3 cursor-pointer flex flex-col gap-0.5 transition-all group ${
+                            isSelected ? 'bg-blue-50' : 'hover:bg-slate-50/85'
+                          }`}
+                        >
+                          <span className={`font-bold text-xs transition-colors ${isSelected ? 'text-blue-600' : 'text-slate-800 group-hover:text-blue-600'}`}>
+                            {s.name}
+                            {isSelected && <span className="ml-2 text-[9px] font-semibold text-blue-500 uppercase tracking-wide">Selected</span>}
+                          </span>
+                          {s.designation && (
+                            <span className="text-[10px] text-slate-400 font-medium">
+                              {s.designation}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {globalClients.length === 0 && (
+                      <div className="p-12 text-center text-slate-400 text-xs italic">
+                        No client stakeholders found.
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Service Provider Stakeholders */}
+                <div className="border border-slate-200 rounded-xl overflow-hidden flex flex-col h-[380px] bg-white shadow-sm">
+                  <div className="px-4 py-3 bg-emerald-50/40 border-b border-slate-200 font-bold text-slate-700 text-[10px] uppercase tracking-wider select-none shrink-0 flex items-center justify-between">
+                    <span>Service Provider Stakeholders</span>
+                    <span className="bg-emerald-100/80 text-emerald-800 text-[9px] px-2 py-0.5 rounded-full font-bold">
+                      {globalServiceProviders.length}
+                    </span>
+                  </div>
+                  <div className="overflow-y-auto flex-1 divide-y divide-slate-100/60">
+                    {globalServiceProviders.map((s) => {
+                      const isSelected = s.id === value;
+                      return (
+                        <div
+                          key={s.id}
+                          onClick={() => handleSelect(s.id)}
+                          className={`px-4 py-3 cursor-pointer flex flex-col gap-0.5 transition-all group ${
+                            isSelected ? 'bg-emerald-50' : 'hover:bg-slate-50/85'
+                          }`}
+                        >
+                          <span className={`font-bold text-xs transition-colors ${isSelected ? 'text-emerald-600' : 'text-slate-800 group-hover:text-blue-600'}`}>
+                            {s.name}
+                            {isSelected && <span className="ml-2 text-[9px] font-semibold text-emerald-500 uppercase tracking-wide">Selected</span>}
+                          </span>
+                          {s.designation && (
+                            <span className="text-[10px] text-slate-400 font-medium">
+                              {s.designation}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {globalServiceProviders.length === 0 && (
+                      <div className="p-12 text-center text-slate-400 text-xs italic">
+                        No service provider stakeholders found.
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Pinned Footer */}
+            <div className="shrink-0 bg-slate-50 border-t border-slate-200 px-6 py-4 flex items-center justify-between">
+              <div className="flex items-center gap-2 text-slate-500 text-xs font-medium">
+                <Info className="w-4 h-4 text-blue-500 shrink-0" />
+                <span>Click a stakeholder row to assign them as the task owner.</span>
+              </div>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setPickerOpen(false)}
+                  className="px-4 py-2 border border-slate-200 rounded-lg hover:bg-slate-100 text-slate-600 text-xs font-semibold transition-colors cursor-pointer bg-white"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setPickerOpen(false)}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-semibold transition-colors cursor-pointer shadow-sm"
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </Modal>
       )}
 
-      {creating && account &&
+      {/* Stakeholder Creation Modal */}
+      {creating &&
+        account &&
         createPortal(
           <StakeholderFormModal
             isOpen
             mode="create"
             accounts={accounts}
             lockedAccount={{ id: account.id, name: account.name }}
+            lockedType="CLIENT"
             onClose={() => setCreating(false)}
             onSubmit={handleCreated}
           />,

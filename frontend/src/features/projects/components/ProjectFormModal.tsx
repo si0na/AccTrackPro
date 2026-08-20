@@ -63,8 +63,17 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
   stakeholders,
   mode = 'edit',
 }) => {
-  const clientStakeholders = stakeholders.filter(
-    (s) => s.accountId === value.accountId && s.stakeholderType === 'CLIENT',
+  const clientPartners = React.useMemo(() =>
+    users.filter((u) => u.roleKeys?.includes('client-partner') || u.roleKey === 'client-partner'),
+    [users],
+  );
+  const projectManagers = React.useMemo(() =>
+    users.filter((u) => u.roleKeys?.includes('project-manager') || u.roleKey === 'project-manager'),
+    [users],
+  );
+  const practiceLeads = React.useMemo(() =>
+    users.filter((u) => u.roleKeys?.includes('practice-lead') || u.roleKey === 'practice-lead'),
+    [users],
   );
   const isCreate = mode === 'create';
 
@@ -148,7 +157,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
               <SearchableSelect
                 value={value.serviceProviderPmId ?? ''}
                 onChange={(id) => onChange({ serviceProviderPmId: id || undefined })}
-                options={users.map((u) => ({ value: u.id, label: u.name }))}
+                options={projectManagers.map((u) => ({ value: u.id, label: u.name }))}
                 placeholder="Search employees…"
                 aria-label="Service Provider Project Manager"
                 tone="amber"
@@ -161,34 +170,31 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
                 className={SELECT_CLS}
               >
                 <option value="">Not assigned</option>
-                {users.map((u) => (
+                {practiceLeads.map((u) => (
                   <option key={u.id} value={u.id}>{u.name}</option>
                 ))}
               </select>
             </FormField>
             <FormField label="Client Partner Name">
               <select
-                value={value.clientStakeholderId ?? ''}
-                onChange={(e) => onChange({ clientStakeholderId: e.target.value || undefined })}
+                value={value.clientPartnerId ?? ''}
+                onChange={(e) => onChange({ clientPartnerId: e.target.value || undefined })}
                 className={SELECT_CLS}
               >
                 <option value="">Not assigned</option>
-                {clientStakeholders.map((s) => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
+                {clientPartners.map((u) => (
+                  <option key={u.id} value={u.id}>{u.name}</option>
                 ))}
               </select>
             </FormField>
             <FormField label="Client Project Manager">
-              <select
-                value={value.clientPmStakeholderId ?? ''}
-                onChange={(e) => onChange({ clientPmStakeholderId: e.target.value || undefined })}
-                className={SELECT_CLS}
-              >
-                <option value="">Not assigned</option>
-                {clientStakeholders.map((s) => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
-                ))}
-              </select>
+              <input
+                type="text"
+                value={value.clientPmName ?? ''}
+                onChange={(e) => onChange({ clientPmName: e.target.value || undefined })}
+                placeholder="Enter client project manager..."
+                className={INPUT_CLS}
+              />
             </FormField>
           </FormGrid>
         </FormSection>

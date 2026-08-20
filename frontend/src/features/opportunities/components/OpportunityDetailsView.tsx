@@ -238,8 +238,7 @@ export const OpportunityDetailsView: React.FC = () => {
     administrationApi.getUsers().then(setUsers).catch(() => setUsers([]));
   }, []);
 
-  const pmUser = opp && users ? users.find((u) => u.id === opp.serviceProviderPmId) : null;
-  const pmDisplayName = opp ? (opp.serviceProviderPmName || pmUser?.name) : undefined;
+
 
   const [isCreateProjectOpen, setIsCreateProjectOpen] = useState(false);
   const [projectDraft, setProjectDraft] = useState<Project | null>(null);
@@ -258,7 +257,7 @@ export const OpportunityDetailsView: React.FC = () => {
       health: 'Green',
       startDate: o.allocationStartDate || undefined,
       endDate: o.allocationEndDate || undefined,
-      clientStakeholderId: o.clientStakeholderId,
+      clientPartnerId: parentAccount?.clientPartnerId || undefined,
       dealValue: o.value,
       serviceProviderPmId: o.serviceProviderPmId,
       practiceLeadId: parentAccount?.practiceLeadId || undefined,
@@ -567,11 +566,6 @@ export const OpportunityDetailsView: React.FC = () => {
           { icon: <DollarSign className="w-4 h-4" />, label: 'CRM Value', mono: true, value: formatCur(opp.crmValue) },
           { icon: <TrendingUp className="w-4 h-4" />, label: 'Probability', mono: true, value: `${opp.probability}%` },
           { icon: <Calendar className="w-4 h-4" />, label: 'Allocation End Date', mono: true, value: opp.allocationEndDate || 'N/A' },
-          {
-            icon: <Users className="w-4 h-4" />,
-            label: 'Project Manager',
-            value: pmDisplayName || <span className="text-slate-400 italic">Not assigned</span>,
-          },
         ]}
         attributesClassName="grid-cols-2 lg:grid-cols-5"
       />
@@ -814,12 +808,7 @@ export const OpportunityDetailsView: React.FC = () => {
                       <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1">Revenue Model</span>
                       <p className="text-sm text-slate-800 font-semibold">{opp.revenueModel || <span className="text-slate-400 font-medium italic">Not set</span>}</p>
                     </div>
-                    <div>
-                      <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1">Service Provider Project Manager</span>
-                      <p className="text-sm text-slate-800 font-semibold">
-                        {pmDisplayName || <span className="text-slate-400 font-medium italic">Not assigned</span>}
-                      </p>
-                    </div>
+
                   </div>
                 </FormSection>
 

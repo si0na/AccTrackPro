@@ -37,11 +37,11 @@ export class CreateProjectDto {
 
   @EmptyToUndefined()
   @IsOptional() @IsString()
-  clientStakeholderId?: string;
+  clientPartnerId?: string;
 
   @EmptyToUndefined()
   @IsOptional() @IsString()
-  clientPmStakeholderId?: string;
+  clientPmName?: string;
 
   @IsOptional() @IsIn(['Active', 'On Hold', 'Completed', 'Cancelled'], {
     message: 'Status must be one of: Active, On Hold, Completed, Cancelled',

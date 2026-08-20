@@ -26,6 +26,7 @@ const KNOWN = new Set([
   'serviceProviderStakeholderId','serviceProviderStakeholderName','serviceProviderStakeholderDesignation',
   'aopAvailable','aopYear','opportunityType','serviceLine',
   'opportunityHealth','revenueModel','location','cost','grossMargin',
+  'serviceProviderPmId','serviceProviderPmName',
   'projectId',
   // Forecast fields are joined from opportunity_forecasts (read-only on the
   // opportunity payload; edited via the dedicated forecast endpoint). Listed so
@@ -244,6 +245,8 @@ export class OpportunitiesService {
       );
     }
   }
+
+
   private async childScope(userId: string | null, startIdx: number) {
     if (!userId) return { conditions: [], params: [], nextIdx: startIdx };
     const ctx = await this.access.getContext(userId);

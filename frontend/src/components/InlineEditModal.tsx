@@ -93,16 +93,7 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
   isSaving = false,
 }) => {
   const { title, primaryKey } = MODE_META[mode];
-  const { projectManagers } = useCRM();
   const inputCls = INPUT_CLS_AMBER;
-
-  const pmOptions = useMemo(() =>
-    projectManagers.map((pm: any) => ({
-      value: pm.id,
-      label: pm.name || pm.email,
-    })),
-    [projectManagers],
-  );
 
   // Role-filtered option lists ({ value: id, label: name }) backing the four
   // account "owner" dropdowns — one per role. Only rendered for accounts mode.
@@ -791,21 +782,7 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
                 onChange={onChange}
                 tone="amber"
               />
-              {/* Service Provider Project Manager — only users with the Project Manager role */}
-              <FormField label="Service Provider Project Manager">
-                <SearchableSelect
-                  value={entity.serviceProviderPmId ?? ''}
-                  onChange={(v) => onChange({ serviceProviderPmId: v || null })}
-                  options={pmOptions}
-                  placeholder="Search Project Managers…"
-                  aria-label="Service Provider Project Manager"
-                />
-                {pmOptions.length === 0 && (
-                  <p className="text-xs text-slate-400 italic mt-1">
-                    No users with the Project Manager role found. Assign the role in Administration → System Users.
-                  </p>
-                )}
-              </FormField>
+
             </FormGrid>
           </FormSection>
 

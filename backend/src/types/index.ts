@@ -94,6 +94,8 @@ export interface Opportunity {
   serviceProviderStakeholderId?: string;
   serviceProviderStakeholderName?: string;
   serviceProviderStakeholderDesignation?: string;
+  serviceProviderPmId?: string;
+  serviceProviderPmName?: string;
   opportunityType: OpportunityType;
   /** Whether this opportunity has an approved AOP (Annual Operating Plan) year. */
   aopAvailable: boolean;
@@ -106,8 +108,6 @@ export interface Opportunity {
   cost?: number;
   grossMargin?: number;
   /** Linked Project id (joined server-side), populated once this opportunity has gone Won. Null when none exists. */
-  /** Service Provider Project Manager (FK to users) */
-  serviceProviderPmId?: string;
   projectId?: string | null;
   // Persisted forecast + actuals (joined from opportunity_forecasts). Read-only
   // on this payload — edited via the dedicated opportunity-forecast endpoint.
@@ -143,14 +143,11 @@ export interface Project {
   serviceProviderPmName?: string;
   practiceLeadId?: string;
   practiceLeadName?: string;
-  /** "Client Name" contact — FK to stakeholders. */
-  clientStakeholderId?: string;
-  clientStakeholderName?: string;
-  clientStakeholderDesignation?: string;
-  /** Client Project Manager — FK to stakeholders. */
-  clientPmStakeholderId?: string;
-  clientPmStakeholderName?: string;
-  clientPmStakeholderDesignation?: string;
+  /** Client Partner — FK to users. */
+  clientPartnerId?: string;
+  clientPartnerName?: string;
+  /** Client Project Manager — manually entered text. */
+  clientPmName?: string;
   status: ProjectStatus;
   health: ProjectHealth;
   asOnDate?: string;
