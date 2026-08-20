@@ -209,7 +209,11 @@ interface CRMContextProps {
   addStakeholder: (stakeholder: Omit<Stakeholder, 'id'>) => Promise<Stakeholder>;
   updateStakeholder: (stakeholder: Stakeholder) => Promise<void>;
   deleteStakeholder: (id: string) => Promise<void>;
-  associateServiceProvider: (userId: string, accountId: string) => Promise<void>;
+  /**
+   * Register a Service Provider (system user *or* pending-registration
+   * employee) on an account. Resolves to the SERVICE_PROVIDER stakeholder id.
+   */
+  associateServiceProvider: (serviceProviderId: string, accountId: string) => Promise<string | null>;
   addComment: (targetType: Comment['targetType'], targetId: string, text: string) => Promise<void>;
   deleteComment: (id: string) => Promise<void>;
 }

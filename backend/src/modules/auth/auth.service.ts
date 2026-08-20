@@ -11,6 +11,7 @@ import { DatabaseService } from '../../database/database.service';
 import { NotificationEventBus } from '../../common/events/notification-event-bus.service';
 import { EmployeeMasterService } from '../employee-master/employee-master.service';
 import { GraphMailService } from './graph-mail.service';
+import { ServiceProviderService } from '../service-provider/service-provider.service';
 
 const ACCESS_EXPIRY_SECS  = parseInt(process.env.ACCESS_TOKEN_EXPIRY_SECS  || '900',    10); // 15 min
 const REFRESH_EXPIRY_SECS = parseInt(process.env.REFRESH_TOKEN_EXPIRY_SECS || '604800', 10); // 7 days
@@ -29,6 +30,7 @@ export class AuthService {
     private readonly bus: NotificationEventBus,
     private readonly employeeMasterService: EmployeeMasterService,
     private readonly graphMailService: GraphMailService,
+    private readonly serviceProvider: ServiceProviderService,
   ) {}
 
   // ─── Cookie helpers ─────────────────────────────────────────────────────────
@@ -147,6 +149,10 @@ export class AuthService {
         [user.id, rId],
       );
     }
+
+    // Any Service Provider stakeholder created for this person while they were
+    // still a pending whitelist entry is now upgraded to a real user link.
+    await this.serviceProvider.linkRegisteredUser(user.id, email);
 
     await this.audit('register', user.id, email, '', '', true, {});
 

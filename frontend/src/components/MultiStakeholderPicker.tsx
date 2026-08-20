@@ -12,6 +12,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from
 import { createPortal } from 'react-dom';
 import { Check, ChevronDown, X } from 'lucide-react';
 import type { Stakeholder, ServiceProviderUser } from '@/types';
+import { serviceProviderOptionLabel } from '@/utils';
 
 /** Gap between the trigger and the floating list, and the list's max height. */
 const MENU_GAP = 4;
@@ -126,7 +127,7 @@ export const MultiStakeholderPicker: React.FC<MultiStakeholderPickerProps> = ({
         }))
     : serviceProviders.map((sp) => ({
         id: sp.id,
-        name: `${sp.name || sp.email}${sp.designation ? ` (${sp.designation})` : ''}${!sp.isActive ? ' [Inactive]' : ''}`,
+        name: serviceProviderOptionLabel(sp),
       }));
 
   const query = searchTerm.trim().toLowerCase();

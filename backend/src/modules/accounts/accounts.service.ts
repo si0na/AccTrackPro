@@ -409,8 +409,13 @@ export class AccountsService {
       const newSpUserIds: string[] = Array.isArray(data.serviceProviderUserIds) ? data.serviceProviderUserIds : [];
       // 1. Mark as deleted any service providers who are no longer selected
       await this.db.query(
+        // COALESCE so pending-registration Service Providers (linked by
+        // employee_id, no user_id yet) are deselectable too. Rows with neither
+        // link are manually created stakeholders and are never touched here.
         `UPDATE stakeholders SET is_deleted = TRUE, updated_at = NOW()
-         WHERE account_id = $1 AND stakeholder_type = 'SERVICE_PROVIDER' AND is_deleted = FALSE AND NOT (user_id = ANY($2))`,
+         WHERE account_id = $1 AND stakeholder_type = 'SERVICE_PROVIDER' AND is_deleted = FALSE
+           AND COALESCE(user_id, employee_id) IS NOT NULL
+           AND NOT (COALESCE(user_id, employee_id) = ANY($2))`,
         [account.id, newSpUserIds],
       );
       // 2. Resolve/register selected service providers

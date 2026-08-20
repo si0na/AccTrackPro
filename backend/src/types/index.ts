@@ -327,6 +327,10 @@ export interface Stakeholder {
   department?: string;
   /** Set on auto-registered Service Provider stakeholders — links back to the user they represent. */
   userId?: string;
+  /** Whitelist (employee_master) row this Service Provider represents, set even before they register. */
+  employeeId?: string;
+  /** True while the linked person is whitelisted but has not completed self-registration. */
+  pendingRegistration?: boolean;
 }
 
 export interface Activity {

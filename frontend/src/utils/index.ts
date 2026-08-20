@@ -1,7 +1,34 @@
-import type { ActionItemStatus, OpportunityStage } from '@/types';
+import type { ActionItemStatus, OpportunityStage, ServiceProviderUser } from '@/types';
 import { LOCATION_OPTIONS, LOCATION_ALIASES } from '@/constants';
 
 export type SortDirection = 'asc' | 'desc';
+
+/** Directory status of a Service Provider — same vocabulary as the Administration user list. */
+export type ServiceProviderStatus = 'Active' | 'Inactive' | 'Pending Registration';
+
+/**
+ * Registration / activation state of a Service Provider option. People
+ * whitelisted in the employee master who have not signed up yet are listed as
+ * Service Providers too, and are called out as "Pending Registration" rather
+ * than silently hidden.
+ */
+export function serviceProviderStatus(sp: Pick<ServiceProviderUser, 'isActive' | 'isPending'>): ServiceProviderStatus {
+  if (sp.isPending) return 'Pending Registration';
+  return sp.isActive ? 'Active' : 'Inactive';
+}
+
+/**
+ * Single-line label for a Service Provider in a `<select>` / picker. Pending
+ * people have no name on record yet, so their email carries the label, and both
+ * the pending and deactivated states are spelled out inline.
+ */
+export function serviceProviderOptionLabel(sp: ServiceProviderUser): string {
+  const base = sp.name || sp.email || '(Unnamed)';
+  const designation = sp.designation ? ` (${sp.designation})` : '';
+  const status = serviceProviderStatus(sp);
+  const suffix = status === 'Active' ? '' : ` [${status}]`;
+  return `${base}${designation}${suffix}`;
+}
 
 /**
  * Deal outcome, derived purely from pipeline stage: 'Won'/'Lost' stages are
