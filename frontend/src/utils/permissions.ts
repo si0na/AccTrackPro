@@ -16,6 +16,8 @@ export const VIEW_MODULE: Record<ViewType, string | null> = {
   'opportunity-forecast':   'opportunities',
   projects:                 'projects',
   'project-details':        'projects',
+  sqa:                      'sqa',
+  'sqa-details':            'sqa',
   actionItems:              'action-items',
   projectActionItems:       'action-items',
   stakeholders:             'stakeholders',

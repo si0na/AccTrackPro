@@ -7,6 +7,7 @@ const TABLE = 'project_risks';
 const COLUMNS = [
   'priority', 'description', 'impact', 'likelihood', 'severity',
   'owner_id', 'mitigation_plan', 'status', 'target_resolution_date',
+  'rag', 'impact_description', 'classification', 'contingency_plan', 'risk_open_date',
 ];
 
 function toValues(data: any): any[] {
@@ -15,12 +16,18 @@ function toValues(data: any): any[] {
     data.impact ?? null, data.likelihood ?? null, data.severity ?? null,
     data.ownerId ?? null, data.mitigationPlan ?? '', data.status || 'Open',
     data.targetResolutionDate || null,
+    data.rag ?? null,
+    data.impactDescription ?? null,
+    data.classification ?? null,
+    data.contingencyPlan ?? null,
+    data.riskOpenDate || null,
   ];
 }
 
 function rowToRisk(row: any): ProjectRisk {
   const {
     project_id, owner_id, owner_name, mitigation_plan, target_resolution_date,
+    impact_description, contingency_plan, risk_open_date,
     created_at, updated_at, ...base
   } = row;
   return {
@@ -30,6 +37,11 @@ function rowToRisk(row: any): ProjectRisk {
     ownerName: owner_name ?? undefined,
     mitigationPlan: mitigation_plan,
     targetResolutionDate: target_resolution_date ?? undefined,
+    rag: base.rag ?? undefined,
+    impactDescription: impact_description ?? undefined,
+    classification: base.classification ?? undefined,
+    contingencyPlan: contingency_plan ?? undefined,
+    riskOpenDate: risk_open_date ?? undefined,
     createdAt: created_at ?? undefined,
     updatedAt: updated_at ?? undefined,
   } as ProjectRisk;

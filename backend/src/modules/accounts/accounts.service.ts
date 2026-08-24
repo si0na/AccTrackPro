@@ -17,7 +17,7 @@ import { BulkModuleAdapter } from '../import-export/bulk-adapter';
 // periods are derived from dates and never stored.
 const KNOWN = new Set([
   'id','name','type','health','owner','ownerId','revenue','industry','since',
-  'website','phone','email','address','location','description',
+  'website','phone','email','address','location','description','tower',
   'accountManagerId','practiceLeadId','clientPartnerId','verticalHeadId',
   'financial_year','quarter','financialYear',
   'clientStakeholderIds','serviceProviderUserIds',
@@ -38,7 +38,7 @@ function rowToAccount(row: any): Account {
   const cleanedCustomData = { ...custom_data };
   const firstClassFields = [
     'id', 'name', 'type', 'health', 'owner', 'ownerId', 'revenue', 'industry', 'since',
-    'website', 'phone', 'email', 'address', 'location', 'description',
+    'website', 'phone', 'email', 'address', 'location', 'description', 'tower',
     'accountManagerId', 'accountManagerName',
     'practiceLeadId', 'practiceLeadName',
     'clientPartnerId', 'clientPartnerName',
@@ -218,8 +218,8 @@ export class AccountsService {
       `INSERT INTO accounts
          (id, name, type, health, owner_id, owner,
           account_manager_id, practice_lead_id, client_partner_id, vertical_head_id,
-          revenue, industry, since, website, phone, email, address, location, description, custom_data)
-       VALUES (gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)
+          revenue, industry, since, website, phone, email, address, location, description, tower, custom_data)
+       VALUES (gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
        RETURNING *`,
       [
         name, data.type, data.health,
@@ -229,6 +229,7 @@ export class AccountsService {
         data.revenue ?? 0, data.industry ?? '', data.since ?? '',
         data.website ?? '', data.phone ?? '', data.email ?? '',
         data.address ?? '', data.location ?? '', data.description ?? '',
+        data.tower ?? null,
         JSON.stringify(cd),
       ],
     ).catch((err) => { throw this.mapNameConflict(err, name); });
@@ -342,8 +343,8 @@ export class AccountsService {
          name=$1, type=$2, health=$3, owner_id=$4, owner=$5,
          account_manager_id=$6, practice_lead_id=$7, client_partner_id=$8, vertical_head_id=$9,
          revenue=$10, industry=$11, since=$12, website=$13, phone=$14, email=$15,
-         address=$16, location=$17, description=$18, custom_data=$19, updated_at=NOW()
-       WHERE id=$20 AND is_deleted=FALSE`,
+         address=$16, location=$17, description=$18, tower=$19, custom_data=$20, updated_at=NOW()
+       WHERE id=$21 AND is_deleted=FALSE`,
       [
         name, data.type, data.health,
         effectiveOwnerId, ownerDisplayName || existing.owner,
@@ -351,6 +352,7 @@ export class AccountsService {
         data.revenue ?? 0, data.industry ?? '', since,
         data.website ?? '', data.phone ?? '', data.email ?? '',
         data.address ?? '', data.location ?? '', data.description ?? '',
+        data.tower !== undefined ? (data.tower || null) : (existing.tower ?? null),
         JSON.stringify(cd), id,
       ],
     ).catch((err) => { throw this.mapNameConflict(err, name); });

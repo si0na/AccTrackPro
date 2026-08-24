@@ -106,3 +106,5 @@ export type { SearchableSelectProps } from './SearchableSelect';
 
 export { InlineCreateField } from './InlineCreateField';
 export type { InlineCreateFieldProps } from './InlineCreateField';
+
+export { InlineTextEditCell, InlineSelectEditCell, InlineTextareaEditCell } from './InlineCellEdit';

@@ -261,6 +261,10 @@ export const OpportunityDetailsView: React.FC = () => {
       dealValue: o.value,
       serviceProviderPmId: o.serviceProviderPmId,
       practiceLeadId: parentAccount?.practiceLeadId || undefined,
+      priority: o.priority || undefined,
+      deliveryModel: o.deliveryModel || undefined,
+      billingModel: o.billingModel || undefined,
+      tower: o.tower || undefined,
     };
   };
 
@@ -565,7 +569,7 @@ export const OpportunityDetailsView: React.FC = () => {
           },
           { icon: <DollarSign className="w-4 h-4" />, label: 'CRM Value', mono: true, value: formatCur(opp.crmValue) },
           { icon: <TrendingUp className="w-4 h-4" />, label: 'Probability', mono: true, value: `${opp.probability}%` },
-          { icon: <Calendar className="w-4 h-4" />, label: 'Allocation End Date', mono: true, value: opp.allocationEndDate || 'N/A' },
+          { icon: <Calendar className="w-4 h-4" />, label: 'Expected Project End Date', mono: true, value: opp.allocationEndDate || 'N/A' },
         ]}
         attributesClassName="grid-cols-2 lg:grid-cols-5"
       />
@@ -733,17 +737,17 @@ export const OpportunityDetailsView: React.FC = () => {
                 account/value/probability/owner already surface in the header and KPI
                 cards above, so this card focuses on the detail that lives only here. */}
               <Card title="Opportunity Details & Scope" bodyClassName="space-y-6">
-                <FormSection title="Allocation Period">
+                <FormSection title="Expected Project Period">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                     <div>
-                      <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1">Allocation Start Date</span>
+                      <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1">Expected Project Start Date</span>
                       <span className="text-sm text-slate-800 font-mono font-semibold flex items-center">
                         <Calendar className="w-3.5 h-3.5 text-slate-400 mr-1.5" aria-hidden="true" />
                         {opp.allocationStartDate || 'N/A'}
                       </span>
                     </div>
                     <div>
-                      <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1">Allocation End Date</span>
+                      <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1">Expected Project End Date</span>
                       <span className="text-sm text-slate-800 font-mono font-semibold flex items-center">
                         <Calendar className="w-3.5 h-3.5 text-slate-400 mr-1.5" aria-hidden="true" />
                         {opp.allocationEndDate || 'N/A'}
@@ -783,7 +787,7 @@ export const OpportunityDetailsView: React.FC = () => {
                 <FormSection title="Classification">
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                     <div>
-                      <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1">Opportunity Type</span>
+                      <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1">Category</span>
                       <p className="text-sm text-slate-800 font-semibold">{opp.opportunityType}</p>
                     </div>
                     <div>
@@ -807,6 +811,26 @@ export const OpportunityDetailsView: React.FC = () => {
                     <div>
                       <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1">Revenue Model</span>
                       <p className="text-sm text-slate-800 font-semibold">{opp.revenueModel || <span className="text-slate-400 font-medium italic">Not set</span>}</p>
+                    </div>
+                    <div>
+                      <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1">Priority</span>
+                      {opp.priority ? (
+                        <StatusBadge value={opp.priority} colorMap={PRIORITY_COLORS} />
+                      ) : (
+                        <p className="text-sm text-slate-400 font-medium italic">Not set</p>
+                      )}
+                    </div>
+                    <div>
+                      <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1">Delivery Model</span>
+                      <p className="text-sm text-slate-800 font-semibold">{opp.deliveryModel || <span className="text-slate-400 font-medium italic">Not set</span>}</p>
+                    </div>
+                    <div>
+                      <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1">Billing Model</span>
+                      <p className="text-sm text-slate-800 font-semibold">{opp.billingModel || <span className="text-slate-400 font-medium italic">Not set</span>}</p>
+                    </div>
+                    <div>
+                      <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1">Tower</span>
+                      <p className="text-sm text-slate-800 font-semibold">{opp.tower || <span className="text-slate-400 font-medium italic">Not set</span>}</p>
                     </div>
 
                   </div>

@@ -53,6 +53,7 @@ export class CreateAccountDto {
   @IsString() @IsOptional() @MaxLength(1000) address?: string;
   @IsString() @IsOptional() @MaxLength(1000) location?: string;
   @IsString() @IsOptional() @MaxLength(5000) description?: string;
+  @IsOptional() @IsIn(['Tower 1', 'Tower 2'], { message: 'Tower must be one of: Tower 1, Tower 2' }) tower?: string;
 
   @IsArray() @IsOptional() clientStakeholderIds?: string[];
   @IsArray() @IsOptional() serviceProviderUserIds?: string[];

@@ -26,6 +26,8 @@ export type ViewType =
   | 'opportunity-forecast'
   | 'projects'
   | 'project-details'
+  | 'sqa'
+  | 'sqa-details'
   | 'actionItems'
   | 'projectActionItems'
   | 'stakeholders'
@@ -111,6 +113,8 @@ interface CRMContextProps {
   setSelectedOpportunityId: (id: string | null) => void;
   selectedProjectId: string | null;
   setSelectedProjectId: (id: string | null) => void;
+  selectedSqaId: string | null;
+  setSelectedSqaId: (id: string | null) => void;
   /** When true, the Opportunity Details view auto-opens its Create Project modal on mount (set by the list "Create Project" action, then cleared). */
   createProjectIntent: boolean;
   setCreateProjectIntent: (val: boolean) => void;
@@ -369,9 +373,11 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return 'opportunity-details';
     }
     if (path.startsWith('/projects/')) return 'project-details';
+    if (path.startsWith('/sqa/')) return 'sqa-details';
     if (path === '/accounts') return 'accounts';
     if (path === '/opportunities') return 'opportunities';
     if (path === '/projects') return 'projects';
+    if (path === '/sqa') return 'sqa';
     if (path === '/action-items') return 'actionItems';
     if (path === '/stakeholders') return 'stakeholders';
     if (path === '/forecast') return 'forecast';
@@ -397,6 +403,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [selectedAccountId, setSelectedAccountId] = useState<string | null>(() => getInitialId('/accounts/'));
   const [selectedOpportunityId, setSelectedOpportunityId] = useState<string | null>(() => getInitialId('/opportunities/'));
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(() => getInitialId('/projects/'));
+  const [selectedSqaId, setSelectedSqaId] = useState<string | null>(() => getInitialId('/sqa/'));
   const [createProjectIntent, setCreateProjectIntent] = useState<boolean>(false);
   const [oppDetailsSourceView, setOppDetailsSourceView] = useState<ViewType | null>(null);
   const [accountDetailsActiveTab, setAccountDetailsActiveTab] = useState<string>('overview');
@@ -476,9 +483,11 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       view === 'account-details' ||
       view === 'opportunity-details' ||
       view === 'project-details' ||
+      view === 'sqa-details' ||
       (view === 'accounts' && currentView === 'account-details') ||
       (view === 'opportunities' && currentView === 'opportunity-details') ||
-      (view === 'projects' && currentView === 'project-details');
+      (view === 'projects' && currentView === 'project-details') ||
+      (view === 'sqa' && currentView === 'sqa-details');
 
     if (opts?.fromDashboard) {
       // Navigation originating from a dashboard card/funnel keeps its drill-down
@@ -537,6 +546,8 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setSelectedOpportunityId,
         selectedProjectId,
         setSelectedProjectId,
+        selectedSqaId,
+        setSelectedSqaId,
         createProjectIntent,
         setCreateProjectIntent,
         oppDetailsSourceView,

@@ -75,6 +75,22 @@ export class CreateProjectDto {
 
   @IsNumber() @IsOptional() @Min(0, { message: 'Deal Value cannot be negative' })
   dealValue?: number;
+
+  @EmptyToUndefined()
+  @IsOptional() @IsIn(['High', 'Medium', 'Low'], { message: 'Priority must be High, Medium, or Low' })
+  priority?: string;
+
+  @EmptyToUndefined()
+  @IsOptional() @IsIn(['Staff Aug', 'Fixed Bid', 'Managed', 'Fixed Capacity', 'Others'], { message: 'Delivery Model must be one of the allowed values' })
+  deliveryModel?: string;
+
+  @EmptyToUndefined()
+  @IsOptional() @IsIn(['T&M', 'Milestone Based', 'Monthly Fixed', 'Others'], { message: 'Billing Model must be one of the allowed values' })
+  billingModel?: string;
+
+  @EmptyToUndefined()
+  @IsOptional() @IsIn(['Tower 1', 'Tower 2'], { message: 'Tower must be one of: Tower 1, Tower 2' })
+  tower?: string;
 }
 
 export class UpdateProjectDto extends CreateProjectDto {

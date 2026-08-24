@@ -20,6 +20,7 @@ const KNOWN = new Set([
   'plannedCompletionPct', 'actualCompletionPct',
   'plannedEffortHours', 'actualEffortHours',
   'plannedCost', 'actualCost', 'dealValue',
+  'priority', 'deliveryModel', 'billingModel', 'tower',
 ]);
 
 function rowToProject(row: any): Project {
@@ -37,6 +38,7 @@ function rowToProject(row: any): Project {
     planned_completion_pct, actual_completion_pct,
     planned_effort_hours, actual_effort_hours,
     planned_cost, actual_cost, deal_value,
+    priority, delivery_model, billing_model, tower,
     ...base
   } = row;
   return {
@@ -65,6 +67,10 @@ function rowToProject(row: any): Project {
     plannedCost:          planned_cost           !== null && planned_cost           !== undefined ? Number(planned_cost)           : undefined,
     actualCost:           actual_cost            !== null && actual_cost            !== undefined ? Number(actual_cost)            : undefined,
     dealValue:            deal_value             !== null && deal_value             !== undefined ? Number(deal_value)             : undefined,
+    priority:             priority      ?? undefined,
+    deliveryModel:        delivery_model ?? undefined,
+    billingModel:         billing_model  ?? undefined,
+    tower:                tower         ?? undefined,
     ...(custom_data || {}),
   } as Project;
 }
@@ -184,8 +190,9 @@ export class ProjectsService {
             status, health, as_on_date,
             planned_completion_pct, actual_completion_pct,
             planned_effort_hours, actual_effort_hours,
-            planned_cost, actual_cost, custom_data, deal_value)
-         VALUES (gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23)
+            planned_cost, actual_cost, custom_data, deal_value,
+            priority, delivery_model, billing_model, tower)
+         VALUES (gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27)
          RETURNING id`,
         [
           data.name, data.description ?? '', data.accountId, data.opportunityId, data.ownerId ?? null,
@@ -196,6 +203,7 @@ export class ProjectsService {
           data.plannedCompletionPct ?? null, data.actualCompletionPct ?? null,
           data.plannedEffortHours ?? null, data.actualEffortHours ?? null,
           data.plannedCost ?? null, data.actualCost ?? null, JSON.stringify(cd), data.dealValue ?? null,
+          data.priority ?? null, data.deliveryModel ?? null, data.billingModel ?? null, data.tower ?? null,
         ],
       );
       // No summary text is invented here — the history entry records the health
@@ -248,6 +256,11 @@ export class ProjectsService {
 
     const clientPmName = 'clientPmName' in data ? (data.clientPmName ?? null) : (existing.clientPmName ?? null);
 
+    const priority = data.priority !== undefined ? (data.priority || null) : (existing.priority ?? null);
+    const deliveryModel = data.deliveryModel !== undefined ? (data.deliveryModel || null) : (existing.deliveryModel ?? null);
+    const billingModel  = data.billingModel !== undefined ? (data.billingModel || null) : (existing.billingModel ?? null);
+    const tower         = data.tower !== undefined ? (data.tower || null) : (existing.tower ?? null);
+
     await this.db.withTransaction(async (client) => {
       await client.query(
         `UPDATE projects SET
@@ -259,8 +272,10 @@ export class ProjectsService {
            planned_completion_pct=$16, actual_completion_pct=$17,
            planned_effort_hours=$18, actual_effort_hours=$19,
            planned_cost=$20, actual_cost=$21,
-           custom_data=$22, deal_value=$23, updated_at=NOW()
-         WHERE id=$24 AND is_deleted=FALSE`,
+           custom_data=$22, deal_value=$23,
+           priority=$24, delivery_model=$25, billing_model=$26, tower=$27,
+           updated_at=NOW()
+         WHERE id=$28 AND is_deleted=FALSE`,
         [
           data.name ?? existing.name, data.description ?? existing.description ?? '',
           data.accountId ?? existing.accountId, data.opportunityId ?? existing.opportunityId, effectiveOwnerId,
@@ -271,6 +286,7 @@ export class ProjectsService {
           data.plannedCompletionPct ?? null, data.actualCompletionPct ?? null,
           data.plannedEffortHours ?? null, data.actualEffortHours ?? null,
           data.plannedCost ?? null, data.actualCost ?? null, JSON.stringify(cd), data.dealValue ?? null,
+          priority, deliveryModel, billingModel, tower,
           id,
         ],
       );
@@ -368,6 +384,10 @@ export class ProjectsService {
       dealValue:     data.dealValue ?? opp.value ?? undefined,
       serviceProviderPmId: data.serviceProviderPmId ?? opp.serviceProviderPmId ?? undefined,
       practiceLeadId: data.practiceLeadId ?? parentPracticeLeadId ?? undefined,
+      priority:      data.priority ?? opp.priority ?? undefined,
+      deliveryModel: data.deliveryModel ?? opp.deliveryModel ?? undefined,
+      billingModel:  data.billingModel ?? opp.billingModel ?? undefined,
+      tower:         data.tower ?? opp.tower ?? undefined,
     };
     const project = await this.insertProject(merged, requestingUserId);
     this.logger.log(`Project created from Won Opportunity [projectId=${project.id} opportunityId=${opp.id}]`);

@@ -139,6 +139,9 @@ export const OpportunitiesView: React.FC = () => {
       const acc = accounts.find(a => a.id === opp.accountId);
       return acc ? acc.name : (opp.accountName ?? '');
     }
+    if (key === 'serviceProviderStakeholderId') {
+      return opp.serviceProviderStakeholderName ?? '';
+    }
     return (opp as any)[key];
   };
 
@@ -526,7 +529,7 @@ export const OpportunitiesView: React.FC = () => {
 
         <label className="block w-full">
           <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">
-            Allocation Start
+            Expected Project End (From)
           </span>
           <div className="flex items-center gap-1.5 w-full border border-slate-200 rounded-lg bg-white px-2.5 focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500">
             <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden="true" />
@@ -534,7 +537,7 @@ export const OpportunitiesView: React.FC = () => {
               type="date"
               value={allocationEndDateFrom}
               onChange={(e) => setAllocationEndDateFrom(e.target.value)}
-              aria-label="Allocation start date"
+              aria-label="Expected project end date from"
               className="w-full min-w-0 text-xs font-mono py-2.5 border-0 bg-transparent focus:outline-none focus:ring-0 p-0"
             />
           </div>
@@ -542,7 +545,7 @@ export const OpportunitiesView: React.FC = () => {
 
         <label className="block w-full">
           <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">
-            Allocation End
+            Expected Project End (To)
           </span>
           <div className="flex items-center gap-1.5 w-full border border-slate-200 rounded-lg bg-white px-2.5 focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500">
             <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden="true" />
@@ -550,7 +553,7 @@ export const OpportunitiesView: React.FC = () => {
               type="date"
               value={allocationEndDateTo}
               onChange={(e) => setAllocationEndDateTo(e.target.value)}
-              aria-label="Allocation end date"
+              aria-label="Expected project end date to"
               className="w-full min-w-0 text-xs font-mono py-2.5 border-0 bg-transparent focus:outline-none focus:ring-0 p-0"
             />
           </div>

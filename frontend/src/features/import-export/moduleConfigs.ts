@@ -9,6 +9,10 @@ import {
   ACTION_ITEM_STATUS_OPTIONS,
   AOP_YEAR_OPTIONS,
   DEFAULT_AOP_YEAR,
+  TOWER_OPTIONS,
+  DELIVERY_MODEL_OPTIONS,
+  BILLING_MODEL_OPTIONS,
+  PRIORITY_OPTIONS,
 } from '@/constants';
 import { STAKEHOLDER_TYPE_LABELS } from '@/components/ui';
 import type { IEModuleKey, ModuleIEConfig, RefData } from './types';
@@ -40,6 +44,7 @@ const accountsConfig: ModuleIEConfig = {
     { key: 'email', header: 'Email', type: 'string', format: 'email', example: 'contact@acme.com' },
     { key: 'address', header: 'Address', type: 'string' },
     { key: 'description', header: 'Description', type: 'string' },
+    { key: 'tower', header: 'Tower', type: 'enum', options: TOWER_OPTIONS, example: 'Tower 1' },
   ],
   exportColumns: [
     { key: 'name', header: 'Account Name', value: (e) => e.name ?? '' },
@@ -56,6 +61,7 @@ const accountsConfig: ModuleIEConfig = {
     { key: 'email', header: 'Email', value: (e) => e.email ?? '' },
     { key: 'address', header: 'Address', value: (e) => e.address ?? '' },
     { key: 'description', header: 'Description', value: (e) => e.description ?? '' },
+    { key: 'tower', header: 'Tower', value: (e) => e.tower ?? '' },
   ],
 };
 
@@ -72,12 +78,12 @@ const opportunitiesConfig: ModuleIEConfig = {
     { key: 'value', header: 'Deal Value', type: 'number', default: 0, example: '50000' },
     { key: 'probability', header: 'Probability (%)', type: 'integer', example: '25', hint: '0–100' },
     { key: 'crmValue', header: 'Forecast Value', type: 'number', default: 0, example: '45000' },
-    { key: 'opportunityType', header: 'Opportunity Type', type: 'enum', options: OPPORTUNITY_TYPE_OPTIONS, required: true, example: 'Growth' },
+    { key: 'opportunityType', header: 'Category', type: 'enum', options: OPPORTUNITY_TYPE_OPTIONS, required: true, example: 'Growth' },
     { key: 'serviceLine', header: 'Service Line', type: 'enum', options: SERVICE_LINE_OPTIONS, required: true, example: 'Cloud' },
     { key: 'aopAvailable', header: 'AOP Available', type: 'boolean', default: false, example: 'No' },
     { key: 'aopYear', header: 'AOP Year', type: 'enum', options: AOP_YEAR_OPTIONS, example: DEFAULT_AOP_YEAR, hint: 'One of the predefined financial years; required when AOP Available is Yes' },
-    { key: 'allocationStartDate', header: 'Allocation Start Date', type: 'date', example: '2026-01-15' },
-    { key: 'allocationEndDate', header: 'Allocation End Date', type: 'date' },
+    { key: 'allocationStartDate', header: 'Expected Project Start Date', type: 'date', example: '2026-01-15' },
+    { key: 'allocationEndDate', header: 'Expected Project End Date', type: 'date' },
     { key: 'dealStartDate', header: 'Deal Start Date', type: 'date' },
     { key: 'dealCloseDate', header: 'Deal Close Date', type: 'date' },
     { key: 'nextStep', header: 'Next Step', type: 'string' },
@@ -88,6 +94,10 @@ const opportunitiesConfig: ModuleIEConfig = {
     { key: 'location', header: 'Location', type: 'string', example: 'United States' },
     { key: 'cost', header: 'Cost', type: 'number', example: '30000' },
     { key: 'grossMargin', header: 'Gross Margin (%)', type: 'number', example: '25.5', hint: '0–100, decimals allowed' },
+    { key: 'priority', header: 'Priority', type: 'enum', options: PRIORITY_OPTIONS, example: 'High' },
+    { key: 'deliveryModel', header: 'Delivery Model', type: 'enum', options: DELIVERY_MODEL_OPTIONS, example: 'Fixed Bid' },
+    { key: 'billingModel', header: 'Billing Model', type: 'enum', options: BILLING_MODEL_OPTIONS, example: 'T&M' },
+    { key: 'tower', header: 'Tower', type: 'enum', options: TOWER_OPTIONS, example: 'Tower 1' },
   ],
   exportColumns: [
     { key: 'name', header: 'Opportunity Name', value: (e) => e.name ?? '' },
@@ -96,12 +106,12 @@ const opportunitiesConfig: ModuleIEConfig = {
     { key: 'value', header: 'Deal Value', value: (e) => e.value ?? 0 },
     { key: 'probability', header: 'Probability (%)', value: (e) => e.probability ?? 0 },
     { key: 'crmValue', header: 'Forecast Value', value: (e) => e.crmValue ?? 0 },
-    { key: 'opportunityType', header: 'Opportunity Type', value: (e) => e.opportunityType ?? '' },
+    { key: 'opportunityType', header: 'Category', value: (e) => e.opportunityType ?? '' },
     { key: 'serviceLine', header: 'Service Line', value: (e) => e.serviceLine ?? '' },
     { key: 'aopAvailable', header: 'AOP Available', value: (e) => (e.aopAvailable ? 'Yes' : 'No') },
     { key: 'aopYear', header: 'AOP Year', value: (e) => e.aopYear ?? '' },
-    { key: 'allocationStartDate', header: 'Allocation Start Date', value: (e) => e.allocationStartDate ?? '' },
-    { key: 'allocationEndDate', header: 'Allocation End Date', value: (e) => e.allocationEndDate ?? '' },
+    { key: 'allocationStartDate', header: 'Expected Project Start Date', value: (e) => e.allocationStartDate ?? '' },
+    { key: 'allocationEndDate', header: 'Expected Project End Date', value: (e) => e.allocationEndDate ?? '' },
     { key: 'dealStartDate', header: 'Deal Start Date', value: (e) => e.dealStartDate ?? '' },
     { key: 'dealCloseDate', header: 'Deal Close Date', value: (e) => e.dealCloseDate ?? '' },
     { key: 'financialYear', header: 'Financial Year', value: (e) => e.financialYear ?? '' },
@@ -114,6 +124,10 @@ const opportunitiesConfig: ModuleIEConfig = {
     { key: 'location', header: 'Location', value: (e) => e.location ?? '' },
     { key: 'cost', header: 'Cost', value: (e) => e.cost ?? 0 },
     { key: 'grossMargin', header: 'Gross Margin (%)', value: (e) => e.grossMargin ?? '' },
+    { key: 'priority', header: 'Priority', value: (e) => e.priority ?? '' },
+    { key: 'deliveryModel', header: 'Delivery Model', value: (e) => e.deliveryModel ?? '' },
+    { key: 'billingModel', header: 'Billing Model', value: (e) => e.billingModel ?? '' },
+    { key: 'tower', header: 'Tower', value: (e) => e.tower ?? '' },
   ],
 };
 

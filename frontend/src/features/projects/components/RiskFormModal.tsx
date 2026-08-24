@@ -6,6 +6,7 @@
 import React from 'react';
 import { ShieldAlert } from 'lucide-react';
 import type { AdminUser, PriorityLevel, ProjectRisk, RiskStatus } from '@/types';
+import { RISK_RAG_OPTIONS, RISK_CLASSIFICATION_OPTIONS } from '@/constants';
 import {
   FormField,
   FormGrid,
@@ -27,6 +28,11 @@ export const emptyRiskDraft: RiskDraft = {
   mitigationPlan: '',
   status: 'Open',
   targetResolutionDate: '',
+  rag: undefined,
+  impactDescription: '',
+  classification: undefined,
+  contingencyPlan: '',
+  riskOpenDate: '',
 };
 
 export interface RiskFormModalProps {
@@ -77,6 +83,30 @@ export const RiskFormModal: React.FC<RiskFormModalProps> = ({
               className={`${INPUT_CLS} resize-none`}
             />
           </FormField>
+          <FormField label="RAG Status">
+            <select
+              value={value.rag ?? ''}
+              onChange={(e) => onChange({ rag: (e.target.value || undefined) as any })}
+              className={SELECT_CLS}
+            >
+              <option value="">— Select —</option>
+              {RISK_RAG_OPTIONS.map((r) => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
+          </FormField>
+          <FormField label="Classification">
+            <select
+              value={value.classification ?? ''}
+              onChange={(e) => onChange({ classification: e.target.value || undefined })}
+              className={SELECT_CLS}
+            >
+              <option value="">— Select —</option>
+              {RISK_CLASSIFICATION_OPTIONS.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          </FormField>
           <FormField label="Priority" required>
             <select
               required
@@ -113,6 +143,22 @@ export const RiskFormModal: React.FC<RiskFormModalProps> = ({
               ))}
             </select>
           </FormField>
+          <FormField label="Risk Open Date">
+            <input
+              type="date"
+              value={value.riskOpenDate ?? ''}
+              onChange={(e) => onChange({ riskOpenDate: e.target.value || undefined })}
+              className={`${INPUT_CLS} font-mono`}
+            />
+          </FormField>
+          <FormField label="Target Resolution Date">
+            <input
+              type="date"
+              value={value.targetResolutionDate ?? ''}
+              onChange={(e) => onChange({ targetResolutionDate: e.target.value || undefined })}
+              className={`${INPUT_CLS} font-mono`}
+            />
+          </FormField>
           <FormField label="Impact">
             <input
               type="text"
@@ -137,24 +183,34 @@ export const RiskFormModal: React.FC<RiskFormModalProps> = ({
               className={INPUT_CLS}
             />
           </FormField>
-          <FormField label="Target Resolution Date">
-            <input
-              type="date"
-              value={value.targetResolutionDate ?? ''}
-              onChange={(e) => onChange({ targetResolutionDate: e.target.value || undefined })}
-              className={`${INPUT_CLS} font-mono`}
-            />
-          </FormField>
         </FormGrid>
       </FormSection>
 
-      <FormSection title="Mitigation Plan">
+      <FormSection title="Impact & Plans">
+        <FormField label="Impact Description" wide>
+          <textarea
+            rows={2}
+            value={value.impactDescription ?? ''}
+            onChange={(e) => onChange({ impactDescription: e.target.value })}
+            placeholder="Describe potential impact of the risk..."
+            className={`${INPUT_CLS} resize-none`}
+          />
+        </FormField>
         <FormField label="Mitigation Plan" wide>
           <textarea
             rows={2}
             value={value.mitigationPlan}
             onChange={(e) => onChange({ mitigationPlan: e.target.value })}
             placeholder="How will this risk be mitigated..."
+            className={`${INPUT_CLS} resize-none`}
+          />
+        </FormField>
+        <FormField label="Contingency Plan" wide>
+          <textarea
+            rows={2}
+            value={value.contingencyPlan ?? ''}
+            onChange={(e) => onChange({ contingencyPlan: e.target.value })}
+            placeholder="Describe contingency plan if risk occurs..."
             className={`${INPUT_CLS} resize-none`}
           />
         </FormField>

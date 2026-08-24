@@ -34,6 +34,26 @@ export class CreateProjectRiskDto {
   @EmptyToUndefined()
   @IsOptional() @Matches(ISO_DATE_RE, { message: `targetResolutionDate ${ISO_DATE_MSG}` })
   targetResolutionDate?: string;
+
+  @EmptyToUndefined()
+  @IsOptional() @IsIn(['Red', 'Amber', 'Green'], { message: 'RAG must be Red, Amber, or Green' })
+  rag?: string;
+
+  @IsString() @IsOptional() @MaxLength(5000)
+  impactDescription?: string;
+
+  @EmptyToUndefined()
+  @IsOptional() @IsIn(['Cost', 'Resource', 'Schedule', 'Operational', 'Technical', 'Environment', 'Quality', 'Scope', 'Others'], {
+    message: 'Classification must be one of allowed values',
+  })
+  classification?: string;
+
+  @IsString() @IsOptional() @MaxLength(5000)
+  contingencyPlan?: string;
+
+  @EmptyToUndefined()
+  @IsOptional() @Matches(ISO_DATE_RE, { message: `riskOpenDate ${ISO_DATE_MSG}` })
+  riskOpenDate?: string;
 }
 
 export class UpdateProjectRiskDto extends CreateProjectRiskDto {

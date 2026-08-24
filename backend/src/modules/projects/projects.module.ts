@@ -37,6 +37,8 @@ import { ProjectHealthService } from './project-health.service';
     ProjectDependenciesService,
     ProjectHealthService,
   ],
-  exports: [ProjectsService],
+  // ProjectHealthService is exported for the SQA module's weekly health grid,
+  // which reads and writes the same project_health_updates trail.
+  exports: [ProjectsService, ProjectHealthService],
 })
 export class ProjectsModule {}

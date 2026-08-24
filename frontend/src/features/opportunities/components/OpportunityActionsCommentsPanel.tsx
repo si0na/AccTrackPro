@@ -5,10 +5,17 @@
 
 import React, { useState } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
-import { CustomColumnFields } from '@/components/CustomColumnFields';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ActionItemQuickPanel } from '@/features/action-items/components/ActionItemQuickPanel';
 import { ActionItemOwnerField } from '@/components/ActionItemOwnerField';
-import { ActionItemCommentToggle, ActionItemCommentsExpandedRow } from '@/components/ActionItemComments';
-import { Opportunity, ActionItem, Comment, PriorityLevel, ActionItemStatus } from '@/types';
+import { CustomColumnFields } from '@/components/CustomColumnFields';
+import {
+  Opportunity,
+  ActionItem,
+  Comment,
+  PriorityLevel,
+  ActionItemStatus,
+} from '@/types';
 import { ACTION_ITEM_STATUS_OPTIONS } from '@/constants';
 import { getTodayISODate } from '@/utils';
 import {
@@ -22,12 +29,19 @@ import {
   X,
   Send,
   AlertCircle,
-  ListTodo
+  ListTodo,
+  ShieldAlert,
+  Link2,
+  FileText,
+  Edit,
+  Save,
+  Building2,
 } from 'lucide-react';
 import {
   ConfirmDialog,
   PRIORITY_COLORS,
   ACTION_STATUS_COLORS,
+  STAGE_COLORS,
   StatusBadge,
   RowActionButton,
   Table,
@@ -41,6 +55,20 @@ interface PanelProps {
   opportunityId: string;
   onClose?: () => void;
 }
+
+const RISK_STATUS_COLORS: Record<string, string> = {
+  Open: 'bg-red-100 text-red-700',
+  Mitigated: 'bg-blue-100 text-blue-700',
+  Closed: 'bg-green-100 text-green-700',
+  Accepted: 'bg-slate-100 text-slate-600',
+};
+
+const DEPENDENCY_STATUS_COLORS: Record<string, string> = {
+  Open: 'bg-red-100 text-red-700',
+  'In Progress': 'bg-blue-100 text-blue-700',
+  Resolved: 'bg-green-100 text-green-700',
+  Closed: 'bg-slate-100 text-slate-600',
+};
 
 // Sub-component to manage individual comments (handling long comments gracefully)
 const CommentCard: React.FC<{ comment: Comment; onDelete: (id: string) => void }> = ({ comment, onDelete }) => {
@@ -107,6 +135,8 @@ export const OpportunityActionsCommentsPanel: React.FC<PanelProps> = ({ opportun
     comments,
     accounts,
     stakeholders,
+    projects,
+    updateOpportunity,
     addActionItem,
     updateActionItem,
     deleteActionItem,
@@ -116,21 +146,42 @@ export const OpportunityActionsCommentsPanel: React.FC<PanelProps> = ({ opportun
     actionItemsColumnConfig,
   } = useCRM();
 
-  // Find target opportunity
+  // Target opportunity & account
   const opp = opportunities.find(o => o.id === opportunityId);
   const account = opp ? accounts.find(a => a.id === opp.accountId) : null;
+  const linkedProject = opp ? projects.find(p => p.opportunityId === opp.id) : null;
 
-  // Delete confirmation state — covers both action items and their comments
+  // Opportunity details edit state
+  const [isEditingOppDetails, setIsEditingOppDetails] = useState(false);
+  const [oppEditForm, setOppEditForm] = useState<Partial<Opportunity>>({});
+
+  // Delete confirmation state — covers action items and comments
   const [deleteActionTarget, setDeleteActionTarget] = useState<{ type: 'actionItem' | 'comment'; id: string; label: string } | null>(null);
 
-  // Which action item's comments are currently expanded (same pattern as the Action Items page)
-  const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
+  // Selected Action Item for Quick Panel
+  const [selectedActionItemId, setSelectedActionItemId] = useState<string | null>(null);
+
+  // Risks & Dependencies editable state
+  const [risksValue, setRisksValue] = useState(opp?.risksAndDependencies || '');
+
+  React.useEffect(() => {
+    setRisksValue(opp?.risksAndDependencies || '');
+  }, [opp?.risksAndDependencies]);
+
+  const handleRisksBlur = async () => {
+    if (opp && risksValue !== (opp.risksAndDependencies || '')) {
+      await updateOpportunity({
+        ...opp,
+        risksAndDependencies: risksValue,
+      });
+    }
+  };
 
   // Form states
   const [commentText, setCommentText] = useState('');
   const [showAddAction, setShowAddAction] = useState(false);
   
-  // New Action Item state — no prefilled values; the user enters everything.
+  // New Action Item state
   const emptyAction: Omit<ActionItem, 'id'> = {
     title: '',
     accountId: '',
@@ -149,7 +200,7 @@ export const OpportunityActionsCommentsPanel: React.FC<PanelProps> = ({ opportun
     return (
       <div className="bg-amber-50 border border-amber-200 text-amber-800 p-4 rounded-xl text-xs flex items-center gap-2">
         <AlertCircle className="w-4 h-4 shrink-0" />
-        <span>Select an opportunity to view its corresponding action items and comments.</span>
+        <span>Select an opportunity to view its corresponding quick panel.</span>
       </div>
     );
   }
@@ -157,6 +208,8 @@ export const OpportunityActionsCommentsPanel: React.FC<PanelProps> = ({ opportun
   // Filter corresponding items
   const oppActions = actionItems.filter(ai => ai.opportunityId === opp.id);
   const oppComments = comments.filter(c => c.targetType === 'opportunity' && c.targetId === opp.id);
+
+  const ownerName = stakeholders.find(s => s.id === opp.serviceProviderStakeholderId)?.name || 'Unassigned';
 
   // Add Comment Handler
   const handlePostComment = (e: React.FormEvent) => {
@@ -177,15 +230,16 @@ export const OpportunityActionsCommentsPanel: React.FC<PanelProps> = ({ opportun
       opportunityId: opp.id,
     });
 
-    // Reset action form
     setNewAction(emptyAction);
     setShowAddAction(false);
   };
 
+
+
   return (
     <div className="bg-white h-screen max-h-screen flex flex-col space-y-0" id="opp-actions-comments-panel">
       {/* Panel Header */}
-      <div className="bg-slate-900 text-white px-5 py-4 flex items-center justify-between border-b border-slate-800">
+      <div className="bg-slate-900 text-white px-5 py-4 flex items-center justify-between border-b border-slate-800 shrink-0">
         <div className="space-y-1">
           <div className="flex items-center space-x-2">
             <span className="text-[10px] bg-blue-600/20 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
@@ -206,14 +260,179 @@ export const OpportunityActionsCommentsPanel: React.FC<PanelProps> = ({ opportun
         )}
       </div>
 
-      {/* Main Panel Content — Action Items span the full width, Comments follow below */}
+      {/* Main Panel Scrollable Content — Consolidated View:
+          1. Opportunity Details
+          2. Action Items
+          3. Comments
+          4. Risks
+          5. Dependencies
+      */}
       <div className="flex flex-col divide-y divide-slate-200 flex-1 overflow-y-auto">
-        {/* Deliverables & Action Table (full width) */}
+        
+        {/* SECTION 1: Opportunity Details */}
+        <div className="p-5 space-y-4 bg-slate-50/40">
+          <div className="flex items-center justify-between border-b border-slate-200/80 pb-3">
+            <div className="flex items-center space-x-2">
+              <FileText className="w-4.5 h-4.5 text-blue-600" />
+              <h4 className="font-bold text-slate-800 text-sm tracking-tight">Opportunity Details</h4>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                if (isEditingOppDetails) {
+                  updateOpportunity({ ...opp, ...oppEditForm });
+                } else {
+                  setOppEditForm({
+                    stage: opp.stage,
+                    probability: opp.probability,
+                    value: opp.value,
+                    serviceLine: opp.serviceLine,
+                    allocationStartDate: opp.allocationStartDate,
+                    allocationEndDate: opp.allocationEndDate,
+                    description: opp.description,
+                  });
+                }
+                setIsEditingOppDetails(!isEditingOppDetails);
+              }}
+              className="flex items-center space-x-1 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-lg cursor-pointer transition-colors"
+            >
+              {isEditingOppDetails ? (
+                <>
+                  <Save className="w-3.5 h-3.5 text-green-600" />
+                  <span>Save Details</span>
+                </>
+              ) : (
+                <>
+                  <Edit className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Edit Details</span>
+                </>
+              )}
+            </button>
+          </div>
+
+          {isEditingOppDetails ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-500 uppercase">Stage</label>
+                <select
+                  value={oppEditForm.stage}
+                  onChange={(e) => setOppEditForm({ ...oppEditForm, stage: e.target.value as any })}
+                  className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white font-semibold text-slate-800"
+                >
+                  {Object.keys(STAGE_COLORS).map(s => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-500 uppercase">Probability (%)</label>
+                <input
+                  type="number"
+                  min={0}
+                  max={100}
+                  value={oppEditForm.probability ?? 0}
+                  onChange={(e) => setOppEditForm({ ...oppEditForm, probability: Number(e.target.value) })}
+                  className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white font-mono"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-500 uppercase">Deal Size ($)</label>
+                <input
+                  type="number"
+                  value={oppEditForm.value ?? 0}
+                  onChange={(e) => setOppEditForm({ ...oppEditForm, value: Number(e.target.value) })}
+                  className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white font-mono"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-500 uppercase">Service Line</label>
+                <input
+                  type="text"
+                  value={oppEditForm.serviceLine || ''}
+                  onChange={(e) => setOppEditForm({ ...oppEditForm, serviceLine: e.target.value as any })}
+                  className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-500 uppercase">Expected Project Start Date</label>
+                <input
+                  type="date"
+                  value={oppEditForm.allocationStartDate || ''}
+                  onChange={(e) => setOppEditForm({ ...oppEditForm, allocationStartDate: e.target.value })}
+                  className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white font-mono"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-500 uppercase">Expected Project End Date</label>
+                <input
+                  type="date"
+                  value={oppEditForm.allocationEndDate || ''}
+                  onChange={(e) => setOppEditForm({ ...oppEditForm, allocationEndDate: e.target.value })}
+                  className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white font-mono"
+                />
+              </div>
+              <div className="md:col-span-2 space-y-1">
+                <label className="text-[10px] font-bold text-slate-500 uppercase">Description</label>
+                <textarea
+                  rows={2}
+                  value={oppEditForm.description || ''}
+                  onChange={(e) => setOppEditForm({ ...oppEditForm, description: e.target.value })}
+                  className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white"
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 bg-white p-4 rounded-xl border border-slate-200/80 shadow-2xs">
+              <div className="space-y-0.5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Account</span>
+                <span className="text-xs font-extrabold text-slate-800 truncate block" title={account.name}>{account.name}</span>
+              </div>
+              <div className="space-y-0.5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Stage</span>
+                <div>
+                  <StatusBadge value={opp.stage} colorMap={STAGE_COLORS} shape="rounded" />
+                </div>
+              </div>
+              <div className="space-y-0.5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Deal Size</span>
+                <span className="text-xs font-mono font-extrabold text-slate-900 block">${(opp.value || 0).toLocaleString()}</span>
+              </div>
+              <div className="space-y-0.5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Probability</span>
+                <span className="text-xs font-mono font-bold text-blue-700 block">{opp.probability}%</span>
+              </div>
+              <div className="space-y-0.5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Category</span>
+                <span className="text-xs font-semibold text-slate-700 block">{opp.opportunityType || '—'}</span>
+              </div>
+              <div className="space-y-0.5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Service Line</span>
+                <span className="text-xs font-semibold text-slate-700 block">{opp.serviceLine || '—'}</span>
+              </div>
+              <div className="space-y-0.5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Expected Project Start</span>
+                <span className="text-xs font-mono font-semibold text-slate-600 block">{opp.allocationStartDate || '—'}</span>
+              </div>
+              <div className="space-y-0.5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Expected Project End</span>
+                <span className="text-xs font-mono font-semibold text-slate-600 block">{opp.allocationEndDate || '—'}</span>
+              </div>
+              {opp.description && (
+                <div className="col-span-2 md:col-span-4 pt-2 border-t border-slate-100">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-0.5">Description</span>
+                  <p className="text-xs text-slate-600 font-medium leading-relaxed">{opp.description}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* SECTION 2: Action Items */}
         <div className="p-5 space-y-4">
           <div className="flex items-center justify-between border-b border-slate-100 pb-3">
             <div className="flex items-center space-x-2">
               <CheckSquare className="w-4.5 h-4.5 text-blue-600" />
-              <h4 className="font-bold text-slate-800 text-sm tracking-tight">Corresponding Action Items</h4>
+              <h4 className="font-bold text-slate-800 text-sm tracking-tight">Action Items</h4>
               <span className="text-[11px] bg-slate-100 text-slate-600 font-bold px-2 py-0.5 rounded-full">
                 {oppActions.length}
               </span>
@@ -338,7 +557,6 @@ export const OpportunityActionsCommentsPanel: React.FC<PanelProps> = ({ opportun
                   />
                 </div>
 
-                {/* Active custom columns (hidden ones excluded) */}
                 <CustomColumnFields
                   columns={actionItemColumns}
                   config={actionItemsColumnConfig}
@@ -381,8 +599,8 @@ export const OpportunityActionsCommentsPanel: React.FC<PanelProps> = ({ opportun
               <tbody>
                 {oppActions.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="text-center py-10 text-slate-400 font-medium bg-white">
-                      No active deliverables logged for this opportunity. Click "Create Task" to add one.
+                    <td colSpan={8} className="text-center py-8 text-slate-400 font-medium bg-white">
+                      No active deliverables logged for this opportunity. Click "Create Action Item" to add one.
                     </td>
                   </tr>
                 ) : (
@@ -406,14 +624,6 @@ export const OpportunityActionsCommentsPanel: React.FC<PanelProps> = ({ opportun
                                   <AlertTriangle className="w-3.5 h-3.5 text-amber-500" aria-hidden="true" />
                                 </span>
                               )}
-                              <div className="shrink-0">
-                                <ActionItemCommentToggle
-                                  itemTitle={action.title}
-                                  commentCount={actionComments.length}
-                                  isExpanded={expandedItemId === action.id}
-                                  onToggle={() => setExpandedItemId(expandedItemId === action.id ? null : action.id)}
-                                />
-                              </div>
                             </div>
                           </TableCell>
                           <TableCell className="text-slate-600 font-normal max-w-[240px]">
@@ -462,16 +672,6 @@ export const OpportunityActionsCommentsPanel: React.FC<PanelProps> = ({ opportun
                             />
                           </TableCell>
                         </TableRow>
-
-                        {expandedItemId === action.id && (
-                          <ActionItemCommentsExpandedRow
-                            colSpan={8}
-                            comments={actionComments}
-                            risksAndDependencies={action.risksAndDependencies ?? ''}
-                            onAddComment={(text) => addComment('actionItem', action.id, text)}
-                            onDeleteComment={(comment) => setDeleteActionTarget({ type: 'comment', id: comment.id, label: comment.text.substring(0, 40) })}
-                          />
-                        )}
                       </React.Fragment>
                     );
                   })
@@ -481,19 +681,19 @@ export const OpportunityActionsCommentsPanel: React.FC<PanelProps> = ({ opportun
           </div>
         </div>
 
-        {/* Opportunity Comments (full width, below the Action Items table) */}
+        {/* SECTION 3: Comments */}
         <div className="p-5 space-y-4">
           <div className="space-y-4">
             <div className="flex items-center space-x-2 border-b border-slate-100 pb-3">
               <MessageSquare className="w-4.5 h-4.5 text-blue-600" />
-              <h4 className="font-bold text-slate-800 text-sm tracking-tight">Opportunity Comments</h4>
+              <h4 className="font-bold text-slate-800 text-sm tracking-tight">Comments</h4>
               <span className="text-[11px] bg-slate-100 text-slate-600 font-bold px-2 py-0.5 rounded-full">
                 {oppComments.length}
               </span>
             </div>
 
-            {/* Scrollable Container for multiple large comments */}
-            <div className="overflow-y-auto max-h-[360px] pr-1.5 space-y-3 custom-scrollbar">
+            {/* Scrollable Container for comments */}
+            <div className="overflow-y-auto max-h-[300px] pr-1.5 space-y-3 custom-scrollbar">
               {oppComments.length === 0 ? (
                 <div className="flex flex-col items-center justify-center text-center p-6 bg-slate-50/50 rounded-xl border border-dashed border-slate-200">
                   <MessageSquare className="w-8 h-8 text-slate-300 mb-2" />
@@ -540,6 +740,25 @@ export const OpportunityActionsCommentsPanel: React.FC<PanelProps> = ({ opportun
             </div>
           </form>
         </div>
+
+        {/* SECTION 4: Risks & Dependencies */}
+        <div className="p-5 space-y-3">
+          <div className="flex items-center space-x-2 border-b border-slate-100 pb-3">
+            <AlertTriangle className="w-4.5 h-4.5 text-amber-500" />
+            <h4 className="font-bold text-slate-800 text-sm tracking-tight">Risks & Dependencies</h4>
+          </div>
+
+          <div>
+            <textarea
+              rows={3}
+              value={risksValue}
+              onChange={(e) => setRisksValue(e.target.value)}
+              onBlur={handleRisksBlur}
+              placeholder="Type risks & dependencies for this opportunity..."
+              className="w-full text-xs p-3.5 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 bg-slate-50 focus:bg-white transition-all leading-relaxed font-medium resize-y"
+            />
+          </div>
+        </div>
       </div>
 
       <ConfirmDialog
@@ -553,6 +772,37 @@ export const OpportunityActionsCommentsPanel: React.FC<PanelProps> = ({ opportun
         }}
         onCancel={() => setDeleteActionTarget(null)}
       />
+
+      {/* Action Item Quick Panel Drawer */}
+      <AnimatePresence>
+        {selectedActionItemId && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSelectedActionItemId(null)}
+              className="fixed inset-0 bg-slate-900/35 backdrop-blur-xs z-50 cursor-pointer"
+            />
+
+            {/* Sidebar Panel */}
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 180 }}
+              className="fixed right-0 top-0 h-screen w-full sm:w-[650px] md:w-[750px] lg:w-[900px] bg-white shadow-2xl z-50 flex flex-col border-l border-slate-200 overflow-hidden"
+            >
+              <ActionItemQuickPanel
+                actionItemId={selectedActionItemId}
+                onClose={() => setSelectedActionItemId(null)}
+              />
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
+

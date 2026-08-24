@@ -21,6 +21,7 @@ import {
   Gauge,
   HelpCircle,
   Link2,
+  MessageSquare,
   MoreVertical,
   Pencil,
   Plus,
@@ -42,7 +43,6 @@ import {
 import { NumberInput } from '@/components/NumberInput';
 import { InlineEditModal } from '@/components/InlineEditModal';
 import { ActionItemFormModal } from '@/features/action-items/components/ActionItemFormModal';
-import { ActionItemCommentToggle, ActionItemCommentsExpandedRow } from '@/components/ActionItemComments';
 import { ProjectFormModal } from './ProjectFormModal';
 import { SimpleCrudTab } from './SimpleCrudTab';
 import { MilestoneFormModal, MilestoneDraft, emptyMilestoneDraft } from './MilestoneFormModal';
@@ -545,7 +545,7 @@ export const ProjectDetailsView: React.FC = () => {
   const [aiSortDirection, setAiSortDirection] = useState<SortDirection>('asc');
   const [aiPage, setAiPage] = useState(1);
   const [aiPageSize, setAiPageSize] = useState(10);
-  const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
+  const [selectedActionItemId, setSelectedActionItemId] = useState<string | null>(null);
 
   const handleAiSort = (field: string) => {
     if (aiSortField === field) setAiSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));
@@ -594,7 +594,7 @@ export const ProjectDetailsView: React.FC = () => {
     setNewAi({ ...emptyTask, accountId: project.accountId, projectId: project.id });
   };
 
-  const [deleteTarget, setDeleteTarget] = useState<{ type: 'actionItem' | 'comment'; id: string; label: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ type: 'actionItem' | 'comment' | 'risk' | 'dependency'; id: string; label: string } | null>(null);
 
   const goBack = () => setView('projects');
 
@@ -798,6 +798,35 @@ export const ProjectDetailsView: React.FC = () => {
                 <div>
                   <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1">Methodology</span>
                   <span className="text-sm text-slate-800 font-semibold">{project.methodology}</span>
+                </div>
+              </div>
+            </FormSection>
+
+            <FormSection title="Business Information">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="rounded-lg border border-slate-100 p-3.5">
+                  <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">Priority</span>
+                  {project.priority ? (
+                    <StatusBadge value={project.priority} colorMap={PRIORITY_COLORS} />
+                  ) : (
+                    <p className="text-sm text-slate-400 font-medium italic">Not set</p>
+                  )}
+                </div>
+                <div className="rounded-lg border border-slate-100 p-3.5">
+                  <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">Delivery Model</span>
+                  <p className="text-sm text-slate-800 font-semibold">{project.deliveryModel || <span className="text-slate-400 font-medium italic">Not set</span>}</p>
+                </div>
+                <div className="rounded-lg border border-slate-100 p-3.5">
+                  <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">Billing Model</span>
+                  <p className="text-sm text-slate-800 font-semibold">{project.billingModel || <span className="text-slate-400 font-medium italic">Not set</span>}</p>
+                </div>
+                <div className="rounded-lg border border-slate-100 p-3.5">
+                  <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">Tower</span>
+                  <p className="text-sm text-slate-800 font-semibold">{project.tower || <span className="text-slate-400 font-medium italic">Not set</span>}</p>
+                </div>
+                <div className="rounded-lg border border-slate-100 p-3.5">
+                  <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">Service Line</span>
+                  <p className="text-sm text-slate-800 font-semibold">{project.serviceLine || <span className="text-slate-400 font-medium italic">Not set</span>}</p>
                 </div>
               </div>
             </FormSection>
@@ -1072,10 +1101,15 @@ export const ProjectDetailsView: React.FC = () => {
             getRowLabel={(r) => r.description.substring(0, 40)}
             onDelete={canDeleteProject ? handleDeleteRisk : undefined}
             columns={[
-              { key: 'description', label: 'Description', render: (r) => <span className="block max-w-[320px] line-clamp-2 font-semibold text-slate-800" title={r.description}>{r.description}</span> },
+              { key: 'rag', label: 'RAG', render: (r) => r.rag ? <StatusBadge value={r.rag} colorMap={HEALTH_COLORS} shape="rounded" /> : <span className="text-slate-400 font-medium italic">—</span> },
+              { key: 'description', label: 'Description', render: (r) => <span className="block max-w-[240px] line-clamp-2 font-semibold text-slate-800" title={r.description}>{r.description}</span> },
+              { key: 'classification', label: 'Classification', render: (r) => <span className="text-slate-600 font-semibold">{r.classification || '—'}</span> },
               { key: 'priority', label: 'Priority', render: (r) => <StatusBadge value={r.priority} colorMap={PRIORITY_COLORS} shape="rounded" /> },
               { key: 'status', label: 'Status', render: (r) => <StatusBadge value={r.status} colorMap={RISK_STATUS_COLORS} shape="rounded" /> },
+              { key: 'impactDescription', label: 'Impact Description', render: (r) => <span className="block max-w-[200px] line-clamp-2 text-slate-600" title={r.impactDescription || ''}>{r.impactDescription || '—'}</span> },
+              { key: 'contingencyPlan', label: 'Contingency Plan', render: (r) => <span className="block max-w-[200px] line-clamp-2 text-slate-600" title={r.contingencyPlan || ''}>{r.contingencyPlan || '—'}</span> },
               { key: 'owner', label: 'Owner', render: (r) => <span className="text-slate-600 font-semibold">{r.ownerName || '—'}</span> },
+              { key: 'riskOpenDate', label: 'Risk Open Date', render: (r) => <span className="font-mono text-slate-500">{r.riskOpenDate || '—'}</span> },
               { key: 'targetResolutionDate', label: 'Target Resolution', render: (r) => <span className="font-mono text-slate-500">{r.targetResolutionDate || '—'}</span> },
             ]}
           />
@@ -1227,111 +1261,100 @@ export const ProjectDetailsView: React.FC = () => {
                       pagedActions.map((item) => {
                         const itemComments = comments.filter((c) => c.targetType === 'actionItem' && c.targetId === item.id);
                         return (
-                          <React.Fragment key={item.id}>
-                            <TableRow className="hover:bg-slate-50/50">
-                              {displayedActionCols.map((col) => {
-                                if (col.key === 'title') {
-                                  return (
-                                    <TableCell key={col.key}>
-                                      <div className="flex items-center flex-wrap gap-1">
-                                        <div className="flex-1">
-                                          <p className="font-extrabold text-slate-900 text-sm">{item.title}</p>
-                                        </div>
-                                        <ActionItemCommentToggle
-                                          itemTitle={item.title}
-                                          commentCount={itemComments.length}
-                                          isExpanded={expandedItemId === item.id}
-                                          onToggle={() => setExpandedItemId(expandedItemId === item.id ? null : item.id)}
-                                        />
-                                      </div>
-                                    </TableCell>
-                                  );
-                                }
-                                if (col.key === 'notes') {
-                                  return (
-                                    <TableCell key={col.key} className="text-slate-600 font-medium">
-                                      <span className="block max-w-[280px] line-clamp-2" title={item.notes || undefined}>
-                                        {item.notes || '—'}
-                                      </span>
-                                    </TableCell>
-                                  );
-                                }
-                                if (col.key === 'accountId') {
-                                  return (
-                                    <TableCell key={col.key} className="text-slate-600 font-bold">
-                                      {account ? account.name : 'Unknown Account'}
-                                    </TableCell>
-                                  );
-                                }
-                                if (col.key === 'owner') {
-                                  return (
-                                    <TableCell key={col.key} className="text-slate-600 font-semibold">
-                                      {item.ownerName || item.owner || '—'}
-                                    </TableCell>
-                                  );
-                                }
-                                if (col.key === 'priority') {
-                                  return (
-                                    <TableCell key={col.key}>
-                                      <StatusBadge value={item.priority} colorMap={PRIORITY_COLORS} shape="rounded" />
-                                    </TableCell>
-                                  );
-                                }
-                                if (col.key === 'status') {
-                                  return (
-                                    <TableCell key={col.key}>
-                                      <StatusBadge value={item.status} colorMap={ACTION_STATUS_COLORS} shape="rounded" />
-                                    </TableCell>
-                                  );
-                                }
-                                if (col.key === 'openDate') {
-                                  return <TableCell key={col.key} className="font-mono font-medium text-slate-500">{item.openDate}</TableCell>;
-                                }
-                                if (col.key === 'dueDate') {
-                                  return <TableCell key={col.key} className="font-mono font-medium text-slate-500">{item.dueDate}</TableCell>;
-                                }
-                                const rawVal = item[col.key] ?? (col.type === 'boolean' ? false : '');
+                          <TableRow key={item.id} className="hover:bg-slate-50/50">
+                            {displayedActionCols.map((col) => {
+                              if (col.key === 'title') {
                                 return (
                                   <TableCell key={col.key}>
-                                    {col.type === 'boolean' ? (
-                                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${rawVal ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>
-                                        {rawVal ? 'Yes' : 'No'}
-                                      </span>
-                                    ) : col.type === 'number' ? (
-                                      <span className="font-mono font-semibold text-slate-700">{rawVal}</span>
-                                    ) : (
-                                      <span className="text-slate-600">{String(rawVal)}</span>
-                                    )}
+                                    <div className="flex items-center flex-wrap gap-2">
+                                      <div className="flex-1 min-w-0">
+                                        <button
+                                          type="button"
+                                          onClick={() => setSelectedActionItemId(item.id)}
+                                          className="font-extrabold text-slate-900 text-sm hover:text-blue-600 cursor-pointer text-left transition-colors truncate block max-w-full"
+                                        >
+                                          {item.title}
+                                        </button>
+                                      </div>
+                                    </div>
                                   </TableCell>
                                 );
-                              })}
-                              <TableCell align="center" sticky="right">
-                                <div className="flex items-center justify-center space-x-1">
-                                  <RowActionButton
-                                    intent="edit"
-                                    label={`Edit action item ${item.title}`}
-                                    icon={<Pencil className="w-3.5 h-3.5" />}
-                                    onClick={() => handleEditAiClick(item)}
-                                  />
-                                  <RowActionButton
-                                    intent="delete"
-                                    label={`Delete action item ${item.title}`}
-                                    icon={<Trash2 className="w-3.5 h-3.5" />}
-                                    onClick={() => setDeleteTarget({ type: 'actionItem', id: item.id, label: item.title })}
-                                  />
-                                </div>
-                              </TableCell>
-                            </TableRow>
-                            {expandedItemId === item.id && (
-                              <ActionItemCommentsExpandedRow
-                                colSpan={displayedActionCols.length + 1}
-                                comments={itemComments}
-                                risksAndDependencies={item.risksAndDependencies ?? ''}
-                                onAddComment={(text) => addComment('actionItem', item.id, text)}
-                                onDeleteComment={(c) => setDeleteTarget({ type: 'comment', id: c.id, label: c.text.substring(0, 40) })}
-                              />
-                            )}
-                          </React.Fragment>
+                              }
+                              if (col.key === 'notes') {
+                                return (
+                                  <TableCell key={col.key} className="text-slate-600 font-medium">
+                                    <span className="block max-w-[280px] line-clamp-2" title={item.notes || undefined}>
+                                      {item.notes || '—'}
+                                    </span>
+                                  </TableCell>
+                                );
+                              }
+                              if (col.key === 'accountId') {
+                                return (
+                                  <TableCell key={col.key} className="text-slate-600 font-bold">
+                                    {account ? account.name : 'Unknown Account'}
+                                  </TableCell>
+                                );
+                              }
+                              if (col.key === 'owner') {
+                                return (
+                                  <TableCell key={col.key} className="text-slate-600 font-semibold">
+                                    {item.ownerName || item.owner || '—'}
+                                  </TableCell>
+                                );
+                              }
+                              if (col.key === 'priority') {
+                                return (
+                                  <TableCell key={col.key}>
+                                    <StatusBadge value={item.priority} colorMap={PRIORITY_COLORS} shape="rounded" />
+                                  </TableCell>
+                                );
+                              }
+                              if (col.key === 'status') {
+                                return (
+                                  <TableCell key={col.key}>
+                                    <StatusBadge value={item.status} colorMap={ACTION_STATUS_COLORS} shape="rounded" />
+                                  </TableCell>
+                                );
+                              }
+                              if (col.key === 'openDate') {
+                                return <TableCell key={col.key} className="font-mono font-medium text-slate-500">{item.openDate}</TableCell>;
+                              }
+                              if (col.key === 'dueDate') {
+                                return <TableCell key={col.key} className="font-mono font-medium text-slate-500">{item.dueDate}</TableCell>;
+                              }
+                              const rawVal = item[col.key] ?? (col.type === 'boolean' ? false : '');
+                              return (
+                                <TableCell key={col.key}>
+                                  {col.type === 'boolean' ? (
+                                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${rawVal ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>
+                                      {rawVal ? 'Yes' : 'No'}
+                                    </span>
+                                  ) : col.type === 'number' ? (
+                                    <span className="font-mono font-semibold text-slate-700">{rawVal}</span>
+                                  ) : (
+                                    <span className="text-slate-600">{String(rawVal)}</span>
+                                  )}
+                                </TableCell>
+                              );
+                            })}
+                            <TableCell align="center" sticky="right">
+                              <div className="flex items-center justify-center space-x-1">
+                                <RowActionButton
+                                  intent="edit"
+                                  label={`Edit action item ${item.title}`}
+                                  icon={<Pencil className="w-3.5 h-3.5" />}
+                                  onClick={() => handleEditAiClick(item)}
+                                />
+                                <RowActionButton
+                                  intent="delete"
+                                  label={`Delete action item ${item.title}`}
+                                  icon={<Trash2 className="w-3.5 h-3.5" />}
+                                  onClick={() => setDeleteTarget({ type: 'actionItem', id: item.id, label: item.title })}
+                                />
+                              </div>
+                            </TableCell>
+                          </TableRow>
                         );
                       })
                     )}
