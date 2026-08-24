@@ -11,6 +11,7 @@ describe('AuthService - Password Reset Flow', () => {
   let mockBus: any;
   let mockEmployeeMasterService: any;
   let mockGraphMailService: any;
+  let mockServiceProviderService: any;
 
   beforeEach(() => {
     mockUsersService = {
@@ -35,6 +36,7 @@ describe('AuthService - Password Reset Flow', () => {
     mockGraphMailService = {
       sendMail: jest.fn(),
     };
+    mockServiceProviderService = {};
 
     service = new AuthService(
       mockUsersService,
@@ -43,6 +45,7 @@ describe('AuthService - Password Reset Flow', () => {
       mockBus,
       mockEmployeeMasterService,
       mockGraphMailService,
+      mockServiceProviderService,
     );
   });
 

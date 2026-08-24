@@ -22,6 +22,9 @@ const PRIORITY = ['High', 'Medium', 'Low'] as const;
 const INFLUENCE = ['High', 'Medium', 'Low'] as const;
 const RELATIONSHIP = ['Strong', 'Neutral', 'Weak'] as const;
 const STAKEHOLDER_TYPE = ['CLIENT', 'SERVICE_PROVIDER'] as const;
+const TOWER = ['Tower 1', 'Tower 2'] as const;
+const DELIVERY_MODEL = ['Staff Aug', 'Fixed Bid', 'Managed', 'Fixed Capacity', 'Others'] as const;
+const BILLING_MODEL = ['T&M', 'Milestone Based', 'Monthly Fixed', 'Others'] as const;
 
 export type IEModuleKey = 'accounts' | 'opportunities' | 'stakeholders' | 'actionItems';
 
@@ -38,6 +41,7 @@ export const ACCOUNT_FIELDS: ImportFieldDef[] = [
   { key: 'email', header: 'Email', type: 'string', format: 'email' },
   { key: 'address', header: 'Address', type: 'string' },
   { key: 'description', header: 'Description', type: 'string' },
+  { key: 'tower', header: 'Tower', type: 'enum', options: TOWER },
 ];
 
 export const OPPORTUNITY_FIELDS: ImportFieldDef[] = [
@@ -47,12 +51,12 @@ export const OPPORTUNITY_FIELDS: ImportFieldDef[] = [
   { key: 'value', header: 'Deal Value', type: 'number', default: 0 },
   { key: 'probability', header: 'Probability (%)', type: 'integer' },
   { key: 'crmValue', header: 'Forecast Value', type: 'number', default: 0 },
-  { key: 'opportunityType', header: 'Opportunity Type', type: 'enum', options: OPPORTUNITY_TYPE, required: true },
+  { key: 'opportunityType', header: 'Category', type: 'enum', options: OPPORTUNITY_TYPE, required: true },
   { key: 'serviceLine', header: 'Service Line', type: 'enum', options: SERVICE_LINE, required: true },
   { key: 'aopAvailable', header: 'AOP Available', type: 'boolean', default: false },
   { key: 'aopYear', header: 'AOP Year', type: 'enum', options: AOP_YEAR_OPTIONS },
-  { key: 'allocationStartDate', header: 'Allocation Start Date', type: 'date' },
-  { key: 'allocationEndDate', header: 'Allocation End Date', type: 'date' },
+  { key: 'allocationStartDate', header: 'Expected Project Start Date', type: 'date' },
+  { key: 'allocationEndDate', header: 'Expected Project End Date', type: 'date' },
   { key: 'dealStartDate', header: 'Deal Start Date', type: 'date' },
   { key: 'dealCloseDate', header: 'Deal Close Date', type: 'date' },
   { key: 'nextStep', header: 'Next Step', type: 'string' },
@@ -63,6 +67,10 @@ export const OPPORTUNITY_FIELDS: ImportFieldDef[] = [
   { key: 'location', header: 'Location', type: 'string' },
   { key: 'cost', header: 'Cost', type: 'number' },
   { key: 'grossMargin', header: 'Gross Margin (%)', type: 'number' },
+  { key: 'priority', header: 'Priority', type: 'enum', options: PRIORITY },
+  { key: 'deliveryModel', header: 'Delivery Model', type: 'enum', options: DELIVERY_MODEL },
+  { key: 'billingModel', header: 'Billing Model', type: 'enum', options: BILLING_MODEL },
+  { key: 'tower', header: 'Tower', type: 'enum', options: TOWER },
 ];
 
 /**

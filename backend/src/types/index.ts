@@ -24,6 +24,7 @@ export type RiskStatus = 'Open' | 'Mitigated' | 'Closed' | 'Accepted';
 export type AssumptionValidationStatus = 'Unvalidated' | 'Validated' | 'Invalidated';
 export type IssueStatus = 'Open' | 'In Progress' | 'Resolved' | 'Closed';
 export type DependencyStatus = 'Open' | 'In Progress' | 'Resolved' | 'Closed';
+export type SqaRevenueSource = 'sqa' | 'project' | 'opportunity' | 'none';
 
 export interface Account {
   id: string;
@@ -50,6 +51,7 @@ export interface Account {
   address: string;
   location: string;
   description: string;
+  tower?: string;
   clientStakeholderIds?: string[];
   serviceProviderUserIds?: string[];
   [key: string]: any;
@@ -107,6 +109,11 @@ export interface Opportunity {
   location?: string;
   cost?: number;
   grossMargin?: number;
+  /** Optional priority level for this opportunity. */
+  priority?: PriorityLevel;
+  deliveryModel?: string;
+  billingModel?: string;
+  tower?: string;
   /** Linked Project id (joined server-side), populated once this opportunity has gone Won. Null when none exists. */
   projectId?: string | null;
   // Persisted forecast + actuals (joined from opportunity_forecasts). Read-only
@@ -157,7 +164,138 @@ export interface Project {
   actualEffortHours?: number;
   plannedCost?: number;
   actualCost?: number;
+  priority?: PriorityLevel;
+  deliveryModel?: string;
+  billingModel?: string;
+  tower?: string;
   [key: string]: any;
+}
+
+/**
+ * One ISO week of an SQA record's health grid — the "Health Week 31" columns.
+ * Derived from (and written back into) the project health trail, so the week
+ * numbers are data rather than schema and the grid extends indefinitely.
+ */
+export interface SqaWeeklyHealth {
+  isoYear: number;
+  weekNumber: number;
+  /** Monday of the week, YYYY-MM-DD. */
+  weekStart: string;
+  /** e.g. "Week 31". */
+  label: string;
+  /** RAG for the week; null only before the project has any health entry. */
+  health: ProjectHealth | null;
+  /** True when the week has no entry of its own and the previous RAG carries over. */
+  carriedForward: boolean;
+  /** The project_health_updates entry backing this week, when one exists. */
+  entryId?: string;
+  statusSummary?: string;
+}
+
+/**
+ * SQA (Software Quality Assurance) record — weekly quality tracking for one
+ * project.
+ *
+ * Only a minority of these fields are stored on `sqa_records`. Account,
+ * Project, PM, revenue, billing model, tower and team size are read through the
+ * `projectId` relationship on every request, so SQA can never hold a stale copy
+ * of them. The three-way `x` / `xInherited` / `xOverride` fields make the
+ * provenance explicit: `xInherited` is what the application already knows,
+ * `xOverride` is what SQA stated instead (undefined = inherit), and `x` is the
+ * effective value the UI shows.
+ */
+export interface SqaRecord {
+  id: string;
+
+  // ── Read through the Project relationship (never stored on the SQA row) ──────
+  projectId: string;
+  projectName?: string;
+  projectStatus?: ProjectStatus;
+  /** The project's current health — distinct from the weekly grid below. */
+  projectHealth?: ProjectHealth;
+  accountId: string;
+  accountName?: string;
+  opportunityId?: string;
+  opportunityName?: string;
+  /** Service Provider Project Manager, from the project. */
+  pmId?: string;
+  pmName?: string;
+  /** Client Project Manager, from the project. */
+  clientPmName?: string;
+  startDate?: string;
+  endDate?: string;
+  /** Size of the project team — the application's only FTE-shaped source. */
+  teamMemberCount: number;
+
+  ownerId?: string;
+  ownerName?: string;
+
+  // ── SQA's own fields ────────────────────────────────────────────────────────
+  importance: PriorityLevel;
+  /** No source elsewhere in the application; SQA owns this outright. */
+  deliveryModel?: string;
+
+  // ── Inherited, with an optional SQA override ─────────────────────────────────
+  /** Effective billing model. Inherited from the opportunity's Revenue Model. */
+  billingModel?: string;
+  billingModelInherited?: string;
+  billingModelOverride?: string;
+  /** Effective tower. Inherited from the opportunity's Service Line. */
+  tower?: string;
+  towerInherited?: string;
+  towerOverride?: string;
+  /** Effective FTE. Inherited from the project team size. */
+  fte?: number;
+  fteInherited?: number;
+  fteOverride?: number;
+  /** Effective revenue. Inherited from the Project Deal Value, then the Opportunity value. */
+  revenue?: number;
+  revenueInherited?: number;
+  revenueOverride?: number;
+  /** Which source the effective revenue came from. */
+  revenueSource: SqaRevenueSource;
+  /** Where the *inherited* revenue came from — still meaningful under an override. */
+  revenueInheritedSource: Exclude<SqaRevenueSource, 'sqa'>;
+
+  // ── SQA weekly tracking ─────────────────────────────────────────────────────
+  /** "WSR Publish Status (Y/N)". */
+  wsrPublished: boolean;
+  clientEscalation: boolean;
+  currentWeekUpdate: string;
+  nextWeekPlan: string;
+  issuesChallenges: string;
+  pathToGreen: string;
+  resourcingStatus?: string;
+  currentSdlcPhase?: string;
+  sqaRemarks: string;
+
+  /** Trailing ISO-week health window, oldest first. */
+  weeklyHealth: SqaWeeklyHealth[];
+
+  createdAt?: string;
+  updatedAt?: string;
+  [key: string]: any;
+}
+
+/**
+ * A project still eligible for a new SQA record (one record per project),
+ * carrying the values an SQA record would inherit from it. Powers the Create
+ * form's preview so inheritance is computed server-side only.
+ */
+export interface SqaAvailableProject {
+  id: string;
+  name: string;
+  accountId: string;
+  accountName: string;
+  projectHealth?: ProjectHealth;
+  pmName?: string;
+  clientPmName?: string;
+  billingModelInherited?: string;
+  towerInherited?: string;
+  revenueInherited?: number;
+  revenueInheritedSource: Exclude<SqaRevenueSource, 'sqa'>;
+  fteInherited?: number;
+  teamMemberCount: number;
 }
 
 export interface ProjectTeamMember {
@@ -218,6 +356,11 @@ export interface ProjectRisk {
   mitigationPlan: string;
   status: RiskStatus;
   targetResolutionDate?: string;
+  rag?: 'Red' | 'Amber' | 'Green';
+  impactDescription?: string;
+  classification?: string;
+  contingencyPlan?: string;
+  riskOpenDate?: string;
   createdAt?: string;
   updatedAt?: string;
 }

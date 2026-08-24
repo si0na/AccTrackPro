@@ -14,7 +14,7 @@ import { LoadingState } from '@/components/common/LoadingState';
 import { StakeholderFormModal } from '@/features/stakeholders/components/StakeholderFormModal';
 import { MultiStakeholderPicker } from '@/components/MultiStakeholderPicker';
 import { compareForSort, getCustomerSinceYearOptions, mapLocationToOption, matchesGlobalAccount, SortDirection } from '@/utils';
-import { ACCOUNT_TYPE_OPTIONS, ACCOUNT_HEALTH_OPTIONS, LOCATION_OPTIONS } from '@/constants';
+import { ACCOUNT_TYPE_OPTIONS, ACCOUNT_HEALTH_OPTIONS, LOCATION_OPTIONS, TOWER_OPTIONS } from '@/constants';
 import {
   ACCOUNT_TYPE_COLORS,
   BackButton,
@@ -761,6 +761,17 @@ export const AccountsListView: React.FC = () => {
                   placeholder="Search countries…"
                   aria-label="Account location"
                 />
+              </FormField>
+
+              <FormField label="Tower (Optional)">
+                <select
+                  value={newAccount.tower || ''}
+                  onChange={(e) => setNewAccount({ ...newAccount, tower: e.target.value })}
+                  className={SELECT_CLS}
+                >
+                  <option value="">Select tower…</option>
+                  {TOWER_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
               </FormField>
             </FormGrid>
           </FormSection>

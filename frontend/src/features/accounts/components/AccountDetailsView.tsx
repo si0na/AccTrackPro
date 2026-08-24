@@ -6,6 +6,8 @@
 import React, { useState, useEffect } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
 import { usersApi } from '@/api/crm.api';
+import { motion, AnimatePresence } from 'framer-motion';
+import { ActionItemQuickPanel } from '@/features/action-items/components/ActionItemQuickPanel';
 import { Account, Opportunity, OpportunityStage, ActionItem, Stakeholder, StakeholderType, ActionItemStatus, PriorityLevel, User as UserRecord } from '@/types';
 import { InlineEditModal } from '@/components/InlineEditModal';
 import { DocumentsPanel } from '@/components/documents/DocumentsPanel';
@@ -56,7 +58,6 @@ import {
   mapLocationToOption,
   serviceProviderOptionLabel,
 } from '@/utils';
-import { motion, AnimatePresence } from 'motion/react';
 import {
   ArrowLeft,
   Globe,
@@ -79,6 +80,7 @@ import {
   Pencil,
   Navigation,
   AlertTriangle,
+  Layers,
 } from 'lucide-react';
 
 /** First letters of up to the first two words of the account name, for the avatar chip. */
@@ -437,6 +439,8 @@ export const AccountDetailsView: React.FC = () => {
   // Unified delete confirmation state (documents confirm inside DocumentsPanel)
   type DeleteType = 'opportunity' | 'actionItem' | 'stakeholder' | 'comment' | 'account';
   const [deleteTarget, setDeleteTarget] = useState<{ type: DeleteType; id: string; label: string } | null>(null);
+  // Selected Action Item for Quick Panel
+  const [selectedActionItemId, setSelectedActionItemId] = useState<string | null>(null);
 
   const handleConfirmDelete = async () => {
     if (!deleteTarget) return;
@@ -592,6 +596,7 @@ export const AccountDetailsView: React.FC = () => {
             value: new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(account.revenue),
           },
           { icon: <Calendar className="w-4 h-4" />, label: 'Customer Since', value: account.since },
+          { icon: <Layers className="w-4 h-4" />, label: 'Tower', value: account.tower },
         ]}
       />
 
@@ -1054,9 +1059,15 @@ export const AccountDetailsView: React.FC = () => {
                                 if (col.key === 'title') {
                                   return (
                                     <TableCell key={col.key}>
-                                      <div className="flex items-center flex-wrap gap-1">
-                                        <div className="flex-1">
-                                          <p className="font-bold text-slate-900 text-xs">{item.title}</p>
+                                      <div className="flex items-center flex-wrap gap-2">
+                                        <div className="flex-1 min-w-0">
+                                          <button
+                                            type="button"
+                                            onClick={() => setSelectedActionItemId(item.id)}
+                                            className="font-bold text-slate-900 text-xs hover:text-blue-600 cursor-pointer text-left transition-colors truncate block max-w-full"
+                                          >
+                                            {item.title}
+                                          </button>
                                         </div>
                                         {!!item.risksAndDependencies?.trim() && (
                                           <span
@@ -1068,21 +1079,6 @@ export const AccountDetailsView: React.FC = () => {
                                             <AlertTriangle className="w-3.5 h-3.5 text-amber-500" aria-hidden="true" />
                                           </span>
                                         )}
-                                        <button
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            setExpandedActionItemId(expandedActionItemId === item.id ? null : item.id);
-                                          }}
-                                          className={`inline-flex items-center space-x-1 ml-2 px-1.5 py-0.5 rounded transition-all cursor-pointer ${
-                                            expandedActionItemId === item.id 
-                                              ? 'bg-blue-100 text-blue-700 font-bold' 
-                                              : 'text-slate-400 hover:text-blue-600 hover:bg-slate-100'
-                                          }`}
-                                          title="View/Add Comments"
-                                        >
-                                          <MessageSquare className="w-3.5 h-3.5" />
-                                          <span className="text-[10px] font-bold">{itemComments.length}</span>
-                                        </button>
                                       </div>
                                     </TableCell>
                                   );
@@ -1191,74 +1187,6 @@ export const AccountDetailsView: React.FC = () => {
                                 />
                               </TableCell>
                             </TableRow>
-
-                            {expandedActionItemId === item.id && (
-                              <tr className="bg-slate-50/70 border-b border-slate-200">
-                                <td colSpan={actionItemsColumnConfig.filter(c => c.isDisplayed).length + 1} className="p-4">
-                                  <div className="space-y-3 max-w-2xl">
-                                    <div>
-                                      <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">Risks & Dependencies</span>
-                                      <p className="text-sm text-slate-600 leading-relaxed font-medium whitespace-pre-wrap">
-                                        {item.risksAndDependencies || <span className="text-slate-400 font-medium italic">None noted</span>}
-                                      </p>
-                                    </div>
-
-                                    <div className="flex items-center space-x-2 border-b border-slate-200 pb-1.5">
-                                      <MessageSquare className="w-4 h-4 text-blue-600" />
-                                      <h4 className="font-bold text-slate-700 text-xs">Governance Comments ({itemComments.length})</h4>
-                                    </div>
-                                    
-                                    <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                                      {itemComments.length === 0 ? (
-                                        <p className="text-[11px] text-slate-400 font-medium py-1">No comments logged for this action item.</p>
-                                      ) : (
-                                        itemComments.map(c => (
-                                          <div key={c.id} className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm space-y-1 relative group text-xs">
-                                            <div className="flex items-center justify-between">
-                                              <div className="flex items-center space-x-2">
-                                                <span className="font-bold text-slate-700 text-[11px]">{c.user}</span>
-                                                <span className="text-slate-300">•</span>
-                                                <span className="text-[9px] text-slate-400 font-mono">{c.timestamp}</span>
-                                              </div>
-                                              <button
-                                                onClick={() => setDeleteTarget({ type: 'comment', id: c.id, label: c.text.substring(0, 40) })}
-                                                className="text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all text-[10px] font-bold cursor-pointer"
-                                              >
-                                                Delete
-                                              </button>
-                                            </div>
-                                            <p className="text-[11px] text-slate-600 leading-relaxed font-medium whitespace-pre-wrap">{c.text}</p>
-                                          </div>
-                                        ))
-                                      )}
-                                    </div>
-
-                                    <form 
-                                      onSubmit={(e) => {
-                                        e.preventDefault();
-                                        const input = e.currentTarget.elements.namedItem('commentText') as HTMLInputElement;
-                                        if (input && input.value.trim()) {
-                                          addComment('actionItem', item.id, input.value.trim());
-                                          input.value = '';
-                                        }
-                                      }} 
-                                      className="flex gap-2"
-                                    >
-                                      <input
-                                        type="text"
-                                        name="commentText"
-                                        required
-                                        placeholder="Add a comment or update..."
-                                        className="flex-1 text-xs px-3 py-1.5 border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                                      />
-                                      <Button type="submit" size="xs" className="shrink-0">
-                                        Add Comment
-                                      </Button>
-                                    </form>
-                                  </div>
-                                </td>
-                              </tr>
-                            )}
                           </React.Fragment>
                         );
                       })

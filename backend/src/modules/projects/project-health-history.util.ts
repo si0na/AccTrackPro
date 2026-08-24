@@ -32,6 +32,14 @@ export interface HealthHistoryInsert {
   reviewedById?: string | null;
   /** User the entry is attributed to — surfaces as "Last Updated By". */
   updatedById?: string | null;
+  /**
+   * Explicit entry timestamp, ISO. Omitted (the normal case) the entry is
+   * stamped NOW(). Set only when an entry is being recorded *for a past
+   * period* — SQA's weekly health grid writes a health value into the ISO week
+   * it belongs to, which would otherwise land in the current week and make the
+   * trail disagree with the week it describes.
+   */
+  createdAt?: string | null;
 }
 
 /** Inserts one history entry and returns its id. */
@@ -40,8 +48,8 @@ export async function insertHealthHistory(db: Queryable, data: HealthHistoryInse
     `INSERT INTO project_health_updates (
        project_id, health, status_summary, key_achievements, current_challenges,
        risks_impacting_health, mitigation_plan, support_required, next_review_date,
-       overall_confidence_pct, reviewed_by_id, updated_by_id
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+       overall_confidence_pct, reviewed_by_id, updated_by_id, created_at
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,COALESCE($13::TIMESTAMPTZ, NOW()))
      RETURNING id`,
     [
       data.projectId,
@@ -56,6 +64,7 @@ export async function insertHealthHistory(db: Queryable, data: HealthHistoryInse
       data.overallConfidencePct ?? null,
       data.reviewedById || null,
       data.updatedById || null,
+      data.createdAt || null,
     ],
   );
   return rows[0].id;

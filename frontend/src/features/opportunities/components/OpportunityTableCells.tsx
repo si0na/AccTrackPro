@@ -218,11 +218,25 @@ export const renderOpportunityCell = (
   }
 
   if (col.key === 'allocationStartDate') {
-    return <span className="text-slate-500 font-mono font-medium whitespace-nowrap">{opp.allocationStartDate || 'N/A'}</span>;
+    return <span className="text-slate-500 font-mono font-medium whitespace-nowrap">{opp.allocationStartDate || '—'}</span>;
   }
 
   if (col.key === 'allocationEndDate') {
-    return <span className="text-slate-500 font-mono font-medium whitespace-nowrap">{opp.allocationEndDate || 'N/A'}</span>;
+    return <span className="text-slate-500 font-mono font-medium whitespace-nowrap">{opp.allocationEndDate || '—'}</span>;
+  }
+
+  if (col.key === 'description') {
+    return (
+      <ExpandableTextCell
+        text={opp.description}
+        label="Description"
+        emptyLabel="No Description"
+      />
+    );
+  }
+
+  if (col.key === 'serviceProviderStakeholderId') {
+    return <span className="text-slate-600 font-semibold">{opp.serviceProviderStakeholderName || '—'}</span>;
   }
 
   if (col.key === 'dealStartDate') {

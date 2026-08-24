@@ -6,7 +6,7 @@
 import React from 'react';
 import { FolderKanban } from 'lucide-react';
 import type { AdminUser, Project, ProjectHealth, ProjectMethodology, ProjectStatus, Stakeholder } from '@/types';
-import { PROJECT_HEALTH_CHOICES } from '@/constants';
+import { PROJECT_HEALTH_CHOICES, PRIORITY_OPTIONS, DELIVERY_MODEL_OPTIONS, BILLING_MODEL_OPTIONS, TOWER_OPTIONS, SERVICE_LINE_OPTIONS } from '@/constants';
 import {
   FormField,
   FormGrid,
@@ -116,6 +116,66 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
                 onChange={(e) => onChange({ dealValue: e.target.value === '' ? undefined : Number(e.target.value) })}
                 className={INPUT_CLS}
               />
+            </FormField>
+            <FormField label="Priority">
+              <select
+                value={value.priority ?? ''}
+                onChange={(e) => onChange({ priority: (e.target.value || undefined) as any })}
+                className={SELECT_CLS}
+              >
+                <option value="">— Select —</option>
+                {PRIORITY_OPTIONS.map((p) => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+            </FormField>
+            <FormField label="Delivery Model">
+              <select
+                value={value.deliveryModel ?? ''}
+                onChange={(e) => onChange({ deliveryModel: e.target.value || undefined })}
+                className={SELECT_CLS}
+              >
+                <option value="">— Select —</option>
+                {DELIVERY_MODEL_OPTIONS.map((dm) => (
+                  <option key={dm} value={dm}>{dm}</option>
+                ))}
+              </select>
+            </FormField>
+            <FormField label="Billing Model">
+              <select
+                value={value.billingModel ?? ''}
+                onChange={(e) => onChange({ billingModel: e.target.value || undefined })}
+                className={SELECT_CLS}
+              >
+                <option value="">— Select —</option>
+                {BILLING_MODEL_OPTIONS.map((bm) => (
+                  <option key={bm} value={bm}>{bm}</option>
+                ))}
+              </select>
+            </FormField>
+            <FormField label="Tower">
+              <select
+                value={value.tower ?? ''}
+                onChange={(e) => onChange({ tower: e.target.value || undefined })}
+                className={SELECT_CLS}
+              >
+                <option value="">— Select —</option>
+                {TOWER_OPTIONS.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            </FormField>
+            <FormField label="Service Line">
+              <select
+                value={value.serviceLine ?? ''}
+                onChange={(e) => onChange({ serviceLine: e.target.value || undefined })}
+                className={SELECT_CLS}
+              >
+                <option value="">— Select —</option>
+                {SERVICE_LINE_OPTIONS.map((sl) => (
+                  <option key={sl} value={sl}>{sl}</option>
+                ))}
+              </select>
             </FormField>
           </FormGrid>
         </FormSection>

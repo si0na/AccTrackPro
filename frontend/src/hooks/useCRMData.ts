@@ -17,26 +17,34 @@ const DEFAULT_ACCOUNTS_COLUMNS: ColumnConfig[] = [
   { key: 'status',   name: 'Status',         isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
   { key: 'health',   name: 'Health',         isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
   { key: 'location', name: 'Location',       isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
+  { key: 'tower',    name: 'Tower',          isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
   { key: 'since',    name: 'Customer Since', isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
   { key: 'revenue',  name: 'Revenue',        isStandard: true, isPinned: false, isDisplayed: true, type: 'number' },
 ];
 
 const DEFAULT_OPPORTUNITIES_COLUMNS: ColumnConfig[] = [
-  { key: 'name',        name: 'Opportunity Name', isStandard: true, isPinned: true,  isDisplayed: true, type: 'text'   },
-  { key: 'accountId',   name: 'Account',          isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
-  { key: 'stage',       name: 'Stage',            isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
-  { key: 'value',       name: 'Deal Size',        isStandard: true, isPinned: false, isDisplayed: true, type: 'number' },
-  { key: 'probability', name: 'Probability',      isStandard: true, isPinned: false, isDisplayed: true, type: 'number' },
-  { key: 'allocationStartDate', name: 'Allocation Start Date', isStandard: true, isPinned: false, isDisplayed: true, type: 'date' },
-  { key: 'allocationEndDate', name: 'Allocation End Date',     isStandard: true, isPinned: false, isDisplayed: true, type: 'date'   },
-  { key: 'opportunityType', name: 'Opportunity Type', isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
-  { key: 'serviceLine', name: 'Service Line',     isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
-  { key: 'risksAndDependencies', name: 'Risks & Dependencies', isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
-  { key: 'opportunityHealth', name: 'Opportunity Health', isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
-  { key: 'revenueModel', name: 'Revenue Model',   isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
-  { key: 'location',     name: 'Location',        isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
-  { key: 'cost',          name: 'Cost',            isStandard: true, isPinned: false, isDisplayed: true, type: 'number' },
-  { key: 'grossMargin',  name: 'Gross Margin (%)', isStandard: true, isPinned: false, isDisplayed: true, type: 'number' },
+  { key: 'name',                name: 'Opportunity Name',           isStandard: true, isPinned: true,  isDisplayed: true, type: 'text'   },
+  { key: 'accountId',           name: 'Account Name',               isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
+  { key: 'description',         name: 'Description',                isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
+  { key: 'stage',               name: 'Stage',                      isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
+  { key: 'opportunityType',     name: 'Category',                   isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
+  { key: 'serviceLine',         name: 'Service Line',               isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
+  { key: 'probability',         name: 'Probability',                isStandard: true, isPinned: false, isDisplayed: true, type: 'number' },
+  { key: 'serviceProviderStakeholderId', name: 'Owner',             isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
+  { key: 'dealStartDate',       name: 'Deal Start Date',            isStandard: true, isPinned: false, isDisplayed: true, type: 'date'   },
+  { key: 'allocationStartDate', name: 'Expected Project Start Date',isStandard: true, isPinned: false, isDisplayed: true, type: 'date'   },
+  { key: 'allocationEndDate',   name: 'Expected Project End Date',  isStandard: true, isPinned: false, isDisplayed: true, type: 'date'   },
+  { key: 'value',               name: 'Deal Size',                  isStandard: true, isPinned: false, isDisplayed: false, type: 'number' },
+  { key: 'opportunityHealth',   name: 'Opportunity Health',         isStandard: true, isPinned: false, isDisplayed: false, type: 'text'   },
+  { key: 'revenueModel',         name: 'Revenue Model',              isStandard: true, isPinned: false, isDisplayed: false, type: 'text'   },
+  { key: 'location',             name: 'Location',                   isStandard: true, isPinned: false, isDisplayed: false, type: 'text'   },
+  { key: 'cost',                 name: 'Cost',                       isStandard: true, isPinned: false, isDisplayed: false, type: 'number' },
+  { key: 'grossMargin',          name: 'Gross Margin (%)',           isStandard: true, isPinned: false, isDisplayed: false, type: 'number' },
+  { key: 'priority',             name: 'Priority',                   isStandard: true, isPinned: false, isDisplayed: false, type: 'text'   },
+  { key: 'deliveryModel',        name: 'Delivery Model',             isStandard: true, isPinned: false, isDisplayed: false, type: 'text'   },
+  { key: 'billingModel',         name: 'Billing Model',              isStandard: true, isPinned: false, isDisplayed: false, type: 'text'   },
+  { key: 'tower',                name: 'Tower',                      isStandard: true, isPinned: false, isDisplayed: false, type: 'text'   },
+  { key: 'risksAndDependencies', name: 'Risks & Dependencies',       isStandard: true, isPinned: false, isDisplayed: false, type: 'text'   },
 ];
 
 const DEFAULT_ACTION_ITEMS_COLUMNS: ColumnConfig[] = [
@@ -99,6 +107,12 @@ function getMergedConfig(
 
   let current = savedConfig?.length > 0 ? [...savedConfig] : [...defaults];
 
+  // Detect and migrate legacy configs (e.g. missing new standard columns like dealStartDate)
+  const hasNewStandardCol = current.some(col => col.key === 'dealStartDate');
+  if (module === 'opportunities' && !hasNewStandardCol) {
+    current = [...defaults];
+  }
+
   defaults.forEach((d) => {
     if (!current.some((c) => c.key === d.key)) current.push({ ...d });
   });
@@ -107,6 +121,32 @@ function getMergedConfig(
     (col.isStandard && defaults.some((d) => d.key === col.key)) ||
     (!col.isStandard && customCols.some((cc) => cc.key === col.key)),
   );
+
+  // Align standard column names with defaults
+  current = current.map(col => {
+    if (col.isStandard) {
+      const def = defaults.find(d => d.key === col.key);
+      if (def) {
+        return {
+          ...col,
+          name: def.name,
+        };
+      }
+    }
+    return col;
+  });
+
+  // Sort current columns so standard columns are in the same relative order as defined in defaults
+  current.sort((a, b) => {
+    if (a.isStandard && b.isStandard) {
+      const idxA = defaults.findIndex(d => d.key === a.key);
+      const idxB = defaults.findIndex(d => d.key === b.key);
+      return idxA - idxB;
+    }
+    if (!a.isStandard && b.isStandard) return 1;
+    if (a.isStandard && !b.isStandard) return -1;
+    return 0;
+  });
 
   customCols.forEach((cc) => {
     if (!current.some((col) => col.key === cc.key)) {

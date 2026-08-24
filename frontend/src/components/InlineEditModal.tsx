@@ -7,7 +7,7 @@ import { StakeholderAssignmentFields } from '@/components/StakeholderAssignmentF
 import { ActionItemOwnerField } from '@/components/ActionItemOwnerField';
 import { getCustomerSinceYearOptions } from '@/utils';
 import { useCRM } from '@/contexts/CRMContext';
-import { ACTION_ITEM_STATUS_OPTIONS, OPPORTUNITY_STAGE_OPTIONS, OPPORTUNITY_TYPE_OPTIONS, SERVICE_LINE_OPTIONS, ACCOUNT_TYPE_OPTIONS, ACCOUNT_HEALTH_OPTIONS, LOCATION_OPTIONS, OPPORTUNITY_HEALTH_OPTIONS, REVENUE_MODEL_OPTIONS, stageChangePatch } from '@/constants';
+import { ACTION_ITEM_STATUS_OPTIONS, OPPORTUNITY_STAGE_OPTIONS, OPPORTUNITY_TYPE_OPTIONS, SERVICE_LINE_OPTIONS, ACCOUNT_TYPE_OPTIONS, ACCOUNT_HEALTH_OPTIONS, LOCATION_OPTIONS, OPPORTUNITY_HEALTH_OPTIONS, REVENUE_MODEL_OPTIONS, OPPORTUNITY_PRIORITY_OPTIONS, TOWER_OPTIONS, DELIVERY_MODEL_OPTIONS, BILLING_MODEL_OPTIONS, stageChangePatch } from '@/constants';
 import type {
   Account,
   Opportunity,
@@ -59,6 +59,7 @@ const ACCOUNT_EDIT_FIELDS: ColumnConfig[] = [
   { key: 'email',       name: 'Email',          isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
   { key: 'address',     name: 'Address',        isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
   { key: 'description', name: 'Description',    isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
+  { key: 'tower',       name: 'Tower',          isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
   { key: 'revenue',     name: 'Revenue',        isStandard: true, isPinned: false, isDisplayed: true, type: 'number' },
 ];
 
@@ -424,6 +425,21 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
       }
 
       case 'priority':
+        if (mode === 'opportunities') {
+          return (
+            <select
+              value={val ?? ''}
+              onChange={(e) => onChange({ priority: e.target.value || undefined })}
+              className={`${inputCls} bg-white`}
+            >
+              <option value="">— None —</option>
+              {OPPORTUNITY_PRIORITY_OPTIONS.map((p) => (
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
+          );
+        }
+        // Action Items: keep existing High/Medium/Low select
         return (
           <select
             value={val ?? 'Medium'}
@@ -508,6 +524,48 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
             <option value="">— None —</option>
             {REVENUE_MODEL_OPTIONS.map((r) => (
               <option key={r} value={r}>{r}</option>
+            ))}
+          </select>
+        );
+
+      case 'deliveryModel':
+        return (
+          <select
+            value={val ?? ''}
+            onChange={(e) => onChange({ deliveryModel: e.target.value || undefined })}
+            className={`${inputCls} bg-white`}
+          >
+            <option value="">— None —</option>
+            {DELIVERY_MODEL_OPTIONS.map((dm) => (
+              <option key={dm} value={dm}>{dm}</option>
+            ))}
+          </select>
+        );
+
+      case 'billingModel':
+        return (
+          <select
+            value={val ?? ''}
+            onChange={(e) => onChange({ billingModel: e.target.value || undefined })}
+            className={`${inputCls} bg-white`}
+          >
+            <option value="">— None —</option>
+            {BILLING_MODEL_OPTIONS.map((bm) => (
+              <option key={bm} value={bm}>{bm}</option>
+            ))}
+          </select>
+        );
+
+      case 'tower':
+        return (
+          <select
+            value={val ?? ''}
+            onChange={(e) => onChange({ tower: e.target.value || undefined })}
+            className={`${inputCls} bg-white`}
+          >
+            <option value="">— None —</option>
+            {TOWER_OPTIONS.map((t) => (
+              <option key={t} value={t}>{t}</option>
             ))}
           </select>
         );
@@ -659,8 +717,8 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
               <FormField label="Probability (%)">
                 {renderInput(editCol('probability', 'Probability (%)', 'number'))}
               </FormField>
-              <FormField label="Opportunity Type">
-                {renderInput(editCol('opportunityType', 'Opportunity Type'))}
+              <FormField label="Category">
+                {renderInput(editCol('opportunityType', 'Category'))}
               </FormField>
               <FormField label="Service Line">
                 {renderInput(editCol('serviceLine', 'Service Line'))}
@@ -670,6 +728,9 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
               </FormField>
               <FormField label="Revenue Model">
                 {renderInput(editCol('revenueModel', 'Revenue Model'))}
+              </FormField>
+              <FormField label="Priority">
+                {renderInput(editCol('priority', 'Priority'))}
               </FormField>
             </FormGrid>
 
@@ -742,13 +803,13 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
             </FormGrid>
           </FormSection>
 
-          <FormSection title="Allocation Period">
+          <FormSection title="Expected Project Period">
             <FormGrid columns={2}>
-              <FormField label="Allocation Start Date">
-                {renderInput(editCol('allocationStartDate', 'Allocation Start Date', 'date'))}
+              <FormField label="Expected Project Start Date">
+                {renderInput(editCol('allocationStartDate', 'Expected Project Start Date', 'date'))}
               </FormField>
-              <FormField label="Allocation End Date">
-                {renderInput(editCol('allocationEndDate', 'Allocation End Date', 'date'))}
+              <FormField label="Expected Project End Date">
+                {renderInput(editCol('allocationEndDate', 'Expected Project End Date', 'date'))}
               </FormField>
             </FormGrid>
           </FormSection>

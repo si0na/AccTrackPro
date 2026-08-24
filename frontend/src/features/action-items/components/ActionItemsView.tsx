@@ -6,11 +6,13 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
 import { ActionItem, ActionItemStatus, PriorityLevel } from '@/types';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   AlertTriangle,
   Plus,
   X,
   Settings2,
+  MessageSquare,
 } from 'lucide-react';
 import { CustomizeColumnsSidebar } from '@/components/table/CustomizeColumnsSidebar';
 import {
@@ -38,11 +40,14 @@ import {
   TableHeadCell,
   TableRow,
   ExpandableTextCell,
+  InlineTextEditCell,
+  InlineSelectEditCell,
+  InlineTextareaEditCell,
 } from '@/components/ui';
 import { InlineEditModal } from '@/components/InlineEditModal';
 import { LoadingState } from '@/components/common/LoadingState';
 import { ActionItemFormModal } from '@/features/action-items/components/ActionItemFormModal';
-import { ActionItemCommentToggle, ActionItemCommentsExpandedRow } from '@/components/ActionItemComments';
+import { ActionItemQuickPanel } from '@/features/action-items/components/ActionItemQuickPanel';
 import { ACTION_ITEM_STATUS_OPTIONS } from '@/constants';
 import { compareForSort, getTodayISODate, isDueThisWeek, isOpenActionItemStatus, matchesGlobalAccount, SortDirection } from '@/utils';
 
@@ -109,8 +114,8 @@ export const ActionItemsView: React.FC = () => {
   // Delete confirmation state
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'actionItem' | 'comment'; id: string; label: string } | null>(null);
 
-  // Expanded row comment state
-  const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
+  // Selected Action Item for Quick Panel
+  const [selectedActionItemId, setSelectedActionItemId] = useState<string | null>(null);
 
   // Module-specific filter states (operational — never fiscal-period-based)
   const [searchQuery, setSearchQuery] = useState('');
@@ -134,7 +139,7 @@ export const ActionItemsView: React.FC = () => {
     setSearchQuery('');
     setSelectedOpportunityFilter('All');
     setSelectedProjectFilter('All');
-    setExpandedItemId(null);
+    setSelectedActionItemId(null);
     setPage(1);
   }, [selectedAccountFilter]);
 
@@ -517,151 +522,248 @@ export const ActionItemsView: React.FC = () => {
                 const account = resolveAccount(item.accountId);
                 const itemComments = comments.filter(c => c.targetType === 'actionItem' && c.targetId === item.id);
                 return (
-                  <React.Fragment key={item.id}>
-                    <TableRow className="hover:bg-slate-50/50">
-                      {displayedConfigs.map(col => {
-                        if (col.key === 'title') {
-                          return (
-                            <TableCell key={col.key}>
-                              <div className="flex items-center flex-wrap gap-1">
-                                <div className="flex-1">
-                                  <p className="font-extrabold text-slate-900 text-sm">{item.title}</p>
-                                </div>
-                                {!!item.risksAndDependencies?.trim() && (
-                                  <span
-                                    className="shrink-0 inline-flex"
-                                    title={`Risks & Dependencies: ${item.risksAndDependencies}`}
-                                    aria-label={`Action item has risks or dependencies: ${item.risksAndDependencies}`}
-                                    role="img"
-                                  >
-                                    <AlertTriangle className="w-3.5 h-3.5 text-amber-500" aria-hidden="true" />
-                                  </span>
-                                )}
-                                <ActionItemCommentToggle
-                                  itemTitle={item.title}
-                                  commentCount={itemComments.length}
-                                  isExpanded={expandedItemId === item.id}
-                                  onToggle={() => setExpandedItemId(expandedItemId === item.id ? null : item.id)}
-                                />
-                              </div>
-                            </TableCell>
-                          );
-                        }
-                        if (col.key === 'notes') {
-                          return (
-                            <TableCell key={col.key} className="text-slate-600 font-medium">
-                              <span className="block max-w-[280px] line-clamp-2" title={item.notes || undefined}>
-                                {item.notes || '—'}
-                              </span>
-                            </TableCell>
-                          );
-                        }
-                        if (col.key === 'risksAndDependencies') {
-                          return (
-                            <TableCell key={col.key}>
-                              <ExpandableTextCell
-                                text={item.risksAndDependencies}
-                                label="Risks & Dependencies"
-                                emptyLabel="No Risks"
-                              />
-                            </TableCell>
-                          );
-                        }
-                        if (col.key === 'accountId') {
-                          return (
-                            <TableCell key={col.key} className="text-slate-600 font-bold">
-                              {account?.name || item.accountName || 'Unknown Account'}
-                            </TableCell>
-                          );
-                        }
-                        if (col.key === 'opportunityId') {
-                          const opp = opportunities.find(o => o.id === item.opportunityId);
-                          return (
-                            <TableCell key={col.key} className="text-slate-600 font-semibold text-xs">
-                              {opp ? opp.name : '—'}
-                            </TableCell>
-                          );
-                        }
-                        if (col.key === 'projectId') {
-                          const proj = projects.find(p => p.id === item.projectId);
-                          return (
-                            <TableCell key={col.key} className="text-slate-600 font-semibold text-xs">
-                              {proj ? proj.name : '—'}
-                            </TableCell>
-                          );
-                        }
-                        if (col.key === 'owner') {
-                          return (
-                            <TableCell key={col.key} className="text-slate-600 font-semibold">
-                              {item.ownerName || item.owner || '—'}
-                            </TableCell>
-                          );
-                        }
-                        if (col.key === 'priority') {
-                          return (
-                            <TableCell key={col.key}>
-                              <StatusBadge value={item.priority} colorMap={PRIORITY_COLORS} shape="rounded" />
-                            </TableCell>
-                          );
-                        }
-                        if (col.key === 'status') {
-                          return (
-                            <TableCell key={col.key}>
-                              <StatusBadge value={item.status} colorMap={ACTION_STATUS_COLORS} shape="rounded" />
-                            </TableCell>
-                          );
-                        }
-                        if (col.key === 'openDate') {
-                          return (
-                            <TableCell key={col.key} className="font-mono font-medium text-slate-500">
-                              {item.openDate}
-                            </TableCell>
-                          );
-                        }
-                        if (col.key === 'dueDate') {
-                          return (
-                            <TableCell key={col.key} className="font-mono font-medium text-slate-500">
-                              {item.dueDate}
-                            </TableCell>
-                          );
-                        }
+                  <TableRow
+                    key={item.id}
+                    onClick={() => setSelectedActionItemId(item.id)}
+                    className="hover:bg-blue-50/40 cursor-pointer transition-colors group"
+                  >
+                    {displayedConfigs.map(col => {
+                      const canEdit = can('action-items', 'update');
 
-                        // Customizable dynamic custom columns
-                        const rawVal = item[col.key] ?? (col.type === 'boolean' ? false : '');
+                      if (col.key === 'title') {
                         return (
                           <TableCell key={col.key}>
-                            {col.type === 'boolean' ? (
-                              <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${rawVal ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>
-                                {rawVal ? 'Yes' : 'No'}
-                              </span>
-                            ) : col.type === 'number' ? (
-                              <span className="font-mono font-semibold text-slate-700">{rawVal}</span>
-                            ) : (
-                              <span className="text-slate-600">{String(rawVal)}</span>
-                            )}
+                            <div className="flex items-center flex-wrap gap-2 min-w-[180px]">
+                              <div className="flex-1 min-w-0">
+                                <InlineTextEditCell
+                                  value={item.title}
+                                  disabled={!canEdit}
+                                  className="font-extrabold text-slate-900 text-sm group-hover:text-blue-600"
+                                  onSave={async (v) => {
+                                    if (v && v.trim()) {
+                                      await updateActionItem({ ...item, title: v.trim() });
+                                    }
+                                  }}
+                                />
+                              </div>
+                              {!!item.risksAndDependencies?.trim() && (
+                                <span
+                                  className="shrink-0 inline-flex"
+                                  title={`Risks & Dependencies: ${item.risksAndDependencies}`}
+                                  aria-label={`Action item has risks or dependencies: ${item.risksAndDependencies}`}
+                                  role="img"
+                                >
+                                  <AlertTriangle className="w-3.5 h-3.5 text-amber-500" aria-hidden="true" />
+                                </span>
+                              )}
+                            </div>
                           </TableCell>
                         );
-                      })}
+                      }
+                      if (col.key === 'notes') {
+                        return (
+                          <TableCell key={col.key} className="text-slate-600 font-medium">
+                            <InlineTextareaEditCell
+                              value={item.notes}
+                              label="Description / Notes"
+                              placeholder="No notes"
+                              disabled={!canEdit}
+                              onSave={async (v) => {
+                                await updateActionItem({ ...item, notes: v });
+                              }}
+                            />
+                          </TableCell>
+                        );
+                      }
+                      if (col.key === 'risksAndDependencies') {
+                        return (
+                          <TableCell key={col.key}>
+                            <InlineTextareaEditCell
+                              value={item.risksAndDependencies}
+                              label="Risks & Dependencies"
+                              placeholder="No risks"
+                              disabled={!canEdit}
+                              onSave={async (v) => {
+                                await updateActionItem({ ...item, risksAndDependencies: v });
+                              }}
+                            />
+                          </TableCell>
+                        );
+                      }
+                      if (col.key === 'accountId') {
+                        const accountOptions = [
+                          { value: '', label: 'Select Account...' },
+                          ...accounts.map(a => ({ value: a.id, label: a.name }))
+                        ];
+                        return (
+                          <TableCell key={col.key} className="text-slate-600 font-bold">
+                            <InlineSelectEditCell
+                              value={item.accountId}
+                              options={accountOptions}
+                              disabled={!canEdit}
+                              placeholder={account?.name || item.accountName || 'Unknown Account'}
+                              onSave={async (id) => {
+                                const acc = accounts.find(a => a.id === id);
+                                await updateActionItem({ ...item, accountId: id, accountName: acc?.name || '' });
+                              }}
+                            />
+                          </TableCell>
+                        );
+                      }
+                      if (col.key === 'opportunityId') {
+                        const opp = opportunities.find(o => o.id === item.opportunityId);
+                        const oppOptions = [
+                          { value: '', label: '— None —' },
+                          ...opportunities.map(o => ({ value: o.id, label: o.name }))
+                        ];
+                        return (
+                          <TableCell key={col.key} className="text-slate-600 font-semibold text-xs">
+                            <InlineSelectEditCell
+                              value={item.opportunityId ?? ''}
+                              options={oppOptions}
+                              disabled={!canEdit}
+                              placeholder={opp ? opp.name : '—'}
+                              onSave={async (id) => {
+                                await updateActionItem({ ...item, opportunityId: id || undefined });
+                              }}
+                            />
+                          </TableCell>
+                        );
+                      }
+                      if (col.key === 'projectId') {
+                        const proj = projects.find(p => p.id === item.projectId);
+                        const projOptions = [
+                          { value: '', label: '— None —' },
+                          ...projects.map(p => ({ value: p.id, label: p.name }))
+                        ];
+                        return (
+                          <TableCell key={col.key} className="text-slate-600 font-semibold text-xs">
+                            <InlineSelectEditCell
+                              value={item.projectId ?? ''}
+                              options={projOptions}
+                              disabled={!canEdit}
+                              placeholder={proj ? proj.name : '—'}
+                              onSave={async (id) => {
+                                await updateActionItem({ ...item, projectId: id || undefined });
+                              }}
+                            />
+                          </TableCell>
+                        );
+                      }
+                      if (col.key === 'owner') {
+                        return (
+                          <TableCell key={col.key} className="text-slate-600 font-semibold">
+                            <InlineTextEditCell
+                              value={item.ownerName || item.owner}
+                              placeholder="Set Owner..."
+                              disabled={!canEdit}
+                              onSave={async (v) => {
+                                await updateActionItem({ ...item, owner: v, ownerName: v });
+                              }}
+                            />
+                          </TableCell>
+                        );
+                      }
+                      if (col.key === 'priority') {
+                        return (
+                          <TableCell key={col.key}>
+                            <InlineSelectEditCell
+                              value={item.priority}
+                              options={['Low', 'Medium', 'High', 'Critical']}
+                              disabled={!canEdit}
+                              onSave={async (v) => {
+                                await updateActionItem({ ...item, priority: v as PriorityLevel });
+                              }}
+                            />
+                          </TableCell>
+                        );
+                      }
+                      if (col.key === 'status') {
+                        return (
+                          <TableCell key={col.key}>
+                            <InlineSelectEditCell
+                              value={item.status}
+                              options={ACTION_ITEM_STATUS_OPTIONS}
+                              disabled={!canEdit}
+                              onSave={async (v) => {
+                                await updateActionItem({ ...item, status: v as ActionItemStatus });
+                              }}
+                            />
+                          </TableCell>
+                        );
+                      }
+                      if (col.key === 'openDate') {
+                        return (
+                          <TableCell key={col.key} className="font-mono font-medium text-slate-500">
+                            <InlineTextEditCell
+                              type="date"
+                              value={item.openDate}
+                              disabled={!canEdit}
+                              onSave={async (v) => {
+                                await updateActionItem({ ...item, openDate: v });
+                              }}
+                            />
+                          </TableCell>
+                        );
+                      }
+                      if (col.key === 'dueDate') {
+                        return (
+                          <TableCell key={col.key} className="font-mono font-medium text-slate-500">
+                            <InlineTextEditCell
+                              type="date"
+                              value={item.dueDate}
+                              disabled={!canEdit}
+                              onSave={async (v) => {
+                                await updateActionItem({ ...item, dueDate: v });
+                              }}
+                            />
+                          </TableCell>
+                        );
+                      }
 
-                      <TableCell align="center" sticky="right">
-                        <TableActions
-                          entityLabel={`action item ${item.title}`}
-                          onEdit={can('action-items', 'update') ? () => handleEditClick(item) : undefined}
-                          onDelete={can('action-items', 'delete') ? () => setDeleteTarget({ type: 'actionItem', id: item.id, label: item.title }) : undefined}
-                        />
-                      </TableCell>
-                    </TableRow>
+                      // Customizable dynamic custom columns
+                      const rawVal = item[col.key] ?? (col.type === 'boolean' ? false : '');
+                      return (
+                        <TableCell key={col.key}>
+                          {col.type === 'boolean' ? (
+                            <InlineSelectEditCell
+                              value={rawVal ? 'Yes' : 'No'}
+                              options={['Yes', 'No']}
+                              disabled={!canEdit}
+                              onSave={async (v) => {
+                                await updateActionItem({ ...item, [col.key]: v === 'Yes' });
+                              }}
+                            />
+                          ) : col.type === 'number' ? (
+                            <InlineTextEditCell
+                              type="number"
+                              value={rawVal}
+                              disabled={!canEdit}
+                              onSave={async (v) => {
+                                await updateActionItem({ ...item, [col.key]: v });
+                              }}
+                            />
+                          ) : (
+                            <InlineTextEditCell
+                              value={String(rawVal ?? '')}
+                              disabled={!canEdit}
+                              onSave={async (v) => {
+                                await updateActionItem({ ...item, [col.key]: v });
+                              }}
+                            />
+                          )}
+                        </TableCell>
+                      );
+                    })}
 
-                    {expandedItemId === item.id && (
-                      <ActionItemCommentsExpandedRow
-                        colSpan={displayedConfigs.length + 1}
-                        comments={itemComments}
-                        risksAndDependencies={item.risksAndDependencies ?? ''}
-                        onAddComment={(text) => addComment('actionItem', item.id, text)}
-                        onDeleteComment={(comment) => setDeleteTarget({ type: 'comment', id: comment.id, label: comment.text.substring(0, 40) })}
+                    <TableCell align="center" sticky="right" onClick={(e) => e.stopPropagation()}>
+                      <TableActions
+                        entityLabel={`action item ${item.title}`}
+                        onEdit={can('action-items', 'update') ? () => handleEditClick(item) : undefined}
+                        onDelete={can('action-items', 'delete') ? () => setDeleteTarget({ type: 'actionItem', id: item.id, label: item.title }) : undefined}
                       />
-                    )}
-                  </React.Fragment>
+                    </TableCell>
+                  </TableRow>
                 );
               })}
             </tbody>
@@ -729,7 +831,11 @@ export const ActionItemsView: React.FC = () => {
               {deactivatedActionItems.map((item) => {
                 const acc = resolveAccount(item.accountId);
                 return (
-                  <TableRow key={item.id} className="opacity-70">
+                  <TableRow
+                    key={item.id}
+                    onClick={() => setSelectedActionItemId(item.id)}
+                    className="opacity-70 hover:opacity-100 hover:bg-slate-100/80 cursor-pointer transition-all"
+                  >
                     <TableCell className="font-semibold text-slate-600 line-through decoration-slate-300">{item.title}</TableCell>
                     <TableCell className="text-slate-500">{item.accountName || acc?.name || '—'}</TableCell>
                     <TableCell>{item.ownerName || item.owner || '—'}</TableCell>
@@ -760,6 +866,36 @@ export const ActionItemsView: React.FC = () => {
         }}
         onCancel={() => setDeleteTarget(null)}
       />
+
+      {/* Action Item Quick Panel Drawer */}
+      <AnimatePresence>
+        {selectedActionItemId && (
+          <>
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setSelectedActionItemId(null)}
+              className="fixed inset-0 bg-slate-900/35 backdrop-blur-xs z-50 cursor-pointer"
+            />
+
+            {/* Sidebar Panel */}
+            <motion.div
+              initial={{ x: '100%' }}
+              animate={{ x: 0 }}
+              exit={{ x: '100%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 180 }}
+              className="fixed right-0 top-0 h-screen w-full sm:w-[650px] md:w-[750px] lg:w-[900px] bg-white shadow-2xl z-50 flex flex-col border-l border-slate-200 overflow-hidden"
+            >
+              <ActionItemQuickPanel
+                actionItemId={selectedActionItemId}
+                onClose={() => setSelectedActionItemId(null)}
+              />
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
     </div>
   );
 };

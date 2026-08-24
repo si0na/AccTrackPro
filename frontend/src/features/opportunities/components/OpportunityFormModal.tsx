@@ -148,6 +148,10 @@ export const OpportunityFormModal: React.FC<OpportunityFormModalProps> = ({
               serviceLine: value.serviceLine,
               opportunityHealth: value.opportunityHealth,
               revenueModel: value.revenueModel,
+              priority: value.priority,
+              deliveryModel: value.deliveryModel,
+              billingModel: value.billingModel,
+              tower: value.tower,
             }}
             onChange={onChange}
           />
@@ -250,9 +254,9 @@ export const OpportunityFormModal: React.FC<OpportunityFormModalProps> = ({
         </FormGrid>
       </FormSection>
 
-      <FormSection title="Allocation Period">
+      <FormSection title="Expected Project Period">
         <FormGrid columns={2}>
-          <FormField label="Allocation Start Date">
+          <FormField label="Expected Project Start Date">
             <input
               type="date"
               value={value.allocationStartDate}
@@ -261,7 +265,7 @@ export const OpportunityFormModal: React.FC<OpportunityFormModalProps> = ({
             />
           </FormField>
 
-          <FormField label="Allocation End Date">
+          <FormField label="Expected Project End Date">
             <input
               type="date"
               value={value.allocationEndDate}

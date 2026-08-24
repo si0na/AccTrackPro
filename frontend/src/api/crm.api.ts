@@ -8,6 +8,7 @@ import type {
   ProjectMilestone, ProjectRisk, ProjectAssumption, ProjectIssue, ProjectDependency, ProjectHealthUpdate,
   OpportunityForecastResult, OpportunityForecastPayload,
   Role, PermissionMatrix, MyPermissions,
+  SqaRecord, SqaWeeklyHealth, SqaAvailableProject,
 } from '@/types';
 
 /** Attributes an administrator can pre-assign / edit on a user or whitelist row. */
@@ -176,6 +177,71 @@ export const projectsApi = {
   update: (id: string, data: Project) => apiClient.put<Project>(`/projects/${id}`, data).then((r) => r.data),
   restore: (id: string) => apiClient.patch<Project>(`/projects/${id}/restore`).then((r) => r.data),
   delete: (id: string) => apiClient.delete<{ success: boolean }>(`/projects/${id}`).then((r) => r.data),
+};
+
+
+/**
+ * The SQA fields a user actually supplies. Everything the record inherits
+ * (account, PM, revenue, tower, billing model, team size) is resolved
+ * server-side from the project and so is never sent.
+ */
+export interface SqaRecordInput {
+  projectId: string;
+  importance?: string;
+  deliveryModel?: string;
+  /** Only sent when SQA disagrees with the inherited value; omit to inherit. */
+  billingModelOverride?: string;
+  towerOverride?: string;
+  fteOverride?: number;
+  revenueOverride?: number;
+  wsrPublished?: boolean;
+  clientEscalation?: boolean;
+  currentWeekUpdate?: string;
+  nextWeekPlan?: string;
+  issuesChallenges?: string;
+  pathToGreen?: string;
+  resourcingStatus?: string;
+  currentSdlcPhase?: string;
+  sqaRemarks?: string;
+  /** Weekly RAG values changed on the form — applied to the project health trail. */
+  weeklyHealth?: Array<{ isoYear: number; weekNumber: number; health: string }>;
+}
+
+/**
+ * SQA (Software Quality Assurance) — project-level weekly quality tracking.
+ *
+ * `weeks` widens the weekly health window ("Health Week 31/32/33…") that every
+ * read returns; the server clamps it. Weekly RAG values are stored in the
+ * project's health trail, not on the SQA record, so `setWeekHealth` returns the
+ * refreshed record rather than a health object of its own.
+ */
+export const sqaApi = {
+  getAll: (weeks?: number) =>
+    apiClient.get<SqaRecord[]>('/sqa', { params: { weeks } }).then((r) => r.data),
+  getDeactivated: () =>
+    apiClient.get<SqaRecord[]>('/sqa/deactivated').then((r) => r.data),
+  getById: (id: string, weeks?: number) =>
+    apiClient.get<SqaRecord>(`/sqa/${id}`, { params: { weeks } }).then((r) => r.data),
+  /** The ISO weeks the health columns currently cover, oldest first. */
+  getWeekWindow: (weeks?: number) =>
+    apiClient.get<SqaWeeklyHealth[]>('/sqa/weeks', { params: { weeks } }).then((r) => r.data),
+  /** Active projects without an SQA record yet — one record per project. */
+  getAvailableProjects: () =>
+    apiClient.get<SqaAvailableProject[]>('/sqa/available-projects').then((r) => r.data),
+  create: (data: SqaRecordInput, weeks?: number) =>
+    apiClient.post<SqaRecord>('/sqa', data, { params: { weeks } }).then((r) => r.data),
+  update: (id: string, data: SqaRecordInput, weeks?: number) =>
+    apiClient.put<SqaRecord>(`/sqa/${id}`, data, { params: { weeks } }).then((r) => r.data),
+  setWeekHealth: (
+    id: string,
+    week: { isoYear: number; weekNumber: number; health: string },
+    weeks?: number,
+  ) =>
+    apiClient.put<SqaRecord>(`/sqa/${id}/week-health`, week, { params: { weeks } }).then((r) => r.data),
+  restore: (id: string) =>
+    apiClient.patch<SqaRecord>(`/sqa/${id}/restore`).then((r) => r.data),
+  delete: (id: string) =>
+    apiClient.delete<{ success: boolean }>(`/sqa/${id}`).then((r) => r.data),
 };
 
 /** Fields a user supplies; the server owns ids, authorship and timestamps. */

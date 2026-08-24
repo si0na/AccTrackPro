@@ -14,6 +14,8 @@ import { OpportunityDetailsView } from '@/features/opportunities/components/Oppo
 import { OpportunityForecastView } from '@/features/opportunities/components/OpportunityForecastView';
 import { ProjectsListView } from '@/features/projects/components/ProjectsListView';
 import { ProjectDetailsView } from '@/features/projects/components/ProjectDetailsView';
+import { SqaListView } from '@/features/sqa/components/SqaListView';
+import { SqaDetailsView } from '@/features/sqa/components/SqaDetailsView';
 import { ActionItemsView } from '@/features/action-items/components/ActionItemsView';
 import { StakeholdersView } from '@/features/stakeholders/components/StakeholdersView';
 import { ExecutiveDashboardView } from '@/features/reports/components/ExecutiveDashboardView';
@@ -38,7 +40,7 @@ const InnerLayout: React.FC = () => {
   const {
     currentView, setView,
     currentUser, isLoggedIn, authLoading, currentUserProfile, logout,
-    selectedAccountId, selectedOpportunityId, selectedProjectId,
+    selectedAccountId, selectedOpportunityId, selectedProjectId, selectedSqaId,
     updateProfilePicture,
     unreadNotificationCount,
     can, permissionsLoaded,
@@ -80,11 +82,11 @@ const InnerLayout: React.FC = () => {
       }
       return;
     }
-    const path = buildPath(currentView, selectedAccountId, selectedOpportunityId, selectedProjectId);
+    const path = buildPath(currentView, selectedAccountId, selectedOpportunityId, selectedProjectId, selectedSqaId);
     if (window.location.pathname !== path) {
       navigate(path, { replace: true });
     }
-  }, [currentView, selectedAccountId, selectedOpportunityId, selectedProjectId, navigate, isLoggedIn]);
+  }, [currentView, selectedAccountId, selectedOpportunityId, selectedProjectId, selectedSqaId, navigate, isLoggedIn]);
 
   if (authLoading) {
     return <FullPageLoading />;
@@ -247,6 +249,8 @@ const InnerLayout: React.FC = () => {
           {currentView === 'opportunity-forecast'   && <OpportunityForecastView mode="opportunity" />}
           {currentView === 'projects'                && <ProjectsListView />}
           {currentView === 'project-details'         && <ProjectDetailsView />}
+          {currentView === 'sqa'                     && <SqaListView />}
+          {currentView === 'sqa-details'             && <SqaDetailsView />}
           {currentView === 'actionItems'            && <ActionItemsView />}
           {currentView === 'projectActionItems'     && <ActionItemsView />}
           {currentView === 'stakeholders'           && <StakeholdersView />}

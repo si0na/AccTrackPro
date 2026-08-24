@@ -11,6 +11,8 @@ export const VIEW_PATHS: Record<ViewType, string> = {
   'opportunity-forecast': '/opportunities/:id/forecast',
   projects: '/projects',
   'project-details': '/projects/:id',
+  sqa: '/sqa',
+  'sqa-details': '/sqa/:id',
   actionItems: '/action-items',
   projectActionItems: '/project-action-items',
   stakeholders: '/stakeholders',
@@ -29,11 +31,13 @@ export function resolveViewPath(
   accountId?: string | null,
   opportunityId?: string | null,
   projectId?: string | null,
+  sqaId?: string | null,
 ): string {
   if (view === 'account-details' && accountId) return `/accounts/${accountId}`;
   if (view === 'opportunity-details' && opportunityId) return `/opportunities/${opportunityId}`;
   if (view === 'opportunity-forecast' && opportunityId) return `/opportunities/${opportunityId}/forecast`;
   if (view === 'project-details' && projectId) return `/projects/${projectId}`;
+  if (view === 'sqa-details' && sqaId) return `/sqa/${sqaId}`;
   return VIEW_PATHS[view] ?? '/';
 }
 
@@ -160,6 +164,7 @@ export const SERVICE_LINE_OPTIONS = [
 
 export const OPPORTUNITY_HEALTH_OPTIONS = ['Green', 'Amber', 'Red'] as const;
 export const REVENUE_MODEL_OPTIONS = ['T&E', 'Fixed Bid', 'Fixed Capacity', 'Managed Services'] as const;
+export const OPPORTUNITY_PRIORITY_OPTIONS = ['High', 'Medium', 'Low'] as const;
 
 /**
  * Predefined countries for the Account "Location" field, already alphabetical.
@@ -214,3 +219,51 @@ export const LOCATION_ALIASES: Record<string, string> = {
   'ivory coast': 'Ivory Coast', "cote d'ivoire": 'Ivory Coast', 'côte d’ivoire': 'Ivory Coast',
   'holland': 'Netherlands',
 };
+
+// ─── SQA (Software Quality Assurance) ─────────────────────────────────────────
+// Mirrors backend/src/common/utils/sqa-options.util.ts — keep both in sync.
+//
+// Two of these lists are not new master data: SQA's "Billing Model" and "Tower"
+// are the same domains as an opportunity's Revenue Model and Service Line, so
+// they alias those existing lists rather than restating them.
+
+export const SQA_IMPORTANCE_OPTIONS = ['High', 'Medium', 'Low'] as const;
+
+/** No existing field in the application carries this, so SQA owns it. */
+export const SQA_DELIVERY_MODEL_OPTIONS = [
+  'Onsite', 'Offshore', 'Onsite-Offshore', 'Nearshore', 'Hybrid',
+] as const;
+
+/** Aliases the opportunity Revenue Model list. */
+export const SQA_BILLING_MODEL_OPTIONS = REVENUE_MODEL_OPTIONS;
+
+export const TOWER_OPTIONS = ['Tower 1', 'Tower 2'] as const;
+
+/** Aliases the Tower master list. */
+export const SQA_TOWER_OPTIONS = TOWER_OPTIONS;
+
+export const SQA_RESOURCING_STATUS_OPTIONS = [
+  'Fully Staffed', 'Partially Staffed', 'Open Positions', 'Attrition Risk', 'Ramp Down',
+] as const;
+
+export const SQA_SDLC_PHASE_OPTIONS = [
+  'Requirements', 'Design', 'Development', 'Testing', 'UAT',
+  'Deployment', 'Hypercare', 'Maintenance', 'Closure',
+] as const;
+
+/** Weekly health picker; the RAG scale is the Project Health one, reused as-is. */
+export const SQA_WEEK_HEALTH_CHOICES = PROJECT_HEALTH_CHOICES;
+
+/** How many trailing ISO weeks the weekly health grid shows by default. */
+export const SQA_DEFAULT_HEALTH_WEEKS = 3;
+
+/** Options offered by the list view's "weeks shown" control. */
+export const SQA_HEALTH_WEEK_CHOICES = [3, 6, 12] as const;
+
+// ─── Business Fields Options ──────────────────────────────────────────────────
+export const DELIVERY_MODEL_OPTIONS = ['Staff Aug', 'Fixed Bid', 'Managed', 'Fixed Capacity', 'Others'] as const;
+export const BILLING_MODEL_OPTIONS = ['T&M', 'Milestone Based', 'Monthly Fixed', 'Others'] as const;
+export const PRIORITY_OPTIONS = ['High', 'Medium', 'Low'] as const;
+export const RISK_RAG_OPTIONS = ['Red', 'Amber', 'Green'] as const;
+export const RISK_CLASSIFICATION_OPTIONS = ['Cost', 'Resource', 'Schedule', 'Operational', 'Technical', 'Environment', 'Quality', 'Scope', 'Others'] as const;
+

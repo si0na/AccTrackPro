@@ -82,9 +82,9 @@ export class CreateOpportunityDto {
   @Matches(AOP_YEAR_RE, { message: AOP_YEAR_MSG })
   aopYear?: string;
 
-  @IsString() @IsNotEmpty({ message: 'Opportunity Type is required' })
+  @IsString() @IsNotEmpty({ message: 'Category is required' })
   @IsIn(['Growth', 'Pursuit', 'Whitespace', 'New', 'Extension'], {
-    message: 'Opportunity Type must be one of: Growth, Pursuit, Whitespace, New, or Extension',
+    message: 'Category must be one of: Growth, Pursuit, Whitespace, New, or Extension',
   })
   opportunityType!: string;
 
@@ -112,6 +112,22 @@ export class CreateOpportunityDto {
   @IsNumber() @IsOptional() @Min(0, { message: 'Gross Margin cannot be less than 0' })
   @Max(100, { message: 'Gross Margin cannot exceed 100' })
   grossMargin?: number;
+
+  @EmptyToUndefined()
+  @IsOptional() @IsIn(['High', 'Medium', 'Low'], { message: 'Priority must be High, Medium, or Low' })
+  priority?: string;
+
+  @EmptyToUndefined()
+  @IsOptional() @IsIn(['Staff Aug', 'Fixed Bid', 'Managed', 'Fixed Capacity', 'Others'], { message: 'Delivery Model must be one of the allowed values' })
+  deliveryModel?: string;
+
+  @EmptyToUndefined()
+  @IsOptional() @IsIn(['T&M', 'Milestone Based', 'Monthly Fixed', 'Others'], { message: 'Billing Model must be one of the allowed values' })
+  billingModel?: string;
+
+  @EmptyToUndefined()
+  @IsOptional() @IsIn(['Tower 1', 'Tower 2'], { message: 'Tower must be one of: Tower 1, Tower 2' })
+  tower?: string;
 }
 
 export class UpdateOpportunityDto extends CreateOpportunityDto {

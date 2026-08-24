@@ -26,6 +26,7 @@ const KNOWN = new Set([
   'serviceProviderStakeholderId','serviceProviderStakeholderName','serviceProviderStakeholderDesignation',
   'aopAvailable','aopYear','opportunityType','serviceLine',
   'opportunityHealth','revenueModel','location','cost','grossMargin',
+  'priority','deliveryModel','billingModel','tower',
   'serviceProviderPmId','serviceProviderPmName',
   'projectId',
   // Forecast fields are joined from opportunity_forecasts (read-only on the
@@ -49,6 +50,7 @@ function rowToOpportunity(row: any, derive: (date: string) => { financialYear: s
     service_provider_pm_id, service_provider_pm_name,
     aop_available, aop_year, opportunity_type, service_line,
     opportunity_health, revenue_model, location, cost, gross_margin,
+    priority, delivery_model, billing_model, tower,
     project_id,
     forecast_date, forecast_value, actual_date, actual_value, forecast_remarks, forecast_updated_at,
     ...base
@@ -92,6 +94,10 @@ function rowToOpportunity(row: any, derive: (date: string) => { financialYear: s
     location:      location ?? undefined,
     cost:          cost !== null && cost !== undefined ? Number(cost) : undefined,
     grossMargin:   gross_margin !== null && gross_margin !== undefined ? Number(gross_margin) : undefined,
+    priority:      priority ?? undefined,
+    deliveryModel: delivery_model ?? undefined,
+    billingModel:  billing_model ?? undefined,
+    tower:         tower ?? undefined,
     // Persisted forecast + actuals (joined from opportunity_forecasts; edited via
     // the dedicated forecast endpoint, never through opportunity create/update).
     forecastDate:     forecast_date ?? undefined,
@@ -142,7 +148,7 @@ ${OPP_FORECAST_SELECT}
 /** Business rule: when both dates are present, end date cannot precede start date. */
 function assertDateOrder(allocationStartDate?: string, allocationEndDate?: string, dealStartDate?: string, dealCloseDate?: string): void {
   if (allocationStartDate && allocationEndDate && allocationEndDate < allocationStartDate) {
-    throw new BadRequestException('Allocation End Date cannot be earlier than Allocation Start Date');
+    throw new BadRequestException('Expected Project End Date cannot be earlier than Expected Project Start Date');
   }
   if (dealStartDate && dealCloseDate && dealCloseDate < dealStartDate) {
     throw new BadRequestException('Deal Close Date cannot be earlier than Deal Start Date');
@@ -176,12 +182,12 @@ function assertAllocationEndDateValid(
   previousAllocationEndDate?: string,
 ): void {
   if (!allocationEndDate) return;
-  if (allocationStartDate && allocationEndDate < allocationStartDate) {
-    throw new BadRequestException('Allocation End Date cannot be earlier than the Allocation Start Date');
+  if (allocationStartDate && allocationEndDate && allocationEndDate < allocationStartDate) {
+    throw new BadRequestException('Expected Project End Date cannot be earlier than Expected Project Start Date');
   }
   const changed = previousAllocationEndDate === undefined || allocationEndDate !== previousAllocationEndDate;
   if (!CLOSED_STAGES.has(stage) && changed && allocationEndDate < todayISO()) {
-    throw new BadRequestException('Allocation End Date cannot be in the past for an open opportunity');
+    throw new BadRequestException('Expected Project End Date cannot be in the past for an open opportunity');
   }
 }
 
@@ -383,8 +389,9 @@ ${OPP_FORECAST_SELECT}${totalCol}
           close_reason, blocked_reason, delayed_reason, closed_at, tags, team, custom_data,
           client_stakeholder_id, service_provider_stakeholder_id, service_provider_pm_id,
           aop_available, aop_year, opportunity_type, service_line,
-          opportunity_health, revenue_model, location, cost, gross_margin)
-       VALUES (gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33)
+          opportunity_health, revenue_model, location, cost, gross_margin, priority,
+          delivery_model, billing_model, tower)
+       VALUES (gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37)
        RETURNING id`,
       [
         data.name, data.accountId, stage,
@@ -399,7 +406,8 @@ ${OPP_FORECAST_SELECT}${totalCol}
         data.aopAvailable ?? false, data.aopAvailable ? (data.aopYear ?? null) : null,
         data.opportunityType ?? null, data.serviceLine ?? null,
         data.opportunityHealth ?? null, data.revenueModel ?? null, data.location ?? null,
-        data.cost ?? null, data.grossMargin ?? null,
+        data.cost ?? null, data.grossMargin ?? null, data.priority ?? null,
+        data.deliveryModel ?? null, data.billingModel ?? null, data.tower ?? null,
       ],
     );
     const opp = await this.findOne(rows[0].id);
@@ -488,6 +496,11 @@ ${OPP_FORECAST_SELECT}${totalCol}
     const cost = data.cost ?? existing.cost ?? null;
     const grossMargin = data.grossMargin ?? existing.grossMargin ?? null;
 
+    const priority = data.priority !== undefined ? (data.priority ?? null) : (existing.priority ?? null);
+    const deliveryModel = data.deliveryModel !== undefined ? (data.deliveryModel || null) : (existing.deliveryModel ?? null);
+    const billingModel  = data.billingModel !== undefined ? (data.billingModel || null) : (existing.billingModel ?? null);
+    const tower         = data.tower !== undefined ? (data.tower || null) : (existing.tower ?? null);
+
     await this.db.query(
       `UPDATE opportunities SET
          name=$1, account_id=$2, stage=$3, value=$4, probability=$5,
@@ -501,8 +514,9 @@ ${OPP_FORECAST_SELECT}${totalCol}
          aop_available=$25, aop_year=$26, opportunity_type=$27,
          service_line=$28,
          opportunity_health=$29, revenue_model=$30, location=$31, cost=$32, gross_margin=$33,
+         priority=$34, delivery_model=$35, billing_model=$36, tower=$37,
          updated_at=NOW()
-       WHERE id=$34 AND is_deleted=FALSE`,
+       WHERE id=$38 AND is_deleted=FALSE`,
       [
         data.name, data.accountId, stage,
         data.value ?? existing.value ?? 0, data.probability ?? existing.probability ?? 0,
@@ -516,6 +530,7 @@ ${OPP_FORECAST_SELECT}${totalCol}
         aopAvailable, aopYear, opportunityType,
         serviceLine,
         opportunityHealth, revenueModel, location, cost, grossMargin,
+        priority, deliveryModel, billingModel, tower,
         id,
       ],
     );

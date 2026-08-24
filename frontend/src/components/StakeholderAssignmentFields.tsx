@@ -94,7 +94,7 @@ export const StakeholderAssignmentFields: React.FC<StakeholderAssignmentFieldsPr
       {/* Service Provider — all System Users as options, no inline create */}
       <div className="space-y-1">
         <label className="block text-xs font-semibold text-slate-600">
-          Service Provider Stakeholder
+          Owner
         </label>
         <select
           value={value.serviceProviderUserId ?? ''}

@@ -74,7 +74,8 @@ export const ExpandableTextCell: React.FC<ExpandableTextCellProps> = ({
     return <span className={`block ${widthClass} text-slate-400 font-medium`}>{emptyLabel}</span>;
   }
 
-  const handleToggle = () => {
+  const handleToggle = (e: React.MouseEvent) => {
+    e.stopPropagation();
     if (expanded) {
       setExpanded(false); // clamp is re-applied on transition end
     } else {

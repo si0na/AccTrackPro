@@ -23,6 +23,7 @@ import {
   ShieldCheck,
   Search,
   ClipboardCheck,
+  BadgeCheck,
   LogOut,
   Menu
 } from 'lucide-react';
@@ -50,7 +51,7 @@ export const Sidebar: React.FC = () => {
   const opportunities = allOpportunities.filter(o => matchesGlobalAccount(o.accountId, globalAccountId));
   const projects = allProjects.filter(p => matchesGlobalAccount(p.accountId, globalAccountId));
   const actionItems = allActionItems.filter(ai => matchesGlobalAccount(ai.accountId, globalAccountId));
-  const stakeholders = allStakeholders.filter(s => matchesGlobalAccount(s.accountId, globalAccountId));
+  const stakeholders = allStakeholders.filter(s => matchesGlobalAccount(s.accountId, globalAccountId) && s.stakeholderType === 'CLIENT');
 
   const sections = [
     {
@@ -102,6 +103,14 @@ export const Sidebar: React.FC = () => {
           label: 'Project Action Items',
           icon: CheckSquare,
           badge: actionItems.filter(ai => ai.projectId && isOpenActionItemStatus(ai.status)).length,
+        },
+        {
+          // SQA records aren't held in CRM context (the module fetches its own
+          // list), so there is no count to badge here.
+          id: 'sqa' as ViewType,
+          label: 'SQA',
+          icon: BadgeCheck,
+          badge: null,
         },
       ],
     },
@@ -210,7 +219,8 @@ export const Sidebar: React.FC = () => {
                 const isActive = currentView === item.id ||
                   (item.id === 'accounts' && currentView === 'account-details') ||
                   (item.id === 'opportunities' && currentView === 'opportunity-details') ||
-                  (item.id === 'projects' && currentView === 'project-details');
+                  (item.id === 'projects' && currentView === 'project-details') ||
+                  (item.id === 'sqa' && currentView === 'sqa-details');
                 const Icon = item.icon;
 
                 return (

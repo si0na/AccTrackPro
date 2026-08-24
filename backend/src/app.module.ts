@@ -9,6 +9,7 @@ import { AccountsModule } from './modules/accounts/accounts.module';
 import { OpportunitiesModule } from './modules/opportunities/opportunities.module';
 import { OpportunityForecastModule } from './modules/opportunity-forecast/opportunity-forecast.module';
 import { ProjectsModule } from './modules/projects/projects.module';
+import { SqaModule } from './modules/sqa/sqa.module';
 import { ActionItemsModule } from './modules/action-items/action-items.module';
 import { StakeholdersModule } from './modules/stakeholders/stakeholders.module';
 import { ActivitiesModule } from './modules/activities/activities.module';
@@ -46,6 +47,7 @@ import { ServiceProviderModule } from './modules/service-provider/service-provid
     OpportunitiesModule,
     OpportunityForecastModule,
     ProjectsModule,
+    SqaModule,
     ActionItemsModule,
     StakeholdersModule,
     ActivitiesModule,
