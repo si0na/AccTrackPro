@@ -291,14 +291,9 @@ export const ActionItemsView: React.FC = () => {
   const displayedConfigs = useMemo(() => {
     const cols = actionItemsColumnConfig.filter(col => col.isDisplayed);
     if (isProjectMode) {
-      return cols.map(col => {
-        if (col.key === 'opportunityId') {
-          return { ...col, key: 'projectId', name: 'Project' };
-        }
-        return col;
-      });
+      return cols.filter(col => col.key !== 'opportunityId');
     }
-    return cols;
+    return cols.filter(col => col.key !== 'projectId');
   }, [actionItemsColumnConfig, isProjectMode]);
 
   // User-added (non-standard) columns widen the table past the viewport and

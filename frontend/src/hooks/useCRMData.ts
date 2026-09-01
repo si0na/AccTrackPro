@@ -48,15 +48,16 @@ const DEFAULT_OPPORTUNITIES_COLUMNS: ColumnConfig[] = [
 
 const DEFAULT_ACTION_ITEMS_COLUMNS: ColumnConfig[] = [
   { key: 'title',         name: 'Action Item Title', isStandard: true, isPinned: true,  isDisplayed: true, type: 'text' },
-  { key: 'notes',         name: 'Description',       isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
-  { key: 'risksAndDependencies', name: 'Risks & Dependencies', isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
   { key: 'accountId',     name: 'Account',           isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
   { key: 'opportunityId', name: 'Opportunity',       isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
+  { key: 'projectId',     name: 'Project',           isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
   { key: 'owner',         name: 'Owner',             isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
   { key: 'priority',      name: 'Priority',          isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
   { key: 'status',        name: 'Status',            isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
   { key: 'openDate',      name: 'Open Date',         isStandard: true, isPinned: false, isDisplayed: true, type: 'date' },
   { key: 'dueDate',       name: 'Due Date',          isStandard: true, isPinned: false, isDisplayed: true, type: 'date' },
+  { key: 'notes',         name: 'Description',       isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
+  { key: 'risksAndDependencies', name: 'Risks & Dependencies', isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
 ];
 
 const DEFAULT_PERFORMANCE_EVALUATION_COLUMNS: ColumnConfig[] = [
