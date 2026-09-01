@@ -791,7 +791,8 @@ export const ActionItemsView: React.FC = () => {
         lockedAccount={lockedAccount}
         accounts={accounts}
         opportunities={opportunities}
-        projects={isProjectMode ? projects : undefined}
+        projects={projects}
+        mode={isProjectMode ? 'project' : 'normal'}
         stakeholders={stakeholders}
         actionItemColumns={actionItemColumns}
         actionItemsColumnConfig={actionItemsColumnConfig}

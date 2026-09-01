@@ -96,12 +96,6 @@ export class CreateOpportunityDto {
   @IsOptional() @IsIn(['Green', 'Amber', 'Red'], { message: 'Opportunity Health must be Green, Amber, or Red' })
   opportunityHealth?: string;
 
-  @EmptyToUndefined()
-  @IsOptional() @IsIn(['T&E', 'Fixed Bid', 'Fixed Capacity', 'Managed Services'], {
-    message: 'Revenue Model must be one of the allowed values',
-  })
-  revenueModel?: string;
-
   @IsString() @IsOptional() @MaxLength(200)
   location?: string;
 

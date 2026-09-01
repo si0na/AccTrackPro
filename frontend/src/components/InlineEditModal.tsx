@@ -7,7 +7,7 @@ import { StakeholderAssignmentFields } from '@/components/StakeholderAssignmentF
 import { ActionItemOwnerField } from '@/components/ActionItemOwnerField';
 import { getCustomerSinceYearOptions } from '@/utils';
 import { useCRM } from '@/contexts/CRMContext';
-import { ACTION_ITEM_STATUS_OPTIONS, OPPORTUNITY_STAGE_OPTIONS, OPPORTUNITY_TYPE_OPTIONS, SERVICE_LINE_OPTIONS, ACCOUNT_TYPE_OPTIONS, ACCOUNT_HEALTH_OPTIONS, LOCATION_OPTIONS, OPPORTUNITY_HEALTH_OPTIONS, REVENUE_MODEL_OPTIONS, OPPORTUNITY_PRIORITY_OPTIONS, TOWER_OPTIONS, DELIVERY_MODEL_OPTIONS, BILLING_MODEL_OPTIONS, stageChangePatch } from '@/constants';
+import { ACTION_ITEM_STATUS_OPTIONS, OPPORTUNITY_STAGE_OPTIONS, OPPORTUNITY_TYPE_OPTIONS, SERVICE_LINE_OPTIONS, ACCOUNT_TYPE_OPTIONS, ACCOUNT_HEALTH_OPTIONS, LOCATION_OPTIONS, OPPORTUNITY_HEALTH_OPTIONS, OPPORTUNITY_PRIORITY_OPTIONS, TOWER_OPTIONS, DELIVERY_MODEL_OPTIONS, BILLING_MODEL_OPTIONS, stageChangePatch } from '@/constants';
 import type {
   Account,
   Opportunity,
@@ -48,25 +48,25 @@ export interface InlineEditModalProps {
 // The four role-ownership dropdowns (Account Manager, Practice Lead, Client
 // Partner, Vertical Head) are appended separately below.
 const ACCOUNT_EDIT_FIELDS: ColumnConfig[] = [
-  { key: 'name',        name: 'Account Name',   isStandard: true, isPinned: true,  isDisplayed: true, type: 'text'   },
-  { key: 'type',        name: 'Account Type',   isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
-  { key: 'health',      name: 'Health Status',  isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
-  { key: 'industry',    name: 'Industry',       isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
-  { key: 'since',       name: 'Customer Since', isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
-  { key: 'location',    name: 'Location',       isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
-  { key: 'website',     name: 'Website',        isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
-  { key: 'phone',       name: 'Phone',          isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
-  { key: 'email',       name: 'Email',          isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
-  { key: 'address',     name: 'Address',        isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
-  { key: 'description', name: 'Description',    isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
-  { key: 'tower',       name: 'Tower',          isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
-  { key: 'revenue',     name: 'Revenue',        isStandard: true, isPinned: false, isDisplayed: true, type: 'number' },
+  { key: 'name', name: 'Account Name', isStandard: true, isPinned: true, isDisplayed: true, type: 'text' },
+  { key: 'type', name: 'Account Type', isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
+  { key: 'health', name: 'Health Status', isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
+  { key: 'industry', name: 'Industry', isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
+  { key: 'since', name: 'Customer Since', isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
+  { key: 'location', name: 'Location', isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
+  { key: 'website', name: 'Website', isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
+  { key: 'phone', name: 'Phone', isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
+  { key: 'email', name: 'Email', isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
+  { key: 'address', name: 'Address', isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
+  { key: 'description', name: 'Description', isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
+  { key: 'tower', name: 'Tower', isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
+  { key: 'revenue', name: 'Revenue', isStandard: true, isPinned: false, isDisplayed: true, type: 'number' },
 ];
 
 const MODE_META: Record<EditMode, { title: string; primaryKey: string }> = {
-  accounts:      { title: 'Edit Account',     primaryKey: 'name'  },
-  opportunities: { title: 'Edit Opportunity', primaryKey: 'name'  },
-  actionItems:   { title: 'Edit Action Item', primaryKey: 'title' },
+  accounts: { title: 'Edit Account', primaryKey: 'name' },
+  opportunities: { title: 'Edit Opportunity', primaryKey: 'name' },
+  actionItems: { title: 'Edit Action Item', primaryKey: 'title' },
 };
 
 // These keys span both columns of the 2-col grid — reserved for fields that
@@ -101,9 +101,9 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
   const ownerRoleFields = useMemo(
     () => ([
       { key: 'accountManagerId', label: 'Account Manager', roleKey: 'account-manager' },
-      { key: 'practiceLeadId',   label: 'Practice Lead',   roleKey: 'practice-lead' },
-      { key: 'clientPartnerId',  label: 'Client Partner',  roleKey: 'client-partner' },
-      { key: 'verticalHeadId',   label: 'Vertical Head',   roleKey: 'vertical-head' },
+      { key: 'practiceLeadId', label: 'Practice Lead', roleKey: 'practice-lead' },
+      { key: 'clientPartnerId', label: 'Client Partner', roleKey: 'client-partner' },
+      { key: 'verticalHeadId', label: 'Vertical Head', roleKey: 'vertical-head' },
     ] as const).map((f) => ({
       ...f,
       options: users.filter((u) => u.roleKey === f.roleKey).map((u) => ({ value: u.id, label: u.name })),
@@ -126,13 +126,13 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
     const cols = displayedConfigs.some((c) => c.key === primaryKey)
       ? displayedConfigs
       : [{
-          key: primaryKey,
-          name: primaryKey === 'title' ? 'Task Title' : 'Name',
-          isStandard: true,
-          isPinned: true,
-          isDisplayed: true,
-          type: 'text' as const,
-        }, ...displayedConfigs];
+        key: primaryKey,
+        name: primaryKey === 'title' ? 'Task Title' : 'Name',
+        isStandard: true,
+        isPinned: true,
+        isDisplayed: true,
+        type: 'text' as const,
+      }, ...displayedConfigs];
 
     // Risks & Dependencies must always be editable, even when the user has
     // hidden its table column, so force-include it in the Action Item form.
@@ -151,11 +151,38 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
             type: 'text',
           });
         }
+      } else {
+        finalCols = cols.filter((c) => c.key !== 'projectId');
+        if (!finalCols.some((c) => c.key === 'opportunityId')) {
+          finalCols.push({
+            key: 'opportunityId',
+            name: 'Associated Opportunity',
+            isStandard: true,
+            isPinned: false,
+            isDisplayed: true,
+            type: 'text',
+          });
+        }
       }
       const risksCol: ColumnConfig = {
         key: 'risksAndDependencies', name: 'Risks & Dependencies', isStandard: true, isPinned: false, isDisplayed: true, type: 'text',
       };
-      return finalCols.some((c) => c.key === risksCol.key) ? finalCols : [...finalCols, risksCol];
+      if (!finalCols.some((c) => c.key === risksCol.key)) {
+        finalCols = [...finalCols, risksCol];
+      }
+
+      // Enforce order: title -> accountId -> (projectId | opportunityId) -> ownerStakeholderId -> others
+      const orderKeys = ['title', 'accountId', isProjectActionItem ? 'projectId' : 'opportunityId', 'ownerStakeholderId'];
+      finalCols.sort((a, b) => {
+        const idxA = orderKeys.indexOf(a.key);
+        const idxB = orderKeys.indexOf(b.key);
+        if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+        if (idxA !== -1) return -1;
+        if (idxB !== -1) return 1;
+        return 0;
+      });
+
+      return finalCols;
     }
 
     // Opportunities render the dedicated sectioned form below (mirroring the
@@ -514,20 +541,6 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
           </select>
         );
 
-      case 'revenueModel':
-        return (
-          <select
-            value={val ?? ''}
-            onChange={(e) => onChange({ revenueModel: e.target.value || undefined })}
-            className={`${inputCls} bg-white`}
-          >
-            <option value="">— None —</option>
-            {REVENUE_MODEL_OPTIONS.map((r) => (
-              <option key={r} value={r}>{r}</option>
-            ))}
-          </select>
-        );
-
       case 'deliveryModel':
         return (
           <select
@@ -700,8 +713,8 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
         <div className="space-y-5">
           <FormSection title="Deal Information">
             <FormGrid>
-              <FormField label="Target Corporate Account">
-                {renderInput(editCol('accountId', 'Target Corporate Account'))}
+              <FormField label="Account Name">
+                {renderInput(editCol('accountId', 'Account Name'))}
               </FormField>
               <FormField label="Opportunity Name" required>
                 {renderInput(editCol('name', 'Opportunity Name'))}
@@ -725,9 +738,6 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
               </FormField>
               <FormField label="Opportunity Health">
                 {renderInput(editCol('opportunityHealth', 'Opportunity Health'))}
-              </FormField>
-              <FormField label="Revenue Model">
-                {renderInput(editCol('revenueModel', 'Revenue Model'))}
               </FormField>
               <FormField label="Priority">
                 {renderInput(editCol('priority', 'Priority'))}
@@ -878,38 +888,38 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
         </div>
       ) : (
         <>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {formConfigs.map((col) => (
-            <div
-              key={col.key}
-              className={`space-y-1${WIDE_KEYS.has(col.key) ? ' md:col-span-full' : ''}`}
-            >
-              <label className="text-label font-semibold text-slate-600 uppercase tracking-wide">
-                {col.name}
-              </label>
-              {renderInput(col)}
-            </div>
-          ))}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {formConfigs.map((col) => (
+              <div
+                key={col.key}
+                className={`space-y-1${WIDE_KEYS.has(col.key) ? ' md:col-span-full' : ''}`}
+              >
+                <label className="text-label font-semibold text-slate-600 uppercase tracking-wide">
+                  {col.name}
+                </label>
+                {renderInput(col)}
+              </div>
+            ))}
 
-          {/* Role-filtered owner assignments — not part of the customizable-columns
+            {/* Role-filtered owner assignments — not part of the customizable-columns
               system, so rendered explicitly for the account edit form. Empty
               selection is saved as null so the backend clears the FK. */}
-          {mode === 'accounts' && ownerRoleFields.map((f) => (
-            <div key={f.key} className="space-y-1">
-              <label className="text-label font-semibold text-slate-600 uppercase tracking-wide">
-                {f.label}
-              </label>
-              <SearchableSelect
-                value={entity[f.key] ?? ''}
-                onChange={(v) => onChange({ [f.key]: v || null })}
-                options={f.options}
-                placeholder={`Select ${f.label.toLowerCase()}…`}
-                tone="amber"
-                aria-label={f.label}
-              />
-            </div>
-          ))}
-        </div>
+            {mode === 'accounts' && ownerRoleFields.map((f) => (
+              <div key={f.key} className="space-y-1">
+                <label className="text-label font-semibold text-slate-600 uppercase tracking-wide">
+                  {f.label}
+                </label>
+                <SearchableSelect
+                  value={entity[f.key] ?? ''}
+                  onChange={(v) => onChange({ [f.key]: v || null })}
+                  options={f.options}
+                  placeholder={`Select ${f.label.toLowerCase()}…`}
+                  tone="amber"
+                  aria-label={f.label}
+                />
+              </div>
+            ))}
+          </div>
 
         </>
       )}

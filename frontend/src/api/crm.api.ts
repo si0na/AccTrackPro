@@ -5,10 +5,10 @@ import type {
   CRMNotification, Alert, ForecastData,
   AdminSystemOverview, AdminUser, FinancialCalendar, AdminSettings, FYQuarterDef,
   PerformanceEvaluation, EmployeeMaster, Project, ProjectTeamMember,
-  ProjectMilestone, ProjectRisk, ProjectAssumption, ProjectIssue, ProjectDependency, ProjectHealthUpdate,
+  ProjectMilestone, ProjectRisk, ProjectAssumption, ProjectIssue, ProjectDependency, ProjectHealthUpdate, ProjectProgressUpdate,
   OpportunityForecastResult, OpportunityForecastPayload,
   Role, PermissionMatrix, MyPermissions,
-  SqaRecord, SqaWeeklyHealth, SqaAvailableProject,
+  SqaRecord, SqaWeeklyHealth, SqaAvailableProject, SqaTrackerSnapshot,
 } from '@/types';
 
 /** Attributes an administrator can pre-assign / edit on a user or whitelist row. */
@@ -242,6 +242,10 @@ export const sqaApi = {
     apiClient.patch<SqaRecord>(`/sqa/${id}/restore`).then((r) => r.data),
   delete: (id: string) =>
     apiClient.delete<{ success: boolean }>(`/sqa/${id}`).then((r) => r.data),
+  getTrackerHistory: (sqaRecordId?: string, page?: number, pageSize?: number) => {
+    const url = sqaRecordId ? `/sqa/${sqaRecordId}/tracker` : '/sqa/tracker';
+    return apiClient.get<Paginated<SqaTrackerSnapshot> | SqaTrackerSnapshot[]>(url, { params: { page, pageSize } }).then((r) => r.data);
+  },
 };
 
 /** Fields a user supplies; the server owns ids, authorship and timestamps. */
@@ -257,6 +261,20 @@ export const projectHealthApi = {
     apiClient.post<ProjectHealthUpdate>(`/projects/${projectId}/health`, data).then((r) => r.data),
   update: (projectId: string, id: string, data: ProjectHealthUpdateInput) =>
     apiClient.put<ProjectHealthUpdate>(`/projects/${projectId}/health/${id}`, data).then((r) => r.data),
+};
+
+export type ProjectProgressUpdateInput = Omit<
+  ProjectProgressUpdate,
+  'id' | 'projectId' | 'createdAt' | 'updatedById' | 'updatedByName' | 'editedAt' | 'editedById' | 'editedByName'
+>;
+
+export const projectProgressApi = {
+  getAllForProject: (projectId: string) =>
+    apiClient.get<ProjectProgressUpdate[]>(`/projects/${projectId}/progress`).then((r) => r.data),
+  create: (projectId: string, data: ProjectProgressUpdateInput) =>
+    apiClient.post<ProjectProgressUpdate>(`/projects/${projectId}/progress`, data).then((r) => r.data),
+  update: (projectId: string, id: string, data: ProjectProgressUpdateInput) =>
+    apiClient.put<ProjectProgressUpdate>(`/projects/${projectId}/progress/${id}`, data).then((r) => r.data),
 };
 
 export const projectTeamApi = {

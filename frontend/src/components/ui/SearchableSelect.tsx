@@ -48,6 +48,7 @@ export interface SearchableSelectProps {
   options: readonly SearchableSelectOption[];
   placeholder?: string;
   required?: boolean;
+  disabled?: boolean;
   /** Amber focus styling for edit dialogs, blue for create forms. */
   tone?: keyof typeof TONE_CLS;
   className?: string;
@@ -73,6 +74,7 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
   options,
   placeholder = 'Search…',
   required = false,
+  disabled = false,
   tone = 'blue',
   className = '',
   id,
@@ -184,12 +186,13 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
     }
   };
 
-  const showClearButton = !required && !!value;
+  const showClearButton = !disabled && !required && !!value;
   const hasRightSlot = showClearButton || showChevron;
 
   const fieldCls =
-    `w-full text-xs pl-3 ${hasRightSlot ? 'pr-16' : 'pr-3'} py-2 border border-slate-200 rounded-lg bg-white cursor-text ` +
-    `focus:outline-none focus:ring-2 ${TONE_CLS[tone]} ${className}`;
+    `w-full text-xs pl-3 ${hasRightSlot ? 'pr-16' : 'pr-3'} py-2 border border-slate-200 rounded-lg ${
+      disabled ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-white cursor-text focus:outline-none focus:ring-2 ' + TONE_CLS[tone]
+    } ${className}`;
 
   return (
     <div className={`relative ${className}`} ref={containerRef}>
@@ -203,10 +206,11 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
         aria-autocomplete="list"
         aria-label={ariaLabel}
         required={required}
+        disabled={disabled}
         value={open ? query : displayValue}
         placeholder={placeholder}
-        onFocus={() => setOpen(true)}
-        onClick={() => setOpen(true)}
+        onFocus={() => { if (!disabled) setOpen(true); }}
+        onClick={() => { if (!disabled) setOpen(true); }}
         onBlur={() => {
           setOpen(false);
           setQuery('');

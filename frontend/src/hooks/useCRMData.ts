@@ -36,7 +36,6 @@ const DEFAULT_OPPORTUNITIES_COLUMNS: ColumnConfig[] = [
   { key: 'allocationEndDate',   name: 'Expected Project End Date',  isStandard: true, isPinned: false, isDisplayed: true, type: 'date'   },
   { key: 'value',               name: 'Deal Size',                  isStandard: true, isPinned: false, isDisplayed: false, type: 'number' },
   { key: 'opportunityHealth',   name: 'Opportunity Health',         isStandard: true, isPinned: false, isDisplayed: false, type: 'text'   },
-  { key: 'revenueModel',         name: 'Revenue Model',              isStandard: true, isPinned: false, isDisplayed: false, type: 'text'   },
   { key: 'location',             name: 'Location',                   isStandard: true, isPinned: false, isDisplayed: false, type: 'text'   },
   { key: 'cost',                 name: 'Cost',                       isStandard: true, isPinned: false, isDisplayed: false, type: 'number' },
   { key: 'grossMargin',          name: 'Gross Margin (%)',           isStandard: true, isPinned: false, isDisplayed: false, type: 'number' },

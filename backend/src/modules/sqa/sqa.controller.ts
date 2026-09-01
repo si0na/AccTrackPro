@@ -46,6 +46,35 @@ export class SqaController {
     return this.sqaService.findAllDeactivated({ userId: authUser.sub });
   }
 
+  @Get('tracker')
+  @RequirePermission('sqa', 'view')
+  findTrackerHistory(
+    @AuthUser() authUser: JwtPayload,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    return this.sqaService.findTrackerHistory(
+      undefined,
+      { userId: authUser.sub },
+      parsePagination(page, pageSize) ?? undefined,
+    );
+  }
+
+  @Get(':id/tracker')
+  @RequirePermission('sqa', 'view')
+  findRecordTrackerHistory(
+    @Param('id') id: string,
+    @AuthUser() authUser: JwtPayload,
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+  ) {
+    return this.sqaService.findTrackerHistory(
+      id,
+      { userId: authUser.sub },
+      parsePagination(page, pageSize) ?? undefined,
+    );
+  }
+
   @Get()
   @RequirePermission('sqa', 'view')
   findAll(

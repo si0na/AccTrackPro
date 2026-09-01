@@ -163,7 +163,6 @@ export const SERVICE_LINE_OPTIONS = [
 ] as const;
 
 export const OPPORTUNITY_HEALTH_OPTIONS = ['Green', 'Amber', 'Red'] as const;
-export const REVENUE_MODEL_OPTIONS = ['T&E', 'Fixed Bid', 'Fixed Capacity', 'Managed Services'] as const;
 export const OPPORTUNITY_PRIORITY_OPTIONS = ['High', 'Medium', 'Low'] as const;
 
 /**
@@ -234,8 +233,8 @@ export const SQA_DELIVERY_MODEL_OPTIONS = [
   'Onsite', 'Offshore', 'Onsite-Offshore', 'Nearshore', 'Hybrid',
 ] as const;
 
-/** Aliases the opportunity Revenue Model list. */
-export const SQA_BILLING_MODEL_OPTIONS = REVENUE_MODEL_OPTIONS;
+/** SQA Billing Model options. */
+export const SQA_BILLING_MODEL_OPTIONS = ['T&E', 'Fixed Bid', 'Fixed Capacity', 'Managed Services'] as const;
 
 export const TOWER_OPTIONS = ['Tower 1', 'Tower 2'] as const;
 
@@ -266,4 +265,22 @@ export const BILLING_MODEL_OPTIONS = ['T&M', 'Milestone Based', 'Monthly Fixed',
 export const PRIORITY_OPTIONS = ['High', 'Medium', 'Low'] as const;
 export const RISK_RAG_OPTIONS = ['Red', 'Amber', 'Green'] as const;
 export const RISK_CLASSIFICATION_OPTIONS = ['Cost', 'Resource', 'Schedule', 'Operational', 'Technical', 'Environment', 'Quality', 'Scope', 'Others'] as const;
+export const RISK_IMPACT_OPTIONS = ['Low', 'Medium', 'High'] as const;
+export const RISK_LIKELIHOOD_OPTIONS = ['Low', 'Medium', 'High'] as const;
+
+export const PROJECT_DEPENDENCY_TYPE_OPTIONS = [
+  'Client Dependency',
+  'Technical Dependency',
+  'Resource Dependency',
+  'Access Dependency',
+  'Data Dependency',
+  'Environment Dependency',
+  'Vendor / Third-Party Dependency',
+  'Approval / Decision Dependency',
+  'Cross-Team Dependency',
+  'Schedule / Milestone Dependency',
+  'Compliance / Security Dependency',
+  'Commercial / Procurement Dependency',
+  'Others',
+] as const;
 

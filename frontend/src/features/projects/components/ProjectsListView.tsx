@@ -5,7 +5,8 @@
 
 import React, { useEffect, useState } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
-import { Project } from '@/types';
+import { Project, User } from '@/types';
+import { usersApi } from '@/api/crm.api';
 import { Eye, Trash2, FolderKanban } from 'lucide-react';
 import { compareForSort, matchesGlobalAccount, SortDirection } from '@/utils';
 import {
@@ -50,6 +51,7 @@ export const ProjectsListView: React.FC = () => {
     accounts,
     deleteProject,
     restoreProject,
+    updateProject,
     setView,
     setSelectedProjectId,
     globalAccountId: selectedAccountFilter,
@@ -59,6 +61,29 @@ export const ProjectsListView: React.FC = () => {
   } = useCRM();
 
   const canDeleteProject = can('projects', 'delete');
+  const canUpdateProject = can('projects', 'update');
+
+  const [users, setUsers] = useState<User[]>([]);
+  useEffect(() => {
+    usersApi.getAll().then(setUsers).catch(() => setUsers([]));
+  }, []);
+
+  const pmOptions = React.useMemo(() => users.filter(u => u.roleKey === 'project-manager' || u.roleKeys?.includes('project-manager')), [users]);
+  const practiceLeadOptions = React.useMemo(() => users.filter(u => u.roleKey === 'practice-lead' || u.roleKeys?.includes('practice-lead')), [users]);
+  const clientPartnerOptions = React.useMemo(() => users.filter(u => u.roleKey === 'client-partner' || u.roleKeys?.includes('client-partner')), [users]);
+
+  const [editingCell, setEditingCell] = useState<{ id: string; key: string; value: any } | null>(null);
+
+  const saveInlineCell = async (id: string, key: string, value: any, extraFields?: Record<string, any>) => {
+    const target = projects.find(p => p.id === id);
+    if (!target) return;
+    try {
+      await updateProject({ ...target, [key]: value, ...(extraFields || {}) });
+    } catch {
+      // revert on error
+    }
+    setEditingCell(null);
+  };
 
   const [searchQuery, setSearchQuery] = useState('');
   const [healthFilter, setHealthFilter] = useState<string>('All');
@@ -217,24 +242,57 @@ export const ProjectsListView: React.FC = () => {
                   const account = accounts.find((a) => a.id === p.accountId);
                   const pct = p.actualCompletionPct ?? 0;
                   return (
-                    <TableRow key={p.id} clickable onClick={() => handleRowClick(p.id)}>
-                      <TableCell>
+                    <TableRow key={p.id}>
+                      <TableCell className="cursor-pointer" onClick={() => handleRowClick(p.id)}>
                         <div className="flex items-center gap-2.5 min-w-0">
                           <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg font-bold shrink-0">
                             <FolderKanban className="w-4 h-4" aria-hidden="true" />
                           </div>
-                          <p className="font-bold text-slate-900 text-sm min-w-0 truncate">{p.name}</p>
+                          <p className="font-bold text-slate-900 text-sm min-w-0 truncate hover:text-indigo-600 transition-colors">{p.name}</p>
                         </div>
                       </TableCell>
                       <TableCell className="text-slate-600 font-semibold">
                         {account?.name || p.accountName || 'Unknown Account'}
                       </TableCell>
-                      <TableCell className="text-slate-600">{p.clientPartnerName || '—'}</TableCell>
-                      <TableCell className="text-slate-600">{p.serviceProviderPmName || '—'}</TableCell>
-                      <TableCell className="text-slate-600">{p.practiceLeadName || '—'}</TableCell>
-                      <TableCell className="text-slate-600">{p.methodology}</TableCell>
-                      <TableCell align="center">
-                        <StatusBadge value={p.health} colorMap={HEALTH_COLORS} />
+                      <TableCell className="text-slate-600" onDoubleClick={(e) => { e.stopPropagation(); if (canUpdateProject) setEditingCell({ id: p.id, key: 'clientPartnerId', value: p.clientPartnerId || '' }); }}>
+                        {editingCell?.id === p.id && editingCell?.key === 'clientPartnerId' ? (
+                          <select autoFocus value={editingCell.value} onChange={e => { const u = users.find(x => x.id === e.target.value); saveInlineCell(p.id, 'clientPartnerId', e.target.value, { clientPartnerName: u?.name || '' }); }} onBlur={() => setEditingCell(null)} className="text-xs p-1 border border-indigo-500 rounded bg-white">
+                            <option value="">Select Client Partner…</option>
+                            {clientPartnerOptions.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                          </select>
+                        ) : (p.clientPartnerName || '—')}
+                      </TableCell>
+                      <TableCell className="text-slate-600" onDoubleClick={(e) => { e.stopPropagation(); if (canUpdateProject) setEditingCell({ id: p.id, key: 'serviceProviderPmId', value: p.serviceProviderPmId || '' }); }}>
+                        {editingCell?.id === p.id && editingCell?.key === 'serviceProviderPmId' ? (
+                          <select autoFocus value={editingCell.value} onChange={e => { const u = users.find(x => x.id === e.target.value); saveInlineCell(p.id, 'serviceProviderPmId', e.target.value, { serviceProviderPmName: u?.name || '' }); }} onBlur={() => setEditingCell(null)} className="text-xs p-1 border border-indigo-500 rounded bg-white">
+                            <option value="">Select Project Manager…</option>
+                            {pmOptions.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                          </select>
+                        ) : (p.serviceProviderPmName || '—')}
+                      </TableCell>
+                      <TableCell className="text-slate-600" onDoubleClick={(e) => { e.stopPropagation(); if (canUpdateProject) setEditingCell({ id: p.id, key: 'practiceLeadId', value: p.practiceLeadId || '' }); }}>
+                        {editingCell?.id === p.id && editingCell?.key === 'practiceLeadId' ? (
+                          <select autoFocus value={editingCell.value} onChange={e => { const u = users.find(x => x.id === e.target.value); saveInlineCell(p.id, 'practiceLeadId', e.target.value, { practiceLeadName: u?.name || '' }); }} onBlur={() => setEditingCell(null)} className="text-xs p-1 border border-indigo-500 rounded bg-white">
+                            <option value="">Select Practice Lead…</option>
+                            {practiceLeadOptions.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                          </select>
+                        ) : (p.practiceLeadName || '—')}
+                      </TableCell>
+                      <TableCell className="text-slate-600" onDoubleClick={(e) => { e.stopPropagation(); if (canUpdateProject) setEditingCell({ id: p.id, key: 'methodology', value: p.methodology }); }}>
+                        {editingCell?.id === p.id && editingCell?.key === 'methodology' ? (
+                          <select autoFocus value={editingCell.value} onChange={e => saveInlineCell(p.id, 'methodology', e.target.value)} onBlur={() => setEditingCell(null)} className="text-xs p-1 border border-indigo-500 rounded bg-white">
+                            {METHODOLOGY_OPTIONS.map(m => <option key={m} value={m}>{m}</option>)}
+                          </select>
+                        ) : (p.methodology)}
+                      </TableCell>
+                      <TableCell align="center" onDoubleClick={(e) => { e.stopPropagation(); if (canUpdateProject) setEditingCell({ id: p.id, key: 'health', value: p.health }); }}>
+                        {editingCell?.id === p.id && editingCell?.key === 'health' ? (
+                          <select autoFocus value={editingCell.value} onChange={e => saveInlineCell(p.id, 'health', e.target.value)} onBlur={() => setEditingCell(null)} className="text-xs p-1 border border-indigo-500 rounded bg-white">
+                            {HEALTH_OPTIONS.map(h => <option key={h} value={h}>{h}</option>)}
+                          </select>
+                        ) : (
+                          <StatusBadge value={p.health} colorMap={HEALTH_COLORS} />
+                        )}
                       </TableCell>
                       <TableCell align="center">
                         <div className="flex items-center justify-center gap-2">
@@ -247,7 +305,13 @@ export const ProjectsListView: React.FC = () => {
                           <span className="font-bold text-slate-700 font-mono text-[11px]">{pct}%</span>
                         </div>
                       </TableCell>
-                      <TableCell className="text-slate-600 font-medium">{p.status}</TableCell>
+                      <TableCell className="text-slate-600 font-medium" onDoubleClick={(e) => { e.stopPropagation(); if (canUpdateProject) setEditingCell({ id: p.id, key: 'status', value: p.status }); }}>
+                        {editingCell?.id === p.id && editingCell?.key === 'status' ? (
+                          <select autoFocus value={editingCell.value} onChange={e => saveInlineCell(p.id, 'status', e.target.value)} onBlur={() => setEditingCell(null)} className="text-xs p-1 border border-indigo-500 rounded bg-white">
+                            {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+                          </select>
+                        ) : (p.status)}
+                      </TableCell>
                       <TableCell className="font-mono text-slate-500 whitespace-nowrap">{p.startDate || 'N/A'}</TableCell>
                       <TableCell className="font-mono text-slate-500 whitespace-nowrap">{p.endDate || 'N/A'}</TableCell>
                       <TableCell align="center" sticky="right" onClick={(e) => e.stopPropagation()}>

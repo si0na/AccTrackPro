@@ -10,10 +10,36 @@ const COLUMNS = [
   'rag', 'impact_description', 'classification', 'contingency_plan', 'risk_open_date',
 ];
 
+function calculateRiskSeverity(impact?: string, likelihood?: string): string | null {
+  const imp = (impact || '').trim();
+  const lik = (likelihood || '').trim();
+
+  if (imp === 'High') {
+    if (lik === 'Low') return 'Medium';
+    if (lik === 'Medium') return 'High';
+    if (lik === 'High') return 'Critical';
+  }
+
+  if (imp === 'Medium') {
+    if (lik === 'Low') return 'Low';
+    if (lik === 'Medium') return 'Medium';
+    if (lik === 'High') return 'High';
+  }
+
+  if (imp === 'Low') {
+    if (lik === 'Low') return 'Low';
+    if (lik === 'Medium') return 'Low';
+    if (lik === 'High') return 'Medium';
+  }
+
+  return null;
+}
+
 function toValues(data: any): any[] {
+  const computedSeverity = calculateRiskSeverity(data.impact, data.likelihood) ?? data.severity ?? null;
   return [
     data.priority, data.description,
-    data.impact ?? null, data.likelihood ?? null, data.severity ?? null,
+    data.impact ?? null, data.likelihood ?? null, computedSeverity,
     data.ownerId ?? null, data.mitigationPlan ?? '', data.status || 'Open',
     data.targetResolutionDate || null,
     data.rag ?? null,

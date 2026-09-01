@@ -809,10 +809,6 @@ export const OpportunityDetailsView: React.FC = () => {
                       )}
                     </div>
                     <div>
-                      <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1">Revenue Model</span>
-                      <p className="text-sm text-slate-800 font-semibold">{opp.revenueModel || <span className="text-slate-400 font-medium italic">Not set</span>}</p>
-                    </div>
-                    <div>
                       <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1">Priority</span>
                       {opp.priority ? (
                         <StatusBadge value={opp.priority} colorMap={PRIORITY_COLORS} />

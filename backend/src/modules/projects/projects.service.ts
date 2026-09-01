@@ -6,6 +6,7 @@ import { Project } from '../../types';
 import { extractCustomData } from '../../common/utils/db-mapping.util';
 import { Pagination, Paginated, extractTotal } from '../../common/utils/pagination.util';
 import { insertHealthHistory } from './project-health-history.util';
+import { assertNotFutureDate } from './project-progress-date.util';
 
 const KNOWN = new Set([
   'id', 'name', 'description', 'accountId', 'accountName',
@@ -171,6 +172,9 @@ export class ProjectsService {
    * than at the first manual update.
    */
   private async insertProject(data: any, requestingUserId?: string): Promise<Project> {
+    if (data.asOnDate) {
+      assertNotFutureDate(data.asOnDate);
+    }
     await this.validatePm(data.serviceProviderPmId);
     await this.validatePracticeLead(data.practiceLeadId);
     await this.validateClientPartner(data.clientPartnerId);
@@ -227,6 +231,9 @@ export class ProjectsService {
    */
   async update(id: string, data: any, requestingUserId?: string): Promise<Project> {
     const existing = await this.findOne(id, requestingUserId);
+    if (data.asOnDate) {
+      assertNotFutureDate(data.asOnDate);
+    }
     if (data.accountId && data.accountId !== existing.accountId) {
       await this.assertAccountExists(data.accountId, requestingUserId);
     }

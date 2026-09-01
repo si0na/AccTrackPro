@@ -10,7 +10,6 @@ export type OpportunityStage =
 export type OpportunityType = 'Growth' | 'Pursuit' | 'Whitespace' | 'New' | 'Extension';
 export type ServiceLine = (typeof SERVICE_LINE_OPTIONS)[number];
 export type OpportunityHealth = 'Green' | 'Amber' | 'Red';
-export type RevenueModel = 'T&E' | 'Fixed Bid' | 'Fixed Capacity' | 'Managed Services';
 export type PriorityLevel = 'High' | 'Medium' | 'Low';
 export type ActionItemStatus = 'To Do' | 'In Progress' | 'Blocked' | 'Completed' | 'Cancelled';
 export type InfluenceLevel = 'High' | 'Medium' | 'Low';
@@ -105,7 +104,6 @@ export interface Opportunity {
   aopYear?: string | null;
   serviceLine?: ServiceLine;
   opportunityHealth?: OpportunityHealth;
-  revenueModel?: RevenueModel;
   location?: string;
   cost?: number;
   grossMargin?: number;
@@ -275,6 +273,43 @@ export interface SqaRecord {
   createdAt?: string;
   updatedAt?: string;
   [key: string]: any;
+}
+
+export interface SqaTrackerSnapshot {
+  id: string;
+  sqaRecordId: string;
+  projectId: string;
+  projectName?: string;
+  accountId?: string;
+  accountName?: string;
+  snapshotDate: string;
+  isoYear: number;
+  weekNumber: number;
+  importance: PriorityLevel;
+  deliveryModel?: string;
+  billingModel?: string;
+  billingModelOverride?: string;
+  tower?: string;
+  towerOverride?: string;
+  fte?: number;
+  fteOverride?: number;
+  revenue?: number;
+  revenueOverride?: number;
+  pmName?: string;
+  wsrPublished: boolean;
+  healthStatus?: string;
+  clientEscalation: boolean;
+  currentWeekUpdate: string;
+  nextWeekPlan: string;
+  issuesChallenges: string;
+  pathToGreen: string;
+  resourcingStatus?: string;
+  currentSdlcPhase?: string;
+  sqaRemarks: string;
+  updatedById?: string;
+  updatedByName?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 /**
@@ -468,6 +503,7 @@ export interface Stakeholder {
   phone: string;
   stakeholderType: StakeholderType;
   department?: string;
+  linkedinProfileUrl?: string;
   /** Set on auto-registered Service Provider stakeholders — links back to the user they represent. */
   userId?: string;
   /** Whitelist (employee_master) row this Service Provider represents, set even before they register. */

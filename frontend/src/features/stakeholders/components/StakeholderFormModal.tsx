@@ -27,6 +27,7 @@ const EMPTY_STAKEHOLDER: Omit<Stakeholder, 'id'> = {
   phone: '',
   stakeholderType: '' as StakeholderType,
   department: '',
+  linkedinProfileUrl: '',
 };
 
 export interface StakeholderFormModalProps {
@@ -94,7 +95,7 @@ export const StakeholderFormModal: React.FC<StakeholderFormModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!draft.name.trim() || !draft.accountId || !draft.stakeholderType) return;
+    if (!draft.name.trim() || (!lockedAccount && !draft.accountId) || !draft.stakeholderType) return;
     // Influence & relationship are only required for Client stakeholders.
     if (!isServiceProvider && (!draft.influence || !draft.relationship)) return;
     setIsSubmitting(true);
@@ -260,7 +261,7 @@ export const StakeholderFormModal: React.FC<StakeholderFormModalProps> = ({
         )}
 
         <FormSection title="Contact Details">
-          <FormGrid>
+          <FormGrid columns={3}>
             <FormField label="Direct Line Phone">
               <PhoneInput
                 value={draft.phone}
@@ -275,6 +276,16 @@ export const StakeholderFormModal: React.FC<StakeholderFormModalProps> = ({
                 value={draft.email}
                 onChange={(e) => setDraft({ ...draft, email: e.target.value })}
                 placeholder="e.g., david.miller@company.com"
+                className={inputCls}
+              />
+            </FormField>
+
+            <FormField label="LinkedIn Profile URL (Optional)">
+              <input
+                type="url"
+                value={draft.linkedinProfileUrl ?? ''}
+                onChange={(e) => setDraft({ ...draft, linkedinProfileUrl: e.target.value })}
+                placeholder="https://www.linkedin.com/in/username"
                 className={inputCls}
               />
             </FormField>

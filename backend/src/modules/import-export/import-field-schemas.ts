@@ -16,7 +16,6 @@ const OPPORTUNITY_STAGE = ['Lead', 'Qualified', 'Proposal', 'Negotiation', 'Verb
 const OPPORTUNITY_TYPE = ['Growth', 'Pursuit', 'Whitespace', 'New', 'Extension'] as const;
 const SERVICE_LINE = SERVICE_LINE_OPTIONS;
 const OPPORTUNITY_HEALTH = ['Green', 'Amber', 'Red'] as const;
-const REVENUE_MODEL = ['T&E', 'Fixed Bid', 'Fixed Capacity', 'Managed Services'] as const;
 const ACTION_ITEM_STATUS = ['To Do', 'In Progress', 'Blocked', 'Completed', 'Cancelled'] as const;
 const PRIORITY = ['High', 'Medium', 'Low'] as const;
 const INFLUENCE = ['High', 'Medium', 'Low'] as const;
@@ -63,7 +62,6 @@ export const OPPORTUNITY_FIELDS: ImportFieldDef[] = [
   { key: 'risksAndDependencies', header: 'Risks & Dependencies', type: 'string' },
   { key: 'description', header: 'Description', type: 'string' },
   { key: 'opportunityHealth', header: 'Opportunity Health', type: 'enum', options: OPPORTUNITY_HEALTH },
-  { key: 'revenueModel', header: 'Revenue Model', type: 'enum', options: REVENUE_MODEL },
   { key: 'location', header: 'Location', type: 'string' },
   { key: 'cost', header: 'Cost', type: 'number' },
   { key: 'grossMargin', header: 'Gross Margin (%)', type: 'number' },

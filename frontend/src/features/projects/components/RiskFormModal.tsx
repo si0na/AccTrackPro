@@ -6,7 +6,8 @@
 import React from 'react';
 import { ShieldAlert } from 'lucide-react';
 import type { AdminUser, PriorityLevel, ProjectRisk, RiskStatus } from '@/types';
-import { RISK_RAG_OPTIONS, RISK_CLASSIFICATION_OPTIONS } from '@/constants';
+import { RISK_RAG_OPTIONS, RISK_CLASSIFICATION_OPTIONS, RISK_IMPACT_OPTIONS, RISK_LIKELIHOOD_OPTIONS } from '@/constants';
+import { calculateRiskSeverity } from '@/utils';
 import {
   FormField,
   FormGrid,
@@ -160,27 +161,45 @@ export const RiskFormModal: React.FC<RiskFormModalProps> = ({
             />
           </FormField>
           <FormField label="Impact">
-            <input
-              type="text"
+            <select
               value={value.impact ?? ''}
-              onChange={(e) => onChange({ impact: e.target.value })}
-              className={INPUT_CLS}
-            />
+              onChange={(e) => {
+                const nextImpact = e.target.value;
+                const nextSeverity = calculateRiskSeverity(nextImpact, value.likelihood);
+                onChange({ impact: nextImpact, severity: nextSeverity });
+              }}
+              className={SELECT_CLS}
+            >
+              <option value="">— Select —</option>
+              {RISK_IMPACT_OPTIONS.map((imp) => (
+                <option key={imp} value={imp}>{imp}</option>
+              ))}
+            </select>
           </FormField>
           <FormField label="Likelihood">
-            <input
-              type="text"
+            <select
               value={value.likelihood ?? ''}
-              onChange={(e) => onChange({ likelihood: e.target.value })}
-              className={INPUT_CLS}
-            />
+              onChange={(e) => {
+                const nextLikelihood = e.target.value;
+                const nextSeverity = calculateRiskSeverity(value.impact, nextLikelihood);
+                onChange({ likelihood: nextLikelihood, severity: nextSeverity });
+              }}
+              className={SELECT_CLS}
+            >
+              <option value="">— Select —</option>
+              {RISK_LIKELIHOOD_OPTIONS.map((lik) => (
+                <option key={lik} value={lik}>{lik}</option>
+              ))}
+            </select>
           </FormField>
-          <FormField label="Severity">
+          <FormField label="Severity (Calculated)">
             <input
               type="text"
-              value={value.severity ?? ''}
-              onChange={(e) => onChange({ severity: e.target.value })}
-              className={INPUT_CLS}
+              readOnly
+              disabled
+              value={value.severity || calculateRiskSeverity(value.impact, value.likelihood)}
+              placeholder="Auto-calculated"
+              className={`${INPUT_CLS} bg-slate-100 text-slate-700 font-semibold cursor-not-allowed`}
             />
           </FormField>
         </FormGrid>

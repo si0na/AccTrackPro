@@ -4,6 +4,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useCRM } from '@/contexts/CRMContext';
 import { usersApi } from '@/api/crm.api';
 import { Account, AccountType, AccountHealth, User, Stakeholder } from '@/types';
@@ -11,12 +12,13 @@ import { Plus, Building2, Settings2, HeartPulse, X } from 'lucide-react';
 import { CustomizeColumnsSidebar } from '@/components/table/CustomizeColumnsSidebar';
 import { InlineEditModal } from '@/components/InlineEditModal';
 import { LoadingState } from '@/components/common/LoadingState';
-import { StakeholderFormModal } from '@/features/stakeholders/components/StakeholderFormModal';
-import { MultiStakeholderPicker } from '@/components/MultiStakeholderPicker';
+import { AccountFormModal } from '@/features/accounts/components/AccountFormModal';
 import { compareForSort, getCustomerSinceYearOptions, mapLocationToOption, matchesGlobalAccount, SortDirection } from '@/utils';
 import { ACCOUNT_TYPE_OPTIONS, ACCOUNT_HEALTH_OPTIONS, LOCATION_OPTIONS, TOWER_OPTIONS } from '@/constants';
 import {
   ACCOUNT_TYPE_COLORS,
+  InlineTextEditCell,
+  InlineSelectEditCell,
   BackButton,
   Button,
   Card,
@@ -410,86 +412,135 @@ export const AccountsListView: React.FC = () => {
                   message="No corporate accounts found matching the criteria."
                 />
               ) : (
-                pagedAccounts.map((acc) => (
-                  <TableRow
-                    key={acc.id}
-                    clickable
-                    onClick={() => handleRowClick(acc.id)}
-                  >
-                    {displayedConfigs.filter(col => col.key !== 'owner').map(col => {
-                      if (col.key === 'name') {
-                        return (
-                          <TableCell key={col.key}>
-                            <div className="flex items-center space-x-3">
-                              <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
-                                {acc.name.charAt(0)}
+                pagedAccounts.map((acc) => {
+                  const canUpdate = can('accounts', 'update');
+                  return (
+                    <TableRow key={acc.id}>
+                      {displayedConfigs.filter(col => col.key !== 'owner').map(col => {
+                        if (col.key === 'name') {
+                          return (
+                            <TableCell key={col.key} onClick={() => handleRowClick(acc.id)} className="cursor-pointer">
+                              <div className="flex items-center space-x-3">
+                                <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                                  {acc.name.charAt(0)}
+                                </div>
+                                <div>
+                                  <p className="font-bold text-slate-900 text-sm hover:text-blue-600 transition-colors">
+                                    {acc.name}
+                                  </p>
+                                  <p className="text-[10px] text-slate-400 font-normal">{acc.industry}</p>
+                                </div>
                               </div>
-                              <div>
-                                <p className="font-bold text-slate-900 text-sm hover:text-blue-600 transition-colors">
-                                  {acc.name}
-                                </p>
-                                <p className="text-[10px] text-slate-400 font-normal">{acc.industry}</p>
-                              </div>
-                            </div>
-                          </TableCell>
-                        );
-                      }
-                      if (col.key === 'status') {
-                        return (
-                          <TableCell key={col.key} className="text-slate-600 font-semibold">
-                            {acc.status || 'Active'}
-                          </TableCell>
-                        );
-                      }
-                      if (col.key === 'health') {
-                        return (
-                          <TableCell key={col.key}>
-                            <StatusBadge value={acc.health} colorMap={HEALTH_COLORS} />
-                          </TableCell>
-                        );
-                      }
-                      if (col.key === 'owner') {
-                        return (
-                          <TableCell key={col.key} className="text-slate-600 font-medium">
-                            {acc.owner}
-                          </TableCell>
-                        );
-                      }
-                      if (col.key === 'type') {
-                        return (
-                          <TableCell key={col.key}>
-                            <StatusBadge value={acc.type} colorMap={ACCOUNT_TYPE_COLORS} />
-                          </TableCell>
-                        );
-                      }
-                      if (col.key === 'industry') {
-                        return (
-                          <TableCell key={col.key} className="text-slate-600 font-medium">
-                            {acc.industry || <span className="text-slate-300">—</span>}
-                          </TableCell>
-                        );
-                      }
-                      if (col.key === 'since') {
-                        return (
-                          <TableCell key={col.key} className="text-slate-600 font-medium">
-                            {acc.since || <span className="text-slate-300">—</span>}
-                          </TableCell>
-                        );
-                      }
-                      if (col.key === 'location') {
-                        return (
-                          <TableCell key={col.key} className="text-slate-600 font-medium">
-                            {acc.location || <span className="text-slate-300">—</span>}
-                          </TableCell>
-                        );
-                      }
-                      if (col.key === 'revenue') {
-                        return (
-                          <TableCell key={col.key} align="right" className="text-slate-900 font-bold font-mono">
-                            {new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(acc.revenue)}
-                          </TableCell>
-                        );
-                      }
+                            </TableCell>
+                          );
+                        }
+                        if (col.key === 'status') {
+                          return (
+                            <TableCell key={col.key} onClick={(e) => e.stopPropagation()}>
+                              <InlineSelectEditCell
+                                value={acc.status || 'Active'}
+                                options={['Active', 'Inactive', 'Prospect']}
+                                disabled={!canUpdate}
+                                onSave={async (val) => { await updateAccount({ ...acc, status: val as any }); }}
+                              />
+                            </TableCell>
+                          );
+                        }
+                        if (col.key === 'health') {
+                          return (
+                            <TableCell key={col.key} onClick={(e) => e.stopPropagation()}>
+                              <InlineSelectEditCell
+                                value={acc.health}
+                                options={ACCOUNT_HEALTH_OPTIONS}
+                                disabled={!canUpdate}
+                                onSave={async (val) => { await updateAccount({ ...acc, health: val as any }); }}
+                              />
+                            </TableCell>
+                          );
+                        }
+                        if (col.key === 'owner') {
+                          return (
+                            <TableCell key={col.key} className="text-slate-600 font-medium">
+                              {acc.owner}
+                            </TableCell>
+                          );
+                        }
+                        if (col.key === 'type') {
+                          return (
+                            <TableCell key={col.key} onClick={(e) => e.stopPropagation()}>
+                              <InlineSelectEditCell
+                                value={acc.type}
+                                options={ACCOUNT_TYPE_OPTIONS}
+                                disabled={!canUpdate}
+                                onSave={async (val) => { await updateAccount({ ...acc, type: val as any }); }}
+                              />
+                            </TableCell>
+                          );
+                        }
+                        if (col.key === 'industry') {
+                          return (
+                            <TableCell key={col.key} onClick={(e) => e.stopPropagation()}>
+                              <InlineTextEditCell
+                                value={acc.industry ?? ''}
+                                disabled={!canUpdate}
+                                onSave={async (val) => { await updateAccount({ ...acc, industry: val }); }}
+                              />
+                            </TableCell>
+                          );
+                        }
+                        if (col.key === 'since') {
+                          return (
+                            <TableCell key={col.key} onClick={(e) => e.stopPropagation()}>
+                              <InlineSelectEditCell
+                                value={acc.since || ''}
+                                options={getCustomerSinceYearOptions()}
+                                disabled={!canUpdate}
+                                placeholder="Select year…"
+                                onSave={async (val) => { await updateAccount({ ...acc, since: val }); }}
+                              />
+                            </TableCell>
+                          );
+                        }
+                        if (col.key === 'location') {
+                          return (
+                            <TableCell key={col.key} onClick={(e) => e.stopPropagation()}>
+                              <InlineSelectEditCell
+                                value={acc.location || ''}
+                                options={LOCATION_OPTIONS}
+                                disabled={!canUpdate}
+                                placeholder="Select location…"
+                                onSave={async (val) => { await updateAccount({ ...acc, location: val }); }}
+                              />
+                            </TableCell>
+                          );
+                        }
+                        if (col.key === 'revenue') {
+                          return (
+                            <TableCell key={col.key} align="right" onClick={(e) => e.stopPropagation()}>
+                              <InlineTextEditCell
+                                type="number"
+                                value={acc.revenue}
+                                disabled={!canUpdate}
+                                formatDisplay={(val) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(val)}
+                                onSave={async (val) => { await updateAccount({ ...acc, revenue: val ?? 0 }); }}
+                              />
+                            </TableCell>
+                          );
+                        }
+
+                        if (col.key === 'tower') {
+                          return (
+                            <TableCell key={col.key} onClick={(e) => e.stopPropagation()}>
+                              <InlineSelectEditCell
+                                value={acc.tower || ''}
+                                options={TOWER_OPTIONS}
+                                disabled={!canUpdate}
+                                placeholder="Select tower…"
+                                onSave={async (val) => { await updateAccount({ ...acc, tower: val }); }}
+                              />
+                            </TableCell>
+                          );
+                        }
 
                       // Dynamic Render for custom columns/fields
                       const rawVal = acc[col.key] ?? (col.type === 'boolean' ? false : '');
@@ -528,6 +579,20 @@ export const AccountsListView: React.FC = () => {
                               aria-label={col.name}
                               className="text-xs bg-slate-50 hover:bg-slate-100/70 focus:bg-white border border-transparent hover:border-slate-200 focus:border-blue-500 rounded px-2 py-1 text-slate-800 font-medium transition-all font-mono"
                             />
+                          ) : (col.type as string) === 'enum' || (col as any).options ? (
+                            <select
+                              value={rawVal}
+                              onChange={(e) => {
+                                updateAccount({ ...acc, [col.key]: e.target.value });
+                              }}
+                              aria-label={col.name}
+                              className="text-xs bg-slate-50 hover:bg-slate-100/70 focus:bg-white border border-slate-200 focus:border-blue-500 rounded px-2 py-1 text-slate-800 font-medium transition-all cursor-pointer"
+                            >
+                              <option value="" disabled>Select…</option>
+                              {((col as any).options || TOWER_OPTIONS).map((opt: string) => (
+                                <option key={opt} value={opt}>{opt}</option>
+                              ))}
+                            </select>
                           ) : (
                             <input
                               type="text"
@@ -564,7 +629,8 @@ export const AccountsListView: React.FC = () => {
                       />
                     </TableCell>
                   </TableRow>
-                ))
+                );
+              })
               )}
             </tbody>
           </Table>
@@ -658,207 +724,36 @@ export const AccountsListView: React.FC = () => {
         onCancel={() => setDeleteTarget(null)}
       />
 
-      {isEditModalOpen && editingAccount && (
-        <InlineEditModal
-          mode="accounts"
-          entity={editingAccount}
-          displayedConfigs={displayedConfigs}
-          accounts={accounts}
-          opportunities={opportunities}
-          stakeholders={stakeholders}
-          users={users}
-          onChange={(patch) => setEditingAccount({ ...editingAccount, ...patch })}
-          onSave={async (e) => {
-            e.preventDefault();
-            await updateAccount(editingAccount);
+      {/* Edit Account Modal */}
+      <AccountFormModal
+        isOpen={isEditModalOpen && !!editingAccount}
+        mode="edit"
+        account={editingAccount}
+        onClose={() => {
+          setIsEditModalOpen(false);
+          setEditingAccount(null);
+        }}
+        onSubmit={async (draft) => {
+          if (editingAccount) {
+            await updateAccount({ ...editingAccount, ...draft } as Account);
             setIsEditModalOpen(false);
             setEditingAccount(null);
-          }}
-          onCancel={() => {
-            setIsEditModalOpen(false);
-            setEditingAccount(null);
-          }}
-        />
-      )}
+          }
+        }}
+      />
 
       {/* Create Account Modal */}
-      <FormModal
+      <AccountFormModal
         isOpen={isAddModalOpen}
-        title="Create Account Profile"
-        icon={<Building2 className="w-5 h-5 text-blue-600" aria-hidden="true" />}
+        mode="create"
         onClose={() => setIsAddModalOpen(false)}
-        onSubmit={handleCreateAccount}
-        submitLabel="Create Account"
-        maxWidth="max-w-4xl"
-      >
-        <div className="space-y-5">
-          <FormSection title="Identity">
-            <FormGrid columns={3}>
-              <FormField label="Account Name" required wide>
-                <input
-                  type="text"
-                  required
-                  value={newAccount.name}
-                  onChange={(e) => setNewAccount({ ...newAccount, name: e.target.value })}
-                  placeholder="e.g., Tesla Inc."
-                  className={INPUT_CLS}
-                />
-              </FormField>
-
-              <FormField label="Account Type" required>
-                <select
-                  required
-                  value={newAccount.type}
-                  onChange={(e) => setNewAccount({ ...newAccount, type: e.target.value as AccountType })}
-                  className={SELECT_CLS}
-                >
-                  <option value="" disabled>Select type…</option>
-                  {ACCOUNT_TYPE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </FormField>
-
-              <FormField label="Health Status" required>
-                <select
-                  required
-                  value={newAccount.health}
-                  onChange={(e) => setNewAccount({ ...newAccount, health: e.target.value as AccountHealth })}
-                  className={SELECT_CLS}
-                >
-                  <option value="" disabled>Select health…</option>
-                  {ACCOUNT_HEALTH_OPTIONS.map(h => <option key={h} value={h}>{h}</option>)}
-                </select>
-              </FormField>
-            </FormGrid>
-          </FormSection>
-
-          <FormSection title="Details">
-            <FormGrid columns={3}>
-              <FormField label="Industry (Optional)">
-                <input
-                  type="text"
-                  value={newAccount.industry}
-                  onChange={(e) => setNewAccount({ ...newAccount, industry: e.target.value })}
-                  placeholder="e.g., Technology"
-                  className={INPUT_CLS}
-                />
-              </FormField>
-
-              <FormField label="Customer Since (Optional)">
-                <SearchableSelect
-                  value={newAccount.since || ''}
-                  onChange={(since) => setNewAccount({ ...newAccount, since })}
-                  options={getCustomerSinceYearOptions()}
-                  placeholder="Select year…"
-                  aria-label="Customer since year"
-                />
-              </FormField>
-
-              <FormField label="Location (Optional)">
-                <SearchableSelect
-                  value={newAccount.location || ''}
-                  onChange={(location) => setNewAccount({ ...newAccount, location })}
-                  options={LOCATION_OPTIONS}
-                  placeholder="Search countries…"
-                  aria-label="Account location"
-                />
-              </FormField>
-
-              <FormField label="Tower (Optional)">
-                <select
-                  value={newAccount.tower || ''}
-                  onChange={(e) => setNewAccount({ ...newAccount, tower: e.target.value })}
-                  className={SELECT_CLS}
-                >
-                  <option value="">Select tower…</option>
-                  {TOWER_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </FormField>
-            </FormGrid>
-          </FormSection>
-
-          <FormSection title="Ownership">
-            <FormGrid columns={2}>
-              <FormField label="Practice Lead (Optional)">
-                <SearchableSelect
-                  value={newAccount.practiceLeadId || ''}
-                  onChange={(practiceLeadId) => setNewAccount({ ...newAccount, practiceLeadId })}
-                  options={practiceLeadOptions}
-                  placeholder="Select practice lead…"
-                  aria-label="Practice lead"
-                />
-              </FormField>
-
-              <FormField label="Client Partner (Optional)">
-                <SearchableSelect
-                  value={newAccount.clientPartnerId || ''}
-                  onChange={(clientPartnerId) => setNewAccount({ ...newAccount, clientPartnerId })}
-                  options={clientPartnerOptions}
-                  placeholder="Select client partner…"
-                  aria-label="Client partner"
-                />
-              </FormField>
-
-              <FormField label="Vertical Head (Optional)">
-                <SearchableSelect
-                  value={newAccount.verticalHeadId || ''}
-                  onChange={(verticalHeadId) => setNewAccount({ ...newAccount, verticalHeadId })}
-                  options={verticalHeadOptions}
-                  placeholder="Select vertical head…"
-                  aria-label="Vertical head"
-                />
-              </FormField>
-            </FormGrid>
-          </FormSection>
-
-          <FormSection title="Stakeholders (Optional)">
-            <FormGrid columns={2}>
-              <FormField label="Service Provider Stakeholders">
-                <MultiStakeholderPicker
-                  mode="service-provider"
-                  selectedIds={selectedSpUserIds}
-                  onChange={setSelectedSpUserIds}
-                  serviceProviders={serviceProviders}
-                  tone="blue"
-                />
-              </FormField>
-              <InlineCreateField
-                label="Client Stakeholders"
-                createLabel="client stakeholder"
-                onCreate={() => setShowAddClientModal(true)}
-              >
-                <MultiStakeholderPicker
-                  mode="client"
-                  selectedIds={selectedClientStakeholderIds}
-                  onChange={setSelectedClientStakeholderIds}
-                  stakeholders={stakeholders}
-                  tone="blue"
-                />
-              </InlineCreateField>
-            </FormGrid>
-          </FormSection>
-
-          {showAddClientModal && (
-            <StakeholderFormModal
-              isOpen={true}
-              mode="create"
-              accounts={[]}
-              lockedAccount={{ id: 'temp-new-account', name: newAccount.name || 'New Account' }}
-              lockedType="CLIENT"
-              onClose={() => setShowAddClientModal(false)}
-              onSubmit={async (draft) => {
-                // Create the new CLIENT stakeholder right away (it'll temporarily
-                // have account_id='temp-new-account' until the account is saved,
-                // then the backend reassociates it via clientStakeholderIds).
-                try {
-                  const created = await addStakeholder({ ...draft, accountId: '' });
-                  setSelectedClientStakeholderIds(ids => [...ids, created.id]);
-                } catch { /* silently ignore — user can retry */ }
-                setShowAddClientModal(false);
-              }}
-            />
-          )}
-        </div>
-      </FormModal>
+        onSubmit={async (draft) => {
+          const created = await addAccount(draft as Omit<Account, 'id'>);
+          setIsAddModalOpen(false);
+          setSelectedAccountId(created.id);
+          setView('account-details');
+        }}
+      />
     </div>
   );
 };

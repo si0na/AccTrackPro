@@ -4,13 +4,15 @@
  */
 
 import React, { useMemo, useState } from 'react';
+import { useCRM } from '@/contexts/CRMContext';
 import { Account, Stakeholder, StakeholderType } from '@/types';
-import { Mail, Phone } from 'lucide-react';
+import { Mail, Phone, Linkedin } from 'lucide-react';
 import {
   Card,
   EmptyRow,
   FilterBar,
   INFLUENCE_COLORS,
+  InlineTextEditCell,
   Pagination,
   RELATIONSHIP_COLORS,
   SearchBar,
@@ -58,6 +60,7 @@ export const StakeholderTable: React.FC<StakeholderTableProps> = ({
   rows, type, resolveAccount, canEdit, canDelete, onEdit, onDelete, onRowClick, emptyMessage,
   hideAccountColumn = false, storageKey,
 }) => {
+  const { updateStakeholder } = useCRM();
   const isServiceProvider = type === 'SERVICE_PROVIDER';
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -99,8 +102,8 @@ export const StakeholderTable: React.FC<StakeholderTableProps> = ({
   const currentPage = Math.min(page, totalPages);
   const paged = sorted.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
-  // Columns: Name, [Account], Department, Designation, [Influence, Relationship], Email, Phone, Actions
-  let colSpan = isServiceProvider ? 7 : 9;
+  // Columns: Name, [Account], Department, Designation, [Influence, Relationship], Email, Phone, LinkedIn, Actions
+  let colSpan = isServiceProvider ? 8 : 10;
   if (hideAccountColumn) colSpan -= 1;
 
   return (
@@ -134,6 +137,7 @@ export const StakeholderTable: React.FC<StakeholderTableProps> = ({
               )}
               <TableHeadCell><SortableHeader label="Email" field="email" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} /></TableHeadCell>
               <TableHeadCell><SortableHeader label="Phone" field="phone" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} /></TableHeadCell>
+              <TableHeadCell><SortableHeader label="LinkedIn" field="linkedinProfileUrl" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} /></TableHeadCell>
               <TableHeadCell align="center" sticky="right">Actions</TableHeadCell>
             </TableHead>
             <tbody>
@@ -193,6 +197,32 @@ export const StakeholderTable: React.FC<StakeholderTableProps> = ({
                           <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden="true" />
                           <span>{s.phone}</span>
                         </span>
+                      </TableCell>
+                      <TableCell className="text-slate-500" onDoubleClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-center gap-1.5">
+                          {s.linkedinProfileUrl ? (
+                            <a
+                              href={s.linkedinProfileUrl.startsWith('http') ? s.linkedinProfileUrl : `https://${s.linkedinProfileUrl}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={(e) => e.stopPropagation()}
+                              className="inline-flex items-center gap-1 text-blue-600 hover:underline font-semibold text-xs"
+                              title={s.linkedinProfileUrl}
+                            >
+                              <Linkedin className="w-3.5 h-3.5 text-blue-600 shrink-0" aria-hidden="true" />
+                              <span className="truncate max-w-[120px]">LinkedIn</span>
+                            </a>
+                          ) : null}
+                          <InlineTextEditCell
+                            value={s.linkedinProfileUrl ?? ''}
+                            placeholder={s.linkedinProfileUrl ? '' : 'Add LinkedIn…'}
+                            disabled={!canEdit}
+                            formatDisplay={() => ''}
+                            onSave={async (val) => {
+                              await updateStakeholder({ ...s, linkedinProfileUrl: val || undefined });
+                            }}
+                          />
+                        </div>
                       </TableCell>
                       <TableCell align="center" sticky="right">
                         <TableActions

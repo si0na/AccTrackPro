@@ -10,10 +10,12 @@ export class CreateProjectRiskDto {
   @IsString() @IsNotEmpty({ message: 'Description is required' }) @MaxLength(5000)
   description!: string;
 
-  @IsString() @IsOptional() @MaxLength(2000)
+  @EmptyToUndefined()
+  @IsOptional() @IsIn(['Low', 'Medium', 'High'], { message: 'Impact must be Low, Medium, or High' })
   impact?: string;
 
-  @IsString() @IsOptional() @MaxLength(500)
+  @EmptyToUndefined()
+  @IsOptional() @IsIn(['Low', 'Medium', 'High'], { message: 'Likelihood must be Low, Medium, or High' })
   likelihood?: string;
 
   @IsString() @IsOptional() @MaxLength(500)
