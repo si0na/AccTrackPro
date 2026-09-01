@@ -170,9 +170,12 @@ export const ActionItemQuickPanel: React.FC<ActionItemQuickPanelProps> = ({
                 } else {
                   setEditForm({
                     title: item.title,
-                    status: item.status,
-                    priority: item.priority,
+                    accountId: item.accountId,
+                    opportunityId: item.opportunityId,
+                    projectId: item.projectId,
                     ownerStakeholderId: item.ownerStakeholderId,
+                    priority: item.priority,
+                    status: item.status,
                     openDate: item.openDate,
                     dueDate: item.dueDate,
                     notes: item.notes,
@@ -208,30 +211,58 @@ export const ActionItemQuickPanel: React.FC<ActionItemQuickPanelProps> = ({
                   className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white font-semibold text-slate-800"
                 />
               </div>
+
+              {/* Account */}
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase">Status</label>
+                <label className="text-[10px] font-bold text-slate-500 uppercase">Account</label>
                 <select
-                  value={editForm.status || item.status}
-                  onChange={(e) => setEditForm({ ...editForm, status: e.target.value as ActionItemStatus })}
+                  value={editForm.accountId || ''}
+                  onChange={(e) => setEditForm({ ...editForm, accountId: e.target.value, opportunityId: '', projectId: '' })}
                   className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white font-semibold text-slate-800"
                 >
-                  {ACTION_ITEM_STATUS_OPTIONS.map(s => (
-                    <option key={s} value={s}>{s}</option>
+                  <option value="">Select Account...</option>
+                  {accounts.map((a) => (
+                    <option key={a.id} value={a.id}>{a.name}</option>
                   ))}
                 </select>
               </div>
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase">Priority</label>
-                <select
-                  value={editForm.priority || item.priority}
-                  onChange={(e) => setEditForm({ ...editForm, priority: e.target.value as PriorityLevel })}
-                  className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white font-semibold text-slate-800"
-                >
-                  <option value="High">High</option>
-                  <option value="Medium">Medium</option>
-                  <option value="Low">Low</option>
-                </select>
-              </div>
+
+              {/* Opportunity or Project */}
+              {item.projectId || editForm.projectId ? (
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Project</label>
+                  <select
+                    value={editForm.projectId || ''}
+                    onChange={(e) => setEditForm({ ...editForm, projectId: e.target.value })}
+                    className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white font-semibold text-slate-800"
+                  >
+                    <option value="">Select Project...</option>
+                    {projects
+                      .filter((p) => !editForm.accountId || p.accountId === editForm.accountId)
+                      .map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                  </select>
+                </div>
+              ) : (
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Opportunity</label>
+                  <select
+                    value={editForm.opportunityId || ''}
+                    onChange={(e) => setEditForm({ ...editForm, opportunityId: e.target.value })}
+                    className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white font-semibold text-slate-800"
+                  >
+                    <option value="">— None / General —</option>
+                    {opportunities
+                      .filter((o) => !editForm.accountId || o.accountId === editForm.accountId)
+                      .map((o) => (
+                        <option key={o.id} value={o.id}>{o.name}</option>
+                      ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Assigned Owner */}
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-slate-500 uppercase">Assigned Owner</label>
                 <select
@@ -245,6 +276,35 @@ export const ActionItemQuickPanel: React.FC<ActionItemQuickPanelProps> = ({
                   ))}
                 </select>
               </div>
+
+              {/* Priority */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-500 uppercase">Priority</label>
+                <select
+                  value={editForm.priority || item.priority}
+                  onChange={(e) => setEditForm({ ...editForm, priority: e.target.value as PriorityLevel })}
+                  className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white font-semibold text-slate-800"
+                >
+                  <option value="High">High</option>
+                  <option value="Medium">Medium</option>
+                  <option value="Low">Low</option>
+                </select>
+              </div>
+
+              {/* Status */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-500 uppercase">Status</label>
+                <select
+                  value={editForm.status || item.status}
+                  onChange={(e) => setEditForm({ ...editForm, status: e.target.value as ActionItemStatus })}
+                  className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white font-semibold text-slate-800"
+                >
+                  {ACTION_ITEM_STATUS_OPTIONS.map(s => (
+                    <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              </div>
+
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-slate-500 uppercase">Open Date</label>
                 <input
@@ -254,6 +314,7 @@ export const ActionItemQuickPanel: React.FC<ActionItemQuickPanelProps> = ({
                   className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white font-mono"
                 />
               </div>
+
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-slate-500 uppercase">Due Date</label>
                 <input
@@ -263,6 +324,7 @@ export const ActionItemQuickPanel: React.FC<ActionItemQuickPanelProps> = ({
                   className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white font-mono"
                 />
               </div>
+
               <div className="md:col-span-2 space-y-1">
                 <label className="text-[10px] font-bold text-slate-500 uppercase">Notes / Description</label>
                 <textarea
@@ -272,6 +334,7 @@ export const ActionItemQuickPanel: React.FC<ActionItemQuickPanelProps> = ({
                   className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white"
                 />
               </div>
+
               <div className="md:col-span-2 space-y-1">
                 <label className="text-[10px] font-bold text-slate-500 uppercase">Risks & Dependencies</label>
                 <textarea
@@ -290,20 +353,6 @@ export const ActionItemQuickPanel: React.FC<ActionItemQuickPanelProps> = ({
               </div>
 
               <div className="grid grid-cols-2 gap-3 bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-2xs text-xs">
-                <div className="space-y-0.5">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                    <User className="w-3 h-3 text-slate-400" /> Owner
-                  </span>
-                  <p className="font-semibold text-slate-800 truncate">{ownerName}</p>
-                </div>
-
-                <div className="space-y-0.5">
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                    <Calendar className="w-3 h-3 text-slate-400" /> Due Date
-                  </span>
-                  <p className="font-mono font-semibold text-slate-800">{item.dueDate || '—'}</p>
-                </div>
-
                 {account && (
                   <div className="space-y-0.5">
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
@@ -330,6 +379,20 @@ export const ActionItemQuickPanel: React.FC<ActionItemQuickPanelProps> = ({
                     <p className="font-semibold text-slate-800 truncate">{proj.name}</p>
                   </div>
                 )}
+
+                <div className="space-y-0.5">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                    <User className="w-3 h-3 text-slate-400" /> Owner
+                  </span>
+                  <p className="font-semibold text-slate-800 truncate">{ownerName}</p>
+                </div>
+
+                <div className="space-y-0.5">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                    <Calendar className="w-3 h-3 text-slate-400" /> Due Date
+                  </span>
+                  <p className="font-mono font-semibold text-slate-800">{item.dueDate || '—'}</p>
+                </div>
 
                 <div className="space-y-0.5">
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
