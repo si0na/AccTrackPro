@@ -5,10 +5,10 @@ import { DatabaseService } from '../../database/database.service';
 import { FilterContextService, FilterParams } from '../../common/services/filter-context.service';
 import { ProjectsService } from '../projects/projects.service';
 import { ProjectHealthService, ProjectWeeklyHealth } from '../projects/project-health.service';
-import { SqaAvailableProject, SqaRecord } from '../../types';
+import { SqaAvailableProject, SqaRecord, SqaTrackerSnapshot } from '../../types';
 import { extractCustomData } from '../../common/utils/db-mapping.util';
 import { Pagination, Paginated, extractTotal } from '../../common/utils/pagination.util';
-import { trailingIsoWeeks } from '../../common/utils/iso-week.util';
+import { isoWeekOf, trailingIsoWeeks } from '../../common/utils/iso-week.util';
 
 /** Default and maximum width of the weekly health window. */
 export const DEFAULT_HEALTH_WEEKS = 3;
@@ -77,7 +77,7 @@ function deriveInherited(row: any): SqaInheritedValues {
   // "no team recorded", which is an absent source rather than an FTE of zero.
   const teamMemberCount = Number(row.team_member_count ?? 0);
   return {
-    billingModelInherited: row.revenue_model ?? undefined,
+    billingModelInherited: row.project_billing_model ?? row.opportunity_billing_model ?? undefined,
     towerInherited: row.project_tower ?? row.opportunity_tower ?? row.account_tower ?? undefined,
     serviceLineInherited: row.service_line ?? undefined,
     revenueInherited: projectDealValue ?? opportunityValue,
@@ -189,12 +189,13 @@ function sqaSelect(opts: { accountJoin: 'inner' | 'left'; withTotal?: boolean })
          p.deal_value  AS project_deal_value,
          p.service_provider_pm_id,
          p.client_pm_name,
+         p.billing_model AS project_billing_model,
          pm.name       AS pm_name,
          a.name        AS account_name,
          a.tower       AS account_tower,
          o.name        AS opportunity_name,
          o.value       AS opportunity_value,
-         o.revenue_model,
+         o.billing_model AS opportunity_billing_model,
          o.tower       AS opportunity_tower,
          o.service_line,
          ou.name       AS owner_name,
@@ -352,6 +353,7 @@ export class SqaService {
     const id = rows[0].id as string;
     await this.applyWeeklyHealth(projectId, w.weeklyHealth, weeks, userId);
     const record = await this.findOne(id, undefined, weeks);
+    await this.upsertTrackerSnapshot(record, userId);
     this.logger.log(`SQA record created [id=${id} projectId=${projectId}]`);
     await this.log(`Created SQA record for '${record.projectName}'`, record.accountId, userId);
     return record;
@@ -397,6 +399,7 @@ export class SqaService {
 
     await this.applyWeeklyHealth(existing.projectId, w.weeklyHealth, weeks, userId, existing.weeklyHealth);
     const record = await this.findOne(id, undefined, weeks);
+    await this.upsertTrackerSnapshot(record, userId);
     await this.log(`Updated SQA record for '${record.projectName}'`, record.accountId, userId);
     return record;
   }
@@ -450,7 +453,9 @@ export class SqaService {
   ): Promise<SqaRecord> {
     const record = await this.findOne(id, userId, weeks);
     await this.projectHealth.setWeekHealth(record.projectId, week, week.health, userId);
-    return this.findOne(id, undefined, weeks);
+    const refreshed = await this.findOne(id, undefined, weeks);
+    await this.upsertTrackerSnapshot(refreshed, userId);
+    return refreshed;
   }
 
   /**
@@ -465,10 +470,11 @@ export class SqaService {
     const { rows } = await this.db.query(
       `SELECT p.id, p.name, p.account_id, p.health AS project_health,
               p.client_pm_name, p.deal_value AS project_deal_value,
+              p.billing_model AS project_billing_model,
               a.name  AS account_name,
               pm.name AS pm_name,
               o.value AS opportunity_value,
-              o.revenue_model, o.service_line,
+              o.billing_model AS opportunity_billing_model, o.service_line,
               (SELECT COUNT(*) FROM project_team_members ptm WHERE ptm.project_id = p.id)::INTEGER
                 AS team_member_count
        FROM projects p
@@ -502,6 +508,171 @@ export class SqaService {
         teamMemberCount: inherited.teamMemberCount,
       };
     });
+  }
+
+  async findTrackerHistory(
+    sqaRecordId?: string,
+    params: FilterParams = {},
+    pagination?: Pagination,
+  ): Promise<Paginated<SqaTrackerSnapshot> | SqaTrackerSnapshot[]> {
+    let where = `WHERE p.is_deleted = FALSE`;
+    const args: any[] = [];
+
+    if (params.userId) {
+      args.push(params.userId);
+      where += ` AND p.owner_id = $${args.length}`;
+    }
+
+    if (sqaRecordId) {
+      args.push(sqaRecordId);
+      where += ` AND s.sqa_record_id = $${args.length}`;
+    }
+
+    const countSql = `
+      SELECT COUNT(*)
+      FROM sqa_tracker_snapshots s
+      INNER JOIN projects p ON s.project_id = p.id
+      INNER JOIN accounts a ON s.account_id = a.id
+      ${where}
+    `;
+
+    let selectTotal = '';
+    let limitSql = '';
+    if (pagination) {
+      selectTotal = `, COUNT(*) OVER() AS __total`;
+      const limit = pagination.pageSize;
+      const offset = (pagination.page - 1) * pagination.pageSize;
+      args.push(limit, offset);
+      limitSql = ` LIMIT $${args.length - 1} OFFSET $${args.length}`;
+    }
+
+    const sql = `
+      SELECT s.*, p.name AS project_name, a.name AS account_name${selectTotal}
+      FROM sqa_tracker_snapshots s
+      INNER JOIN projects p ON s.project_id = p.id
+      INNER JOIN accounts a ON s.account_id = a.id
+      ${where}
+      ORDER BY s.iso_year DESC, s.week_number DESC, s.created_at DESC
+      ${limitSql}
+    `;
+
+    const { rows } = await this.db.query(sql, args);
+    const total = pagination ? extractTotal(rows) : rows.length;
+
+    const data: SqaTrackerSnapshot[] = rows.map((r) => ({
+      id: r.id,
+      sqaRecordId: r.sqa_record_id,
+      projectId: r.project_id,
+      projectName: r.project_name,
+      accountId: r.account_id,
+      accountName: r.account_name,
+      snapshotDate: r.snapshot_date ? (typeof r.snapshot_date === 'string' ? r.snapshot_date.slice(0, 10) : r.snapshot_date.toISOString().slice(0, 10)) : '',
+      isoYear: Number(r.iso_year),
+      weekNumber: Number(r.week_number),
+      importance: r.importance,
+      deliveryModel: r.delivery_model ?? undefined,
+      billingModel: r.billing_model ?? undefined,
+      billingModelOverride: r.billing_model_override ?? undefined,
+      tower: r.tower ?? undefined,
+      towerOverride: r.tower_override ?? undefined,
+      fte: r.fte !== null && r.fte !== undefined ? Number(r.fte) : undefined,
+      fteOverride: r.fte_override !== null && r.fte_override !== undefined ? Number(r.fte_override) : undefined,
+      revenue: r.revenue !== null && r.revenue !== undefined ? Number(r.revenue) : undefined,
+      revenueOverride: r.revenue_override !== null && r.revenue_override !== undefined ? Number(r.revenue_override) : undefined,
+      pmName: r.pm_name ?? undefined,
+      wsrPublished: Boolean(r.wsr_published),
+      healthStatus: r.health_status ?? undefined,
+      clientEscalation: Boolean(r.client_escalation),
+      currentWeekUpdate: r.current_week_update || '',
+      nextWeekPlan: r.next_week_plan || '',
+      issuesChallenges: r.issues_challenges || '',
+      pathToGreen: r.path_to_green || '',
+      resourcingStatus: r.resourcing_status ?? undefined,
+      currentSdlcPhase: r.current_sdlc_phase ?? undefined,
+      sqaRemarks: r.sqa_remarks || '',
+      updatedById: r.updated_by_id ?? undefined,
+      updatedByName: r.updated_by_name ?? undefined,
+      createdAt: r.created_at ? (typeof r.created_at === 'string' ? r.created_at : r.created_at.toISOString()) : '',
+      updatedAt: r.updated_at ? (typeof r.updated_at === 'string' ? r.updated_at : r.updated_at.toISOString()) : '',
+    }));
+
+    if (pagination) {
+      return { data, total, page: pagination.page, pageSize: pagination.pageSize };
+    }
+    return data;
+  }
+
+  private async upsertTrackerSnapshot(record: SqaRecord, userId?: string): Promise<void> {
+    try {
+      const now = new Date();
+      const iso = isoWeekOf(now);
+
+      let updatedByName: string | undefined = undefined;
+      if (userId) {
+        const { rows } = await this.db.query(`SELECT name FROM users WHERE id = $1`, [userId]);
+        if (rows.length) updatedByName = rows[0].name;
+      }
+
+      let healthStatus: string | null = record.projectHealth ?? null;
+      if (record.weeklyHealth && record.weeklyHealth.length > 0) {
+        const matchingWeek = record.weeklyHealth.find(
+          (w) => w.isoYear === iso.isoYear && w.weekNumber === iso.weekNumber,
+        );
+        if (matchingWeek && matchingWeek.health) {
+          healthStatus = matchingWeek.health;
+        } else {
+          const sortedWeeks = [...record.weeklyHealth].sort(
+            (a, b) => (a.isoYear * 100 + a.weekNumber) - (b.isoYear * 100 + b.weekNumber),
+          );
+          if (sortedWeeks.length > 0 && sortedWeeks[sortedWeeks.length - 1].health) {
+            healthStatus = sortedWeeks[sortedWeeks.length - 1].health;
+          }
+        }
+      }
+
+      await this.db.query(
+        `INSERT INTO sqa_tracker_snapshots (
+           sqa_record_id, project_id, account_id,
+           snapshot_date, iso_year, week_number,
+           importance, delivery_model, billing_model, billing_model_override,
+           tower, tower_override, fte, fte_override,
+           revenue, revenue_override, pm_name,
+           wsr_published, health_status, client_escalation,
+           current_week_update, next_week_plan, issues_challenges, path_to_green,
+           resourcing_status, current_sdlc_phase, sqa_remarks,
+           updated_by_id, updated_by_name, created_at, updated_at
+         )
+         VALUES (
+           $1, $2, $3,
+           CURRENT_DATE, $4, $5,
+           $6, $7, $8, $9,
+           $10, $11, $12, $13,
+           $14, $15, $16,
+           $17, $18, $19,
+           $20, $21, $22, $23,
+           $24, $25, $26,
+           $27, $28, NOW(), NOW()
+         )`,
+        [
+          record.id, record.projectId, record.accountId ?? null,
+          iso.isoYear, iso.weekNumber,
+          record.importance ?? 'Medium', record.deliveryModel ?? null,
+          record.billingModel ?? null, record.billingModelOverride ?? null,
+          record.tower ?? null, record.towerOverride ?? null,
+          record.fte ?? null, record.fteOverride ?? null,
+          record.revenue ?? null, record.revenueOverride ?? null,
+          record.pmName ?? null,
+          record.wsrPublished ?? false, healthStatus, record.clientEscalation ?? false,
+          record.currentWeekUpdate ?? '', record.nextWeekPlan ?? '',
+          record.issuesChallenges ?? '', record.pathToGreen ?? '',
+          record.resourcingStatus ?? null, record.currentSdlcPhase ?? null,
+          record.sqaRemarks ?? '',
+          userId ?? record.ownerId ?? null, updatedByName ?? null,
+        ],
+      );
+    } catch (err) {
+      this.logger.error(`Failed to upsert SQA tracker snapshot for record ${record.id}:`, err);
+    }
   }
 
   // ─── Internals ───────────────────────────────────────────────────────────────

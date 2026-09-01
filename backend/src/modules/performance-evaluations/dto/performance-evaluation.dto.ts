@@ -4,8 +4,10 @@ import {
 } from 'class-validator';
 
 export class CreatePerformanceEvaluationDto {
-  @IsString() @MaxLength(200) account!: string;
-  @IsString() @MaxLength(200) project!: string;
+  @IsString() @IsOptional() accountId?: string;
+  @IsString() @IsOptional() projectId?: string;
+  @IsString() @IsOptional() @MaxLength(200) account?: string;
+  @IsString() @IsOptional() @MaxLength(200) project?: string;
 
   /** The evaluated employee — must reference an Employee Master entry. */
   @IsString() @IsNotEmpty({ message: 'Please select the employee to evaluate' })

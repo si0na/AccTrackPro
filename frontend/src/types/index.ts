@@ -8,7 +8,6 @@ export type OpportunityStage =
 export type OpportunityType = 'Growth' | 'Pursuit' | 'Whitespace' | 'New' | 'Extension';
 export type ServiceLine = (typeof SERVICE_LINE_OPTIONS)[number];
 export type OpportunityHealth = 'Green' | 'Amber' | 'Red';
-export type RevenueModel = 'T&E' | 'Fixed Bid' | 'Fixed Capacity' | 'Managed Services';
 export type PriorityLevel = 'High' | 'Medium' | 'Low';
 export type ActionItemStatus = 'To Do' | 'In Progress' | 'Blocked' | 'Completed' | 'Cancelled';
 export type InfluenceLevel = 'High' | 'Medium' | 'Low';
@@ -152,7 +151,6 @@ export interface Opportunity {
   aopYear?: string | null;
   serviceLine?: ServiceLine;
   opportunityHealth?: OpportunityHealth;
-  revenueModel?: RevenueModel;
   location?: string;
   cost?: number;
   grossMargin?: number;
@@ -287,6 +285,25 @@ export interface ProjectHealthUpdate {
   editedByName?: string;
 }
 
+export interface ProjectProgressUpdate {
+  id: string;
+  projectId: string;
+  asOnDate: string;
+  plannedCompletionPct?: number;
+  actualCompletionPct?: number;
+  plannedEffortHours?: number;
+  actualEffortHours?: number;
+  plannedCost?: number;
+  actualCost?: number;
+  notes?: string;
+  updatedById?: string;
+  updatedByName?: string;
+  createdAt: string;
+  editedAt?: string;
+  editedById?: string;
+  editedByName?: string;
+}
+
 export type SqaRevenueSource = 'sqa' | 'project' | 'opportunity' | 'none';
 
 /**
@@ -390,6 +407,43 @@ export interface SqaRecord {
   updatedAt?: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   [key: string]: any;
+}
+
+export interface SqaTrackerSnapshot {
+  id: string;
+  sqaRecordId: string;
+  projectId: string;
+  projectName?: string;
+  accountId?: string;
+  accountName?: string;
+  snapshotDate: string;
+  isoYear: number;
+  weekNumber: number;
+  importance: PriorityLevel;
+  deliveryModel?: string;
+  billingModel?: string;
+  billingModelOverride?: string;
+  tower?: string;
+  towerOverride?: string;
+  fte?: number;
+  fteOverride?: number;
+  revenue?: number;
+  revenueOverride?: number;
+  pmName?: string;
+  wsrPublished: boolean;
+  healthStatus?: string;
+  clientEscalation: boolean;
+  currentWeekUpdate: string;
+  nextWeekPlan: string;
+  issuesChallenges: string;
+  pathToGreen: string;
+  resourcingStatus?: string;
+  currentSdlcPhase?: string;
+  sqaRemarks: string;
+  updatedById?: string;
+  updatedByName?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 /**
@@ -586,6 +640,7 @@ export interface Stakeholder {
   phone: string;
   stakeholderType: StakeholderType;
   department?: string;
+  linkedinProfileUrl?: string;
   userId?: string;
   /** Whitelist (employee_master) row a Service Provider represents, set even before they register. */
   employeeId?: string;
@@ -835,6 +890,8 @@ export interface PerformanceEvaluation {
   id: string;
   account: string;
   project: string;
+  accountId?: string;
+  projectId?: string;
   /** FK to EmployeeMaster — only whitelisted employees can be evaluated. */
   employeeId?: string;
   /** Denormalized display name (kept in sync with the Employee Master). */

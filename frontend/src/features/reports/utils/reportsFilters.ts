@@ -23,7 +23,6 @@ export interface ReportsFilterState {
   stage: string;
   health: string;
   oppType: string;
-  revenueModel: string;
   serviceLine: string;
   industry: string;
   location: string;
@@ -34,7 +33,6 @@ export const REPORTS_FILTERS_DEFAULT: ReportsFilterState = {
   stage: 'All',
   health: 'All',
   oppType: 'All',
-  revenueModel: 'All',
   serviceLine: 'All',
   industry: 'All',
   location: 'All',
@@ -55,7 +53,6 @@ export function matchesReportsFilters(
   if (filters.stage !== 'All' && o.stage !== filters.stage) return false;
   if (filters.health !== 'All' && o.opportunityHealth !== filters.health) return false;
   if (filters.oppType !== 'All' && o.opportunityType !== filters.oppType) return false;
-  if (filters.revenueModel !== 'All' && o.revenueModel !== filters.revenueModel) return false;
   if (filters.serviceLine !== 'All' && o.serviceLine !== filters.serviceLine) return false;
   if (filters.industry !== 'All' && (account?.industry ?? '').trim() !== filters.industry) return false;
   if (filters.location !== 'All' && (o.location ?? '').trim() !== filters.location) return false;

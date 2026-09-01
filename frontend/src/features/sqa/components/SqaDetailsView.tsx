@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Activity, BadgeCheck, Building2, CalendarClock, DollarSign, Edit2,
-  FolderKanban, Layers, Users,
+  FolderKanban, History, Layers, Users,
 } from 'lucide-react';
 import { useCRM } from '@/contexts/CRMContext';
 import type { AdminUser, ProjectHealth, SqaRecord, SqaWeeklyHealth } from '@/types';
@@ -22,8 +22,9 @@ import { LoadingState } from '@/components/common/LoadingState';
 import { sqaErrorMessage, useSqaRecord } from '../hooks/useSqaRecords';
 import { draftFromRecord, draftToInput, SqaDraft, SqaFormModal, SqaInherited } from './SqaFormModal';
 import { ProjectHealthTab } from '@/features/projects/components/ProjectHealthTab';
+import { SqaTrackerTab } from './SqaTrackerTab';
 
-type SqaTab = 'overview' | 'health-tracker';
+type SqaTab = 'overview' | 'sqa-tracker' | 'health-tracker';
 
 const formatCur = (val: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(val);
@@ -144,6 +145,7 @@ export const SqaDetailsView: React.FC = () => {
 
   const tabs = [
     { id: 'overview', label: 'Overview', icon: BadgeCheck, count: null },
+    { id: 'sqa-tracker', label: 'SQA Tracker / History', icon: History, count: null },
     ...(record.projectId ? [{ id: 'health-tracker', label: 'Project Health Tracker', icon: Activity, count: null }] : []),
   ];
 
@@ -261,7 +263,7 @@ export const SqaDetailsView: React.FC = () => {
                 <Field
                   label="Billing Model"
                   value={record.billingModel}
-                  source={provenance(!!record.billingModelOverride, "the Opportunity's Revenue Model")}
+                  source={provenance(!!record.billingModelOverride, "the Project/Opportunity Billing Model")}
                 />
                 <Field
                   label="Tower"
@@ -325,6 +327,18 @@ export const SqaDetailsView: React.FC = () => {
             </FormSection>
           </Card>
         </div>
+      )}
+
+      {activeTab === 'sqa-tracker' && (
+        <Card>
+          <div className="mb-4 pb-3 border-b border-slate-100">
+            <h3 className="text-sm font-bold text-slate-800">SQA Historical Weekly Snapshots</h3>
+            <p className="text-xs text-slate-500 font-medium mt-0.5">
+              Complete weekly history snapshots for <span className="font-semibold text-slate-700">{record.projectName}</span> over time.
+            </p>
+          </div>
+          <SqaTrackerTab sqaRecordId={record.id} storageKey={`sqa-tracker-${record.id}`} />
+        </Card>
       )}
 
       {activeTab === 'health-tracker' && record.projectId && (

@@ -257,10 +257,6 @@ export const renderOpportunityCell = (
       : <span className="text-slate-400 italic">—</span>;
   }
 
-  if (col.key === 'revenueModel') {
-    return <span className="text-slate-600 font-medium">{opp.revenueModel || '—'}</span>;
-  }
-
   if (col.key === 'location') {
     return <span className="text-slate-600 font-medium">{opp.location || '—'}</span>;
   }

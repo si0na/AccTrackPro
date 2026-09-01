@@ -66,12 +66,14 @@ export function useSqaRecords(initialWeeks: number = SQA_DEFAULT_HEALTH_WEEKS) {
   const create = useCallback(async (data: SqaRecordInput): Promise<SqaRecord> => {
     const created = await sqaApi.create(data, weeks);
     setRecords((prev) => [created, ...prev]);
+    window.dispatchEvent(new CustomEvent('sqa-updated'));
     return created;
   }, [weeks]);
 
   const update = useCallback(async (id: string, data: SqaRecordInput): Promise<SqaRecord> => {
     const saved = await sqaApi.update(id, data, weeks);
     setRecords((prev) => prev.map((r) => (r.id === id ? saved : r)));
+    window.dispatchEvent(new CustomEvent('sqa-updated'));
     return saved;
   }, [weeks]);
 
@@ -80,12 +82,14 @@ export function useSqaRecords(initialWeeks: number = SQA_DEFAULT_HEALTH_WEEKS) {
     await sqaApi.delete(id);
     setRecords((prev) => prev.filter((r) => r.id !== id));
     if (record) setDeactivated((prev) => [{ ...record, weeklyHealth: [] }, ...prev]);
+    window.dispatchEvent(new CustomEvent('sqa-updated'));
   }, [records]);
 
   const restore = useCallback(async (id: string): Promise<void> => {
     const restored = await sqaApi.restore(id);
     setDeactivated((prev) => prev.filter((r) => r.id !== id));
     setRecords((prev) => [restored, ...prev]);
+    window.dispatchEvent(new CustomEvent('sqa-updated'));
   }, []);
 
   /** Sets one week's RAG value; the refreshed record carries the new window. */
@@ -95,6 +99,7 @@ export function useSqaRecords(initialWeeks: number = SQA_DEFAULT_HEALTH_WEEKS) {
   ): Promise<SqaRecord> => {
     const saved = await sqaApi.setWeekHealth(id, week, weeks);
     setRecords((prev) => prev.map((r) => (r.id === id ? saved : r)));
+    window.dispatchEvent(new CustomEvent('sqa-updated'));
     return saved;
   }, [weeks]);
 
@@ -159,6 +164,7 @@ export function useSqaRecord(id: string | null, weeks: number = SQA_DEFAULT_HEAL
     if (!id) throw new Error('No SQA record selected');
     const saved = await sqaApi.update(id, data, weeks);
     setRecord(saved);
+    window.dispatchEvent(new CustomEvent('sqa-updated'));
     return saved;
   }, [id, weeks]);
 
@@ -167,6 +173,7 @@ export function useSqaRecord(id: string | null, weeks: number = SQA_DEFAULT_HEAL
   ): Promise<void> => {
     if (!id) return;
     setRecord(await sqaApi.setWeekHealth(id, week, weeks));
+    window.dispatchEvent(new CustomEvent('sqa-updated'));
   }, [id, weeks]);
 
   return {

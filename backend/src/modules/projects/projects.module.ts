@@ -15,6 +15,8 @@ import { ProjectDependenciesController } from './project-dependencies.controller
 import { ProjectDependenciesService } from './project-dependencies.service';
 import { ProjectHealthController } from './project-health.controller';
 import { ProjectHealthService } from './project-health.service';
+import { ProjectProgressController } from './project-progress.controller';
+import { ProjectProgressService } from './project-progress.service';
 
 @Module({
   controllers: [
@@ -26,6 +28,7 @@ import { ProjectHealthService } from './project-health.service';
     ProjectIssuesController,
     ProjectDependenciesController,
     ProjectHealthController,
+    ProjectProgressController,
   ],
   providers: [
     ProjectsService,
@@ -36,9 +39,10 @@ import { ProjectHealthService } from './project-health.service';
     ProjectIssuesService,
     ProjectDependenciesService,
     ProjectHealthService,
+    ProjectProgressService,
   ],
   // ProjectHealthService is exported for the SQA module's weekly health grid,
   // which reads and writes the same project_health_updates trail.
-  exports: [ProjectsService, ProjectHealthService],
+  exports: [ProjectsService, ProjectHealthService, ProjectProgressService],
 })
 export class ProjectsModule {}

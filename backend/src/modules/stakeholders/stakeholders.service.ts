@@ -12,15 +12,16 @@ import { BulkModuleAdapter } from '../import-export/bulk-adapter';
 function rowToStakeholder(row: any): Stakeholder {
   const {
     is_deleted, created_at, updated_at, account_id, account_name,
-    stakeholder_type, user_id, employee_id, ...base
+    stakeholder_type, user_id, employee_id, linkedin_profile_url, ...base
   } = row;
   return {
     ...base,
-    accountId:       account_id,
-    accountName:     account_name ?? undefined,
-    stakeholderType: stakeholder_type,
-    userId:          user_id ?? undefined,
-    employeeId:      employee_id ?? undefined,
+    accountId:          account_id,
+    accountName:        account_name ?? undefined,
+    stakeholderType:    stakeholder_type,
+    userId:             user_id ?? undefined,
+    employeeId:         employee_id ?? undefined,
+    linkedinProfileUrl: linkedin_profile_url ?? undefined,
     // A whitelist link with no user link means the person was assigned as a
     // Service Provider before completing registration.
     pendingRegistration: !!employee_id && !user_id,
@@ -91,7 +92,8 @@ export class StakeholdersService {
   }
 
   /** Returns the UUID of the account's owner (owner_id FK). */
-  private async accountOwner(accountId: string): Promise<string | null> {
+  private async accountOwner(accountId?: string): Promise<string | null> {
+    if (!accountId) return null;
     const { rows } = await this.db.query(
       `SELECT owner_id FROM accounts WHERE id = $1 AND is_deleted = FALSE`,
       [accountId],
@@ -150,19 +152,20 @@ export class StakeholdersService {
   }
 
   async create(data: any, userId?: string): Promise<Stakeholder> {
-    await this.assertAccountExists(data.accountId, userId);
-    await this.assertEmailAvailable(data.accountId, data.email);
+    const accountId = data.accountId ? data.accountId : null;
+    await this.assertAccountExists(accountId, userId);
+    await this.assertEmailAvailable(accountId, data.email);
 
     const { rows } = await this.db.query(
-      `INSERT INTO stakeholders (id, name, account_id, designation, influence, relationship, email, phone, stakeholder_type, department)
-       VALUES (gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7,$8,$9)
+      `INSERT INTO stakeholders (id, name, account_id, designation, influence, relationship, email, phone, stakeholder_type, department, linkedin_profile_url)
+       VALUES (gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
        RETURNING *`,
-      [data.name, data.accountId, data.designation ?? '', data.influence,
+      [data.name, accountId, data.designation ?? '', data.influence,
        data.relationship, data.email ?? '', data.phone ?? '',
-       data.stakeholderType, data.department ?? null],
+       data.stakeholderType, data.department ?? null, data.linkedinProfileUrl ?? null],
     );
     const stk = rowToStakeholder(rows[0]);
-    this.logger.log(`Stakeholder created [id=${stk.id} name="${stk.name}" accountId=${stk.accountId}]`);
+    this.logger.log(`Stakeholder created [id=${stk.id} name="${stk.name}" accountId=${stk.accountId ?? 'NULL'}]`);
     await this.log(`Added Stakeholder '${stk.name}'`, stk.accountId);
 
     const notifyUserId = await this.accountOwner(stk.accountId);
@@ -194,11 +197,11 @@ export class StakeholdersService {
     const { rows } = await this.db.query(
       `UPDATE stakeholders SET
          name=$1, account_id=$2, designation=$3, influence=$4,
-         relationship=$5, email=$6, phone=$7, stakeholder_type=$8, department=$9, updated_at=NOW()
-       WHERE id=$10 AND is_deleted=FALSE RETURNING *`,
+         relationship=$5, email=$6, phone=$7, stakeholder_type=$8, department=$9, linkedin_profile_url=$10, updated_at=NOW()
+       WHERE id=$11 AND is_deleted=FALSE RETURNING *`,
       [data.name, data.accountId, data.designation ?? '', data.influence,
        data.relationship, data.email ?? '', data.phone ?? '',
-       data.stakeholderType, data.department ?? null, id],
+       data.stakeholderType, data.department ?? null, data.linkedinProfileUrl ?? null, id],
     );
     const stk = rowToStakeholder(rows[0]);
     await this.log(`Updated Stakeholder '${stk.name}'`, stk.accountId);
@@ -250,7 +253,8 @@ export class StakeholdersService {
   }
 
   /** Relational rule: the parent account must exist, be active, and be visible to the requesting user. */
-  private async assertAccountExists(accountId: string, userId?: string): Promise<void> {
+  private async assertAccountExists(accountId?: string, userId?: string): Promise<void> {
+    if (!accountId) return;
     const scope = userId
       ? this.access.buildAccountVisibility('a', await this.access.getContext(userId), 2)
       : { conditions: [] as string[], params: [] as any[] };
@@ -263,9 +267,9 @@ export class StakeholdersService {
   }
 
   /** Business rule: a stakeholder email is unique within its account (when provided). */
-  private async assertEmailAvailable(accountId: string, email?: string, excludeId?: string): Promise<void> {
+  private async assertEmailAvailable(accountId?: string, email?: string, excludeId?: string): Promise<void> {
     const normalized = email?.trim().toLowerCase();
-    if (!normalized) return;
+    if (!normalized || !accountId) return;
     const { rows } = await this.db.query(
       `SELECT id FROM stakeholders
        WHERE account_id = $1 AND LOWER(email) = $2 AND is_deleted = FALSE

@@ -4,11 +4,13 @@
  */
 
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useCRM } from '@/contexts/CRMContext';
 import { usersApi } from '@/api/crm.api';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ActionItemQuickPanel } from '@/features/action-items/components/ActionItemQuickPanel';
 import { Account, Opportunity, OpportunityStage, ActionItem, Stakeholder, StakeholderType, ActionItemStatus, PriorityLevel, User as UserRecord } from '@/types';
+import { AccountFormModal } from '@/features/accounts/components/AccountFormModal';
 import { InlineEditModal } from '@/components/InlineEditModal';
 import { DocumentsPanel } from '@/components/documents/DocumentsPanel';
 import { OpportunityActionsCommentsPanel } from '@/features/opportunities/components/OpportunityActionsCommentsPanel';
@@ -193,7 +195,6 @@ export const AccountDetailsView: React.FC = () => {
     aopYear: null,
     serviceLine: undefined,
     opportunityHealth: undefined,
-    revenueModel: undefined,
     location: undefined,
     cost: 0,
     grossMargin: undefined,
@@ -416,7 +417,6 @@ export const AccountDetailsView: React.FC = () => {
       aopYear: null,
       serviceLine: undefined,
       opportunityHealth: undefined,
-      revenueModel: undefined,
       location: undefined,
       cost: 0,
       grossMargin: undefined,
@@ -1276,21 +1276,23 @@ export const AccountDetailsView: React.FC = () => {
               </div>
             </FormModal>
 
-            {showInnerCreateModal && (
-              <StakeholderFormModal
-                isOpen={true}
-                mode="create"
-                accounts={accounts}
-                lockedAccount={{ id: account.id, name: account.name }}
-                lockedType="CLIENT"
-                onClose={() => setShowInnerCreateModal(false)}
-                onSubmit={async (draft) => {
-                  await addStakeholder(draft);
-                  setShowInnerCreateModal(false);
-                  setShowAddClientStk(false);
-                }}
-              />
-            )}
+            {showInnerCreateModal &&
+              createPortal(
+                <StakeholderFormModal
+                  isOpen={true}
+                  mode="create"
+                  accounts={accounts}
+                  lockedAccount={{ id: account.id, name: account.name }}
+                  lockedType="CLIENT"
+                  onClose={() => setShowInnerCreateModal(false)}
+                  onSubmit={async (draft) => {
+                    await addStakeholder(draft);
+                    setShowInnerCreateModal(false);
+                    setShowAddClientStk(false);
+                  }}
+                />,
+                document.body,
+              )}
 
             {/* Custom Service Provider Modal */}
             <FormModal
@@ -1536,32 +1538,27 @@ export const AccountDetailsView: React.FC = () => {
           actionItemColumns={actionItemColumns}
           actionItemsColumnConfig={actionItemsColumnConfig}
           lockedAccount={{ id: account.id, name: account.name }}
+          mode="normal"
         />
       </div>
 
-      {/* Edit Account Modal — the same shared InlineEditModal used by the
-          Accounts List View, so both edit experiences expose an identical set
-          of editable fields (including the Account Manager and the other
-          role-ownership assignments). */}
-      {isEditingAccount && accountDraft && (
-        <InlineEditModal
-          mode="accounts"
-          entity={accountDraft}
-          displayedConfigs={accountsColumnConfig.filter(c => c.isDisplayed)}
-          accounts={accounts}
-          opportunities={opportunities}
-          stakeholders={stakeholders}
-          users={users}
-          onChange={(patch) => setAccountDraft({ ...accountDraft, ...patch })}
-          onSave={async (e) => {
-            e.preventDefault();
-            await updateAccount(accountDraft);
+      {/* Edit Account Modal */}
+      <AccountFormModal
+        isOpen={isEditingAccount && !!accountDraft}
+        mode="edit"
+        account={accountDraft}
+        onClose={() => {
+          setIsEditingAccount(false);
+          setAccountDraft(null);
+        }}
+        onSubmit={async (draft) => {
+          if (accountDraft) {
+            await updateAccount({ ...accountDraft, ...draft } as Account);
             setIsEditingAccount(false);
             setAccountDraft(null);
-          }}
-          onCancel={() => { setIsEditingAccount(false); setAccountDraft(null); }}
-        />
-      )}
+          }
+        }}
+      />
 
       <ConfirmDialog
         isOpen={!!deleteTarget}

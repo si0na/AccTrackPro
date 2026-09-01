@@ -1,13 +1,12 @@
 import React from 'react';
 import { FormField, SELECT_CLS } from '@/components/ui';
-import { OPPORTUNITY_TYPE_OPTIONS, SERVICE_LINE_OPTIONS, OPPORTUNITY_HEALTH_OPTIONS, REVENUE_MODEL_OPTIONS, OPPORTUNITY_PRIORITY_OPTIONS, DELIVERY_MODEL_OPTIONS, BILLING_MODEL_OPTIONS, TOWER_OPTIONS } from '@/constants';
-import type { OpportunityType, ServiceLine, OpportunityHealth, RevenueModel, PriorityLevel } from '@/types';
+import { OPPORTUNITY_TYPE_OPTIONS, SERVICE_LINE_OPTIONS, OPPORTUNITY_HEALTH_OPTIONS, OPPORTUNITY_PRIORITY_OPTIONS, DELIVERY_MODEL_OPTIONS, BILLING_MODEL_OPTIONS, TOWER_OPTIONS } from '@/constants';
+import type { OpportunityType, ServiceLine, OpportunityHealth, PriorityLevel } from '@/types';
 
 export interface OpportunityClassificationValue {
   opportunityType: OpportunityType;
   serviceLine?: ServiceLine;
   opportunityHealth?: OpportunityHealth;
-  revenueModel?: RevenueModel;
   priority?: PriorityLevel;
   deliveryModel?: string;
   billingModel?: string;
@@ -114,19 +113,6 @@ export const OpportunityClassificationFields: React.FC<OpportunityClassification
         <option value="">— Select —</option>
         {OPPORTUNITY_HEALTH_OPTIONS.map((h) => (
           <option key={h} value={h}>{h}</option>
-        ))}
-      </select>
-    </FormField>
-
-    <FormField label="Revenue Model">
-      <select
-        value={value.revenueModel ?? ''}
-        onChange={(e) => onChange({ revenueModel: (e.target.value || undefined) as RevenueModel | undefined })}
-        className={SELECT_CLS}
-      >
-        <option value="">— Select —</option>
-        {REVENUE_MODEL_OPTIONS.map((r) => (
-          <option key={r} value={r}>{r}</option>
         ))}
       </select>
     </FormField>

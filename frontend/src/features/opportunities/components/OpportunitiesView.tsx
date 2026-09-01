@@ -13,7 +13,7 @@ import { OpportunityFormModal } from '@/features/opportunities/components/Opport
 import { renderOpportunityCell } from '@/features/opportunities/components/OpportunityTableCells';
 import { InlineEditModal } from '@/components/InlineEditModal';
 import { LoadingState } from '@/components/common/LoadingState';
-import { OPPORTUNITY_STAGE_OPTIONS, STAGE_DEFAULT_PROBABILITY, OPPORTUNITY_HEALTH_OPTIONS, REVENUE_MODEL_OPTIONS, SERVICE_LINE_OPTIONS, stageChangePatch } from '@/constants';
+import { OPPORTUNITY_STAGE_OPTIONS, STAGE_DEFAULT_PROBABILITY, OPPORTUNITY_HEALTH_OPTIONS, SERVICE_LINE_OPTIONS, stageChangePatch } from '@/constants';
 import { compareForSort, deriveOppStatus, matchesGlobalAccount, SortDirection } from '@/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import {
@@ -70,7 +70,6 @@ const EMPTY_OPPORTUNITY: Omit<Opportunity, 'id'> = {
   aopYear: null,
   serviceLine: undefined,
   opportunityHealth: undefined,
-  revenueModel: undefined,
   location: undefined,
   cost: 0,
   grossMargin: undefined,
@@ -111,7 +110,6 @@ export const OpportunitiesView: React.FC = () => {
   const [allocationEndDateTo, setAllocationEndDateTo] = useState<string>('');
   const [minProbability, setMinProbability] = useState<string>('All');
   const [healthFilter, setHealthFilter] = useState<string>('All');
-  const [revenueModelFilter, setRevenueModelFilter] = useState<string>('All');
   const [locationFilter, setLocationFilter] = useState<string>('All');
   const [serviceLineFilter, setServiceLineFilter] = useState<string>('All');
 
@@ -287,7 +285,6 @@ export const OpportunitiesView: React.FC = () => {
     const matchesAllocationEndTo   = !allocationEndDateTo   || (o.allocationEndDate && o.allocationEndDate <= allocationEndDateTo);
     const matchesProbability = minProbability === 'All' || o.probability >= parseInt(minProbability, 10);
     const matchesHealth = healthFilter === 'All' || o.opportunityHealth === healthFilter;
-    const matchesRevenueModel = revenueModelFilter === 'All' || o.revenueModel === revenueModelFilter;
     const matchesLocation = locationFilter === 'All' || o.location === locationFilter;
     const matchesServiceLine = serviceLineFilter === 'All' || o.serviceLine === serviceLineFilter;
     // Won opportunities stay visible in the list even after transitioning into
@@ -296,7 +293,7 @@ export const OpportunitiesView: React.FC = () => {
     // can always trace a deal from the pipeline through to its project.
     return matchesSearch && matchesStage && matchesAccount &&
            matchesDashboardStatus && matchesAllocationEndFrom && matchesAllocationEndTo && matchesProbability &&
-           matchesHealth && matchesRevenueModel && matchesLocation && matchesServiceLine;
+           matchesHealth && matchesLocation && matchesServiceLine;
   });
 
   const sortedOpps = [...filteredOpps].sort((a, b) =>
@@ -501,17 +498,7 @@ export const OpportunitiesView: React.FC = () => {
           ]}
         />
 
-        <FilterSelect
-          label="Revenue Model"
-          hideLabel
-          value={revenueModelFilter}
-          onChange={setRevenueModelFilter}
-          className="w-full"
-          options={[
-            { value: 'All', label: 'All Revenue Models' },
-            ...REVENUE_MODEL_OPTIONS.map((r) => ({ value: r, label: r })),
-          ]}
-        />
+
 
         <FilterSelect
           label="Location"
@@ -612,6 +599,10 @@ export const OpportunitiesView: React.FC = () => {
                         <TableCell
                           key={col.key}
                           align={col.key === 'value' ? 'right' : col.key === 'probability' ? 'center' : 'left'}
+                          onDoubleClick={(e) => {
+                            e.stopPropagation();
+                            if (can('opportunities', 'update')) handleEditClick(opp);
+                          }}
                         >
                           {renderOpportunityCell(
                             col,

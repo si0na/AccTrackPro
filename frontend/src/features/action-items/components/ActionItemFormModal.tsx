@@ -38,11 +38,13 @@ export interface ActionItemFormModalProps {
   /** Fixes the project association (used inside Project Details, where the project — and its account — are already known). */
   lockedProject?: { id: string; name: string };
   projects?: any[];
+  /** Context mode explicitly passed: 'normal' | 'project' */
+  mode?: 'normal' | 'project';
 }
 
 /**
  * Shared Create dialog for action items — used by both the Action Items
- * page and the Account Details "Add Action Item" flow so the two entry
+ * page and the Account Details "Add Action Item" flow so the entry
  * points render an identical field order and section grouping.
  */
 export const ActionItemFormModal: React.FC<ActionItemFormModalProps> = ({
@@ -61,110 +63,125 @@ export const ActionItemFormModal: React.FC<ActionItemFormModalProps> = ({
   lockedAccount,
   lockedProject,
   projects,
-}) => (
-  <FormModal
-    isOpen={isOpen}
-    title="Create Action Item"
-    icon={<CheckSquare className="w-5 h-5 text-blue-600" aria-hidden="true" />}
-    onClose={onClose}
-    onSubmit={onSubmit}
-    submitLabel={isSubmitting ? 'Adding…' : submitLabel}
-    isSubmitting={isSubmitting}
-    maxWidth="max-w-4xl"
-  >
-    <div className="space-y-5">
-      <FormSection title="Task Details">
-        <FormGrid columns={3}>
-          <FormField label="Task Title" required>
-            <input
-              type="text"
-              required
-              value={value.title}
-              onChange={(e) => onChange({ title: e.target.value })}
-              placeholder="e.g., Share Technical SLA Draft"
-              className={INPUT_CLS}
-            />
-          </FormField>
+  mode,
+}) => {
+  const isProjectActionItem =
+    mode === 'project' ||
+    !!lockedProject ||
+    (mode !== 'normal' && !!value.projectId);
 
-          <FormField label="Task Owner" required>
-            <ActionItemOwnerField
-              accountId={lockedAccount?.id ?? value.accountId}
-              stakeholders={stakeholders}
-              value={value.ownerStakeholderId}
-              onChange={(ownerStakeholderId) => onChange({ ownerStakeholderId })}
-            />
-          </FormField>
-
-          {lockedAccount ? (
-            <FormField label="Target Account">
+  return (
+    <FormModal
+      isOpen={isOpen}
+      title="Create Action Item"
+      icon={<CheckSquare className="w-5 h-5 text-blue-600" aria-hidden="true" />}
+      onClose={onClose}
+      onSubmit={onSubmit}
+      submitLabel={isSubmitting ? 'Adding…' : submitLabel}
+      isSubmitting={isSubmitting}
+      maxWidth="max-w-4xl"
+    >
+      <div className="space-y-5">
+        <FormSection title="Task Details">
+          <FormGrid columns={2}>
+            {/* 1. Task Title */}
+            <FormField label="Task Title" required>
               <input
                 type="text"
-                value={lockedAccount.name}
-                disabled
-                aria-readonly="true"
-                className={`${INPUT_CLS} bg-slate-50 text-slate-500 cursor-not-allowed`}
+                required
+                value={value.title}
+                onChange={(e) => onChange({ title: e.target.value })}
+                placeholder="e.g., Share Technical SLA Draft"
+                className={INPUT_CLS}
               />
             </FormField>
-          ) : (
-            <FormField label="Target Account" required>
-              <select
-                required
-                value={value.accountId}
-                onChange={(e) => onChange({ accountId: e.target.value, opportunityId: '' })}
-                className={SELECT_CLS}
-              >
-                <option value="" disabled>Select an account...</option>
-                {accounts.map((acc) => (
-                  <option key={acc.id} value={acc.id}>{acc.name}</option>
-                ))}
-              </select>
-            </FormField>
-          )}
 
-          {lockedProject ? (
-            <FormField label="Linked Project">
-              <input
-                type="text"
-                value={lockedProject.name}
-                disabled
-                aria-readonly="true"
-                className={`${INPUT_CLS} bg-slate-50 text-slate-500 cursor-not-allowed`}
+            {/* 2. Target Account */}
+            {lockedAccount ? (
+              <FormField label="Target Account">
+                <input
+                  type="text"
+                  value={lockedAccount.name}
+                  disabled
+                  aria-readonly="true"
+                  className={`${INPUT_CLS} bg-slate-50 text-slate-500 cursor-not-allowed`}
+                />
+              </FormField>
+            ) : (
+              <FormField label="Target Account" required>
+                <select
+                  required
+                  value={value.accountId}
+                  onChange={(e) =>
+                    onChange({ accountId: e.target.value, opportunityId: '', projectId: '' })
+                  }
+                  className={SELECT_CLS}
+                >
+                  <option value="" disabled>Select an account...</option>
+                  {accounts.map((acc) => (
+                    <option key={acc.id} value={acc.id}>{acc.name}</option>
+                  ))}
+                </select>
+              </FormField>
+            )}
+
+            {/* 3. Association: Project (if Project Action Item) OR Opportunity (if Normal Action Item) */}
+            {isProjectActionItem ? (
+              lockedProject ? (
+                <FormField label="Linked Project">
+                  <input
+                    type="text"
+                    value={lockedProject.name}
+                    disabled
+                    aria-readonly="true"
+                    className={`${INPUT_CLS} bg-slate-50 text-slate-500 cursor-not-allowed`}
+                  />
+                </FormField>
+              ) : (
+                <FormField label="Associated Project" required>
+                  <select
+                    required
+                    value={value.projectId || ''}
+                    onChange={(e) => onChange({ projectId: e.target.value })}
+                    className={SELECT_CLS}
+                  >
+                    <option value="" disabled>Select a project...</option>
+                    {(projects || [])
+                      .filter((p) => !value.accountId || p.accountId === value.accountId)
+                      .map((p) => (
+                        <option key={p.id} value={p.id}>{p.name}</option>
+                      ))}
+                  </select>
+                </FormField>
+              )
+            ) : (
+              <FormField label="Associated Opportunity">
+                <select
+                  value={value.opportunityId || ''}
+                  onChange={(e) => onChange({ opportunityId: e.target.value })}
+                  className={SELECT_CLS}
+                >
+                  <option value="">None / General Task</option>
+                  {opportunities
+                    .filter((opp) => !value.accountId || opp.accountId === value.accountId)
+                    .map((opp) => (
+                      <option key={opp.id} value={opp.id}>{opp.name}</option>
+                    ))}
+                </select>
+              </FormField>
+            )}
+
+            {/* 4. Task Owner */}
+            <FormField label="Task Owner" required>
+              <ActionItemOwnerField
+                accountId={lockedAccount?.id ?? value.accountId}
+                stakeholders={stakeholders}
+                value={value.ownerStakeholderId}
+                onChange={(ownerStakeholderId) => onChange({ ownerStakeholderId })}
               />
             </FormField>
-          ) : projects ? (
-            <FormField label="Associated Project" required>
-              <select
-                required
-                value={value.projectId || ''}
-                onChange={(e) => onChange({ projectId: e.target.value })}
-                className={SELECT_CLS}
-              >
-                <option value="" disabled>Select a project...</option>
-                {projects
-                  .filter((p) => p.accountId === value.accountId)
-                  .map((p) => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-              </select>
-            </FormField>
-          ) : (
-            <FormField label="Associated Opportunity">
-              <select
-                value={value.opportunityId || ''}
-                onChange={(e) => onChange({ opportunityId: e.target.value })}
-                className={SELECT_CLS}
-              >
-                <option value="">None / General Task</option>
-                {opportunities
-                  .filter((opp) => opp.accountId === value.accountId)
-                  .map((opp) => (
-                    <option key={opp.id} value={opp.id}>{opp.name}</option>
-                  ))}
-              </select>
-            </FormField>
-          )}
-        </FormGrid>
-      </FormSection>
+          </FormGrid>
+        </FormSection>
 
       <FormSection title="Scheduling & Priority">
         <FormGrid columns={3}>
@@ -247,4 +264,5 @@ export const ActionItemFormModal: React.FC<ActionItemFormModalProps> = ({
       />
     </div>
   </FormModal>
-);
+  );
+};

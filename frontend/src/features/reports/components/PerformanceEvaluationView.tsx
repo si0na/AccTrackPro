@@ -39,6 +39,7 @@ import {
   Pagination,
   SummaryCard,
   Table,
+  SearchableSelect,
 } from '@/components/ui';
 import { CustomizeColumnsSidebar } from '@/components/table/CustomizeColumnsSidebar';
 import { CustomColumnFields } from '@/components/CustomColumnFields';
@@ -52,6 +53,8 @@ const NUMERIC_METRIC_KEYS = new Set([
 export const PerformanceEvaluationView: React.FC = () => {
   const {
     currentUserId,
+    accounts,
+    projects,
     performanceEvaluationColumns,
     performanceEvaluationColumnConfig,
     can,
@@ -144,6 +147,8 @@ export const PerformanceEvaluationView: React.FC = () => {
   const UNSCORED = '' as unknown as number;
 
   const blankForm = (): Omit<PerformanceEvaluation, 'id' | 'createdAt' | 'updatedAt'> => ({
+    accountId: '',
+    projectId: '',
     account: '',
     project: '',
     employeeId: '',
@@ -209,7 +214,7 @@ export const PerformanceEvaluationView: React.FC = () => {
 
   const [editingCell, setEditingCell] = useState<{ id: string; key: keyof PerformanceEvaluation; value: any } | null>(null);
 
-  const saveInlineCell = async (id: string, key: keyof PerformanceEvaluation, value: any) => {
+  const saveInlineCell = async (id: string, key: keyof PerformanceEvaluation, value: any, extraFields?: Partial<PerformanceEvaluation>) => {
     const target = evaluations.find(e => e.id === id);
     if (!target) return;
 
@@ -223,10 +228,11 @@ export const PerformanceEvaluationView: React.FC = () => {
       nextValue = value === 'true' || value === true;
     }
 
-    const updated = { ...target, [key]: nextValue };
+    const updated = { ...target, [key]: nextValue, ...(extraFields || {}) };
     try {
       const saved = await performanceEvaluationsApi.update(id, updated);
       setEvaluations(prev => prev.map(e => e.id === id ? saved : e));
+      loadSummary();
     } catch {
       // revert on error — original data stays in state
     }
@@ -321,7 +327,7 @@ export const PerformanceEvaluationView: React.FC = () => {
 
   const handleAddSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newEval.employeeId || !newEval.retentionRisk) return;
+    if (!newEval.employeeId || (!newEval.accountId && !newEval.account) || (!newEval.projectId && !newEval.project) || !newEval.retentionRisk) return;
     setIsSaving(true);
     try {
       // Coerce score fields to numbers and drop leadership when the employee
@@ -403,46 +409,91 @@ export const PerformanceEvaluationView: React.FC = () => {
 
   // ─── Shared form section renderers ───────────────────────────────────────
 
-  const renderGeneralFields = (vals: any, set: (v: any) => void) => (
-    <div className="space-y-4">
-      <h4 className="text-[10px] font-extrabold uppercase tracking-widest text-indigo-600 border-b pb-1">A. Operational Context</h4>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
-        <div className="space-y-1">
-          <label className="font-bold text-slate-600 uppercase tracking-wide">Employee</label>
-          {/* Evaluations are restricted to Employee Master entries — no free-text names. */}
-          <select required value={vals.employeeId ?? ''}
-            onChange={e => {
-              const emp = employees.find(x => x.id === e.target.value);
-              set({ ...vals, employeeId: e.target.value, employeeName: emp ? employeeLabel(emp) : '' });
-            }}
-            className="w-full p-2 border border-slate-200 rounded-lg bg-white focus:ring-1 focus:ring-indigo-500 text-xs focus:outline-none">
-            <option value="" disabled>
-              {employees.length ? 'Select employee…' : 'No employees in Employee Master'}
-            </option>
-            {employees.map(emp => (
-              <option key={emp.id} value={emp.id}>{employeeLabel(emp)}</option>
-            ))}
-          </select>
-          {vals.employeeName && !vals.employeeId && (
-            <p className="text-[10px] text-amber-600 font-medium">
-              Legacy record for “{vals.employeeName}” — select the matching employee to link it.
-            </p>
-          )}
-        </div>
-        <div className="space-y-1">
-          <label className="font-bold text-slate-600 uppercase tracking-wide">Account Client</label>
-          <input type="text" required value={vals.account}
-            onChange={e => set({ ...vals, account: e.target.value })}
-            placeholder="e.g. ABC Corporation"
-            className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-1 focus:ring-indigo-500 text-xs focus:outline-none" />
-        </div>
-        <div className="space-y-1">
-          <label className="font-bold text-slate-600 uppercase tracking-wide">Project Name</label>
-          <input type="text" required value={vals.project}
-            onChange={e => set({ ...vals, project: e.target.value })}
-            placeholder="e.g. ERP Phase 1"
-            className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:ring-1 focus:ring-indigo-500 text-xs focus:outline-none" />
-        </div>
+  const renderGeneralFields = (vals: any, set: (v: any) => void) => {
+    const selectedAccId = vals.accountId || (accounts.find(a => a.name.toLowerCase() === (vals.account || '').toLowerCase())?.id ?? '');
+    const availableProjects = selectedAccId
+      ? projects.filter(p => p.accountId === selectedAccId)
+      : [];
+    const selectedProjId = vals.projectId || (projects.find(p => p.name.toLowerCase() === (vals.project || '').toLowerCase())?.id ?? '');
+
+    return (
+      <div className="space-y-4">
+        <h4 className="text-[10px] font-extrabold uppercase tracking-widest text-indigo-600 border-b pb-1">A. Operational Context</h4>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+          <div className="space-y-1">
+            <label className="font-bold text-slate-600 uppercase tracking-wide">Employee</label>
+            {/* Evaluations are restricted to Employee Master entries — no free-text names. */}
+            <select required value={vals.employeeId ?? ''}
+              onChange={e => {
+                const emp = employees.find(x => x.id === e.target.value);
+                set({ ...vals, employeeId: e.target.value, employeeName: emp ? employeeLabel(emp) : '' });
+              }}
+              className="w-full p-2 border border-slate-200 rounded-lg bg-white focus:ring-1 focus:ring-indigo-500 text-xs focus:outline-none">
+              <option value="" disabled>
+                {employees.length ? 'Select employee…' : 'No employees in Employee Master'}
+              </option>
+              {employees.map(emp => (
+                <option key={emp.id} value={emp.id}>{employeeLabel(emp)}</option>
+              ))}
+            </select>
+            {vals.employeeName && !vals.employeeId && (
+              <p className="text-[10px] text-amber-600 font-medium">
+                Legacy record for “{vals.employeeName}” — select the matching employee to link it.
+              </p>
+            )}
+          </div>
+          <div className="space-y-1">
+            <label className="font-bold text-slate-600 uppercase tracking-wide">Account Client</label>
+            <SearchableSelect
+              value={selectedAccId}
+              onChange={(accId) => {
+                const acc = accounts.find(a => a.id === accId);
+                const accName = acc ? acc.name : '';
+                const currentProj = projects.find(p => p.id === selectedProjId);
+                const projMatches = currentProj && currentProj.accountId === accId;
+                set({
+                  ...vals,
+                  accountId: accId,
+                  account: accName,
+                  ...(projMatches ? {} : { projectId: '', project: '' }),
+                });
+              }}
+              options={accounts.map(a => ({ value: a.id, label: a.name }))}
+              placeholder="Search account…"
+              aria-label="Account Client"
+            />
+            {vals.account && !selectedAccId && (
+              <p className="text-[10px] text-amber-600 font-medium">
+                Legacy record for “{vals.account}” — select the matching account to link it.
+              </p>
+            )}
+          </div>
+          <div className="space-y-1">
+            <label className="font-bold text-slate-600 uppercase tracking-wide">Project Name</label>
+            <SearchableSelect
+              value={selectedProjId}
+              onChange={(projId) => {
+                const proj = projects.find(p => p.id === projId);
+                const projName = proj ? proj.name : '';
+                const projAcc = proj ? accounts.find(a => a.id === proj.accountId) : undefined;
+                set({
+                  ...vals,
+                  projectId: projId,
+                  project: projName,
+                  ...(projAcc && !selectedAccId ? { accountId: projAcc.id, account: projAcc.name } : {}),
+                });
+              }}
+              options={availableProjects.map(p => ({ value: p.id, label: p.name }))}
+              placeholder={selectedAccId ? (availableProjects.length ? "Search project…" : "No projects under this Account") : "Select an Account first…"}
+              aria-label="Project Name"
+              disabled={!selectedAccId}
+            />
+            {vals.project && !selectedProjId && (
+              <p className="text-[10px] text-amber-600 font-medium">
+                Legacy record for “{vals.project}” — select the matching project to link it.
+              </p>
+            )}
+          </div>
         <div className="space-y-1">
           <label className="font-bold text-slate-600 uppercase tracking-wide">Manager</label>
           <input type="text" required value={vals.manager}
@@ -477,6 +528,7 @@ export const PerformanceEvaluationView: React.FC = () => {
       </div>
     </div>
   );
+};
 
   const renderScoreFields = (vals: any, set: (v: any) => void) => (
     <div className="space-y-4">
@@ -567,7 +619,54 @@ export const PerformanceEvaluationView: React.FC = () => {
     const isEditingThis = editingCell?.id === evalItem.id && editingCell?.key === cellKey;
 
     if (isEditingThis) {
-      if (NUMERIC_METRIC_KEYS.has(col.key)) {
+      if (cellKey === 'account' || cellKey === 'accountId') {
+        const curAccId = evalItem.accountId || (accounts.find(a => a.name.toLowerCase() === (evalItem.account || '').toLowerCase())?.id ?? '');
+        return (
+          <div className="min-w-[160px]" onClick={e => e.stopPropagation()}>
+            <SearchableSelect
+              value={curAccId}
+              onChange={(accId) => {
+                const acc = accounts.find(a => a.id === accId);
+                const accName = acc ? acc.name : '';
+                const curProjId = evalItem.projectId || (projects.find(p => p.name.toLowerCase() === (evalItem.project || '').toLowerCase())?.id ?? '');
+                const currentProj = projects.find(p => p.id === curProjId);
+                const projMatches = currentProj && currentProj.accountId === accId;
+                saveInlineCell(evalItem.id, 'accountId', accId, {
+                  account: accName,
+                  ...(projMatches ? {} : { projectId: '', project: '' }),
+                });
+              }}
+              options={accounts.map(a => ({ value: a.id, label: a.name }))}
+              placeholder="Search account…"
+              aria-label="Account Client"
+            />
+          </div>
+        );
+      } else if (cellKey === 'project' || cellKey === 'projectId') {
+        const curAccId = evalItem.accountId || (accounts.find(a => a.name.toLowerCase() === (evalItem.account || '').toLowerCase())?.id ?? '');
+        const availableProjects = curAccId ? projects.filter(p => p.accountId === curAccId) : projects;
+        const curProjId = evalItem.projectId || (projects.find(p => p.name.toLowerCase() === (evalItem.project || '').toLowerCase())?.id ?? '');
+        return (
+          <div className="min-w-[160px]" onClick={e => e.stopPropagation()}>
+            <SearchableSelect
+              value={curProjId}
+              onChange={(projId) => {
+                const proj = projects.find(p => p.id === projId);
+                const projName = proj ? proj.name : '';
+                const projAcc = proj ? accounts.find(a => a.id === proj.accountId) : undefined;
+                saveInlineCell(evalItem.id, 'projectId', projId, {
+                  project: projName,
+                  ...(projAcc && !curAccId ? { accountId: projAcc.id, account: projAcc.name } : {}),
+                });
+              }}
+              options={availableProjects.map(p => ({ value: p.id, label: p.name }))}
+              placeholder={curAccId ? (availableProjects.length ? "Search project…" : "No projects under this Account") : "Select an Account first…"}
+              aria-label="Project Name"
+              disabled={!curAccId}
+            />
+          </div>
+        );
+      } else if (NUMERIC_METRIC_KEYS.has(col.key)) {
         return (
           <input type="number" min="0" max="10" autoFocus value={editingCell.value}
             onChange={e => setEditingCell({ ...editingCell, value: e.target.value })}
@@ -787,13 +886,34 @@ export const PerformanceEvaluationView: React.FC = () => {
                       <td className="text-center font-mono text-[10px] bg-slate-50/65 text-slate-500 border-r border-slate-200 py-3 sticky left-0 z-10 group-hover:bg-slate-100">
                         {numIndex}
                       </td>
-                      <td className="px-4 py-3 font-semibold text-slate-900 border-r border-slate-200 sticky left-10 bg-white group-hover:bg-slate-50 z-10">
-                        <div className="flex items-center justify-between">
-                          <span>{evalItem.employeeName}</span>
-                          {evalItem.hasReportees && (
-                            <span className="text-[9px] font-extrabold bg-blue-100 text-blue-800 px-1.5 py-0.2 rounded shrink-0 ml-1">MGR</span>
-                          )}
-                        </div>
+                      <td className="px-4 py-3 font-semibold text-slate-900 border-r border-slate-200 sticky left-10 bg-white group-hover:bg-slate-50 z-10 cursor-cell"
+                        onDoubleClick={() => setEditingCell({ id: evalItem.id, key: 'employeeName', value: evalItem.employeeId || '' })}>
+                        {editingCell?.id === evalItem.id && (editingCell?.key === 'employeeName' || editingCell?.key === 'employeeId') ? (
+                          <select
+                            autoFocus
+                            value={evalItem.employeeId ?? ''}
+                            onChange={(e) => {
+                              const emp = employees.find(x => x.id === e.target.value);
+                              if (emp) {
+                                saveInlineCell(evalItem.id, 'employeeId', emp.id, { employeeName: emp.name || emp.email });
+                              }
+                            }}
+                            onBlur={() => setEditingCell(null)}
+                            className="text-xs p-1 border border-indigo-500 rounded bg-white w-full min-w-[140px]"
+                          >
+                            <option value="" disabled>Select employee…</option>
+                            {employees.map(emp => (
+                              <option key={emp.id} value={emp.id}>{employeeLabel(emp)}</option>
+                            ))}
+                          </select>
+                        ) : (
+                          <div className="flex items-center justify-between">
+                            <span>{evalItem.employeeName}</span>
+                            {evalItem.hasReportees && (
+                              <span className="text-[9px] font-extrabold bg-blue-100 text-blue-800 px-1.5 py-0.2 rounded shrink-0 ml-1">MGR</span>
+                            )}
+                          </div>
+                        )}
                       </td>
                       {displayedConfigs.filter(col => col.key !== 'employeeName').map(col => {
                         const cellKey = col.key as keyof PerformanceEvaluation;

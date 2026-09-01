@@ -146,3 +146,41 @@ export function getCustomerSinceYearOptions(): string[] {
   for (let year = currentYear; year >= 2000; year--) years.push(String(year));
   return years;
 }
+
+/**
+ * Calculates Project Risk Severity based on Impact and Likelihood.
+ * Risk Matrix:
+ * Impact High   | Likelihood Low -> Medium, Medium -> High,     High -> Critical
+ * Impact Medium | Likelihood Low -> Low,    Medium -> Medium,   High -> High
+ * Impact Low    | Likelihood Low -> Low,    Medium -> Low,      High -> Medium
+ */
+export function calculateRiskSeverity(impact?: string, likelihood?: string): string {
+  const imp = (impact || '').trim();
+  const lik = (likelihood || '').trim();
+
+  if (imp === 'High') {
+    if (lik === 'Low') return 'Medium';
+    if (lik === 'Medium') return 'High';
+    if (lik === 'High') return 'Critical';
+  }
+
+  if (imp === 'Medium') {
+    if (lik === 'Low') return 'Low';
+    if (lik === 'Medium') return 'Medium';
+    if (lik === 'High') return 'High';
+  }
+
+  if (imp === 'Low') {
+    if (lik === 'Low') return 'Low';
+    if (lik === 'Medium') return 'Low';
+    if (lik === 'High') return 'Medium';
+  }
+
+  return '';
+}
+
+/** Format a number as USD currency string (e.g. 1500 -> "$1,500.00") */
+export function formatCur(value: number | undefined | null): string {
+  if (value == null) return '$0.00';
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
+}

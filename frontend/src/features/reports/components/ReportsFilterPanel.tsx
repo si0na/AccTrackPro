@@ -9,7 +9,6 @@ import {
   OPPORTUNITY_STAGE_OPTIONS,
   OPPORTUNITY_HEALTH_OPTIONS,
   OPPORTUNITY_TYPE_OPTIONS,
-  REVENUE_MODEL_OPTIONS,
   SERVICE_LINE_OPTIONS,
 } from '@/constants';
 import type { ReportsFilterState } from '../utils/reportsFilters';
@@ -53,12 +52,6 @@ export const ReportsFilterPanel: React.FC<ReportsFilterPanelProps> = ({
       value={filters.oppType}
       onChange={(v) => onChange('oppType', v)}
       options={[{ value: 'All', label: 'All Types' }, ...OPPORTUNITY_TYPE_OPTIONS.map((t) => ({ value: t, label: t }))]}
-    />
-    <FilterSelect
-      label="Revenue Model"
-      value={filters.revenueModel}
-      onChange={(v) => onChange('revenueModel', v)}
-      options={[{ value: 'All', label: 'All Revenue Models' }, ...REVENUE_MODEL_OPTIONS.map((r) => ({ value: r, label: r }))]}
     />
     <FilterSelect
       label="Service Line"

@@ -6,6 +6,7 @@
 import React from 'react';
 import { Link2 } from 'lucide-react';
 import type { AdminUser, DependencyStatus, PriorityLevel, ProjectDependency } from '@/types';
+import { PROJECT_DEPENDENCY_TYPE_OPTIONS } from '@/constants';
 import {
   FormField,
   FormGrid,
@@ -102,13 +103,18 @@ export const DependencyFormModal: React.FC<DependencyFormModalProps> = ({
             </select>
           </FormField>
           <FormField label="Dependency Type">
-            <input
-              type="text"
+            <select
               value={value.dependencyType ?? ''}
               onChange={(e) => onChange({ dependencyType: e.target.value })}
-              placeholder="e.g., Internal, External, Technical"
-              className={INPUT_CLS}
-            />
+              className={SELECT_CLS}
+            >
+              <option value="">-- Select Dependency Type --</option>
+              {PROJECT_DEPENDENCY_TYPE_OPTIONS.map((type) => (
+                <option key={type} value={type}>
+                  {type}
+                </option>
+              ))}
+            </select>
           </FormField>
           <FormField label="Dependent Task">
             <input

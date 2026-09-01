@@ -3,6 +3,22 @@ import {
 } from 'class-validator';
 import { EmptyToUndefined, ISO_DATE_RE, ISO_DATE_MSG } from '../../../common/utils/dto-transforms.util';
 
+export const DEPENDENCY_TYPE_OPTIONS = [
+  'Client Dependency',
+  'Technical Dependency',
+  'Resource Dependency',
+  'Access Dependency',
+  'Data Dependency',
+  'Environment Dependency',
+  'Vendor / Third-Party Dependency',
+  'Approval / Decision Dependency',
+  'Cross-Team Dependency',
+  'Schedule / Milestone Dependency',
+  'Compliance / Security Dependency',
+  'Commercial / Procurement Dependency',
+  'Others',
+];
+
 export class CreateProjectDependencyDto {
   @IsIn(['High', 'Medium', 'Low'], { message: 'Priority must be High, Medium, or Low' })
   priority!: string;
@@ -10,7 +26,7 @@ export class CreateProjectDependencyDto {
   @IsString() @IsNotEmpty({ message: 'Description is required' }) @MaxLength(5000)
   description!: string;
 
-  @IsString() @IsOptional() @MaxLength(500)
+  @IsOptional() @IsIn(DEPENDENCY_TYPE_OPTIONS, { message: 'Invalid Dependency Type' })
   dependencyType?: string;
 
   @IsString() @IsOptional() @MaxLength(500)

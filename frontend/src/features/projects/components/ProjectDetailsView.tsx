@@ -48,6 +48,7 @@ import { SimpleCrudTab } from './SimpleCrudTab';
 import { MilestoneFormModal, MilestoneDraft, emptyMilestoneDraft } from './MilestoneFormModal';
 import { MilestoneDetailsModal } from './MilestoneDetailsModal';
 import { ProjectHealthTab } from './ProjectHealthTab';
+import { ProjectProgressTab } from './ProjectProgressTab';
 import { ProjectHealthDetailsSection } from './ProjectHealthDetailsSection';
 import { RiskFormModal, RiskDraft, emptyRiskDraft } from './RiskFormModal';
 import { AssumptionFormModal, AssumptionDraft, emptyAssumptionDraft } from './AssumptionFormModal';
@@ -138,6 +139,7 @@ export const ProjectDetailsView: React.FC = () => {
     setSelectedAccountId,
     setSelectedOpportunityId,
     updateProject,
+    refreshProject,
     deleteProject,
     actionItemColumns,
     actionItemsColumnConfig,
@@ -186,46 +188,6 @@ export const ProjectDetailsView: React.FC = () => {
     await updateProject(projectDraft);
     setIsEditModalOpen(false);
     setProjectDraft(null);
-  };
-
-  // ── Overall Progress tab: independent inline edit (own Edit/Save/Cancel,
-  // separate from the Overview edit modal above) ──────────────────────────
-  const emptyProgressDraft = {
-    asOnDate: '',
-    health: 'Green' as ProjectHealth,
-    plannedCompletionPct: undefined as number | undefined,
-    actualCompletionPct: undefined as number | undefined,
-    plannedEffortHours: undefined as number | undefined,
-    actualEffortHours: undefined as number | undefined,
-    plannedCost: undefined as number | undefined,
-    actualCost: undefined as number | undefined,
-  };
-  const [isEditingProgress, setIsEditingProgress] = useState(false);
-  const [progressDraft, setProgressDraft] = useState(emptyProgressDraft);
-  const openProgressEdit = () => {
-    if (!project) return;
-    setProgressDraft({
-      asOnDate: project.asOnDate ?? '',
-      health: project.health,
-      plannedCompletionPct: project.plannedCompletionPct,
-      actualCompletionPct: project.actualCompletionPct,
-      plannedEffortHours: project.plannedEffortHours,
-      actualEffortHours: project.actualEffortHours,
-      plannedCost: project.plannedCost,
-      actualCost: project.actualCost,
-    });
-    setIsEditingProgress(true);
-  };
-  const isPercentValid = (v: number | undefined) => v === undefined || (v >= 0 && v <= 100);
-  const isNonNegative = (v: number | undefined) => v === undefined || v >= 0;
-  const isProgressValid =
-    isPercentValid(progressDraft.plannedCompletionPct) && isPercentValid(progressDraft.actualCompletionPct)
-    && isNonNegative(progressDraft.plannedEffortHours) && isNonNegative(progressDraft.actualEffortHours)
-    && isNonNegative(progressDraft.plannedCost) && isNonNegative(progressDraft.actualCost);
-  const handleSaveProgress = async () => {
-    if (!project || !isProgressValid) return;
-    await updateProject({ ...project, ...progressDraft, asOnDate: progressDraft.asOnDate || undefined });
-    setIsEditingProgress(false);
   };
 
   // Header overflow menu (deactivate)
@@ -848,152 +810,10 @@ export const ProjectDetailsView: React.FC = () => {
         )}
 
         {activeTab === 'progress' && (
-          <Card
-            title="Overall Progress"
-            bodyClassName="space-y-6"
-            actions={
-              isEditingProgress ? (
-                <div className="flex items-center gap-2">
-                  <Button variant="warning" onClick={handleSaveProgress} disabled={!isProgressValid}>
-                    Save
-                  </Button>
-                  <Button variant="secondary" onClick={() => setIsEditingProgress(false)}>
-                    Cancel
-                  </Button>
-                </div>
-              ) : (
-                <Button variant="secondary" icon={<Edit2 className="w-3.5 h-3.5" aria-hidden="true" />} onClick={openProgressEdit}>
-                  Edit Progress
-                </Button>
-              )
-            }
-          >
-            <FormSection title="Progress, Effort & Cost">
-              <div className="rounded-lg border border-slate-100 divide-y divide-slate-100">
-                {([
-                  {
-                    key: 'asOnDate', label: 'As On Date',
-                    view: <span className="text-sm text-slate-800 font-mono font-semibold">{project.asOnDate || 'Not set'}</span>,
-                    edit: (
-                      <input
-                        type="date"
-                        value={progressDraft.asOnDate}
-                        onChange={(e) => setProgressDraft({ ...progressDraft, asOnDate: e.target.value })}
-                        className={`${INPUT_CLS} max-w-xs font-mono`}
-                      />
-                    ),
-                  },
-                  {
-                    key: 'health', label: 'Health',
-                    view: (
-                      <div className="flex items-center gap-3">
-                        <StatusBadge value={project.health} colorMap={HEALTH_COLORS} />
-                        <Button
-                          variant="secondary"
-                          className="!py-1 !text-[11px]"
-                          onClick={() => {
-                            setActiveTab('health');
-                            setOpenHealthModalTrigger(c => c + 1);
-                          }}
-                        >
-                          Update Health
-                        </Button>
-                      </div>
-                    ),
-                    edit: (
-                      <div className="flex items-center gap-3">
-                        <StatusBadge value={project.health} colorMap={HEALTH_COLORS} />
-                        <span className="text-xs text-slate-500 italic">Health is edited from the Overview tab, the Edit Project form, or the Health Tracker — every change is recorded there.</span>
-                      </div>
-                    ),
-                  },
-                  {
-                    key: 'plannedCompletionPct', label: 'Planned Completion (%)',
-                    view: <span className="text-sm text-slate-800 font-semibold">{project.plannedCompletionPct ?? 0}%</span>,
-                    edit: (
-                      <NumberInput
-                        min={0}
-                        max={100}
-                        value={progressDraft.plannedCompletionPct}
-                        onValueChange={(v) => setProgressDraft({ ...progressDraft, plannedCompletionPct: v })}
-                        placeholder="0–100"
-                        className={`${INPUT_CLS} max-w-xs`}
-                      />
-                    ),
-                  },
-                  {
-                    key: 'actualCompletionPct', label: 'Actual Completion (%)',
-                    view: <span className="text-sm text-slate-800 font-semibold">{project.actualCompletionPct ?? 0}%</span>,
-                    edit: (
-                      <NumberInput
-                        min={0}
-                        max={100}
-                        value={progressDraft.actualCompletionPct}
-                        onValueChange={(v) => setProgressDraft({ ...progressDraft, actualCompletionPct: v })}
-                        placeholder="0–100"
-                        className={`${INPUT_CLS} max-w-xs`}
-                      />
-                    ),
-                  },
-                  {
-                    key: 'plannedEffortHours', label: 'Planned Effort (Hours)',
-                    view: <span className="text-sm text-slate-800 font-semibold">{project.plannedEffortHours ?? 0} hrs</span>,
-                    edit: (
-                      <NumberInput
-                        min={0}
-                        value={progressDraft.plannedEffortHours}
-                        onValueChange={(v) => setProgressDraft({ ...progressDraft, plannedEffortHours: v })}
-                        className={`${INPUT_CLS} max-w-xs`}
-                      />
-                    ),
-                  },
-                  {
-                    key: 'actualEffortHours', label: 'Actual Effort (Hours)',
-                    view: <span className="text-sm text-slate-800 font-semibold">{project.actualEffortHours ?? 0} hrs</span>,
-                    edit: (
-                      <NumberInput
-                        min={0}
-                        value={progressDraft.actualEffortHours}
-                        onValueChange={(v) => setProgressDraft({ ...progressDraft, actualEffortHours: v })}
-                        className={`${INPUT_CLS} max-w-xs`}
-                      />
-                    ),
-                  },
-                  {
-                    key: 'plannedCost', label: 'Planned Cost (USD)',
-                    view: <span className="text-sm text-slate-800 font-semibold">{formatCur(project.plannedCost ?? 0)}</span>,
-                    edit: (
-                      <NumberInput
-                        min={0}
-                        step="0.01"
-                        value={progressDraft.plannedCost}
-                        onValueChange={(v) => setProgressDraft({ ...progressDraft, plannedCost: v })}
-                        className={`${INPUT_CLS} max-w-xs`}
-                      />
-                    ),
-                  },
-                  {
-                    key: 'actualCost', label: 'Actual Cost (USD)',
-                    view: <span className="text-sm text-slate-800 font-semibold">{formatCur(project.actualCost ?? 0)}</span>,
-                    edit: (
-                      <NumberInput
-                        min={0}
-                        step="0.01"
-                        value={progressDraft.actualCost}
-                        onValueChange={(v) => setProgressDraft({ ...progressDraft, actualCost: v })}
-                        className={`${INPUT_CLS} max-w-xs`}
-                      />
-                    ),
-                  },
-                ]).map((row) => (
-                  <div key={row.key} className="grid grid-cols-1 sm:grid-cols-[240px_1fr] gap-2 sm:gap-4 px-4 py-3 items-center">
-                    <span className="text-label font-semibold text-slate-400 uppercase tracking-wider">{row.label}</span>
-                    <div>{isEditingProgress ? row.edit : row.view}</div>
-                  </div>
-                ))}
-              </div>
-            </FormSection>
-          </Card>
+          <ProjectProgressTab
+            projectId={project.id}
+            onProjectUpdated={() => refreshProject(project.id)}
+          />
         )}
 
         {activeTab === 'team' && (
@@ -1540,6 +1360,7 @@ export const ProjectDetailsView: React.FC = () => {
         actionItemsColumnConfig={actionItemsColumnConfig}
         lockedAccount={lockedAccount}
         lockedProject={lockedProject}
+        mode="project"
       />
 
       {/* Edit Action Item Modal */}
