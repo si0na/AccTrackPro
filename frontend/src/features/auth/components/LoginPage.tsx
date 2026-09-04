@@ -3,6 +3,8 @@ import { useCRM } from '@/contexts/CRMContext';
 import { Lock, Mail, ArrowRight, Eye, EyeOff } from 'lucide-react';
 import { Card, Button, ErrorBanner, FormField, INPUT_CLS } from '@/components/ui';
 
+import { ReflectOneLogo } from '@/components/common/ReflectOneLogo';
+
 interface LoginPageProps {
   onGoToSignUp?: () => void;
   onForgotPassword?: () => void;
@@ -43,12 +45,15 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onGoToSignUp, onForgotPass
       <Card padding="none" className="w-full max-w-md">
         <div className="p-8 sm:p-9 space-y-6">
           <div className="flex flex-col items-center text-center space-y-3">
-            <div className="w-11 h-11 rounded-xl bg-blue-600 flex items-center justify-center font-bold text-white shadow-md shadow-blue-600/20 ring-4 ring-blue-600/10">
-              AT
-            </div>
+            <ReflectOneLogo className="w-14 h-14" />
             <div>
-              <h1 className="text-xl font-bold text-slate-800 tracking-tight">Sign in to AccTrack Pro</h1>
-              <p className="text-xs text-slate-500 mt-1.5">Please enter your enterprise work credentials.</p>
+              <h1 className="text-2xl font-black text-slate-800 tracking-tight">ReflectOne</h1>
+              <p className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-slate-500 mt-1">
+                ONE PLATFORM. EVERY RELATIONSHIP.
+              </p>
+              <p className="text-[9px] font-bold uppercase tracking-[0.15em] text-teal-700/80 mt-0.5">
+                CONNECT · COLLABORATE · DELIVER · GROW
+              </p>
             </div>
           </div>
 
@@ -120,7 +125,7 @@ export const LoginPage: React.FC<LoginPageProps> = ({ onGoToSignUp, onForgotPass
           {onGoToSignUp && (
             <div className="pt-5 border-t border-slate-100">
               <p className="text-center text-xs text-slate-500">
-                New to AccTrack Pro?{' '}
+                New to ReflectOne?{' '}
                 <button
                   onClick={onGoToSignUp}
                   className="text-blue-600 hover:text-blue-700 font-semibold transition-colors cursor-pointer"

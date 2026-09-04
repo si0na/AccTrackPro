@@ -23,6 +23,7 @@ export const VIEW_PATHS: Record<ViewType, string> = {
   administration: '/administration',
   'audit-log': '/audit-log',
   'performance-evaluation': '/performance',
+  'employee-appreciation': '/employee-appreciation',
 };
 
 /** Resolves the ViewType path, substituting real IDs where needed */
@@ -58,7 +59,7 @@ export const PROJECT_HEALTH_CHOICES = [
   { value: 'Red',   label: '🔴 Red' },
 ] as const;
 export const OPPORTUNITY_STAGE_OPTIONS = [
-  'Lead', 'Qualified', 'Proposal', 'Negotiation', 'Verbal Agreement', 'Won', 'Blocked', 'Delayed', 'Lost',
+  'Lead', 'Qualified', 'Proposal', 'Negotiation', 'Verbal Agreement', 'Won', 'Blocked', 'Delayed', 'Hold', 'Lost',
 ] as const;
 /** Deal outcome derived from stage (Won/Lost stages are closed; everything else is Open). */
 export const OPPORTUNITY_OUTCOME_OPTIONS = ['Open', 'Won', 'Lost'] as const;
@@ -90,6 +91,7 @@ export const OPPORTUNITY_STAGE_STYLE: Record<
   Won:                { bar: 'bg-emerald-500', iconBg: 'bg-emerald-100', iconText: 'text-emerald-600', hex: '#10b981' },
   Blocked:            { bar: 'bg-orange-500',  iconBg: 'bg-orange-100',  iconText: 'text-orange-600',  hex: '#f97316' },
   Delayed:            { bar: 'bg-amber-500',   iconBg: 'bg-amber-100',   iconText: 'text-amber-600',   hex: '#f59e0b' },
+  Hold:               { bar: 'bg-zinc-500',    iconBg: 'bg-zinc-100',    iconText: 'text-zinc-600',    hex: '#71717a' },
   Lost:               { bar: 'bg-red-500',     iconBg: 'bg-red-100',     iconText: 'text-red-600',     hex: '#ef4444' },
 };
 

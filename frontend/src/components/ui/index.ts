@@ -24,6 +24,9 @@ export type { SearchBarProps } from './SearchBar';
 export { FilterBar, FilterSelect, FilterChip } from './FilterBar';
 export type { FilterSelectProps, FilterChipProps } from './FilterBar';
 
+export { MultiSelectFilter } from './MultiSelectFilter';
+export type { MultiSelectFilterProps, MultiSelectFilterOption } from './MultiSelectFilter';
+
 export {
   StatusBadge,
   HEALTH_COLORS,

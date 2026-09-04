@@ -68,6 +68,7 @@ export const STAGE_COLORS: Record<OpportunityStage, string> = {
   Lead: 'bg-slate-100 text-slate-700',
   Blocked: 'bg-orange-100 text-orange-700',
   Delayed: 'bg-amber-100 text-amber-700',
+  Hold: 'bg-zinc-100 text-zinc-700',
   Lost: 'bg-red-100 text-red-700',
 };
 
@@ -86,9 +87,9 @@ export const ACTION_STATUS_COLORS: Record<ActionItemStatus, string> = {
 };
 
 export const INFLUENCE_COLORS: Record<InfluenceLevel, string> = {
-  High: 'bg-red-50 text-red-600',
-  Medium: 'bg-orange-50 text-orange-600',
-  Low: 'bg-green-50 text-green-600',
+  High: 'bg-green-100 text-green-700',
+  Medium: 'bg-amber-100 text-amber-700',
+  Low: 'bg-red-100 text-red-700',
 };
 
 export const RELATIONSHIP_COLORS: Record<RelationshipStatus, string> = {

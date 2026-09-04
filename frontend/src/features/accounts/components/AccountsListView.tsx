@@ -13,7 +13,7 @@ import { CustomizeColumnsSidebar } from '@/components/table/CustomizeColumnsSide
 import { InlineEditModal } from '@/components/InlineEditModal';
 import { LoadingState } from '@/components/common/LoadingState';
 import { AccountFormModal } from '@/features/accounts/components/AccountFormModal';
-import { compareForSort, getCustomerSinceYearOptions, mapLocationToOption, matchesGlobalAccount, SortDirection } from '@/utils';
+import { compareForSort, getCustomerSinceYearOptions, mapLocationToOption, matchesGlobalAccount, serviceProviderOptionLabel, SortDirection } from '@/utils';
 import { ACCOUNT_TYPE_OPTIONS, ACCOUNT_HEALTH_OPTIONS, LOCATION_OPTIONS, TOWER_OPTIONS } from '@/constants';
 import {
   ACCOUNT_TYPE_COLORS,
@@ -87,21 +87,20 @@ export const AccountsListView: React.FC = () => {
     usersApi.getAll().then(setUsers).catch(() => setUsers([]));
   }, []);
 
+  const { practiceLeads, clientPartners, verticalHeads } = useCRM();
+
   // Role-filtered option lists ({ value: id, label: name }) for each FK field.
-  // Account Manager is intentionally absent here — it is never chosen on the
-  // create form; the backend assigns the logged-in creator when they hold the
-  // Account Manager role. It remains editable afterwards (see InlineEditModal).
   const practiceLeadOptions = useMemo(
-    () => users.filter(u => u.roleKey === 'practice-lead' || (u.roleKeys && u.roleKeys.includes('practice-lead'))).map(u => ({ value: u.id, label: u.name })),
-    [users],
+    () => (practiceLeads || []).map(u => ({ value: u.id, label: serviceProviderOptionLabel(u) })),
+    [practiceLeads],
   );
   const clientPartnerOptions = useMemo(
-    () => users.filter(u => u.roleKey === 'client-partner' || (u.roleKeys && u.roleKeys.includes('client-partner'))).map(u => ({ value: u.id, label: u.name })),
-    [users],
+    () => (clientPartners || []).map(u => ({ value: u.id, label: serviceProviderOptionLabel(u) })),
+    [clientPartners],
   );
   const verticalHeadOptions = useMemo(
-    () => users.filter(u => u.roleKey === 'vertical-head' || (u.roleKeys && u.roleKeys.includes('vertical-head'))).map(u => ({ value: u.id, label: u.name })),
-    [users],
+    () => (verticalHeads || []).map(u => ({ value: u.id, label: serviceProviderOptionLabel(u) })),
+    [verticalHeads],
   );
 
   // Restore failure message (network/server errors must not fail silently)

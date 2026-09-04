@@ -6,10 +6,11 @@
 import React, { useEffect, useState } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
 import { Project, User } from '@/types';
-import { usersApi } from '@/api/crm.api';
-import { Eye, Trash2, FolderKanban } from 'lucide-react';
-import { compareForSort, matchesGlobalAccount, SortDirection } from '@/utils';
+import { usersApi, projectsApi } from '@/api/crm.api';
+import { Eye, Trash2, FolderKanban, Plus } from 'lucide-react';
+import { compareForSort, matchesGlobalAccount, serviceProviderOptionLabel, SortDirection } from '@/utils';
 import {
+  Button,
   Card,
   ConfirmDialog,
   DeactivatedSection,
@@ -33,6 +34,7 @@ import {
   TableRow,
 } from '@/components/ui';
 import { LoadingState } from '@/components/common/LoadingState';
+import { ProjectFormModal } from './ProjectFormModal';
 
 const METHODOLOGY_OPTIONS = ['Agile', 'Waterfall'] as const;
 const STATUS_OPTIONS = ['Active', 'On Hold', 'Completed', 'Cancelled'] as const;
@@ -58,19 +60,85 @@ export const ProjectsListView: React.FC = () => {
     refreshData,
     loading,
     can,
+    projectManagers,
+    practiceLeads,
+    clientPartners,
   } = useCRM();
 
   const canDeleteProject = can('projects', 'delete');
   const canUpdateProject = can('projects', 'update');
+  const canCreateProject = can('projects', 'create');
+
+  // Direct Project Creation Modal State
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isSubmittingCreate, setIsSubmittingCreate] = useState(false);
+  const [newProjectDraft, setNewProjectDraft] = useState<Project>({
+    id: '',
+    name: '',
+    description: '',
+    accountId: '',
+    accountName: '',
+    status: 'Active',
+    health: 'Green',
+    methodology: 'Agile',
+  } as Project);
+
+  const handleOpenCreateModal = () => {
+    const firstAcc = accounts && accounts.length > 0 ? accounts[0] : null;
+    setNewProjectDraft({
+      id: '',
+      name: '',
+      description: '',
+      accountId: firstAcc ? firstAcc.id : '',
+      accountName: firstAcc ? firstAcc.name : '',
+      status: 'Active',
+      health: 'Green',
+      methodology: 'Agile',
+    } as Project);
+    setIsCreateModalOpen(true);
+  };
+
+  const handleSaveDirectProject = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newProjectDraft.name.trim() || !newProjectDraft.accountId) return;
+    setIsSubmittingCreate(true);
+    try {
+      const created = await projectsApi.create({
+        name: newProjectDraft.name.trim(),
+        description: newProjectDraft.description || '',
+        accountId: newProjectDraft.accountId,
+        dealValue: newProjectDraft.dealValue,
+        priority: newProjectDraft.priority,
+        deliveryModel: newProjectDraft.deliveryModel,
+        billingModel: newProjectDraft.billingModel,
+        tower: newProjectDraft.tower,
+        serviceProviderPmId: newProjectDraft.serviceProviderPmId,
+        practiceLeadId: newProjectDraft.practiceLeadId,
+        clientPartnerId: newProjectDraft.clientPartnerId,
+        clientPmName: newProjectDraft.clientPmName,
+        status: newProjectDraft.status || 'Active',
+        health: newProjectDraft.health || 'Green',
+        methodology: newProjectDraft.methodology || 'Agile',
+      });
+      setIsCreateModalOpen(false);
+      await refreshData();
+      setSelectedProjectId(created.id);
+      setView('project-details');
+    } catch (err: any) {
+      alert(err?.response?.data?.message || err?.message || 'Failed to create project.');
+    } finally {
+      setIsSubmittingCreate(false);
+    }
+  };
 
   const [users, setUsers] = useState<User[]>([]);
   useEffect(() => {
     usersApi.getAll().then(setUsers).catch(() => setUsers([]));
   }, []);
 
-  const pmOptions = React.useMemo(() => users.filter(u => u.roleKey === 'project-manager' || u.roleKeys?.includes('project-manager')), [users]);
-  const practiceLeadOptions = React.useMemo(() => users.filter(u => u.roleKey === 'practice-lead' || u.roleKeys?.includes('practice-lead')), [users]);
-  const clientPartnerOptions = React.useMemo(() => users.filter(u => u.roleKey === 'client-partner' || u.roleKeys?.includes('client-partner')), [users]);
+  const pmOptions = React.useMemo(() => projectManagers || [], [projectManagers]);
+  const practiceLeadOptions = React.useMemo(() => practiceLeads || [], [practiceLeads]);
+  const clientPartnerOptions = React.useMemo(() => clientPartners || [], [clientPartners]);
 
   const [editingCell, setEditingCell] = useState<{ id: string; key: string; value: any } | null>(null);
 
@@ -165,7 +233,19 @@ export const ProjectsListView: React.FC = () => {
     <div className="space-y-6">
       <PageHeader
         title="Project Management"
-        subtitle="Live delivery record for every Won opportunity — progress, team, and ongoing work."
+        subtitle="Live delivery record for active projects — progress, team, and ongoing work."
+        actions={
+          canCreateProject && (
+            <Button
+              variant="primary"
+              size="md"
+              icon={<Plus className="w-4.5 h-4.5" aria-hidden="true" />}
+              onClick={handleOpenCreateModal}
+            >
+              Create Project
+            </Button>
+          )
+        }
       />
 
       <FilterBar className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
@@ -256,25 +336,25 @@ export const ProjectsListView: React.FC = () => {
                       </TableCell>
                       <TableCell className="text-slate-600" onDoubleClick={(e) => { e.stopPropagation(); if (canUpdateProject) setEditingCell({ id: p.id, key: 'clientPartnerId', value: p.clientPartnerId || '' }); }}>
                         {editingCell?.id === p.id && editingCell?.key === 'clientPartnerId' ? (
-                          <select autoFocus value={editingCell.value} onChange={e => { const u = users.find(x => x.id === e.target.value); saveInlineCell(p.id, 'clientPartnerId', e.target.value, { clientPartnerName: u?.name || '' }); }} onBlur={() => setEditingCell(null)} className="text-xs p-1 border border-indigo-500 rounded bg-white">
+                          <select autoFocus value={editingCell.value} onChange={e => { const u = clientPartnerOptions.find(x => x.id === e.target.value); saveInlineCell(p.id, 'clientPartnerId', e.target.value, { clientPartnerName: u?.name || '' }); }} onBlur={() => setEditingCell(null)} className="text-xs p-1 border border-indigo-500 rounded bg-white">
                             <option value="">Select Client Partner…</option>
-                            {clientPartnerOptions.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                            {clientPartnerOptions.map(u => <option key={u.id} value={u.id}>{serviceProviderOptionLabel(u)}</option>)}
                           </select>
                         ) : (p.clientPartnerName || '—')}
                       </TableCell>
                       <TableCell className="text-slate-600" onDoubleClick={(e) => { e.stopPropagation(); if (canUpdateProject) setEditingCell({ id: p.id, key: 'serviceProviderPmId', value: p.serviceProviderPmId || '' }); }}>
                         {editingCell?.id === p.id && editingCell?.key === 'serviceProviderPmId' ? (
-                          <select autoFocus value={editingCell.value} onChange={e => { const u = users.find(x => x.id === e.target.value); saveInlineCell(p.id, 'serviceProviderPmId', e.target.value, { serviceProviderPmName: u?.name || '' }); }} onBlur={() => setEditingCell(null)} className="text-xs p-1 border border-indigo-500 rounded bg-white">
+                          <select autoFocus value={editingCell.value} onChange={e => { const u = pmOptions.find(x => x.id === e.target.value); saveInlineCell(p.id, 'serviceProviderPmId', e.target.value, { serviceProviderPmName: u?.name || '' }); }} onBlur={() => setEditingCell(null)} className="text-xs p-1 border border-indigo-500 rounded bg-white">
                             <option value="">Select Project Manager…</option>
-                            {pmOptions.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                            {pmOptions.map(u => <option key={u.id} value={u.id}>{serviceProviderOptionLabel(u)}</option>)}
                           </select>
                         ) : (p.serviceProviderPmName || '—')}
                       </TableCell>
                       <TableCell className="text-slate-600" onDoubleClick={(e) => { e.stopPropagation(); if (canUpdateProject) setEditingCell({ id: p.id, key: 'practiceLeadId', value: p.practiceLeadId || '' }); }}>
                         {editingCell?.id === p.id && editingCell?.key === 'practiceLeadId' ? (
-                          <select autoFocus value={editingCell.value} onChange={e => { const u = users.find(x => x.id === e.target.value); saveInlineCell(p.id, 'practiceLeadId', e.target.value, { practiceLeadName: u?.name || '' }); }} onBlur={() => setEditingCell(null)} className="text-xs p-1 border border-indigo-500 rounded bg-white">
+                          <select autoFocus value={editingCell.value} onChange={e => { const u = practiceLeadOptions.find(x => x.id === e.target.value); saveInlineCell(p.id, 'practiceLeadId', e.target.value, { practiceLeadName: u?.name || '' }); }} onBlur={() => setEditingCell(null)} className="text-xs p-1 border border-indigo-500 rounded bg-white">
                             <option value="">Select Practice Lead…</option>
-                            {practiceLeadOptions.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
+                            {practiceLeadOptions.map(u => <option key={u.id} value={u.id}>{serviceProviderOptionLabel(u)}</option>)}
                           </select>
                         ) : (p.practiceLeadName || '—')}
                       </TableCell>
@@ -411,6 +491,20 @@ export const ProjectsListView: React.FC = () => {
         }}
         onCancel={() => setRestoreTarget(null)}
       />
+
+      {isCreateModalOpen && (
+        <ProjectFormModal
+          isOpen={isCreateModalOpen}
+          mode="create"
+          onClose={() => setIsCreateModalOpen(false)}
+          onSubmit={handleSaveDirectProject}
+          isSubmitting={isSubmittingCreate}
+          value={newProjectDraft}
+          onChange={(patch) => setNewProjectDraft((prev) => ({ ...prev, ...patch }))}
+          users={[]}
+          stakeholders={[]}
+        />
+      )}
     </div>
   );
 };

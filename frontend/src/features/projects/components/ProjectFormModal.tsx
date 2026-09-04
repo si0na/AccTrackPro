@@ -52,6 +52,9 @@ export interface ProjectFormModalProps {
  * (from a Won opportunity's "Create Project" action — projects are no longer
  * derived automatically, so a user reviews the pre-filled fields before saving).
  */
+import { useCRM } from '@/contexts/CRMContext';
+import { serviceProviderOptionLabel } from '@/utils';
+
 export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
   isOpen,
   onClose,
@@ -63,18 +66,29 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
   stakeholders,
   mode = 'edit',
 }) => {
-  const clientPartners = React.useMemo(() =>
-    users.filter((u) => u.roleKeys?.includes('client-partner') || u.roleKey === 'client-partner'),
-    [users],
-  );
-  const projectManagers = React.useMemo(() =>
-    users.filter((u) => u.roleKeys?.includes('project-manager') || u.roleKey === 'project-manager'),
-    [users],
-  );
-  const practiceLeads = React.useMemo(() =>
-    users.filter((u) => u.roleKeys?.includes('practice-lead') || u.roleKey === 'practice-lead'),
-    [users],
-  );
+  const { projectManagers, practiceLeads, clientPartners, accounts } = useCRM();
+
+  const projectManagerOptions = React.useMemo(() => {
+    return (projectManagers || []).map((pm) => ({
+      value: pm.id,
+      label: serviceProviderOptionLabel(pm),
+    }));
+  }, [projectManagers]);
+
+  const practiceLeadOptions = React.useMemo(() => {
+    return (practiceLeads || []).map((pl) => ({
+      value: pl.id,
+      label: serviceProviderOptionLabel(pl),
+    }));
+  }, [practiceLeads]);
+
+  const clientPartnerOptions = React.useMemo(() => {
+    return (clientPartners || []).map((cp) => ({
+      value: cp.id,
+      label: serviceProviderOptionLabel(cp),
+    }));
+  }, [clientPartners]);
+
   const isCreate = mode === 'create';
 
   return (
@@ -101,6 +115,32 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
                 className={INPUT_CLS}
               />
             </FormField>
+            {isCreate && (
+              <FormField label="Account" required wide>
+                {value.opportunityId ? (
+                  <input
+                    type="text"
+                    disabled
+                    value={value.accountName || accounts.find((a) => a.id === value.accountId)?.name || '—'}
+                    className={`${INPUT_CLS} bg-slate-100 font-semibold`}
+                  />
+                ) : (
+                  <SearchableSelect
+                    options={(accounts || []).map((a) => ({ value: a.id, label: a.name }))}
+                    value={value.accountId || ''}
+                    onChange={(accId) => {
+                      const selectedAcc = (accounts || []).find((a) => a.id === accId);
+                      onChange({
+                        accountId: accId,
+                        accountName: selectedAcc?.name || '',
+                      });
+                    }}
+                    placeholder="Select Account..."
+                    required
+                  />
+                )}
+              </FormField>
+            )}
             <FormField label="Project Description" wide>
               <textarea
                 rows={2}
@@ -217,7 +257,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
               <SearchableSelect
                 value={value.serviceProviderPmId ?? ''}
                 onChange={(id) => onChange({ serviceProviderPmId: id || undefined })}
-                options={projectManagers.map((u) => ({ value: u.id, label: u.name }))}
+                options={projectManagerOptions}
                 placeholder="Search employees…"
                 aria-label="Service Provider Project Manager"
                 tone="amber"
@@ -230,8 +270,8 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
                 className={SELECT_CLS}
               >
                 <option value="">Not assigned</option>
-                {practiceLeads.map((u) => (
-                  <option key={u.id} value={u.id}>{u.name}</option>
+                {practiceLeadOptions.map((u) => (
+                  <option key={u.value} value={u.value}>{u.label}</option>
                 ))}
               </select>
             </FormField>
@@ -242,8 +282,8 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
                 className={SELECT_CLS}
               >
                 <option value="">Not assigned</option>
-                {clientPartners.map((u) => (
-                  <option key={u.id} value={u.id}>{u.name}</option>
+                {clientPartnerOptions.map((u) => (
+                  <option key={u.value} value={u.value}>{u.label}</option>
                 ))}
               </select>
             </FormField>

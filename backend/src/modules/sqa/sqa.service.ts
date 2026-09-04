@@ -256,11 +256,43 @@ export class SqaService {
     return trailingIsoWeeks(weeks);
   }
 
+  /**
+   * Auto-provisions SQA records for any active projects that do not have one yet,
+   * ensuring every project in the system automatically appears in SQA.
+   */
+  async autoProvisionSqaRecords(): Promise<void> {
+    try {
+      await this.db.query(
+        `UPDATE sqa_records SET is_deleted = FALSE, updated_at = NOW()
+         WHERE is_deleted = TRUE
+           AND project_id IN (SELECT id FROM projects WHERE is_deleted = FALSE)`,
+      );
+
+      await this.db.query(
+        `INSERT INTO sqa_records
+           (id, project_id, owner_id, importance, wsr_published, client_escalation,
+            current_week_update, next_week_plan, issues_challenges, path_to_green, sqa_remarks)
+         SELECT
+           gen_random_uuid()::TEXT, p.id, p.owner_id, 'Medium', FALSE, FALSE,
+           '', '', '', '', ''
+         FROM projects p
+         WHERE p.is_deleted = FALSE
+           AND NOT EXISTS (
+             SELECT 1 FROM sqa_records s
+             WHERE s.project_id = p.id AND s.is_deleted = FALSE
+           )`,
+      );
+    } catch (err) {
+      this.logger.error('Failed to auto-provision SQA records for projects', err);
+    }
+  }
+
   async findAll(
     params: FilterParams = {},
     pg: Pagination | null = null,
     weeks: number = DEFAULT_HEALTH_WEEKS,
   ): Promise<SqaRecord[] | Paginated<SqaRecord>> {
+    await this.autoProvisionSqaRecords();
     const f = this.filter.normalize(params);
     const owner = this.filter.buildOwnerConditions('s', f, 1);
     const where = [

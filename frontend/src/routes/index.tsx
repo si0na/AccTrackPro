@@ -34,6 +34,7 @@ export const VIEW_TO_PATH: Record<ViewType, string> = {
   administration:         '/administration',
   'audit-log':            '/audit-log',
   'performance-evaluation': '/performance',
+  'employee-appreciation': '/employee-appreciation',
 };
 
 /** Build the actual browser URL for a given view, substituting real entity IDs */

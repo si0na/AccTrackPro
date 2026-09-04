@@ -244,11 +244,6 @@ export const SqaListView: React.FC = () => {
       <PageHeader
         title="SQA"
         subtitle="Weekly quality tracking per project — inherited delivery data, SQA classification, and the weekly health trend."
-        actions={canCreate ? (
-          <Button variant="primary" icon={<Plus className="w-4 h-4" />} onClick={openCreate}>
-            New SQA Record
-          </Button>
-        ) : undefined}
       />
 
       {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}

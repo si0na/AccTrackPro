@@ -151,4 +151,15 @@ export class CommentsService {
     if (!rowCount) throw new NotFoundException(`Comment "${id}" not found`);
     return { success: true };
   }
+
+  async update(id: string, text: string, userId?: string): Promise<Comment> {
+    const { rows } = await this.db.query(
+      `UPDATE comments SET text = $1
+       WHERE id = $2 AND ($3::TEXT IS NULL OR user_id = $3)
+       RETURNING *`,
+      [text, id, userId ?? null],
+    );
+    if (!rows.length) throw new NotFoundException(`Comment "${id}" not found`);
+    return rowToComment(rows[0]);
+  }
 }

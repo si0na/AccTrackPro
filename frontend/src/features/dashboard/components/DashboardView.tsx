@@ -41,7 +41,7 @@ import {
 } from '@/components/ui';
 
 // Every valid `stage` value, shown as its own bar in the pipeline below.
-const STAGE_ORDER = ['Lead', 'Qualified', 'Proposal', 'Negotiation', 'Verbal Agreement', 'Won', 'Blocked', 'Delayed', 'Lost'] as const;
+const STAGE_ORDER = ['Lead', 'Qualified', 'Proposal', 'Negotiation', 'Verbal Agreement', 'Won', 'Blocked', 'Delayed', 'Hold', 'Lost'] as const;
 
 // Per-stage descriptions for the pipeline rows. Colours come from the shared
 // OPPORTUNITY_STAGE_STYLE token so the Dashboard and Reports pipelines stay in
@@ -55,6 +55,7 @@ const STAGE_DESCRIPTION: Record<(typeof STAGE_ORDER)[number], string> = {
   Won:                'Successfully closed',
   Blocked:            'Currently blocked',
   Delayed:            'Delayed opportunities',
+  Hold:               'On hold',
   Lost:               'Unsuccessful',
 };
 

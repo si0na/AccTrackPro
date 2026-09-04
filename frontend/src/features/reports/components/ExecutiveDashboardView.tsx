@@ -92,7 +92,7 @@ export const ExecutiveDashboardView: React.FC = () => {
   // token so this pipeline stays identical to the Dashboard pipeline. The full
   // 9-stage list still feeds the PDF/Excel export; the chart itself only
   // renders stages that actually hold value, so it never shows empty bars.
-  const stages: OpportunityStage[] = ['Lead', 'Qualified', 'Proposal', 'Negotiation', 'Verbal Agreement', 'Won', 'Blocked', 'Delayed', 'Lost'];
+  const stages: OpportunityStage[] = ['Lead', 'Qualified', 'Proposal', 'Negotiation', 'Verbal Agreement', 'Won', 'Blocked', 'Delayed', 'Hold', 'Lost'];
   const stageData = stages.map((stage) => {
     const stageOpps = filteredOpps.filter(o => o.stage === stage);
     const value = stageOpps.reduce((sum, o) => sum + o.value, 0);
@@ -149,7 +149,7 @@ export const ExecutiveDashboardView: React.FC = () => {
   // same calculation functions each report component calls internally —
   // on-screen and bundled export can never disagree.
   const buildFullReportDefinition = () => ({
-    title: 'AccTrack Pro — Reports',
+    title: 'ReflectOne — Reports',
     subtitle: `${periodLabel} · ${accountName}`,
     fileName: buildExportFileName('reports-full', periodLabel, accountName),
     sections: [

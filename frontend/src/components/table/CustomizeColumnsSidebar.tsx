@@ -8,8 +8,7 @@ import { useCRM } from '@/contexts/CRMContext';
 import { ColumnConfig } from '@/types';
 import { 
   X, Pin, Search, ArrowUp, ArrowDown, GripVertical, 
-  RotateCcw, Check, Plus, Settings2, Trash2, Calendar, 
-  Hash, Type, CheckSquare, Sparkles 
+  RotateCcw, Check, Plus, Settings2, Trash2, Lock, Sparkles 
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -58,6 +57,11 @@ export const CustomizeColumnsSidebar: React.FC<CustomizeColumnsSidebarProps> = (
   const [newColType, setNewColType] = useState<'text' | 'number' | 'date' | 'boolean'>('text');
   const [colAddSuccess, setColAddSuccess] = useState(false);
 
+  // Drag and Drop state (Used ONLY in Arrange Tab for unpinned columns)
+  const [draggedKey, setDraggedKey] = useState<string | null>(null);
+  const [dragOverKey, setDragOverKey] = useState<string | null>(null);
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+
   // Sync active configuration to local temp state on opening
   useEffect(() => {
     if (isOpen) {
@@ -71,9 +75,12 @@ export const CustomizeColumnsSidebar: React.FC<CustomizeColumnsSidebarProps> = (
     setIsAddFormOpen(false);
     setNewColName('');
     setNewColType('text');
+    setDraggedKey(null);
+    setDragOverKey(null);
+    setDraggedIndex(null);
   };
 
-  // Filter columns based on search
+  // Filter columns based on search (maintains exact arrangement order from tempColumns)
   const filteredColumns = useMemo(() => {
     if (!searchQuery.trim()) return tempColumns;
     return tempColumns.filter(col => 
@@ -81,7 +88,7 @@ export const CustomizeColumnsSidebar: React.FC<CustomizeColumnsSidebarProps> = (
     );
   }, [tempColumns, searchQuery]);
 
-  // Separate column lists
+  // Separate column lists — preserving the exact arrangement display order
   const pinnedColumns = useMemo(() => {
     return filteredColumns.filter(c => c.isDisplayed && c.isPinned);
   }, [filteredColumns]);
@@ -126,10 +133,16 @@ export const CustomizeColumnsSidebar: React.FC<CustomizeColumnsSidebarProps> = (
     }));
   };
 
-  // Reordering Columns (Up / Down)
+  // Reordering Columns (Up / Down buttons on Arrange tab)
   const handleMoveColumn = (index: number, direction: 'up' | 'down') => {
     const targetIndex = direction === 'up' ? index - 1 : index + 1;
     if (targetIndex < 0 || targetIndex >= tempColumns.length) return;
+
+    const sourceCol = tempColumns[index];
+    const targetCol = tempColumns[targetIndex];
+
+    // Cannot move pinned columns or move an item past a pinned column
+    if (sourceCol?.isPinned || targetCol?.isPinned) return;
 
     const updated = [...tempColumns];
     const temp = updated[index];
@@ -137,6 +150,62 @@ export const CustomizeColumnsSidebar: React.FC<CustomizeColumnsSidebarProps> = (
     updated[targetIndex] = temp;
 
     setTempColumns(updated);
+  };
+
+  // Drag and Drop Event Handlers (Arrange Tab Only)
+  const handleDragStart = (e: React.DragEvent, key: string, index: number, isPinned?: boolean) => {
+    // Pinned columns cannot be dragged
+    if (isPinned) {
+      e.preventDefault();
+      return;
+    }
+    e.dataTransfer.setData('text/plain', key);
+    e.dataTransfer.effectAllowed = 'move';
+    setDraggedKey(key);
+    setDraggedIndex(index);
+  };
+
+  const handleDragOver = (e: React.DragEvent, key: string, isPinned?: boolean) => {
+    // Cannot drag over a pinned column
+    if (isPinned) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragOverKey !== key) {
+      setDragOverKey(key);
+    }
+  };
+
+  const handleDragEnd = () => {
+    setDraggedKey(null);
+    setDragOverKey(null);
+    setDraggedIndex(null);
+  };
+
+  // Drop Handler for Arrange Tab
+  const handleDropArrange = (e: React.DragEvent, targetIndex: number) => {
+    e.preventDefault();
+    const targetCol = tempColumns[targetIndex];
+
+    // Cannot drop onto a pinned column slot
+    if (targetCol?.isPinned) {
+      handleDragEnd();
+      return;
+    }
+
+    if (draggedIndex !== null && draggedIndex !== targetIndex) {
+      const draggedCol = tempColumns[draggedIndex];
+      if (draggedCol?.isPinned) {
+        handleDragEnd();
+        return;
+      }
+      setTempColumns(prev => {
+        const updated = [...prev];
+        const [moved] = updated.splice(draggedIndex, 1);
+        updated.splice(targetIndex, 0, moved);
+        return updated;
+      });
+    }
+    handleDragEnd();
   };
 
   // Add custom column handler
@@ -357,6 +426,7 @@ export const CustomizeColumnsSidebar: React.FC<CustomizeColumnsSidebarProps> = (
             {/* Content Body */}
             <div className="flex-1 overflow-y-auto px-5 py-2 space-y-5">
               {activeTab === 'columns' ? (
+                /* COLUMNS TAB: Listed in display order (No drag and drop here) */
                 <>
                   {/* 1. Pinned Columns */}
                   <div>
@@ -380,7 +450,6 @@ export const CustomizeColumnsSidebar: React.FC<CustomizeColumnsSidebarProps> = (
                                 onChange={() => handleToggleDisplay(col.key)}
                                 className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500 cursor-pointer"
                               />
-                              <GripVertical className="w-3.5 h-3.5 text-slate-300 shrink-0 cursor-default" />
                               <span className="font-bold text-slate-700">{col.name}</span>
                               {!col.isStandard && (
                                 <span className="bg-amber-100 text-amber-700 text-[8px] px-1.5 py-0.5 rounded-full font-bold">Custom</span>
@@ -431,7 +500,6 @@ export const CustomizeColumnsSidebar: React.FC<CustomizeColumnsSidebarProps> = (
                                 onChange={() => handleToggleDisplay(col.key)}
                                 className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500 cursor-pointer"
                               />
-                              <GripVertical className="w-3.5 h-3.5 text-slate-300 shrink-0 cursor-default" />
                               <span className="font-bold text-slate-700">{col.name}</span>
                               {!col.isStandard && (
                                 <span className="bg-amber-100 text-amber-700 text-[8px] px-1.5 py-0.5 rounded-full font-bold">Custom</span>
@@ -482,7 +550,6 @@ export const CustomizeColumnsSidebar: React.FC<CustomizeColumnsSidebarProps> = (
                                 onChange={() => handleToggleDisplay(col.key)}
                                 className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500 cursor-pointer"
                               />
-                              <GripVertical className="w-3.5 h-3.5 text-slate-200 shrink-0 cursor-default" />
                               <span className="font-bold text-slate-500">{col.name}</span>
                               {!col.isStandard && (
                                 <span className="bg-amber-100 text-amber-700 text-[8px] px-1.5 py-0.5 rounded-full font-bold">Custom</span>
@@ -513,56 +580,82 @@ export const CustomizeColumnsSidebar: React.FC<CustomizeColumnsSidebarProps> = (
                   </div>
                 </>
               ) : (
-                /* ARRANGE TAB: Reordering list */
+                /* ARRANGE TAB: Reordering list (Drag & drop available for UNPINNED columns only) */
                 <div className="space-y-3">
                   <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-[11px] leading-relaxed text-slate-500">
                     <p className="font-bold text-slate-700">Arranging Column Order</p>
-                    <p className="mt-0.5">Use the up and down arrow controls to rearrange column placement on the main table grid. Columns at the top will be placed further to the left.</p>
+                    <p className="mt-0.5">Drag and drop unpinned items or use the up/down arrows to rearrange placement. Pinned columns are fixed at the top and cannot be dragged.</p>
                   </div>
 
                   <div className="space-y-1.5">
-                    {tempColumns.map((col, index) => (
-                      <div
-                        key={col.key}
-                        className={`flex items-center justify-between px-3 py-2 border rounded-xl text-xs font-bold transition-all ${
-                          col.isDisplayed 
-                            ? 'bg-white border-slate-200 text-slate-700' 
-                            : 'bg-slate-50/50 border-slate-150 text-slate-400 opacity-60'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <span className="text-slate-300 text-[10px] font-mono w-4 text-center">
-                            {index + 1}
-                          </span>
-                          <span className="truncate max-w-[180px]">{col.name}</span>
-                          {col.isPinned && (
-                            <Pin className="w-3 h-3 text-blue-500 fill-blue-500 shrink-0" />
-                          )}
-                          {!col.isDisplayed && (
-                            <span className="text-[9px] font-normal text-slate-400 bg-slate-100 px-1 py-0.5 rounded">Hidden</span>
-                          )}
+                    {tempColumns.map((col, index) => {
+                      const isPinned = !!col.isPinned;
+                      return (
+                        <div
+                          key={col.key}
+                          draggable={!isPinned}
+                          onDragStart={(e) => handleDragStart(e, col.key, index, isPinned)}
+                          onDragOver={(e) => handleDragOver(e, col.key, isPinned)}
+                          onDrop={(e) => handleDropArrange(e, index)}
+                          onDragEnd={handleDragEnd}
+                          className={`flex items-center justify-between px-3 py-2.5 border rounded-xl text-xs font-bold transition-all ${
+                            isPinned
+                              ? 'bg-blue-50/40 border-blue-200/80 text-slate-700 cursor-not-allowed'
+                              : draggedKey === col.key
+                              ? 'opacity-40 border-dashed border-blue-400 bg-blue-50/50 scale-[0.98] cursor-grabbing'
+                              : dragOverKey === col.key
+                              ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-500/20 shadow-sm cursor-grab'
+                              : col.isDisplayed 
+                              ? 'bg-white border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50/50 cursor-grab' 
+                              : 'bg-slate-50/50 border-slate-150 text-slate-400 opacity-60 hover:opacity-80 cursor-grab'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            {isPinned ? (
+                              <span title="Pinned column (Locked)">
+                                <Lock className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                              </span>
+                            ) : (
+                              <GripVertical className="w-4 h-4 text-slate-400 hover:text-slate-600 shrink-0 cursor-grab active:cursor-grabbing" />
+                            )}
+                            <span className="text-slate-400 text-[10px] font-mono w-4 text-center">
+                              {index + 1}
+                            </span>
+                            <span className="truncate max-w-[180px]">{col.name}</span>
+                            {isPinned && (
+                              <span className="inline-flex items-center gap-1 bg-blue-100 text-blue-700 text-[9px] px-1.5 py-0.5 rounded font-bold">
+                                <Pin className="w-2.5 h-2.5 fill-blue-600" />
+                                Pinned
+                              </span>
+                            )}
+                            {!col.isDisplayed && (
+                              <span className="text-[9px] font-normal text-slate-400 bg-slate-100 px-1 py-0.5 rounded">Hidden</span>
+                            )}
+                          </div>
+                          
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              disabled={isPinned || index === 0 || tempColumns[index - 1]?.isPinned}
+                              onClick={() => handleMoveColumn(index, 'up')}
+                              className="p-1 border border-slate-200 rounded-lg text-slate-500 hover:bg-slate-50 hover:text-slate-800 disabled:opacity-20 disabled:hover:bg-transparent transition-colors cursor-pointer"
+                              title={isPinned ? 'Pinned column position locked' : 'Move Up'}
+                            >
+                              <ArrowUp className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              disabled={isPinned || index === tempColumns.length - 1}
+                              onClick={() => handleMoveColumn(index, 'down')}
+                              className="p-1 border border-slate-200 rounded-lg text-slate-500 hover:bg-slate-50 hover:text-slate-800 disabled:opacity-20 disabled:hover:bg-transparent transition-colors cursor-pointer"
+                              title={isPinned ? 'Pinned column position locked' : 'Move Down'}
+                            >
+                              <ArrowDown className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         </div>
-                        
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            disabled={index === 0}
-                            onClick={() => handleMoveColumn(index, 'up')}
-                            className="p-1 border border-slate-200 rounded-lg text-slate-500 hover:bg-slate-50 hover:text-slate-800 disabled:opacity-20 disabled:hover:bg-transparent transition-colors cursor-pointer"
-                          >
-                            <ArrowUp className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            type="button"
-                            disabled={index === tempColumns.length - 1}
-                            onClick={() => handleMoveColumn(index, 'down')}
-                            className="p-1 border border-slate-200 rounded-lg text-slate-500 hover:bg-slate-50 hover:text-slate-800 disabled:opacity-20 disabled:hover:bg-transparent transition-colors cursor-pointer"
-                          >
-                            <ArrowDown className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}

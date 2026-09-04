@@ -1,9 +1,10 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import { useCRMData } from '@/hooks/useCRMData';
-import { authApi, rbacApi, serviceProvidersApi, projectManagersApi } from '@/api/crm.api';
+import { authApi, rbacApi, serviceProvidersApi, projectManagersApi, practiceLeadsApi, clientPartnersApi, verticalHeadsApi, accountManagersApi } from '@/api/crm.api';
 import type {
   Account, Opportunity, ActionItem, Stakeholder, Activity, Comment, CustomColumn, ColumnConfig,
   User, FinancialYear, FinancialCalendar, AdminSettings, Project, MyPermissions, ServiceProviderUser,
+  EmployeeAppreciation,
 } from '@/types';
 
 // ─── User profiles ────────────────────────────────────────────────────────────
@@ -37,7 +38,8 @@ export type ViewType =
   | 'notifications'
   | 'administration'
   | 'audit-log'
-  | 'performance-evaluation';
+  | 'performance-evaluation'
+  | 'employee-appreciation';
 
 /**
  * The page that triggered deep-link navigation so target views can render a
@@ -76,8 +78,16 @@ interface CRMContextProps {
   loading: boolean;
   /** All system users as Service Provider options (no is_active filter). */
   serviceProviders: ServiceProviderUser[];
-  /** Active System Users who hold the Project Manager role. */
+  /** Active users who hold the Project Manager role. */
   projectManagers: ServiceProviderUser[];
+  /** Active users who hold the Practice Lead role. */
+  practiceLeads: ServiceProviderUser[];
+  /** Active users who hold the Client Partner role. */
+  clientPartners: ServiceProviderUser[];
+  /** Active users who hold the Vertical Head role. */
+  verticalHeads: ServiceProviderUser[];
+  /** Active users who hold the Account Manager role. */
+  accountManagers: ServiceProviderUser[];
 
   // Auth
   currentUser: string;
@@ -126,8 +136,8 @@ interface CRMContextProps {
   setCameFromDashboard: (val: boolean) => void;
   /** Page that triggered the current deep-link navigation (null when navigating normally). */
   navSource: NavSource | null;
-  selectedStage: string;
-  setSelectedStage: (stage: string) => void;
+  selectedStage: string[];
+  setSelectedStage: (stage: string | string[]) => void;
   /** Account Health filter applied to the Accounts list — driven by the filter dropdown or a dashboard drill-down. */
   selectedHealth: string;
   setSelectedHealth: (health: string) => void;
@@ -219,7 +229,14 @@ interface CRMContextProps {
    */
   associateServiceProvider: (serviceProviderId: string, accountId: string) => Promise<string | null>;
   addComment: (targetType: Comment['targetType'], targetId: string, text: string) => Promise<void>;
+  updateComment: (id: string, text: string) => Promise<void>;
   deleteComment: (id: string) => Promise<void>;
+
+  // Employee Appreciation
+  employeeAppreciations: EmployeeAppreciation[];
+  addEmployeeAppreciation: (data: Omit<EmployeeAppreciation, 'id' | 'createdAt' | 'updatedAt'>) => Promise<EmployeeAppreciation>;
+  updateEmployeeAppreciation: (id: string, data: Partial<EmployeeAppreciation>) => Promise<void>;
+  deleteEmployeeAppreciation: (id: string) => Promise<void>;
 }
 
 // ─── Context & Provider ───────────────────────────────────────────────────────
@@ -409,7 +426,16 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [accountDetailsActiveTab, setAccountDetailsActiveTab] = useState<string>('overview');
   const [cameFromDashboard, setCameFromDashboard] = useState<boolean>(false);
   const [navSource, setNavSource] = useState<NavSource | null>(null);
-  const [selectedStage, setSelectedStage] = useState<string>('All');
+  const [selectedStageState, setSelectedStageState] = useState<string[]>([]);
+  const setSelectedStage = useCallback((stage: string | string[]) => {
+    if (Array.isArray(stage)) {
+      setSelectedStageState(stage);
+    } else if (!stage || stage === 'All') {
+      setSelectedStageState([]);
+    } else {
+      setSelectedStageState([stage]);
+    }
+  }, []);
   const [selectedHealth, setSelectedHealth] = useState<string>('All');
   const [dashboardStageHighlight, setDashboardStageHighlight] = useState<string>('');
   const [dueThisWeekFilter, setDueThisWeekFilter] = useState<boolean>(false);
@@ -437,14 +463,20 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       .catch(() => {}); // non-blocking
   }, [isLoggedIn]);
 
-  // Project Managers — active users with the project-manager role
+  // Role-filtered users (registered users + pending registration employees)
   const [projectManagers, setProjectManagers] = useState<ServiceProviderUser[]>([]);
+  const [practiceLeads, setPracticeLeads] = useState<ServiceProviderUser[]>([]);
+  const [clientPartners, setClientPartners] = useState<ServiceProviderUser[]>([]);
+  const [verticalHeads, setVerticalHeads] = useState<ServiceProviderUser[]>([]);
+  const [accountManagers, setAccountManagers] = useState<ServiceProviderUser[]>([]);
 
   useEffect(() => {
     if (!isLoggedIn) return;
-    projectManagersApi.getAll()
-      .then(setProjectManagers)
-      .catch(() => {}); // non-blocking
+    projectManagersApi.getAll().then(setProjectManagers).catch(() => {});
+    practiceLeadsApi.getAll().then(setPracticeLeads).catch(() => {});
+    clientPartnersApi.getAll().then(setClientPartners).catch(() => {});
+    verticalHeadsApi.getAll().then(setVerticalHeads).catch(() => {});
+    accountManagersApi.getAll().then(setAccountManagers).catch(() => {});
   }, [isLoggedIn]);
 
   const setSelectedYear = (year: string) => {
@@ -557,7 +589,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         cameFromDashboard,
         setCameFromDashboard,
         navSource,
-        selectedStage,
+        selectedStage: selectedStageState,
         setSelectedStage,
         selectedHealth,
         setSelectedHealth,
@@ -582,6 +614,10 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         refreshCurrentUser,
         serviceProviders,
         projectManagers,
+        practiceLeads,
+        clientPartners,
+        verticalHeads,
+        accountManagers,
       }}
     >
       {children}

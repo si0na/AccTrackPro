@@ -13,3 +13,8 @@ export class CreateCommentDto {
   @IsString() @IsNotEmpty({ message: 'Comment text is required' }) @MaxLength(5000)
   text!: string;
 }
+
+export class UpdateCommentDto {
+  @IsString() @IsNotEmpty({ message: 'Comment text is required' }) @MaxLength(5000)
+  text!: string;
+}

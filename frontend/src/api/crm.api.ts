@@ -8,7 +8,8 @@ import type {
   ProjectMilestone, ProjectRisk, ProjectAssumption, ProjectIssue, ProjectDependency, ProjectHealthUpdate, ProjectProgressUpdate,
   OpportunityForecastResult, OpportunityForecastPayload,
   Role, PermissionMatrix, MyPermissions,
-  SqaRecord, SqaWeeklyHealth, SqaAvailableProject, SqaTrackerSnapshot,
+  SqaRecord, SqaWeeklyHealth, SqaAvailableProject, SqaTrackerSnapshot, NpsResponse,
+  EmployeeAppreciation,
 } from '@/types';
 
 /** Attributes an administrator can pre-assign / edit on a user or whitelist row. */
@@ -385,6 +386,8 @@ export const commentsApi = {
   getAll: () => apiClient.get<Comment[]>('/comments').then((r) => r.data),
   create: (data: Omit<Comment, 'id' | 'timestamp'>) =>
     apiClient.post<Comment>('/comments', data).then((r) => r.data),
+  update: (id: string, text: string) =>
+    apiClient.patch<Comment>(`/comments/${id}`, { text }).then((r) => r.data),
   delete: (id: string) => apiClient.delete<{ success: boolean }>(`/comments/${id}`).then((r) => r.data),
 };
 
@@ -468,6 +471,26 @@ export const serviceProvidersApi = {
 export const projectManagersApi = {
   getAll: () =>
     apiClient.get<ServiceProviderUserDto[]>('/users', { params: { role: 'project-manager' } }).then((r) => r.data),
+};
+
+export const practiceLeadsApi = {
+  getAll: () =>
+    apiClient.get<ServiceProviderUserDto[]>('/users', { params: { role: 'practice-lead' } }).then((r) => r.data),
+};
+
+export const clientPartnersApi = {
+  getAll: () =>
+    apiClient.get<ServiceProviderUserDto[]>('/users', { params: { role: 'client-partner' } }).then((r) => r.data),
+};
+
+export const verticalHeadsApi = {
+  getAll: () =>
+    apiClient.get<ServiceProviderUserDto[]>('/users', { params: { role: 'vertical-head' } }).then((r) => r.data),
+};
+
+export const accountManagersApi = {
+  getAll: () =>
+    apiClient.get<ServiceProviderUserDto[]>('/users', { params: { role: 'account-manager' } }).then((r) => r.data),
 };
 
 // ── Service Provider profile (the logged-in user's own record) ───────────────
@@ -702,4 +725,30 @@ export const performanceEvaluationsApi = {
     apiClient.delete<{ success: boolean }>(`/performance-evaluations/${id}`).then((r) => r.data),
   summary: () =>
     apiClient.get<PerformanceEvaluationSummaryRow[]>('/performance-evaluations/summary').then((r) => r.data),
+};
+
+export const npsApi = {
+  getAll: (params?: { accountId?: string; projectId?: string }) =>
+    apiClient.get<NpsResponse[]>('/nps', { params }).then((r) => r.data),
+  getById: (id: string) =>
+    apiClient.get<NpsResponse>(`/nps/${id}`).then((r) => r.data),
+  create: (data: Omit<NpsResponse, 'id' | 'createdAt' | 'updatedAt' | 'quarter'>) =>
+    apiClient.post<NpsResponse>('/nps', data).then((r) => r.data),
+  update: (id: string, data: Partial<NpsResponse>) =>
+    apiClient.put<NpsResponse>(`/nps/${id}`, data).then((r) => r.data),
+  delete: (id: string) =>
+    apiClient.delete<{ success: boolean }>(`/nps/${id}`).then((r) => r.data),
+};
+
+export const employeeAppreciationApi = {
+  getAll: (params?: { accountId?: string; projectId?: string; internalExternal?: string; search?: string }) =>
+    apiClient.get<EmployeeAppreciation[]>('/employee-appreciation', { params }).then((r) => r.data),
+  getById: (id: string) =>
+    apiClient.get<EmployeeAppreciation>(`/employee-appreciation/${id}`).then((r) => r.data),
+  create: (data: Omit<EmployeeAppreciation, 'id' | 'createdAt' | 'updatedAt'>) =>
+    apiClient.post<EmployeeAppreciation>('/employee-appreciation', data).then((r) => r.data),
+  update: (id: string, data: Partial<EmployeeAppreciation>) =>
+    apiClient.put<EmployeeAppreciation>(`/employee-appreciation/${id}`, data).then((r) => r.data),
+  delete: (id: string) =>
+    apiClient.delete<{ success: boolean }>(`/employee-appreciation/${id}`).then((r) => r.data),
 };

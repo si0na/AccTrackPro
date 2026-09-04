@@ -21,6 +21,7 @@ import { StakeholdersView } from '@/features/stakeholders/components/Stakeholder
 import { ExecutiveDashboardView } from '@/features/reports/components/ExecutiveDashboardView';
 import { AuditLogView } from '@/features/reports/components/AuditLogView';
 import { PerformanceEvaluationView } from '@/features/reports/components/PerformanceEvaluationView';
+import { EmployeeAppreciationView } from '@/features/employee-appreciation/components/EmployeeAppreciationView';
 import { AlertsAndNotificationsView } from '@/features/notifications/components/AlertsAndNotificationsView';
 import { AdministrationPage } from '@/features/administration/components/AdministrationPage';
 import { ImportExportLauncher } from '@/features/import-export';
@@ -142,6 +143,27 @@ const InnerLayout: React.FC = () => {
         <header className="h-16 shrink-0 bg-white border-b border-slate-200/80 px-6 flex items-center justify-between">
           <GlobalAccountSelector />
 
+          {/* Center ReflectOne Branding Header */}
+          <div className="hidden md:flex flex-col items-center justify-center text-center px-4 py-1 select-none">
+            <h1 className="text-base font-black tracking-tight text-slate-800 flex items-center gap-1.5 leading-none">
+              <span className="bg-gradient-to-r from-blue-700 via-sky-600 to-teal-600 bg-clip-text text-transparent font-black tracking-tight text-lg">
+                ReflectOne
+              </span>
+            </h1>
+            <p className="text-[9px] font-extrabold uppercase tracking-[0.2em] text-slate-500 mt-0.5">
+              ONE PLATFORM. EVERY RELATIONSHIP.
+            </p>
+            <p className="text-[8px] font-bold uppercase tracking-[0.15em] text-teal-700/80 mt-0.5 flex items-center gap-1">
+              <span>CONNECT</span>
+              <span className="text-slate-300">•</span>
+              <span>COLLABORATE</span>
+              <span className="text-slate-300">•</span>
+              <span>DELIVER</span>
+              <span className="text-slate-300">•</span>
+              <span>GROW</span>
+            </p>
+          </div>
+
           {/* Actions */}
           <div className="flex items-center space-x-4">
             {can('import-export', 'view') && <ImportExportLauncher />}
@@ -259,6 +281,7 @@ const InnerLayout: React.FC = () => {
           {currentView === 'reports'                && <ExecutiveDashboardView />}
           {currentView === 'audit-log'              && <AuditLogView />}
           {currentView === 'performance-evaluation' && <PerformanceEvaluationView />}
+          {currentView === 'employee-appreciation' && <EmployeeAppreciationView />}
           {currentView === 'notifications'          && <AlertsAndNotificationsView />}
           {currentView === 'administration'         && <AdministrationPage />}
           </>

@@ -108,17 +108,37 @@ export class UsersService {
 
 
   /**
-   * All active System Users who hold the given role key (via user_roles join or
-   * primary role_id). Used by the Service Provider PM picker.
+   * All active users (registered System Users + pending registration employees)
+   * who hold the given role key (e.g. 'practice-lead', 'client-partner', 'vertical-head', 'project-manager').
+   * Used by role-filtered pickers.
    */
   async findByRole(roleKey: string): Promise<any[]> {
     const { rows } = await this.db.query(
-      `SELECT DISTINCT u.id, u.name, u.email, u.department, u.designation, u.is_active
-       FROM users u
-       JOIN user_roles ur ON ur.user_id = u.id
-       JOIN roles r ON r.id = ur.role_id AND r.key = $1
-       WHERE u.is_active = TRUE
-       ORDER BY u.name ASC NULLS LAST, u.email ASC`,
+      `SELECT DISTINCT
+         COALESCE(u.id, em.id) AS id,
+         COALESCE(NULLIF(u.name, ''), NULLIF(em.name, ''), u.email, em.email) AS name,
+         COALESCE(u.email, em.email) AS email,
+         COALESCE(u.department, em.department) AS department,
+         COALESCE(u.designation, em.designation) AS designation,
+         COALESCE(u.is_active, TRUE) AS is_active,
+         (u.id IS NULL OR u.name IS NULL OR u.name = '') AS is_pending
+       FROM employee_master em
+       FULL OUTER JOIN users u ON LOWER(u.email) = LOWER(em.email)
+       LEFT JOIN roles r ON r.id = COALESCE(u.role_id, em.role_id)
+       LEFT JOIN user_roles ur ON ur.user_id = u.id
+       LEFT JOIN roles ur_r ON ur_r.id = ur.role_id
+       LEFT JOIN employee_roles er ON er.employee_id = em.id
+       LEFT JOIN roles er_r ON er_r.id = er.role_id
+       WHERE COALESCE(u.is_active, TRUE) = TRUE
+         AND (
+           r.key = $1 OR ur_r.key = $1 OR er_r.key = $1
+           OR ($1 = 'project-manager' AND (LOWER(COALESCE(u.designation, em.designation, '')) LIKE '%project manager%' OR LOWER(COALESCE(u.role, r.name, '')) LIKE '%project manager%'))
+           OR ($1 = 'practice-lead' AND (LOWER(COALESCE(u.designation, em.designation, '')) LIKE '%practice lead%' OR LOWER(COALESCE(u.role, r.name, '')) LIKE '%practice lead%'))
+           OR ($1 = 'client-partner' AND (LOWER(COALESCE(u.designation, em.designation, '')) LIKE '%client partner%' OR LOWER(COALESCE(u.role, r.name, '')) LIKE '%client partner%'))
+           OR ($1 = 'vertical-head' AND (LOWER(COALESCE(u.designation, em.designation, '')) LIKE '%vertical head%' OR LOWER(COALESCE(u.role, r.name, '')) LIKE '%vertical head%'))
+           OR ($1 = 'account-manager' AND (LOWER(COALESCE(u.designation, em.designation, '')) LIKE '%account manager%' OR LOWER(COALESCE(u.role, r.name, '')) LIKE '%account manager%'))
+         )
+       ORDER BY COALESCE(NULLIF(u.name, ''), NULLIF(em.name, ''), u.email, em.email) ASC NULLS LAST`,
       [roleKey],
     );
     return rows.map((r) => ({
@@ -128,6 +148,7 @@ export class UsersService {
       department:  r.department ?? '',
       designation: r.designation ?? '',
       isActive:    r.is_active,
+      isPending:   Boolean(r.is_pending),
     }));
   }
 
