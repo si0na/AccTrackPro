@@ -150,11 +150,16 @@ export class ProjectsService {
   }
 
   async create(data: any): Promise<Project> {
-    this.logger.log(`Creating project [name="${data.name}" accountId=${data.accountId} opportunityId=${data.opportunityId}]`);
+    this.logger.log(`Creating project [name="${data.name}" accountId=${data.accountId} opportunityId=${data.opportunityId ?? 'NONE'}]`);
 
     await this.assertAccountExists(data.accountId, data.ownerId);
-    await this.assertOpportunityBelongsToAccount(data.opportunityId, data.accountId, data.ownerId);
-    return this.insertProject(data);
+    if (data.opportunityId) {
+      await this.assertOpportunityBelongsToAccount(data.opportunityId, data.accountId, data.ownerId);
+    }
+    return this.insertProject({
+      ...data,
+      opportunityId: data.opportunityId || null,
+    });
   }
 
   /**
@@ -175,9 +180,14 @@ export class ProjectsService {
     if (data.asOnDate) {
       assertNotFutureDate(data.asOnDate);
     }
-    await this.validatePm(data.serviceProviderPmId);
-    await this.validatePracticeLead(data.practiceLeadId);
-    await this.validateClientPartner(data.clientPartnerId);
+    await this.validatePm(data);
+    await this.validatePracticeLead(data);
+    await this.validateClientPartner(data);
+    await this.validateOwner(data);
+
+    if (requestingUserId) {
+      requestingUserId = (await this.resolveUserId(requestingUserId, 'Requesting User')) || requestingUserId;
+    }
 
     const cd = extractCustomData(data, KNOWN);
     const health = data.health || 'Green';
@@ -241,13 +251,13 @@ export class ProjectsService {
       await this.assertOpportunityBelongsToAccount(data.opportunityId, data.accountId ?? existing.accountId, requestingUserId);
     }
     if ('serviceProviderPmId' in data) {
-      await this.validatePm(data.serviceProviderPmId);
+      await this.validatePm(data);
     }
     if ('practiceLeadId' in data) {
-      await this.validatePracticeLead(data.practiceLeadId);
+      await this.validatePracticeLead(data);
     }
     if ('clientPartnerId' in data) {
-      await this.validateClientPartner(data.clientPartnerId);
+      await this.validateClientPartner(data);
     }
 
     const cd = extractCustomData(data, KNOWN);
@@ -389,7 +399,7 @@ export class ProjectsService {
       endDate:       data.endDate ?? opp.allocationEndDate ?? undefined,
       clientPartnerId: data.clientPartnerId ?? parentClientPartnerId ?? undefined,
       dealValue:     data.dealValue ?? opp.value ?? undefined,
-      serviceProviderPmId: data.serviceProviderPmId ?? opp.serviceProviderPmId ?? undefined,
+      serviceProviderPmId: data.serviceProviderPmId ?? undefined,
       practiceLeadId: data.practiceLeadId ?? parentPracticeLeadId ?? undefined,
       priority:      data.priority ?? opp.priority ?? undefined,
       deliveryModel: data.deliveryModel ?? opp.deliveryModel ?? undefined,
@@ -424,34 +434,70 @@ export class ProjectsService {
     }
   }
 
-  private async validatePm(pmId: string | undefined | null): Promise<void> {
-    if (!pmId) return;
-    const hasRole = await this.permissions.userHasRole(pmId, 'project-manager');
-    if (!hasRole) {
-      throw new BadRequestException(
-        'The selected Service Provider Project Manager does not have the Project Manager role.',
-      );
+  /**
+   * Resolves a user ID or employee_master ID to a valid user ID in `users` table.
+   * If the ID belongs to an employee with pending registration in `employee_master`,
+   * auto-provisions a user row so foreign key constraints (`REFERENCES users(id)`) pass.
+   */
+  private async resolveUserId(id: string | undefined | null, fieldName = 'User'): Promise<string | null> {
+    if (!id) return null;
+
+    // 1. If user already exists in users table, return id directly
+    const { rows: uRows } = await this.db.query(`SELECT id FROM users WHERE id = $1`, [id]);
+    if (uRows.length) return uRows[0].id;
+
+    // 2. Check employee_master
+    const { rows: empRows } = await this.db.query(
+      `SELECT em.id, em.email, em.name, em.role_id, em.department, em.designation, u.id AS existing_user_id
+       FROM employee_master em
+       LEFT JOIN users u ON LOWER(u.email) = LOWER(em.email)
+       WHERE em.id = $1 OR LOWER(em.email) = LOWER($1)`,
+      [id],
+    );
+
+    if (!empRows.length) {
+      throw new BadRequestException(`The selected ${fieldName} user does not exist.`);
     }
+
+    const emp = empRows[0];
+    if (emp.existing_user_id) return emp.existing_user_id;
+
+    // 3. Provision placeholder user row for pending registration employee so FK passes
+    const newUserId = emp.id;
+    let roleName: string | null = null;
+    if (emp.role_id) {
+      const { rows: rRows } = await this.db.query(`SELECT name FROM roles WHERE id = $1`, [emp.role_id]);
+      roleName = rRows[0]?.name ?? null;
+    }
+
+    await this.db.query(
+      `INSERT INTO users (id, name, email, password_hash, role, role_id, department, designation, is_active, created_at, updated_at)
+       VALUES ($1, $2, $3, '', $4, $5, $6, $7, TRUE, NOW(), NOW())
+       ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, email = EXCLUDED.email`,
+      [newUserId, emp.name || emp.email, emp.email, roleName, emp.role_id ?? null, emp.department ?? null, emp.designation ?? null],
+    );
+
+    return newUserId;
   }
 
-  private async validatePracticeLead(practiceLeadId: string | undefined | null): Promise<void> {
-    if (!practiceLeadId) return;
-    const hasRole = await this.permissions.userHasRole(practiceLeadId, 'practice-lead');
-    if (!hasRole) {
-      throw new BadRequestException(
-        'The selected Practice Lead does not have the Practice Lead role.',
-      );
-    }
+  private async validateOwner(data: any): Promise<void> {
+    if (!data.ownerId) return;
+    data.ownerId = await this.resolveUserId(data.ownerId, 'Owner');
   }
 
-  private async validateClientPartner(clientPartnerId: string | undefined | null): Promise<void> {
-    if (!clientPartnerId) return;
-    const hasRole = await this.permissions.userHasRole(clientPartnerId, 'client-partner');
-    if (!hasRole) {
-      throw new BadRequestException(
-        'The selected Client Partner does not have the Client Partner role.',
-      );
-    }
+  private async validatePm(data: any): Promise<void> {
+    if (!data.serviceProviderPmId) return;
+    data.serviceProviderPmId = await this.resolveUserId(data.serviceProviderPmId, 'Project Manager');
+  }
+
+  private async validatePracticeLead(data: any): Promise<void> {
+    if (!data.practiceLeadId) return;
+    data.practiceLeadId = await this.resolveUserId(data.practiceLeadId, 'Practice Lead');
+  }
+
+  private async validateClientPartner(data: any): Promise<void> {
+    if (!data.clientPartnerId) return;
+    data.clientPartnerId = await this.resolveUserId(data.clientPartnerId, 'Client Partner');
   }
 
   /** Maps the uq_project_opportunity unique-index violation (concurrent Won-transitions) to a friendly 409. */

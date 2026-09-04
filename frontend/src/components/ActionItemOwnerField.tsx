@@ -12,6 +12,8 @@ export interface ActionItemOwnerFieldProps {
   stakeholders: Stakeholder[];
   /** The selected stakeholder's id (the Action Item's ownerStakeholderId). */
   value?: string;
+  /** Fallback string display name if value is not matched to a stakeholder record. */
+  fallbackName?: string;
   onChange: (stakeholderId: string) => void;
   tone?: 'blue' | 'amber';
   required?: boolean;
@@ -54,6 +56,7 @@ export const ActionItemOwnerField: React.FC<ActionItemOwnerFieldProps> = ({
   accountId,
   stakeholders,
   value,
+  fallbackName,
   onChange,
   required = true,
 }) => {
@@ -201,8 +204,8 @@ export const ActionItemOwnerField: React.FC<ActionItemOwnerFieldProps> = ({
           w-full flex items-center justify-between gap-2
           text-xs pl-3 pr-2.5 py-2 rounded-lg border transition-all
           ${
-            selected
-              ? 'border-blue-200 bg-blue-50/60 text-slate-800 hover:border-blue-400'
+            selected || fallbackName
+              ? 'border-blue-200 bg-blue-50/60 text-slate-800 hover:border-blue-400 font-medium'
               : 'border-slate-200 bg-white text-slate-400 hover:border-slate-300'
           }
           disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer
@@ -211,8 +214,8 @@ export const ActionItemOwnerField: React.FC<ActionItemOwnerFieldProps> = ({
       >
         <span className="flex items-center gap-2 min-w-0">
           <User className="w-3.5 h-3.5 shrink-0 text-slate-400" aria-hidden="true" />
-          <span className={`truncate font-medium ${selected ? 'text-slate-700' : 'text-slate-400'}`}>
-            {selected ? (selected.name || selected.email) : 'Select task owner…'}
+          <span className={`truncate ${selected || fallbackName ? 'text-slate-800 font-semibold' : 'text-slate-400 font-medium'}`}>
+            {selected ? (selected.name || selected.email) : (fallbackName || 'Select task owner…')}
           </span>
           {selected?.pendingRegistration && (
             <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-extrabold text-amber-700">

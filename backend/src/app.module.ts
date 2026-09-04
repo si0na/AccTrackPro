@@ -10,6 +10,7 @@ import { OpportunitiesModule } from './modules/opportunities/opportunities.modul
 import { OpportunityForecastModule } from './modules/opportunity-forecast/opportunity-forecast.module';
 import { ProjectsModule } from './modules/projects/projects.module';
 import { SqaModule } from './modules/sqa/sqa.module';
+import { NpsModule } from './modules/nps/nps.module';
 import { ActionItemsModule } from './modules/action-items/action-items.module';
 import { StakeholdersModule } from './modules/stakeholders/stakeholders.module';
 import { ActivitiesModule } from './modules/activities/activities.module';
@@ -27,6 +28,7 @@ import { PerformanceEvaluationsModule } from './modules/performance-evaluations/
 import { EmployeeMasterModule } from './modules/employee-master/employee-master.module';
 import { ImportExportModule } from './modules/import-export/import-export.module';
 import { ServiceProviderModule } from './modules/service-provider/service-provider.module';
+import { EmployeeAppreciationModule } from './modules/employee-appreciation/employee-appreciation.module';
 
 @Module({
   imports: [
@@ -48,6 +50,8 @@ import { ServiceProviderModule } from './modules/service-provider/service-provid
     OpportunityForecastModule,
     ProjectsModule,
     SqaModule,
+    NpsModule,
+    EmployeeAppreciationModule,
     ActionItemsModule,
     StakeholdersModule,
     ActivitiesModule,

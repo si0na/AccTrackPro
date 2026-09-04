@@ -12,7 +12,7 @@ import { AOP_YEAR_OPTIONS, SERVICE_LINE_OPTIONS } from '../../common/utils/dto-t
 // Enum option sets — kept in step with the Create DTO `@IsIn(...)` lists.
 const ACCOUNT_TYPE = ['Strategic', 'Non Strategic', 'New'] as const;
 const ACCOUNT_HEALTH = ['Green', 'Amber', 'Red'] as const;
-const OPPORTUNITY_STAGE = ['Lead', 'Qualified', 'Proposal', 'Negotiation', 'Verbal Agreement', 'Won', 'Blocked', 'Delayed', 'Lost'] as const;
+const OPPORTUNITY_STAGE = ['Lead', 'Qualified', 'Proposal', 'Negotiation', 'Verbal Agreement', 'Won', 'Blocked', 'Delayed', 'Hold', 'Lost'] as const;
 const OPPORTUNITY_TYPE = ['Growth', 'Pursuit', 'Whitespace', 'New', 'Extension'] as const;
 const SERVICE_LINE = SERVICE_LINE_OPTIONS;
 const OPPORTUNITY_HEALTH = ['Green', 'Amber', 'Red'] as const;

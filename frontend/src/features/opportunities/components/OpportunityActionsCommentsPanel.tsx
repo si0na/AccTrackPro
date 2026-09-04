@@ -8,6 +8,7 @@ import { useCRM } from '@/contexts/CRMContext';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ActionItemQuickPanel } from '@/features/action-items/components/ActionItemQuickPanel';
 import { ActionItemOwnerField } from '@/components/ActionItemOwnerField';
+import { ActionItemCommentToggle, ActionItemCommentsExpandedRow } from '@/components/ActionItemComments';
 import { CustomColumnFields } from '@/components/CustomColumnFields';
 import {
   Opportunity,
@@ -36,6 +37,8 @@ import {
   Edit,
   Save,
   Building2,
+  Pencil,
+  Check,
 } from 'lucide-react';
 import {
   ConfirmDialog,
@@ -70,10 +73,31 @@ const DEPENDENCY_STATUS_COLORS: Record<string, string> = {
   Closed: 'bg-slate-100 text-slate-600',
 };
 
-// Sub-component to manage individual comments (handling long comments gracefully)
-const CommentCard: React.FC<{ comment: Comment; onDelete: (id: string) => void }> = ({ comment, onDelete }) => {
+// Sub-component to manage individual comments (handling long comments gracefully & inline editing)
+const CommentCard: React.FC<{
+  comment: Comment;
+  onDelete: (id: string) => void;
+  onEdit?: (id: string, text: string) => Promise<void> | void;
+}> = ({ comment, onDelete, onEdit }) => {
   const [isExpanded, setIsExpanded] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editText, setEditText] = useState(comment.text);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleSave = async () => {
+    if (!editText.trim() || !onEdit) return;
+    setIsSaving(true);
+    try {
+      await onEdit(comment.id, editText.trim());
+      setIsEditing(false);
+    } catch {
+      // Keep edit mode active on failure
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const isLong = comment.text.length > 220;
   const displayedText = isLong && !isExpanded ? `${comment.text.substring(0, 220)}...` : comment.text;
 
@@ -89,13 +113,26 @@ const CommentCard: React.FC<{ comment: Comment; onDelete: (id: string) => void }
             <span className="text-[9px] text-slate-400 font-semibold font-mono block mt-0.5">{comment.timestamp}</span>
           </div>
         </div>
-        <button
-          onClick={() => setConfirmOpen(true)}
-          className="text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 cursor-pointer transition-all p-1 hover:bg-red-50 rounded text-[10px] font-bold"
-          title="Delete comment"
-        >
-          <Trash2 className="w-3.5 h-3.5" />
-        </button>
+        <div className="flex items-center space-x-1 opacity-0 group-hover:opacity-100 transition-all">
+          {onEdit && !isEditing && (
+            <button
+              onClick={() => { setEditText(comment.text); setIsEditing(true); }}
+              className="text-slate-400 hover:text-blue-600 cursor-pointer p-1 hover:bg-blue-50 rounded transition-colors"
+              title="Edit comment"
+            >
+              <Pencil className="w-3.5 h-3.5" />
+            </button>
+          )}
+          {!isEditing && (
+            <button
+              onClick={() => setConfirmOpen(true)}
+              className="text-slate-400 hover:text-red-500 cursor-pointer p-1 hover:bg-red-50 rounded transition-colors"
+              title="Delete comment"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
       </div>
       <ConfirmDialog
         isOpen={confirmOpen}
@@ -103,27 +140,58 @@ const CommentCard: React.FC<{ comment: Comment; onDelete: (id: string) => void }
         onConfirm={() => { onDelete(comment.id); setConfirmOpen(false); }}
         onCancel={() => setConfirmOpen(false)}
       />
-      <div className="text-xs text-slate-600 font-medium leading-relaxed whitespace-pre-wrap break-words">
-        {displayedText}
-        {isLong && (
-          <button
-            onClick={() => setIsExpanded(!isExpanded)}
-            className="text-blue-600 hover:text-blue-700 font-extrabold ml-1.5 inline-flex items-center gap-0.5 focus:outline-none cursor-pointer transition-colors"
-          >
-            {isExpanded ? (
-              <>
-                <span className="underline">Show Less</span>
-                <ChevronUp className="w-3 h-3" />
-              </>
-            ) : (
-              <>
-                <span className="underline">Read More</span>
-                <ChevronDown className="w-3 h-3" />
-              </>
-            )}
-          </button>
-        )}
-      </div>
+      {isEditing ? (
+        <div className="space-y-2 pt-1">
+          <textarea
+            rows={2}
+            value={editText}
+            onChange={(e) => setEditText(e.target.value)}
+            className="w-full text-xs p-2.5 border border-blue-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 resize-none font-medium text-slate-700"
+            placeholder="Edit comment..."
+          />
+          <div className="flex items-center justify-end space-x-1.5">
+            <button
+              type="button"
+              onClick={() => { setIsEditing(false); setEditText(comment.text); }}
+              className="px-2.5 py-1 text-[11px] font-semibold text-slate-500 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-md cursor-pointer transition-colors"
+              disabled={isSaving}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              disabled={!editText.trim() || isSaving}
+              className="px-2.5 py-1 text-[11px] font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded-md cursor-pointer transition-colors inline-flex items-center gap-1"
+            >
+              <Check className="w-3 h-3" />
+              <span>Save</span>
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="text-xs text-slate-600 font-medium leading-relaxed whitespace-pre-wrap break-words">
+          {displayedText}
+          {isLong && (
+            <button
+              onClick={() => setIsExpanded(!isExpanded)}
+              className="text-blue-600 hover:text-blue-700 font-extrabold ml-1.5 inline-flex items-center gap-0.5 focus:outline-none cursor-pointer transition-colors"
+            >
+              {isExpanded ? (
+                <>
+                  <span className="underline">Show Less</span>
+                  <ChevronUp className="w-3 h-3" />
+                </>
+              ) : (
+                <>
+                  <span className="underline">Read More</span>
+                  <ChevronDown className="w-3 h-3" />
+                </>
+              )}
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 };
@@ -141,15 +209,20 @@ export const OpportunityActionsCommentsPanel: React.FC<PanelProps> = ({ opportun
     updateActionItem,
     deleteActionItem,
     addComment,
+    updateComment,
     deleteComment,
     actionItemColumns,
     actionItemsColumnConfig,
+    currentUser,
   } = useCRM();
 
   // Target opportunity & account
   const opp = opportunities.find(o => o.id === opportunityId);
   const account = opp ? accounts.find(a => a.id === opp.accountId) : null;
   const linkedProject = opp ? projects.find(p => p.opportunityId === opp.id) : null;
+
+  // Expanded Action Item row for inline comments
+  const [expandedActionItemId, setExpandedActionItemId] = useState<string | null>(null);
 
   // Opportunity details edit state
   const [isEditingOppDetails, setIsEditingOppDetails] = useState(false);
@@ -614,6 +687,12 @@ export const OpportunityActionsCommentsPanel: React.FC<PanelProps> = ({ opportun
                               <p className="font-extrabold text-slate-900 truncate min-w-0 flex-1" title={action.title}>
                                 {action.title}
                               </p>
+                              <ActionItemCommentToggle
+                                itemTitle={action.title}
+                                commentCount={actionComments.length}
+                                isExpanded={expandedActionItemId === action.id}
+                                onToggle={() => setExpandedActionItemId(expandedActionItemId === action.id ? null : action.id)}
+                              />
                               {!!action.risksAndDependencies?.trim() && (
                                 <span
                                   className="shrink-0 inline-flex"
@@ -640,7 +719,23 @@ export const OpportunityActionsCommentsPanel: React.FC<PanelProps> = ({ opportun
                               </span>
                             )}
                           </TableCell>
-                          <TableCell className="text-slate-600 font-semibold">{action.ownerName || action.owner || '—'}</TableCell>
+                          <TableCell className="min-w-[150px]">
+                            <ActionItemOwnerField
+                              accountId={opp?.accountId || ''}
+                              stakeholders={stakeholders}
+                              value={action.ownerStakeholderId}
+                              fallbackName={action.ownerName || action.owner}
+                              onChange={(ownerStakeholderId) => {
+                                const sh = stakeholders.find((s) => s.id === ownerStakeholderId);
+                                updateActionItem({
+                                  ...action,
+                                  ownerStakeholderId,
+                                  ownerName: sh?.name || action.ownerName,
+                                  owner: sh?.name || action.owner,
+                                });
+                              }}
+                            />
+                          </TableCell>
                           <TableCell>
                             <StatusBadge value={action.priority} colorMap={PRIORITY_COLORS} shape="rounded" />
                           </TableCell>
@@ -648,21 +743,28 @@ export const OpportunityActionsCommentsPanel: React.FC<PanelProps> = ({ opportun
                             <select
                               value={action.status}
                               onChange={(e) => updateActionItem({ ...action, status: e.target.value as ActionItemStatus })}
-                              className={`text-[10px] font-extrabold border rounded-md p-1 bg-white cursor-pointer focus:outline-none focus:ring-1 focus:ring-blue-500/20 ${
-                                action.status === 'Completed' ? 'text-green-700 border-green-200 bg-green-50/40' :
-                                action.status === 'Blocked' ? 'text-red-700 border-red-200 bg-red-50/40' :
-                                action.status === 'In Progress' ? 'text-blue-700 border-blue-200 bg-blue-50/40' :
-                                action.status === 'Cancelled' ? 'text-zinc-500 border-zinc-200 bg-zinc-100/40' :
-                                'text-slate-600 border-slate-200'
+                              className={`text-xs font-bold border rounded-lg p-1.5 bg-white cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${
+                                action.status === 'Completed' ? 'text-green-700 border-green-200 bg-green-50/60 font-extrabold' :
+                                action.status === 'Blocked' ? 'text-red-700 border-red-200 bg-red-50/60 font-extrabold' :
+                                action.status === 'In Progress' ? 'text-blue-700 border-blue-200 bg-blue-50/60 font-extrabold' :
+                                action.status === 'Cancelled' ? 'text-zinc-600 border-zinc-200 bg-zinc-100/60 font-extrabold' :
+                                'text-slate-700 border-slate-200 font-bold'
                               }`}
                             >
-                              {ACTION_ITEM_STATUS_OPTIONS.map(s => (
+                              {ACTION_ITEM_STATUS_OPTIONS.map((s) => (
                                 <option key={s} value={s}>{s}</option>
                               ))}
                             </select>
                           </TableCell>
                           <TableCell className="font-mono font-bold text-slate-500 whitespace-nowrap">{action.openDate}</TableCell>
-                          <TableCell className="font-mono font-bold text-slate-500 whitespace-nowrap">{action.dueDate}</TableCell>
+                          <TableCell className="whitespace-nowrap">
+                            <input
+                              type="date"
+                              value={action.dueDate || ''}
+                              onChange={(e) => updateActionItem({ ...action, dueDate: e.target.value })}
+                              className="text-xs font-mono font-bold border border-slate-200 rounded-lg p-1.5 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                            />
+                          </TableCell>
                           <TableCell align="center">
                             <RowActionButton
                               intent="delete"
@@ -672,6 +774,22 @@ export const OpportunityActionsCommentsPanel: React.FC<PanelProps> = ({ opportun
                             />
                           </TableCell>
                         </TableRow>
+                        {expandedActionItemId === action.id && (
+                          <ActionItemCommentsExpandedRow
+                            colSpan={8}
+                            comments={actionComments}
+                            risksAndDependencies={action.risksAndDependencies}
+                            onAddComment={async (text) => {
+                              await addComment('actionItem', action.id, text);
+                            }}
+                            onUpdateComment={async (id, text) => {
+                              await updateComment(id, text);
+                            }}
+                            onDeleteComment={async (c) => {
+                              await deleteComment(c.id);
+                            }}
+                          />
+                        )}
                       </React.Fragment>
                     );
                   })
@@ -706,6 +824,7 @@ export const OpportunityActionsCommentsPanel: React.FC<PanelProps> = ({ opportun
                     key={comment.id}
                     comment={comment}
                     onDelete={deleteComment}
+                    onEdit={updateComment}
                   />
                 ))
               )}

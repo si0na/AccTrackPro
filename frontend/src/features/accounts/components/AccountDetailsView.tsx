@@ -52,6 +52,8 @@ import {
 } from '@/components/ui';
 import { StakeholderFormModal } from '@/features/stakeholders/components/StakeholderFormModal';
 import { StakeholderTabs } from '@/features/stakeholders/components/StakeholderTabs';
+import { NpsTab } from '@/features/nps/components/NpsTab';
+import { EmployeeAppreciationTab } from '@/features/employee-appreciation/components/EmployeeAppreciationTab';
 import { LOCATION_OPTIONS, STAGE_DEFAULT_PROBABILITY, stageChangePatch } from '@/constants';
 import {
   deriveOppStatus,
@@ -78,6 +80,8 @@ import {
   FileText,
   Plus,
   DollarSign,
+  Star,
+  HeartHandshake,
   Settings2,
   Pencil,
   Navigation,
@@ -139,7 +143,7 @@ export const AccountDetailsView: React.FC = () => {
   const account = accounts.find(a => a.id === selectedAccountId);
 
   // Tab State
-  const activeTab = accountDetailsActiveTab as 'overview' | 'opportunities' | 'stakeholders' | 'action-items' | 'comments' | 'documents';
+  const activeTab = accountDetailsActiveTab as 'overview' | 'opportunities' | 'stakeholders' | 'action-items' | 'comments' | 'documents' | 'nps' | 'appreciation';
   const setActiveTab = setAccountDetailsActiveTab;
 
   // Selected opportunity in opportunities tab
@@ -607,6 +611,8 @@ export const AccountDetailsView: React.FC = () => {
           { id: 'stakeholders', label: 'Stakeholders', icon: Users, count: accountStks.length },
           { id: 'opportunities', label: 'Opportunities', icon: DollarSign, count: visibleOpps.length },
           { id: 'action-items', label: 'Action Items', icon: CheckSquare, count: visibleActions.length },
+          { id: 'appreciation', label: 'Employee Appreciation', icon: HeartHandshake, count: null },
+          { id: 'nps', label: 'NPS', icon: Star, count: null },
           { id: 'comments', label: 'Comments', icon: MessageSquare, count: accountComments.length },
           { id: 'documents', label: 'Documents', icon: FileText, count: docCount > 0 ? docCount : null },
         ]}
@@ -1396,6 +1402,16 @@ export const AccountDetailsView: React.FC = () => {
             currentUser={currentUser}
             onCountChange={setDocCount}
           />
+        )}
+
+        {/* Employee Appreciation Tab */}
+        {activeTab === 'appreciation' && (
+          <EmployeeAppreciationTab accountId={account.id} accountName={account.name} />
+        )}
+
+        {/* NPS Feedback Tab */}
+        {activeTab === 'nps' && (
+          <NpsTab accountId={account.id} accountName={account.name} />
         )}
 
         {/* Edit Opportunity Modal */}

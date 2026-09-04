@@ -15,6 +15,7 @@ import {
   Check,
   Construction,
   Hourglass,
+  PauseCircle,
   XCircle,
 } from 'lucide-react';
 
@@ -36,11 +37,11 @@ const CORE_META: Record<string, { icon: React.ComponentType<{ className?: string
 
 /**
  * States that sit *on top of* the pipeline as a distinct visual identity:
- * the positive terminal state (Won) and the three operational states
- * (Blocked / Delayed / Lost). Each has its own colour, icon, ribbon and
+ * the positive terminal state (Won) and the operational states
+ * (Blocked / Delayed / Hold / Lost). Each has its own colour, icon, ribbon and
  * descriptive message so a user can tell them apart without reading a label.
  */
-type OverlayState = 'Won' | 'Blocked' | 'Delayed' | 'Lost';
+type OverlayState = 'Won' | 'Blocked' | 'Delayed' | 'Hold' | 'Lost';
 
 interface OverlayStyle {
   icon: React.ComponentType<{ className?: string }>;
@@ -114,6 +115,21 @@ const OVERLAY_STYLES: Record<OverlayState, OverlayStyle> = {
     secondary: 'This opportunity is temporarily on hold and is expected to resume.',
     reasonLabel: 'Delay reason',
   },
+  Hold: {
+    icon: PauseCircle,
+    emoji: '⏸️',
+    label: 'Hold',
+    frame: 'border-zinc-300 bg-zinc-50/50 shadow-sm shadow-zinc-500/15',
+    ribbon: 'bg-zinc-100 border-zinc-300 text-zinc-700',
+    node: 'bg-zinc-50 border-zinc-500 text-zinc-600 scale-110 shadow-md shadow-zinc-500/25',
+    nodeLabel: 'text-zinc-700',
+    ring: 'bg-zinc-400/30',
+    banner: 'bg-zinc-50 border-zinc-200 text-zinc-800',
+    bannerIcon: 'text-zinc-600',
+    headline: 'Opportunity is on Hold',
+    secondary: 'This opportunity is currently on hold and paused.',
+    reasonLabel: 'Hold reason',
+  },
   Lost: {
     icon: XCircle,
     emoji: '❌',
@@ -131,8 +147,8 @@ const OVERLAY_STYLES: Record<OverlayState, OverlayStyle> = {
   },
 };
 
-const isException = (stage: OpportunityStage): stage is 'Blocked' | 'Delayed' | 'Lost' =>
-  stage === 'Blocked' || stage === 'Delayed' || stage === 'Lost';
+const isException = (stage: OpportunityStage): stage is 'Blocked' | 'Delayed' | 'Hold' | 'Lost' =>
+  stage === 'Blocked' || stage === 'Delayed' || stage === 'Hold' || stage === 'Lost';
 
 /**
  * Best-effort mapping of an opportunity's probability onto the business stage

@@ -229,14 +229,14 @@ export const StakeholderFormModal: React.FC<StakeholderFormModalProps> = ({
         {!isServiceProvider && (
           <FormSection title="Relationship">
             <FormGrid>
-              <FormField label="Level of Interest" required>
+              <FormField label="Influence Level" required>
                 <select
                   required
                   value={draft.influence}
                   onChange={(e) => setDraft({ ...draft, influence: e.target.value as InfluenceLevel })}
                   className={selectCls}
                 >
-                  <option value="" disabled>Select interest…</option>
+                  <option value="" disabled>Select influence level…</option>
                   <option value="High">High</option>
                   <option value="Medium">Medium</option>
                   <option value="Low">Low</option>

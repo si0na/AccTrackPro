@@ -24,9 +24,12 @@ import {
   Search,
   ClipboardCheck,
   BadgeCheck,
+  HeartHandshake,
   LogOut,
   Menu
 } from 'lucide-react';
+
+import { ReflectOneLogo } from '@/components/common/ReflectOneLogo';
 
 export const Sidebar: React.FC = () => {
   const {
@@ -138,6 +141,17 @@ export const Sidebar: React.FC = () => {
       ],
     },
     {
+      label: 'Employee Engagement',
+      items: [
+        {
+          id: 'employee-appreciation' as ViewType,
+          label: 'Employee Appreciation',
+          icon: HeartHandshake,
+          badge: null,
+        },
+      ],
+    },
+    {
       label: 'System',
       items: [
         {
@@ -180,12 +194,10 @@ export const Sidebar: React.FC = () => {
         sidebarCollapsed ? 'flex-col items-center gap-4 justify-center' : 'items-center justify-between'
       }`}>
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center font-bold text-white shrink-0 shadow-md">
-            AT
-          </div>
+          <ReflectOneLogo className="w-8 h-8 shrink-0" />
           {!sidebarCollapsed && (
-            <span className="font-bold text-white text-sm tracking-tight truncate">
-              AccTrack Pro
+            <span className="font-extrabold text-white text-base tracking-tight truncate">
+              ReflectOne
             </span>
           )}
         </div>

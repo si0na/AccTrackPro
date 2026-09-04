@@ -6,7 +6,7 @@ const MAX_COL_WIDTH = 640;
 
 const clampWidth = (w: number) => Math.min(MAX_COL_WIDTH, Math.max(MIN_COL_WIDTH, w));
 
-const widthStoreKey = (key: string) => `acctrack:column-widths:${key}`;
+const widthStoreKey = (key: string) => `reflectone:column-widths:${key}`;
 
 const headerCells = (table: HTMLTableElement): HTMLTableCellElement[] =>
   table.tHead?.rows[0] ? Array.from(table.tHead.rows[0].cells) : [];

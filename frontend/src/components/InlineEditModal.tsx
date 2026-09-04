@@ -5,7 +5,7 @@ import { NumberInput } from '@/components/NumberInput';
 import { AopYearFields } from '@/components/AopYearFields';
 import { StakeholderAssignmentFields } from '@/components/StakeholderAssignmentFields';
 import { ActionItemOwnerField } from '@/components/ActionItemOwnerField';
-import { getCustomerSinceYearOptions } from '@/utils';
+import { getCustomerSinceYearOptions, serviceProviderOptionLabel } from '@/utils';
 import { useCRM } from '@/contexts/CRMContext';
 import { ACTION_ITEM_STATUS_OPTIONS, OPPORTUNITY_STAGE_OPTIONS, OPPORTUNITY_TYPE_OPTIONS, SERVICE_LINE_OPTIONS, ACCOUNT_TYPE_OPTIONS, ACCOUNT_HEALTH_OPTIONS, LOCATION_OPTIONS, OPPORTUNITY_HEALTH_OPTIONS, OPPORTUNITY_PRIORITY_OPTIONS, TOWER_OPTIONS, DELIVERY_MODEL_OPTIONS, BILLING_MODEL_OPTIONS, stageChangePatch } from '@/constants';
 import type {
@@ -96,19 +96,18 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
   const { title, primaryKey } = MODE_META[mode];
   const inputCls = INPUT_CLS_AMBER;
 
+  const { practiceLeads, clientPartners, verticalHeads, accountManagers } = useCRM();
+
   // Role-filtered option lists ({ value: id, label: name }) backing the four
   // account "owner" dropdowns — one per role. Only rendered for accounts mode.
   const ownerRoleFields = useMemo(
-    () => ([
-      { key: 'accountManagerId', label: 'Account Manager', roleKey: 'account-manager' },
-      { key: 'practiceLeadId', label: 'Practice Lead', roleKey: 'practice-lead' },
-      { key: 'clientPartnerId', label: 'Client Partner', roleKey: 'client-partner' },
-      { key: 'verticalHeadId', label: 'Vertical Head', roleKey: 'vertical-head' },
-    ] as const).map((f) => ({
-      ...f,
-      options: users.filter((u) => u.roleKey === f.roleKey).map((u) => ({ value: u.id, label: u.name })),
-    })),
-    [users],
+    () => [
+      { key: 'accountManagerId', label: 'Account Manager', options: (accountManagers || []).map((u) => ({ value: u.id, label: serviceProviderOptionLabel(u) })) },
+      { key: 'practiceLeadId', label: 'Practice Lead', options: (practiceLeads || []).map((u) => ({ value: u.id, label: serviceProviderOptionLabel(u) })) },
+      { key: 'clientPartnerId', label: 'Client Partner', options: (clientPartners || []).map((u) => ({ value: u.id, label: serviceProviderOptionLabel(u) })) },
+      { key: 'verticalHeadId', label: 'Vertical Head', options: (verticalHeads || []).map((u) => ({ value: u.id, label: serviceProviderOptionLabel(u) })) },
+    ],
+    [accountManagers, practiceLeads, clientPartners, verticalHeads],
   );
 
   // Always include the primary identifier field even if hidden in the table,

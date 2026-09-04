@@ -4,7 +4,7 @@ export type AccountType = 'Strategic' | 'Non Strategic' | 'New';
 export type AccountHealth = 'Green' | 'Amber' | 'Red';
 export type OpportunityStage =
   | 'Lead' | 'Qualified' | 'Proposal' | 'Negotiation' | 'Verbal Agreement' | 'Won'
-  | 'Blocked' | 'Delayed' | 'Lost';
+  | 'Blocked' | 'Delayed' | 'Hold' | 'Lost';
 export type OpportunityType = 'Growth' | 'Pursuit' | 'Whitespace' | 'New' | 'Extension';
 export type ServiceLine = (typeof SERVICE_LINE_OPTIONS)[number];
 export type OpportunityHealth = 'Green' | 'Amber' | 'Red';
@@ -261,6 +261,24 @@ export interface Project {
   tower?: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   [key: string]: any;
+}
+
+export interface NpsResponse {
+  id: string;
+  accountId: string;
+  accountName?: string;
+  projectId?: string | null;
+  projectName?: string | null;
+  respondentId?: string | null;
+  respondentName?: string;
+  respondentDesignation?: string;
+  receivedMonthYear: string;
+  quarter: string;
+  npsScore: number;
+  likedMost: string;
+  improvementSuggestions: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface ProjectHealthUpdate {
@@ -625,6 +643,25 @@ export interface ActionItem {
   quarter?: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   [key: string]: any;
+}
+
+export interface EmployeeAppreciation {
+  id: string;
+  receivedDate: string;
+  accountId: string;
+  accountName?: string;
+  projectId?: string;
+  projectName?: string;
+  empId?: string;
+  employeeId?: string;
+  employeeName: string;
+  respondentId?: string;
+  respondentName: string;
+  internalExternal: 'Internal' | 'External';
+  feedback: string;
+  createdBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Stakeholder {

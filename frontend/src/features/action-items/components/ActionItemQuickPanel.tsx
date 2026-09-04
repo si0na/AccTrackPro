@@ -7,6 +7,7 @@ import React, { useState, useMemo } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
 import { ActionItem, PriorityLevel, ActionItemStatus } from '@/types';
 import { ACTION_ITEM_STATUS_OPTIONS } from '@/constants';
+import { ActionItemOwnerField } from '@/components/ActionItemOwnerField';
 import {
   X,
   FileText,
@@ -48,6 +49,7 @@ export const ActionItemQuickPanel: React.FC<ActionItemQuickPanelProps> = ({
     updateActionItem,
     comments,
     addComment,
+    updateComment,
     deleteComment,
   } = useCRM();
 
@@ -67,6 +69,22 @@ export const ActionItemQuickPanel: React.FC<ActionItemQuickPanelProps> = ({
   // Comment State
   const [commentText, setCommentText] = useState('');
   const [deleteCommentTarget, setDeleteCommentTarget] = useState<{ id: string; text: string } | null>(null);
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editingCommentText, setEditingCommentText] = useState('');
+  const [isUpdatingComment, setIsUpdatingComment] = useState(false);
+
+  const handleUpdateComment = async (id: string) => {
+    if (!editingCommentText.trim()) return;
+    setIsUpdatingComment(true);
+    try {
+      await updateComment(id, editingCommentText.trim());
+      setEditingCommentId(null);
+    } catch {
+      // Keep edit state on failure
+    } finally {
+      setIsUpdatingComment(false);
+    }
+  };
 
   if (!item) {
     return (
@@ -380,25 +398,44 @@ export const ActionItemQuickPanel: React.FC<ActionItemQuickPanelProps> = ({
                   </div>
                 )}
 
-                <div className="space-y-0.5">
+                <div className="space-y-1">
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
                     <User className="w-3 h-3 text-slate-400" /> Owner
                   </span>
-                  <p className="font-semibold text-slate-800 truncate">{ownerName}</p>
+                  <ActionItemOwnerField
+                    accountId={item.accountId || ''}
+                    stakeholders={stakeholders}
+                    value={item.ownerStakeholderId}
+                    fallbackName={item.ownerName || item.owner}
+                    onChange={(ownerStakeholderId) => {
+                      const sh = stakeholders.find((s) => s.id === ownerStakeholderId);
+                      updateActionItem({
+                        ...item,
+                        ownerStakeholderId,
+                        ownerName: sh?.name || item.ownerName,
+                        owner: sh?.name || item.owner,
+                      });
+                    }}
+                  />
                 </div>
 
-                <div className="space-y-0.5">
+                <div className="space-y-1">
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
                     <Calendar className="w-3 h-3 text-slate-400" /> Due Date
                   </span>
-                  <p className="font-mono font-semibold text-slate-800">{item.dueDate || '—'}</p>
+                  <input
+                    type="date"
+                    value={item.dueDate || ''}
+                    onChange={(e) => updateActionItem({ ...item, dueDate: e.target.value })}
+                    className="w-full text-xs font-mono font-bold border border-slate-200 rounded-lg p-1.5 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                  />
                 </div>
 
                 <div className="space-y-0.5">
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
                     <Calendar className="w-3 h-3 text-slate-400" /> Open Date
                   </span>
-                  <p className="font-mono font-semibold text-slate-800">{item.openDate || '—'}</p>
+                  <p className="font-mono font-semibold text-slate-800 pt-1.5">{item.openDate || '—'}</p>
                 </div>
               </div>
 
@@ -454,18 +491,66 @@ export const ActionItemQuickPanel: React.FC<ActionItemQuickPanelProps> = ({
                         {comment.timestamp || ''}
                       </span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setDeleteCommentTarget({ id: comment.id, text: comment.text.substring(0, 40) })}
-                      className="text-slate-300 hover:text-red-500 p-1 rounded cursor-pointer transition-colors"
-                      title="Delete comment"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    <div className="flex items-center space-x-1">
+                      {editingCommentId !== comment.id && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingCommentId(comment.id);
+                            setEditingCommentText(comment.text);
+                          }}
+                          className="text-slate-300 hover:text-blue-600 p-1 rounded cursor-pointer transition-colors"
+                          title="Edit comment"
+                        >
+                          <Edit className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                      {editingCommentId !== comment.id && (
+                        <button
+                          type="button"
+                          onClick={() => setDeleteCommentTarget({ id: comment.id, text: comment.text.substring(0, 40) })}
+                          className="text-slate-300 hover:text-red-500 p-1 rounded cursor-pointer transition-colors"
+                          title="Delete comment"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </div>
-                  <p className="text-xs text-slate-700 font-medium leading-relaxed pl-8">
-                    {comment.text}
-                  </p>
+                  {editingCommentId === comment.id ? (
+                    <div className="pl-8 space-y-2 pt-1">
+                      <textarea
+                        rows={2}
+                        value={editingCommentText}
+                        onChange={(e) => setEditingCommentText(e.target.value)}
+                        className="w-full text-xs p-2 border border-blue-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 resize-none font-medium text-slate-700"
+                        placeholder="Edit comment..."
+                      />
+                      <div className="flex items-center justify-end space-x-1.5">
+                        <button
+                          type="button"
+                          onClick={() => { setEditingCommentId(null); setEditingCommentText(''); }}
+                          className="px-2 py-0.5 text-[11px] font-semibold text-slate-500 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 rounded cursor-pointer transition-colors"
+                          disabled={isUpdatingComment}
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleUpdateComment(comment.id)}
+                          disabled={!editingCommentText.trim() || isUpdatingComment}
+                          className="px-2 py-0.5 text-[11px] font-semibold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded cursor-pointer transition-colors inline-flex items-center gap-1"
+                        >
+                          <Save className="w-3 h-3" />
+                          <span>Save</span>
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-700 font-medium leading-relaxed pl-8">
+                      {comment.text}
+                    </p>
+                  )}
                 </div>
               ))
             )}

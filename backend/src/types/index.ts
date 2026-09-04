@@ -6,7 +6,7 @@ export type AccountType = 'Strategic' | 'Non Strategic' | 'New';
 export type AccountHealth = 'Green' | 'Amber' | 'Red';
 export type OpportunityStage =
   | 'Lead' | 'Qualified' | 'Proposal' | 'Negotiation' | 'Verbal Agreement' | 'Won'
-  | 'Blocked' | 'Delayed' | 'Lost';
+  | 'Blocked' | 'Delayed' | 'Hold' | 'Lost';
 export type OpportunityType = 'Growth' | 'Pursuit' | 'Whitespace' | 'New' | 'Extension';
 export type ServiceLine = (typeof SERVICE_LINE_OPTIONS)[number];
 export type OpportunityHealth = 'Green' | 'Amber' | 'Red';

@@ -13,8 +13,9 @@ export class CreateProjectDto {
   @IsString() @IsNotEmpty({ message: 'accountId is required' })
   accountId!: string;
 
-  @IsString() @IsNotEmpty({ message: 'opportunityId is required' })
-  opportunityId!: string;
+  @EmptyToUndefined()
+  @IsString() @IsOptional()
+  opportunityId?: string;
 
   @EmptyToUndefined()
   @IsOptional() @Matches(ISO_DATE_RE, { message: `startDate ${ISO_DATE_MSG}` })

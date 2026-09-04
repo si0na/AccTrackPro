@@ -26,6 +26,7 @@ import {
   ErrorBanner,
   FilterBar,
   FilterSelect,
+  MultiSelectFilter,
   PageHeader,
   Pagination,
   RestoreButton,
@@ -111,7 +112,7 @@ export const OpportunitiesView: React.FC = () => {
   const [minProbability, setMinProbability] = useState<string>('All');
   const [healthFilter, setHealthFilter] = useState<string>('All');
   const [locationFilter, setLocationFilter] = useState<string>('All');
-  const [serviceLineFilter, setServiceLineFilter] = useState<string>('All');
+  const [serviceLineFilter, setServiceLineFilter] = useState<string[]>([]);
 
   // Client-side pagination over the already-filtered rows
   const [page, setPage] = useState(1);
@@ -278,7 +279,10 @@ export const OpportunitiesView: React.FC = () => {
     const account = accounts.find(a => a.id === o.accountId);
     const matchesSearch = o.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           (account?.name || '').toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStage   = selectedStage === 'All' || o.stage === selectedStage;
+    const stageSel = Array.isArray(selectedStage)
+      ? selectedStage
+      : (!selectedStage || selectedStage === 'All' ? [] : [selectedStage]);
+    const matchesStage = stageSel.length === 0 || stageSel.includes('All') || stageSel.includes(o.stage);
     const matchesAccount = matchesGlobalAccount(o.accountId, selectedAccountFilter);
     const matchesDashboardStatus = dashboardOppStatusFilter === 'All' || deriveOppStatus(o.stage) === dashboardOppStatusFilter;
     const matchesAllocationEndFrom = !allocationEndDateFrom || (o.allocationEndDate && o.allocationEndDate >= allocationEndDateFrom);
@@ -286,7 +290,10 @@ export const OpportunitiesView: React.FC = () => {
     const matchesProbability = minProbability === 'All' || o.probability >= parseInt(minProbability, 10);
     const matchesHealth = healthFilter === 'All' || o.opportunityHealth === healthFilter;
     const matchesLocation = locationFilter === 'All' || o.location === locationFilter;
-    const matchesServiceLine = serviceLineFilter === 'All' || o.serviceLine === serviceLineFilter;
+    const serviceLineSel = Array.isArray(serviceLineFilter)
+      ? serviceLineFilter
+      : (!serviceLineFilter || serviceLineFilter === 'All' ? [] : [serviceLineFilter]);
+    const matchesServiceLine = serviceLineSel.length === 0 || serviceLineSel.includes('All') || (o.serviceLine && serviceLineSel.includes(o.serviceLine));
     // Won opportunities stay visible in the list even after transitioning into
     // a Project — they are visually differentiated (a "Project" pill on the
     // stage cell and a "View project" row action) rather than hidden, so users
@@ -354,24 +361,36 @@ export const OpportunitiesView: React.FC = () => {
         <div className="flex flex-wrap items-center gap-3">
           <BackButton label="Back to Dashboard" onClick={() => setView('dashboard')} />
 
-          {selectedStage !== 'All' && (
-            <div className="inline-flex items-center gap-3 bg-indigo-50 border border-indigo-200 text-indigo-800 px-4 py-1.5 rounded-lg text-xs font-semibold">
-              <div className="flex items-center gap-1.5">
-                <TrendingUp className="w-3.5 h-3.5 text-indigo-500" aria-hidden="true" />
-                <span>Pipeline stage:</span>
-                <span className="font-extrabold text-indigo-700">{selectedStage}</span>
+          {(() => {
+            const stagesList = Array.isArray(selectedStage)
+              ? selectedStage
+              : (!selectedStage || selectedStage === 'All' ? [] : [selectedStage]);
+            if (stagesList.length === 0) return null;
+            const displayText = stagesList.length === 1
+              ? stagesList[0]
+              : stagesList.length === 2
+              ? `${stagesList[0]}, ${stagesList[1]}`
+              : `${stagesList[0]}, ${stagesList[1]} +${stagesList.length - 2}`;
+
+            return (
+              <div className="inline-flex items-center gap-3 bg-indigo-50 border border-indigo-200 text-indigo-800 px-4 py-1.5 rounded-lg text-xs font-semibold">
+                <div className="flex items-center gap-1.5">
+                  <TrendingUp className="w-3.5 h-3.5 text-indigo-500" aria-hidden="true" />
+                  <span>Pipeline stage:</span>
+                  <span className="font-extrabold text-indigo-700">{displayText}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSelectedStage([])}
+                  className="flex items-center gap-1 text-indigo-500 hover:text-indigo-800 font-bold transition-colors cursor-pointer ml-1 border-l border-indigo-200 pl-3"
+                  title="Show all stages"
+                >
+                  <X className="w-3 h-3" aria-hidden="true" />
+                  <span>Clear</span>
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => setSelectedStage('All')}
-                className="flex items-center gap-1 text-indigo-500 hover:text-indigo-800 font-bold transition-colors cursor-pointer ml-1 border-l border-indigo-200 pl-3"
-                title="Show all stages"
-              >
-                <X className="w-3 h-3" aria-hidden="true" />
-                <span>Clear</span>
-              </button>
-            </div>
-          )}
+            );
+          })()}
 
           {dashboardOppStatusFilter !== 'All' && (
             <div className="inline-flex items-center gap-3 bg-indigo-50 border border-indigo-200 text-indigo-800 px-4 py-1.5 rounded-lg text-xs font-semibold">
@@ -447,16 +466,14 @@ export const OpportunitiesView: React.FC = () => {
           className="w-full sm:col-span-2 lg:col-span-3 xl:col-span-2"
         />
 
-        <FilterSelect
+        <MultiSelectFilter
           label="Stage"
           hideLabel
-          value={selectedStage}
+          selectedValues={Array.isArray(selectedStage) ? selectedStage : (!selectedStage || selectedStage === 'All' ? [] : [selectedStage])}
           onChange={setSelectedStage}
           className="w-full"
-          options={[
-            { value: 'All', label: 'All Stages' },
-            ...OPPORTUNITY_STAGE_OPTIONS.map((s) => ({ value: s, label: s })),
-          ]}
+          options={OPPORTUNITY_STAGE_OPTIONS}
+          allLabel="All Stages"
         />
 
         <FilterSelect
@@ -471,16 +488,14 @@ export const OpportunitiesView: React.FC = () => {
           ]}
         />
 
-        <FilterSelect
+        <MultiSelectFilter
           label="Service Line"
           hideLabel
-          value={serviceLineFilter}
+          selectedValues={Array.isArray(serviceLineFilter) ? serviceLineFilter : (!serviceLineFilter || serviceLineFilter === 'All' ? [] : [serviceLineFilter])}
           onChange={setServiceLineFilter}
           className="w-full"
-          options={[
-            { value: 'All', label: 'All Service Lines' },
-            ...SERVICE_LINE_OPTIONS.map((s) => ({ value: s, label: s })),
-          ]}
+          options={SERVICE_LINE_OPTIONS}
+          allLabel="All Service Lines"
         />
 
         <FilterSelect

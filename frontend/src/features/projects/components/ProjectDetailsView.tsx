@@ -9,6 +9,8 @@ import {
   ActionItem, ActionItemStatus, AdminUser, PriorityLevel, ProjectHealth, ProjectTeamMember,
   ProjectMilestone, ProjectRisk, ProjectAssumption, ProjectIssue, ProjectDependency,
 } from '@/types';
+import { NpsTab } from '@/features/nps/components/NpsTab';
+import { EmployeeAppreciationTab } from '@/features/employee-appreciation/components/EmployeeAppreciationTab';
 import {
   AlertOctagon,
   Briefcase,
@@ -30,6 +32,8 @@ import {
   Trash2,
   TrendingUp,
   Users,
+  Star,
+  HeartHandshake,
 } from 'lucide-react';
 import {
   administrationApi,
@@ -91,7 +95,7 @@ import { compareForSort, getTodayISODate, SortDirection } from '@/utils';
 type ProjectTab =
   | 'overview' | 'progress' | 'team'
   | 'milestones' | 'risks' | 'assumptions' | 'issues' | 'dependencies'
-  | 'action-items' | 'health';
+  | 'action-items' | 'health' | 'nps' | 'appreciation';
 
 const SORTABLE_AI_FIELDS = new Set(['title', 'owner', 'priority', 'status', 'dueDate']);
 
@@ -701,6 +705,8 @@ export const ProjectDetailsView: React.FC = () => {
           { id: 'dependencies', label: 'Dependencies', icon: Link2, count: dependencies.length > 0 ? dependencies.length : null },
           { id: 'action-items', label: 'Action Items', icon: CheckSquare, count: projectActions.length },
           { id: 'health', label: 'Health Tracker', icon: Gauge, count: null },
+          { id: 'appreciation', label: 'Employee Appreciation', icon: HeartHandshake, count: null },
+          { id: 'nps', label: 'NPS', icon: Star, count: null },
         ]}
         activeTab={activeTab}
         onChange={(id) => setActiveTab(id as ProjectTab)}
@@ -1199,6 +1205,14 @@ export const ProjectDetailsView: React.FC = () => {
             users={users}
             openModalTrigger={openHealthModalTrigger}
           />
+        )}
+
+        {activeTab === 'appreciation' && (
+          <EmployeeAppreciationTab projectId={project.id} accountId={project.accountId} accountName={account?.name || ''} />
+        )}
+
+        {activeTab === 'nps' && (
+          <NpsTab projectId={project.id} accountId={project.accountId} accountName={account?.name || ''} />
         )}
       </div>
 

@@ -241,14 +241,9 @@ export class OpportunitiesService {
    * When userId is absent (internal calls, e.g. re-reading a row just written)
    * no scoping is applied; view-all roles get no restriction.
    */
-  private async validatePm(pmId: string | undefined | null): Promise<void> {
-    if (!pmId) return;
-    const hasRole = await this.permissions.userHasRole(pmId, 'project-manager');
-    if (!hasRole) {
-      throw new BadRequestException(
-        'The selected Service Provider Project Manager does not have the Project Manager role.',
-      );
-    }
+  private async validatePm(_pmId: string | undefined | null): Promise<void> {
+    // Project Manager is a Project-level concept — Opportunities carry no PM role requirement.
+    return;
   }
 
 

@@ -2,12 +2,13 @@ import { useState, useEffect } from 'react';
 import type {
   Account, Opportunity, ActionItem, Stakeholder, Activity, Comment,
   CustomColumn, ColumnConfig, FinancialYear, FinancialCalendar, AdminSettings, Project,
+  EmployeeAppreciation,
 } from '@/types';
 import type { OwnerFilter } from '@/api/crm.api';
 import {
   accountsApi, opportunitiesApi, actionItemsApi, stakeholdersApi,
   activitiesApi, commentsApi, customColumnsApi, columnConfigsApi, financialYearsApi,
-  notificationsApi, administrationApi, projectsApi, serviceProvidersApi,
+  notificationsApi, administrationApi, projectsApi, serviceProvidersApi, employeeAppreciationApi,
 } from '@/api/crm.api';
 
 const DEFAULT_ACCOUNTS_COLUMNS: ColumnConfig[] = [
@@ -136,17 +137,7 @@ function getMergedConfig(
     return col;
   });
 
-  // Sort current columns so standard columns are in the same relative order as defined in defaults
-  current.sort((a, b) => {
-    if (a.isStandard && b.isStandard) {
-      const idxA = defaults.findIndex(d => d.key === a.key);
-      const idxB = defaults.findIndex(d => d.key === b.key);
-      return idxA - idxB;
-    }
-    if (!a.isStandard && b.isStandard) return 1;
-    if (a.isStandard && !b.isStandard) return -1;
-    return 0;
-  });
+  // Note: Do not force-sort current columns back to default order here, so that user custom column arrangement/ordering is preserved.
 
   customCols.forEach((cc) => {
     if (!current.some((col) => col.key === cc.key)) {
@@ -179,6 +170,7 @@ export const useCRMData = (
   const [deactivatedStakeholders, setDeactivatedStakeholders] = useState<Stakeholder[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
+  const [employeeAppreciations, setEmployeeAppreciations] = useState<EmployeeAppreciation[]>([]);
   const [accountColumns, setAccountColumns] = useState<CustomColumn[]>([]);
   const [opportunityColumns, setOpportunityColumns] = useState<CustomColumn[]>([]);
   const [actionItemColumns, setActionItemColumns] = useState<CustomColumn[]>([]);
@@ -223,6 +215,7 @@ export const useCRMData = (
         actvData, commentsData,
         customCols, configs,
         projectsData, deactivatedProjectsData,
+        apprData,
       ] = await Promise.all([
         accountsApi.getAll(owner),
         accountsApi.getDeactivated(owner),
@@ -238,6 +231,7 @@ export const useCRMData = (
         columnConfigsApi.getAll(),
         projectsApi.getAll(owner),
         projectsApi.getDeactivated(owner),
+        employeeAppreciationApi.getAll(),
       ]);
 
       setAccounts(accountsData);
@@ -252,6 +246,7 @@ export const useCRMData = (
       setDeactivatedStakeholders(deactivatedStkData);
       setActivities(actvData);
       setComments(commentsData);
+      setEmployeeAppreciations(apprData ?? []);
       setAccountColumns(customCols.accountColumns ?? []);
       setOpportunityColumns(customCols.opportunityColumns ?? []);
       setActionItemColumns(customCols.actionItemColumns ?? []);
@@ -583,6 +578,34 @@ export const useCRMData = (
     setComments((prev) => prev.filter((c) => c.id !== id));
   };
 
+  const updateComment = async (id: string, text: string): Promise<void> => {
+    const updated = await commentsApi.update(id, text);
+    setComments((prev) => prev.map((c) => (c.id === id ? updated : c)));
+  };
+
+  // ─── Employee Appreciation actions ────────────────────────────────────────
+
+  const addEmployeeAppreciation = async (
+    data: Omit<EmployeeAppreciation, 'id' | 'createdAt' | 'updatedAt'>,
+  ): Promise<EmployeeAppreciation> => {
+    const created = await employeeAppreciationApi.create(data);
+    setEmployeeAppreciations((prev) => [created, ...prev]);
+    return created;
+  };
+
+  const updateEmployeeAppreciation = async (
+    id: string,
+    data: Partial<EmployeeAppreciation>,
+  ): Promise<void> => {
+    const updated = await employeeAppreciationApi.update(id, data);
+    setEmployeeAppreciations((prev) => prev.map((item) => (item.id === id ? updated : item)));
+  };
+
+  const deleteEmployeeAppreciation = async (id: string): Promise<void> => {
+    await employeeAppreciationApi.delete(id);
+    setEmployeeAppreciations((prev) => prev.filter((item) => item.id !== id));
+  };
+
   // ─── Custom column actions ─────────────────────────────────────────────────
 
   const addCustomColumn = async (
@@ -641,6 +664,7 @@ export const useCRMData = (
     deactivatedStakeholders,
     activities,
     comments,
+    employeeAppreciations,
     accountColumns, opportunityColumns, actionItemColumns, performanceEvaluationColumns,
     accountsColumnConfig, opportunitiesColumnConfig, actionItemsColumnConfig, performanceEvaluationColumnConfig,
     loading,
@@ -655,7 +679,8 @@ export const useCRMData = (
     addProject, updateProject, deleteProject, restoreProject, createProjectFromOpportunity, refreshProject,
     addActionItem, updateActionItem, deleteActionItem,
     addStakeholder, updateStakeholder, deleteStakeholder, associateServiceProvider,
-    addComment, deleteComment,
+    addComment, updateComment, deleteComment,
+    addEmployeeAppreciation, updateEmployeeAppreciation, deleteEmployeeAppreciation,
     addCustomColumn, deleteCustomColumn,
     updateColumnConfig, resetColumnConfig,
   };

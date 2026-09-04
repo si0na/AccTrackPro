@@ -14,7 +14,7 @@ export class CreateOpportunityDto {
   accountId!: string;
 
   @IsString() @IsNotEmpty({ message: 'Stage is required' })
-  @IsIn(['Lead', 'Qualified', 'Proposal', 'Negotiation', 'Verbal Agreement', 'Won', 'Blocked', 'Delayed', 'Lost'])
+  @IsIn(['Lead', 'Qualified', 'Proposal', 'Negotiation', 'Verbal Agreement', 'Won', 'Blocked', 'Delayed', 'Hold', 'Lost'])
   stage!: string;
 
   @IsNumber() @IsOptional() @Min(0, { message: 'Value cannot be negative' })

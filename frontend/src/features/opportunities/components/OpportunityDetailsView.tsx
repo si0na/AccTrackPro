@@ -94,6 +94,7 @@ export const OpportunityDetailsView: React.FC = () => {
     createProjectIntent,
     setCreateProjectIntent,
     addComment,
+    updateComment,
     deleteComment,
     actionItemColumns,
     actionItemsColumnConfig,
@@ -244,6 +245,23 @@ export const OpportunityDetailsView: React.FC = () => {
   const [projectDraft, setProjectDraft] = useState<Project | null>(null);
   const [isCreatingProject, setIsCreatingProject] = useState(false);
 
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editingCommentText, setEditingCommentText] = useState('');
+  const [isUpdatingComment, setIsUpdatingComment] = useState(false);
+
+  const handleSaveCommentEdit = async (id: string) => {
+    if (!editingCommentText.trim()) return;
+    setIsUpdatingComment(true);
+    try {
+      await updateComment(id, editingCommentText.trim());
+      setEditingCommentId(null);
+    } catch {
+      // Keep edit state on failure
+    } finally {
+      setIsUpdatingComment(false);
+    }
+  };
+
   const buildProjectDraft = (o: Opportunity): Project => {
     const parentAccount = accounts.find((a) => a.id === o.accountId);
     return {
@@ -259,7 +277,7 @@ export const OpportunityDetailsView: React.FC = () => {
       endDate: o.allocationEndDate || undefined,
       clientPartnerId: parentAccount?.clientPartnerId || undefined,
       dealValue: o.value,
-      serviceProviderPmId: o.serviceProviderPmId,
+      serviceProviderPmId: o.serviceProviderPmId || o.serviceProviderUserId || undefined,
       practiceLeadId: parentAccount?.practiceLeadId || undefined,
       priority: o.priority || undefined,
       deliveryModel: o.deliveryModel || undefined,
@@ -1321,14 +1339,56 @@ export const OpportunityDetailsView: React.FC = () => {
                                                   <span className="text-slate-300">•</span>
                                                   <span className="text-[9px] text-slate-400 font-mono">{c.timestamp}</span>
                                                 </div>
-                                                <button
-                                                  onClick={() => setDeleteTarget({ type: 'comment', id: c.id, label: c.text.substring(0, 40) })}
-                                                  className="text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all text-[10px] font-bold cursor-pointer"
-                                                >
-                                                  Delete
-                                                </button>
+                                                <div className="flex items-center space-x-2 opacity-0 group-hover:opacity-100 transition-all">
+                                                  {editingCommentId !== c.id && (
+                                                    <button
+                                                      onClick={() => { setEditingCommentId(c.id); setEditingCommentText(c.text); }}
+                                                      className="text-slate-400 hover:text-blue-600 text-[10px] font-bold cursor-pointer"
+                                                    >
+                                                      Edit
+                                                    </button>
+                                                  )}
+                                                  {editingCommentId !== c.id && (
+                                                    <button
+                                                      onClick={() => setDeleteTarget({ type: 'comment', id: c.id, label: c.text.substring(0, 40) })}
+                                                      className="text-slate-300 hover:text-red-500 text-[10px] font-bold cursor-pointer"
+                                                    >
+                                                      Delete
+                                                    </button>
+                                                  )}
+                                                </div>
                                               </div>
-                                              <p className="text-[11px] text-slate-600 leading-relaxed font-medium whitespace-pre-wrap">{c.text}</p>
+                                              {editingCommentId === c.id ? (
+                                                <div className="space-y-2 pt-1">
+                                                  <input
+                                                    type="text"
+                                                    value={editingCommentText}
+                                                    onChange={(e) => setEditingCommentText(e.target.value)}
+                                                    className={`${INPUT_CLS} w-full bg-white text-[11px]`}
+                                                    placeholder="Edit comment..."
+                                                  />
+                                                  <div className="flex items-center justify-end space-x-1.5">
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => { setEditingCommentId(null); setEditingCommentText(''); }}
+                                                      className="px-2 py-0.5 text-[10px] font-bold text-slate-500 hover:text-slate-700 bg-slate-100 hover:bg-slate-200 rounded cursor-pointer"
+                                                      disabled={isUpdatingComment}
+                                                    >
+                                                      Cancel
+                                                    </button>
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => handleSaveCommentEdit(c.id)}
+                                                      disabled={!editingCommentText.trim() || isUpdatingComment}
+                                                      className="px-2 py-0.5 text-[10px] font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 rounded cursor-pointer"
+                                                    >
+                                                      Save
+                                                    </button>
+                                                  </div>
+                                                </div>
+                                              ) : (
+                                                <p className="text-[11px] text-slate-600 leading-relaxed font-medium whitespace-pre-wrap">{c.text}</p>
+                                              )}
                                             </div>
                                           ))
                                         )}

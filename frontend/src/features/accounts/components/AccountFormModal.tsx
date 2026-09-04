@@ -11,7 +11,7 @@ import { Account, AccountType, AccountHealth, User } from '@/types';
 import { Building2, Pencil } from 'lucide-react';
 import { StakeholderFormModal } from '@/features/stakeholders/components/StakeholderFormModal';
 import { MultiStakeholderPicker } from '@/components/MultiStakeholderPicker';
-import { getCustomerSinceYearOptions } from '@/utils';
+import { getCustomerSinceYearOptions, serviceProviderOptionLabel } from '@/utils';
 import { ACCOUNT_TYPE_OPTIONS, ACCOUNT_HEALTH_OPTIONS, LOCATION_OPTIONS, TOWER_OPTIONS } from '@/constants';
 import {
   FormGrid,
@@ -72,22 +72,24 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
     usersApi.getAll().then(setUsers).catch(() => setUsers([]));
   }, [isOpen]);
 
+  const { practiceLeads, clientPartners, verticalHeads, accountManagers } = useCRM();
+
   // Role-filtered option lists ({ value: id, label: name })
   const accountManagerOptions = useMemo(
-    () => users.filter(u => u.roleKey === 'account-manager' || (u.roleKeys && u.roleKeys.includes('account-manager'))).map(u => ({ value: u.id, label: u.name })),
-    [users],
+    () => (accountManagers || []).map(u => ({ value: u.id, label: serviceProviderOptionLabel(u) })),
+    [accountManagers],
   );
   const practiceLeadOptions = useMemo(
-    () => users.filter(u => u.roleKey === 'practice-lead' || (u.roleKeys && u.roleKeys.includes('practice-lead'))).map(u => ({ value: u.id, label: u.name })),
-    [users],
+    () => (practiceLeads || []).map(u => ({ value: u.id, label: serviceProviderOptionLabel(u) })),
+    [practiceLeads],
   );
   const clientPartnerOptions = useMemo(
-    () => users.filter(u => u.roleKey === 'client-partner' || (u.roleKeys && u.roleKeys.includes('client-partner'))).map(u => ({ value: u.id, label: u.name })),
-    [users],
+    () => (clientPartners || []).map(u => ({ value: u.id, label: serviceProviderOptionLabel(u) })),
+    [clientPartners],
   );
   const verticalHeadOptions = useMemo(
-    () => users.filter(u => u.roleKey === 'vertical-head' || (u.roleKeys && u.roleKeys.includes('vertical-head'))).map(u => ({ value: u.id, label: u.name })),
-    [users],
+    () => (verticalHeads || []).map(u => ({ value: u.id, label: serviceProviderOptionLabel(u) })),
+    [verticalHeads],
   );
 
   const [draft, setDraft] = useState<Omit<Account, 'id'> | Account>(EMPTY_ACCOUNT);
