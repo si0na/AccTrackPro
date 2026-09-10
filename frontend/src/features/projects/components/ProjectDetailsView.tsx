@@ -14,6 +14,8 @@ import { EmployeeAppreciationTab } from '@/features/employee-appreciation/compon
 import {
   AlertOctagon,
   Briefcase,
+  ChevronDown,
+  ChevronRight,
   DollarSign,
   Calendar,
   CheckSquare,
@@ -94,7 +96,7 @@ import { compareForSort, getTodayISODate, SortDirection } from '@/utils';
 
 type ProjectTab =
   | 'overview' | 'progress' | 'team'
-  | 'milestones' | 'risks' | 'assumptions' | 'issues' | 'dependencies'
+  | 'milestones' | 'risks-issues' | 'assumptions' | 'dependencies'
   | 'action-items' | 'health' | 'nps' | 'appreciation';
 
 const SORTABLE_AI_FIELDS = new Set(['title', 'owner', 'priority', 'status', 'dueDate']);
@@ -167,6 +169,9 @@ export const ProjectDetailsView: React.FC = () => {
   const account = project ? accounts.find((a) => a.id === project.accountId) : null;
 
   const [activeTab, setActiveTab] = useState<ProjectTab>('overview');
+  const [projectSubTab, setProjectSubTab] = useState<'risks' | 'issues'>('risks');
+  const [expandedRiskId, setExpandedRiskId] = useState<string | null>(null);
+  const [expandedIssueId, setExpandedIssueId] = useState<string | null>(null);
   const [openHealthModalTrigger, setOpenHealthModalTrigger] = useState(0);
 
   // Users list (Administration) backs the Service Provider PM / Practice Lead
@@ -699,9 +704,8 @@ export const ProjectDetailsView: React.FC = () => {
           { id: 'progress', label: 'Overall Progress', icon: Gauge, count: null },
           { id: 'team', label: 'Team', icon: Users, count: team.length > 0 ? team.length : null },
           { id: 'milestones', label: 'Milestones', icon: Flag, count: milestones.length > 0 ? milestones.length : null },
-          { id: 'risks', label: 'Risks', icon: ShieldAlert, count: risks.length > 0 ? risks.length : null },
+          { id: 'risks-issues', label: 'Risks & Issues', icon: ShieldAlert, count: (risks.length + issues.length) > 0 ? (risks.length + issues.length) : null },
           { id: 'assumptions', label: 'Assumptions', icon: HelpCircle, count: assumptions.length > 0 ? assumptions.length : null },
-          { id: 'issues', label: 'Issues', icon: AlertOctagon, count: issues.length > 0 ? issues.length : null },
           { id: 'dependencies', label: 'Dependencies', icon: Link2, count: dependencies.length > 0 ? dependencies.length : null },
           { id: 'action-items', label: 'Action Items', icon: CheckSquare, count: projectActions.length },
           { id: 'health', label: 'Health Tracker', icon: Gauge, count: null },
@@ -914,31 +918,279 @@ export const ProjectDetailsView: React.FC = () => {
           />
         )}
 
-        {activeTab === 'risks' && (
-          <SimpleCrudTab<ProjectRisk>
-            icon={<ShieldAlert className="w-5 h-5 text-red-600 shrink-0" aria-hidden="true" />}
-            title="Risks"
-            entityLabel="Risk"
-            rows={risks}
-            loading={risksLoading}
-            emptyMessage='No risks yet. Click "Add Risk" to log one.'
-            onAddClick={openAddRisk}
-            onEditClick={openEditRisk}
-            getRowLabel={(r) => r.description.substring(0, 40)}
-            onDelete={canDeleteProject ? handleDeleteRisk : undefined}
-            columns={[
-              { key: 'rag', label: 'RAG', render: (r) => r.rag ? <StatusBadge value={r.rag} colorMap={HEALTH_COLORS} shape="rounded" /> : <span className="text-slate-400 font-medium italic">—</span> },
-              { key: 'description', label: 'Description', render: (r) => <span className="block max-w-[240px] line-clamp-2 font-semibold text-slate-800" title={r.description}>{r.description}</span> },
-              { key: 'classification', label: 'Classification', render: (r) => <span className="text-slate-600 font-semibold">{r.classification || '—'}</span> },
-              { key: 'priority', label: 'Priority', render: (r) => <StatusBadge value={r.priority} colorMap={PRIORITY_COLORS} shape="rounded" /> },
-              { key: 'status', label: 'Status', render: (r) => <StatusBadge value={r.status} colorMap={RISK_STATUS_COLORS} shape="rounded" /> },
-              { key: 'impactDescription', label: 'Impact Description', render: (r) => <span className="block max-w-[200px] line-clamp-2 text-slate-600" title={r.impactDescription || ''}>{r.impactDescription || '—'}</span> },
-              { key: 'contingencyPlan', label: 'Contingency Plan', render: (r) => <span className="block max-w-[200px] line-clamp-2 text-slate-600" title={r.contingencyPlan || ''}>{r.contingencyPlan || '—'}</span> },
-              { key: 'owner', label: 'Owner', render: (r) => <span className="text-slate-600 font-semibold">{r.ownerName || '—'}</span> },
-              { key: 'riskOpenDate', label: 'Risk Open Date', render: (r) => <span className="font-mono text-slate-500">{r.riskOpenDate || '—'}</span> },
-              { key: 'targetResolutionDate', label: 'Target Resolution', render: (r) => <span className="font-mono text-slate-500">{r.targetResolutionDate || '—'}</span> },
-            ]}
-          />
+        {(activeTab === 'risks-issues' || (activeTab as string) === 'risks' || (activeTab as string) === 'issues') && (
+          <Card
+            padding="none"
+            clip
+            title={
+              <div className="flex items-center gap-4">
+                <span className="inline-flex items-center gap-2">
+                  <ShieldAlert className="w-5 h-5 text-red-600 shrink-0" aria-hidden="true" />
+                  <span className="text-sm font-bold text-slate-800 tracking-tight">Risks & Issues</span>
+                </span>
+                <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg">
+                  <button
+                    type="button"
+                    onClick={() => setProjectSubTab('risks')}
+                    className={`px-3 py-1 text-xs font-bold rounded-md transition-all cursor-pointer ${
+                      projectSubTab === 'risks'
+                        ? 'bg-white text-red-700 shadow-sm'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Risks ({risks.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setProjectSubTab('issues')}
+                    className={`px-3 py-1 text-xs font-bold rounded-md transition-all cursor-pointer ${
+                      projectSubTab === 'issues'
+                        ? 'bg-white text-amber-700 shadow-sm'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Issues ({issues.length})
+                  </button>
+                </div>
+              </div>
+            }
+            actions={
+              projectSubTab === 'risks' ? (
+                <Button icon={<Plus className="w-3.5 h-3.5" aria-hidden="true" />} onClick={openAddRisk}>
+                  Add Risk
+                </Button>
+              ) : (
+                <Button icon={<Plus className="w-3.5 h-3.5" aria-hidden="true" />} onClick={openAddIssue}>
+                  Add Issue
+                </Button>
+              )
+            }
+          >
+            {projectSubTab === 'risks' ? (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHead>
+                    <TableHeadCell>Description</TableHeadCell>
+                    <TableHeadCell align="center">RAG</TableHeadCell>
+                    <TableHeadCell>Classification</TableHeadCell>
+                    <TableHeadCell align="center">Priority</TableHeadCell>
+                    <TableHeadCell align="center">Status</TableHeadCell>
+                    <TableHeadCell>Owner</TableHeadCell>
+                    <TableHeadCell>Risk Open Date</TableHeadCell>
+                    <TableHeadCell>Target Resolution Date</TableHeadCell>
+                    <TableHeadCell>Impact</TableHeadCell>
+                    <TableHeadCell>Likelihood</TableHeadCell>
+                    <TableHeadCell>Severity (Calculated)</TableHeadCell>
+                    <TableHeadCell>Impact Description</TableHeadCell>
+                    <TableHeadCell>Mitigation Plan</TableHeadCell>
+                    <TableHeadCell>Contingency Plan</TableHeadCell>
+                    <TableHeadCell align="center" sticky="right">Actions</TableHeadCell>
+                  </TableHead>
+                  <tbody>
+                    {risksLoading ? (
+                      <EmptyRow colSpan={15} message="Loading risks…" />
+                    ) : risks.length === 0 ? (
+                      <EmptyRow colSpan={15} message='No risks yet. Click "Add Risk" to log one.' />
+                    ) : (
+                      risks.map((r) => (
+                        <TableRow key={r.id} className="hover:bg-slate-50/50">
+                          {/* Description */}
+                          <TableCell className="font-semibold text-slate-900 min-w-[200px] max-w-[300px]">
+                            <span className="line-clamp-2" title={r.description}>{r.description}</span>
+                          </TableCell>
+
+                          {/* RAG */}
+                          <TableCell align="center">
+                            {r.rag ? <StatusBadge value={r.rag} colorMap={HEALTH_COLORS} shape="rounded" /> : <span className="text-slate-400 font-medium italic">—</span>}
+                          </TableCell>
+
+                          {/* Classification */}
+                          <TableCell className="text-slate-600 font-medium text-xs">
+                            {r.classification || '—'}
+                          </TableCell>
+
+                          {/* Priority */}
+                          <TableCell align="center">
+                            <StatusBadge value={r.priority} colorMap={PRIORITY_COLORS} shape="rounded" />
+                          </TableCell>
+
+                          {/* Status */}
+                          <TableCell align="center">
+                            <StatusBadge value={r.status} colorMap={RISK_STATUS_COLORS} shape="rounded" />
+                          </TableCell>
+
+                          {/* Owner */}
+                          <TableCell className="text-slate-600 font-semibold text-xs">
+                            {r.ownerName || '—'}
+                          </TableCell>
+
+                          {/* Risk Open Date */}
+                          <TableCell className="font-mono text-slate-500 text-xs">
+                            {r.riskOpenDate || '—'}
+                          </TableCell>
+
+                          {/* Target Resolution Date */}
+                          <TableCell className="font-mono text-slate-500 text-xs">
+                            {r.targetResolutionDate || '—'}
+                          </TableCell>
+
+                          {/* Impact */}
+                          <TableCell className="text-slate-700 font-semibold text-xs">
+                            {r.impact || '—'}
+                          </TableCell>
+
+                          {/* Likelihood */}
+                          <TableCell className="text-slate-700 font-semibold text-xs">
+                            {r.likelihood || '—'}
+                          </TableCell>
+
+                          {/* Severity */}
+                          <TableCell className="text-xs">
+                            {r.severity ? (
+                              <span className={`px-2 py-0.5 rounded text-xs font-bold ${
+                                r.severity === 'High' || r.severity === 'Critical' ? 'bg-red-100 text-red-700' :
+                                r.severity === 'Medium' ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-700'
+                              }`}>
+                                {r.severity}
+                              </span>
+                            ) : <span className="text-slate-400 italic">—</span>}
+                          </TableCell>
+
+                          {/* Impact Description */}
+                          <TableCell className="text-slate-600 text-xs max-w-[200px]">
+                            <span className="line-clamp-2" title={r.impactDescription}>{r.impactDescription || '—'}</span>
+                          </TableCell>
+
+                          {/* Mitigation Plan */}
+                          <TableCell className="text-slate-600 text-xs max-w-[200px]">
+                            <span className="line-clamp-2" title={r.mitigationPlan}>{r.mitigationPlan || '—'}</span>
+                          </TableCell>
+
+                          {/* Contingency Plan */}
+                          <TableCell className="text-slate-600 text-xs max-w-[200px]">
+                            <span className="line-clamp-2" title={r.contingencyPlan}>{r.contingencyPlan || '—'}</span>
+                          </TableCell>
+
+                          {/* Actions */}
+                          <TableCell align="center" sticky="right">
+                            <div className="flex items-center justify-center gap-1.5">
+                              <RowActionButton
+                                intent="edit"
+                                label="Edit risk"
+                                icon={<Pencil className="w-3.5 h-3.5" />}
+                                onClick={() => openEditRisk(r)}
+                              />
+                              {canDeleteProject && (
+                                <RowActionButton
+                                  intent="delete"
+                                  label="Delete risk"
+                                  icon={<Trash2 className="w-3.5 h-3.5" />}
+                                  onClick={() => handleDeleteRisk(r)}
+                                />
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </tbody>
+                </Table>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHead>
+                    <TableHeadCell>Description</TableHeadCell>
+                    <TableHeadCell align="center">Priority</TableHeadCell>
+                    <TableHeadCell align="center">Status</TableHeadCell>
+                    <TableHeadCell>Owner</TableHeadCell>
+                    <TableHeadCell>Impact</TableHeadCell>
+                    <TableHeadCell>Date Identified</TableHeadCell>
+                    <TableHeadCell>Target Date</TableHeadCell>
+                    <TableHeadCell>Resolution Plan</TableHeadCell>
+                    <TableHeadCell>Remarks</TableHeadCell>
+                    <TableHeadCell align="center" sticky="right">Actions</TableHeadCell>
+                  </TableHead>
+                  <tbody>
+                    {issuesLoading ? (
+                      <EmptyRow colSpan={10} message="Loading issues…" />
+                    ) : issues.length === 0 ? (
+                      <EmptyRow colSpan={10} message='No issues yet. Click "Add Issue" to log one.' />
+                    ) : (
+                      issues.map((i) => (
+                        <TableRow key={i.id} className="hover:bg-slate-50/50">
+                          {/* Description */}
+                          <TableCell className="font-semibold text-slate-900 min-w-[200px] max-w-[300px]">
+                            <span className="line-clamp-2" title={i.description}>{i.description}</span>
+                          </TableCell>
+
+                          {/* Priority */}
+                          <TableCell align="center">
+                            <StatusBadge value={i.priority} colorMap={PRIORITY_COLORS} shape="rounded" />
+                          </TableCell>
+
+                          {/* Status */}
+                          <TableCell align="center">
+                            <StatusBadge value={i.status} colorMap={ISSUE_STATUS_COLORS} shape="rounded" />
+                          </TableCell>
+
+                          {/* Owner */}
+                          <TableCell className="text-slate-600 font-semibold text-xs">
+                            {i.ownerName || '—'}
+                          </TableCell>
+
+                          {/* Impact */}
+                          <TableCell className="text-slate-700 font-semibold text-xs">
+                            {i.impact || '—'}
+                          </TableCell>
+
+                          {/* Date Identified */}
+                          <TableCell className="font-mono text-slate-500 text-xs">
+                            {i.dateIdentified || '—'}
+                          </TableCell>
+
+                          {/* Target Date */}
+                          <TableCell className="font-mono text-slate-500 text-xs">
+                            {i.targetResolutionDate || '—'}
+                          </TableCell>
+
+                          {/* Resolution Plan */}
+                          <TableCell className="text-slate-600 text-xs max-w-[220px]">
+                            <span className="line-clamp-2" title={i.resolutionPlan}>{i.resolutionPlan || '—'}</span>
+                          </TableCell>
+
+                          {/* Remarks */}
+                          <TableCell className="text-slate-600 text-xs max-w-[220px]">
+                            <span className="line-clamp-2" title={i.remarks}>{i.remarks || '—'}</span>
+                          </TableCell>
+
+                          {/* Actions */}
+                          <TableCell align="center" sticky="right">
+                            <div className="flex items-center justify-center gap-1.5">
+                              <RowActionButton
+                                intent="edit"
+                                label="Edit issue"
+                                icon={<Pencil className="w-3.5 h-3.5" />}
+                                onClick={() => openEditIssue(i)}
+                              />
+                              {canDeleteProject && (
+                                <RowActionButton
+                                  intent="delete"
+                                  label="Delete issue"
+                                  icon={<Trash2 className="w-3.5 h-3.5" />}
+                                  onClick={() => handleDeleteIssue(i)}
+                                />
+                              )}
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </tbody>
+                </Table>
+              </div>
+            )}
+          </Card>
         )}
 
         {activeTab === 'assumptions' && (
@@ -959,28 +1211,6 @@ export const ProjectDetailsView: React.FC = () => {
               { key: 'validationStatus', label: 'Validation Status', render: (a) => <StatusBadge value={a.validationStatus} colorMap={ASSUMPTION_VALIDATION_COLORS} shape="rounded" /> },
               { key: 'owner', label: 'Owner', render: (a) => <span className="text-slate-600 font-semibold">{a.ownerName || '—'}</span> },
               { key: 'targetValidationDate', label: 'Target Validation', render: (a) => <span className="font-mono text-slate-500">{a.targetValidationDate || '—'}</span> },
-            ]}
-          />
-        )}
-
-        {activeTab === 'issues' && (
-          <SimpleCrudTab<ProjectIssue>
-            icon={<AlertOctagon className="w-5 h-5 text-amber-600 shrink-0" aria-hidden="true" />}
-            title="Issues"
-            entityLabel="Issue"
-            rows={issues}
-            loading={issuesLoading}
-            emptyMessage='No issues yet. Click "Add Issue" to log one.'
-            onAddClick={openAddIssue}
-            onEditClick={openEditIssue}
-            getRowLabel={(i) => i.description.substring(0, 40)}
-            onDelete={canDeleteProject ? handleDeleteIssue : undefined}
-            columns={[
-              { key: 'description', label: 'Description', render: (i) => <span className="block max-w-[320px] line-clamp-2 font-semibold text-slate-800" title={i.description}>{i.description}</span> },
-              { key: 'priority', label: 'Priority', render: (i) => <StatusBadge value={i.priority} colorMap={PRIORITY_COLORS} shape="rounded" /> },
-              { key: 'status', label: 'Status', render: (i) => <StatusBadge value={i.status} colorMap={ISSUE_STATUS_COLORS} shape="rounded" /> },
-              { key: 'owner', label: 'Owner', render: (i) => <span className="text-slate-600 font-semibold">{i.ownerName || '—'}</span> },
-              { key: 'targetResolutionDate', label: 'Target Resolution', render: (i) => <span className="font-mono text-slate-500">{i.targetResolutionDate || '—'}</span> },
             ]}
           />
         )}

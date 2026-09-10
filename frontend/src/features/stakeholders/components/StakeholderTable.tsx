@@ -6,7 +6,7 @@
 import React, { useMemo, useState } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
 import { Account, Stakeholder, StakeholderType } from '@/types';
-import { Mail, Phone, Linkedin } from 'lucide-react';
+import { Mail, Phone, Linkedin, User } from 'lucide-react';
 import {
   Card,
   EmptyRow,
@@ -102,8 +102,8 @@ export const StakeholderTable: React.FC<StakeholderTableProps> = ({
   const currentPage = Math.min(page, totalPages);
   const paged = sorted.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
-  // Columns: Name, [Account], Department, Designation, [Influence, Relationship], Email, Phone, LinkedIn, Actions
-  let colSpan = isServiceProvider ? 8 : 10;
+  // Columns: Name, [Account], Department, Designation, [Influence, Relationship, Primary Owner, Secondary Owner, Third Owner], Email, Phone, LinkedIn, Actions
+  let colSpan = isServiceProvider ? 8 : 13;
   if (hideAccountColumn) colSpan -= 1;
 
   return (
@@ -133,6 +133,9 @@ export const StakeholderTable: React.FC<StakeholderTableProps> = ({
                 <>
                   <TableHeadCell align="center"><SortableHeader label="Influence Level" field="influence" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="justify-center w-full" /></TableHeadCell>
                   <TableHeadCell align="center"><SortableHeader label="Relationship" field="relationship" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="justify-center w-full" /></TableHeadCell>
+                  <TableHeadCell><SortableHeader label="Primary Owner" field="primaryOwnerName" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} /></TableHeadCell>
+                  <TableHeadCell><SortableHeader label="Secondary Owner" field="secondaryOwnerName" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} /></TableHeadCell>
+                  <TableHeadCell><SortableHeader label="Third Owner" field="tertiaryOwnerName" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} /></TableHeadCell>
                 </>
               )}
               <TableHeadCell><SortableHeader label="Email" field="email" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} /></TableHeadCell>
@@ -183,6 +186,36 @@ export const StakeholderTable: React.FC<StakeholderTableProps> = ({
                           </TableCell>
                           <TableCell align="center">
                             <StatusBadge value={s.relationship} colorMap={RELATIONSHIP_COLORS} />
+                          </TableCell>
+                          <TableCell className="text-slate-700 font-medium">
+                            {s.primaryOwnerName ? (
+                              <span className="flex items-center gap-1.5 text-slate-800 font-semibold">
+                                <User className="w-3.5 h-3.5 text-blue-500 shrink-0" aria-hidden="true" />
+                                <span>{s.primaryOwnerName}</span>
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 font-normal">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-slate-700 font-medium">
+                            {s.secondaryOwnerName ? (
+                              <span className="flex items-center gap-1.5 text-slate-800 font-semibold">
+                                <User className="w-3.5 h-3.5 text-indigo-500 shrink-0" aria-hidden="true" />
+                                <span>{s.secondaryOwnerName}</span>
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 font-normal">—</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-slate-700 font-medium">
+                            {s.tertiaryOwnerName || s.thirdOwnerName ? (
+                              <span className="flex items-center gap-1.5 text-slate-800 font-semibold">
+                                <User className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden="true" />
+                                <span>{s.tertiaryOwnerName || s.thirdOwnerName}</span>
+                              </span>
+                            ) : (
+                              <span className="text-slate-400 font-normal">—</span>
+                            )}
                           </TableCell>
                         </>
                       )}

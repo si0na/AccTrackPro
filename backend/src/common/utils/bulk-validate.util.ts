@@ -141,7 +141,13 @@ export function coerceAndValidateRow(
   const errors: string[] = [];
 
   for (const field of fields) {
-    const actualKey = headerMap.get(normalizeHeader(field.header));
+    let actualKey = headerMap.get(normalizeHeader(field.header));
+    if (actualKey === undefined) {
+      actualKey = headerMap.get(normalizeHeader(field.key));
+    }
+    if (actualKey === undefined && field.key === 'influence') {
+      actualKey = headerMap.get('influence') ?? headerMap.get('influence level');
+    }
     const rawVal = actualKey === undefined ? undefined : raw[actualKey];
 
     if (isBlank(rawVal)) {

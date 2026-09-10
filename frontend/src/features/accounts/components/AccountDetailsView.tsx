@@ -54,6 +54,7 @@ import { StakeholderFormModal } from '@/features/stakeholders/components/Stakeho
 import { StakeholderTabs } from '@/features/stakeholders/components/StakeholderTabs';
 import { NpsTab } from '@/features/nps/components/NpsTab';
 import { EmployeeAppreciationTab } from '@/features/employee-appreciation/components/EmployeeAppreciationTab';
+import { AccountRisksDependenciesTab } from './AccountRisksDependenciesTab';
 import { LOCATION_OPTIONS, STAGE_DEFAULT_PROBABILITY, stageChangePatch } from '@/constants';
 import {
   deriveOppStatus,
@@ -143,7 +144,7 @@ export const AccountDetailsView: React.FC = () => {
   const account = accounts.find(a => a.id === selectedAccountId);
 
   // Tab State
-  const activeTab = accountDetailsActiveTab as 'overview' | 'opportunities' | 'stakeholders' | 'action-items' | 'comments' | 'documents' | 'nps' | 'appreciation';
+  const activeTab = accountDetailsActiveTab as 'overview' | 'opportunities' | 'stakeholders' | 'action-items' | 'comments' | 'documents' | 'nps' | 'appreciation' | 'risks-dependencies';
   const setActiveTab = setAccountDetailsActiveTab;
 
   // Selected opportunity in opportunities tab
@@ -611,6 +612,7 @@ export const AccountDetailsView: React.FC = () => {
           { id: 'stakeholders', label: 'Stakeholders', icon: Users, count: accountStks.length },
           { id: 'opportunities', label: 'Opportunities', icon: DollarSign, count: visibleOpps.length },
           { id: 'action-items', label: 'Action Items', icon: CheckSquare, count: visibleActions.length },
+          { id: 'risks-dependencies', label: 'Risks & Issues', icon: AlertTriangle, count: null },
           { id: 'appreciation', label: 'Employee Appreciation', icon: HeartHandshake, count: null },
           { id: 'nps', label: 'NPS', icon: Star, count: null },
           { id: 'comments', label: 'Comments', icon: MessageSquare, count: accountComments.length },
@@ -1092,7 +1094,7 @@ export const AccountDetailsView: React.FC = () => {
                                 if (col.key === 'notes') {
                                   return (
                                     <TableCell key={col.key} className="text-slate-600 font-medium text-xs">
-                                      <span className="block max-w-[280px] line-clamp-2" title={item.notes || undefined}>
+                                      <span className="block w-full max-w-full line-clamp-2" title={item.notes || undefined}>
                                         {item.notes || <span className="text-slate-400 italic">No description</span>}
                                       </span>
                                     </TableCell>
@@ -1407,6 +1409,11 @@ export const AccountDetailsView: React.FC = () => {
         {/* Employee Appreciation Tab */}
         {activeTab === 'appreciation' && (
           <EmployeeAppreciationTab accountId={account.id} accountName={account.name} />
+        )}
+
+        {/* Risks & Dependencies Tab */}
+        {activeTab === 'risks-dependencies' && (
+          <AccountRisksDependenciesTab accountId={account.id} accountName={account.name} />
         )}
 
         {/* NPS Feedback Tab */}

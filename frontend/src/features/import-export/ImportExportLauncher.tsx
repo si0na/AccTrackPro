@@ -51,8 +51,10 @@ export const ImportExportLauncher: React.FC = () => {
 
   const refData: RefData = { accounts, opportunities, actionItems, stakeholders };
 
+  const clientStakeholders = stakeholders.filter((s) => s.stakeholderType !== 'SERVICE_PROVIDER');
+
   const rowsFor: Record<IEModuleKey, any[]> = {
-    accounts, stakeholders, opportunities, actionItems,
+    accounts, stakeholders: clientStakeholders, opportunities, actionItems,
   };
   const columnsFor: Record<IEModuleKey, ColumnConfig[] | undefined> = {
     accounts: accountsColumnConfig,
@@ -62,7 +64,7 @@ export const ImportExportLauncher: React.FC = () => {
   };
   const counts: Record<IEModuleKey, number> = {
     accounts: accounts.length,
-    stakeholders: stakeholders.length,
+    stakeholders: clientStakeholders.length,
     opportunities: opportunities.length,
     actionItems: actionItems.length,
   };

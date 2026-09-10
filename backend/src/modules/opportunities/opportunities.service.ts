@@ -17,22 +17,22 @@ import { BulkModuleAdapter } from '../import-export/bulk-adapter';
 // stripped instead of leaking into custom_data — fiscal periods are derived
 // from allocationEndDate and never stored.
 const KNOWN = new Set([
-  'id','name','accountId','accountName','stage','value','probability','ownerId',
-  'allocationStartDate','allocationEndDate','dealStartDate','dealCloseDate','crmValue','description','nextStep',
+  'id', 'name', 'accountId', 'accountName', 'stage', 'value', 'probability', 'ownerId',
+  'allocationStartDate', 'allocationEndDate', 'dealStartDate', 'dealCloseDate', 'crmValue', 'description', 'nextStep',
   'risksAndDependencies',
-  'closeReason','blockedReason','delayedReason','closedAt',
-  'tags','team','financialYear','quarter',
-  'clientStakeholderId','clientStakeholderName','clientStakeholderDesignation',
-  'serviceProviderStakeholderId','serviceProviderStakeholderName','serviceProviderStakeholderDesignation',
-  'aopAvailable','aopYear','opportunityType','serviceLine',
-  'opportunityHealth','location','cost','grossMargin',
-  'priority','deliveryModel','billingModel','tower',
-  'serviceProviderPmId','serviceProviderPmName',
+  'closeReason', 'blockedReason', 'delayedReason', 'closedAt',
+  'tags', 'team', 'financialYear', 'quarter',
+  'clientStakeholderId', 'clientStakeholderName', 'clientStakeholderDesignation',
+  'serviceProviderStakeholderId', 'serviceProviderStakeholderName', 'serviceProviderStakeholderDesignation',
+  'aopAvailable', 'aopYear', 'opportunityType', 'serviceLine',
+  'opportunityHealth', 'location', 'cost', 'grossMargin',
+  'priority', 'deliveryModel', 'billingModel', 'tower',
+  'serviceProviderPmId', 'serviceProviderPmName',
   'projectId',
   // Forecast fields are joined from opportunity_forecasts (read-only on the
   // opportunity payload; edited via the dedicated forecast endpoint). Listed so
   // a full-object round-trip through update() never leaks them into custom_data.
-  'forecastDate','forecastValue','actualDate','actualValue','forecastRemarks','forecastUpdatedAt',
+  'forecastDate', 'forecastValue', 'actualDate', 'actualValue', 'forecastRemarks', 'forecastUpdatedAt',
 ]);
 
 /** Deal outcome is now tracked solely via pipeline stage — no separate status field. */
@@ -57,53 +57,53 @@ function rowToOpportunity(row: any, derive: (date: string) => { financialYear: s
   } = row;
   return {
     ...base,
-    accountId:     account_id,
+    accountId: account_id,
     // Linked Project (nullable) — populated once this opportunity has gone Won.
-    projectId:     project_id ?? null,
-    accountName:   account_name ?? undefined,
-    ownerId:       owner_id   ?? undefined,
+    projectId: project_id ?? null,
+    accountName: account_name ?? undefined,
+    ownerId: owner_id ?? undefined,
     allocationStartDate: allocation_start_date,
-    allocationEndDate:   allocation_end_date,
-    dealStartDate:       deal_start_date ?? undefined,
-    dealCloseDate:       deal_close_date ?? undefined,
-    crmValue:      Number(crm_value),
-    nextStep:      next_step,
+    allocationEndDate: allocation_end_date,
+    dealStartDate: deal_start_date ?? undefined,
+    dealCloseDate: deal_close_date ?? undefined,
+    crmValue: Number(crm_value),
+    nextStep: next_step,
     risksAndDependencies: risks_and_dependencies ?? '',
-    closeReason:   close_reason ?? '',
+    closeReason: close_reason ?? '',
     blockedReason: blocked_reason ?? '',
     delayedReason: delayed_reason ?? '',
-    closedAt:      closed_at ?? undefined,
-    value:         Number(base.value),
-    probability:   Number(base.probability),
-    tags:          base.tags  ?? [],
-    team:          base.team  ?? [],
-    clientStakeholderId:                   client_stakeholder_id ?? undefined,
-    clientStakeholderName:                 client_stakeholder_name ?? undefined,
-    clientStakeholderDesignation:          client_stakeholder_designation ?? undefined,
-    serviceProviderStakeholderId:          service_provider_stakeholder_id ?? undefined,
-    serviceProviderStakeholderName:        service_provider_stakeholder_name ?? undefined,
+    closedAt: closed_at ?? undefined,
+    value: Number(base.value),
+    probability: Number(base.probability),
+    tags: base.tags ?? [],
+    team: base.team ?? [],
+    clientStakeholderId: client_stakeholder_id ?? undefined,
+    clientStakeholderName: client_stakeholder_name ?? undefined,
+    clientStakeholderDesignation: client_stakeholder_designation ?? undefined,
+    serviceProviderStakeholderId: service_provider_stakeholder_id ?? undefined,
+    serviceProviderStakeholderName: service_provider_stakeholder_name ?? undefined,
     serviceProviderStakeholderDesignation: service_provider_stakeholder_designation ?? undefined,
-    serviceProviderPmId:                  service_provider_pm_id ?? undefined,
-    serviceProviderPmName:                service_provider_pm_name ?? undefined,
-    aopAvailable:  aop_available,
-    aopYear:       aop_year ?? null,
+    serviceProviderPmId: service_provider_pm_id ?? undefined,
+    serviceProviderPmName: service_provider_pm_name ?? undefined,
+    aopAvailable: aop_available,
+    aopYear: aop_year ?? null,
     opportunityType: opportunity_type,
-    serviceLine:   service_line ?? undefined,
+    serviceLine: service_line ?? undefined,
     opportunityHealth: opportunity_health ?? undefined,
-    location:      location ?? undefined,
-    cost:          cost !== null && cost !== undefined ? Number(cost) : undefined,
-    grossMargin:   gross_margin !== null && gross_margin !== undefined ? Number(gross_margin) : undefined,
-    priority:      priority ?? undefined,
+    location: location ?? undefined,
+    cost: cost !== null && cost !== undefined ? Number(cost) : undefined,
+    grossMargin: gross_margin !== null && gross_margin !== undefined ? Number(gross_margin) : undefined,
+    priority: priority ?? undefined,
     deliveryModel: delivery_model ?? undefined,
-    billingModel:  billing_model ?? undefined,
-    tower:         tower ?? undefined,
+    billingModel: billing_model ?? undefined,
+    tower: tower ?? undefined,
     // Persisted forecast + actuals (joined from opportunity_forecasts; edited via
     // the dedicated forecast endpoint, never through opportunity create/update).
-    forecastDate:     forecast_date ?? undefined,
-    forecastValue:    forecast_value !== null && forecast_value !== undefined ? Number(forecast_value) : undefined,
-    actualDate:       actual_date ?? undefined,
-    actualValue:      actual_value !== null && actual_value !== undefined ? Number(actual_value) : undefined,
-    forecastRemarks:  forecast_remarks ?? undefined,
+    forecastDate: forecast_date ?? undefined,
+    forecastValue: forecast_value !== null && forecast_value !== undefined ? Number(forecast_value) : undefined,
+    actualDate: actual_date ?? undefined,
+    actualValue: actual_value !== null && actual_value !== undefined ? Number(actual_value) : undefined,
+    forecastRemarks: forecast_remarks ?? undefined,
     forecastUpdatedAt: forecast_updated_at ? new Date(forecast_updated_at).toISOString() : undefined,
     // Read-only reporting labels derived from the business date (allocation end date).
     ...derive(allocation_end_date),
@@ -233,7 +233,7 @@ export class OpportunitiesService {
     private readonly permissions: PermissionsService,
     private readonly bus: NotificationEventBus,
     private readonly projectsService: ProjectsService,
-  ) {}
+  ) { }
 
   /**
    * Role-aware visibility fragment for the opportunities alias `o`. An
@@ -314,9 +314,9 @@ export class OpportunitiesService {
     const owner = await this.childScope(f.userId, 1);
     const where = ['o.is_deleted = FALSE', ...owner.conditions].join(' AND ');
 
-    const totalCol   = pg ? ', COUNT(*) OVER()::INTEGER AS __total' : '';
+    const totalCol = pg ? ', COUNT(*) OVER()::INTEGER AS __total' : '';
     const limitClause = pg ? ` LIMIT $${owner.nextIdx} OFFSET $${owner.nextIdx + 1}` : '';
-    const qParams     = pg ? [...owner.params, pg.limit, pg.offset] : owner.params;
+    const qParams = pg ? [...owner.params, pg.limit, pg.offset] : owner.params;
 
     const { rows } = await this.db.query(
       `SELECT o.*, a.name AS account_name,
@@ -368,7 +368,7 @@ ${OPP_FORECAST_SELECT}${totalCol}
     await this.assertStakeholderAssignment(data.serviceProviderStakeholderId, data.accountId, 'SERVICE_PROVIDER', 'service provider stakeholder');
 
     const stage = data.stage || 'Lead';
-    const cd    = extractCustomData(data, KNOWN);
+    const cd = extractCustomData(data, KNOWN);
     assertAllocationEndDateValid(data.allocationEndDate, data.allocationStartDate, stage);
     const closeReason = resolveCloseReason(data, stage);
     const blockedReason = resolveStageReason(data.blockedReason, 'Blocked', stage);
@@ -415,15 +415,15 @@ ${OPP_FORECAST_SELECT}${totalCol}
     if (opp.ownerId) {
       this.logger.log(`Emitting Opportunity:Created notification [userId=${opp.ownerId} opportunityId=${opp.id}]`);
       this.bus.emit({
-        userId:               opp.ownerId,
-        type:                 'Opportunity',
-        eventType:            'Created',
-        title:                'Opportunity Created',
-        message:              `Opportunity "${opp.name}" has been added.`,
-        severity:             'Success',
+        userId: opp.ownerId,
+        type: 'Opportunity',
+        eventType: 'Created',
+        title: 'Opportunity Created',
+        message: `Opportunity "${opp.name}" has been added.`,
+        severity: 'Success',
         notificationCategory: 'BUSINESS',
-        accountId:            opp.accountId,
-        opportunityId:        opp.id,
+        accountId: opp.accountId,
+        opportunityId: opp.id,
       });
     } else {
       this.logger.warn(`Opportunity created without ownerId — notification suppressed [opportunityId=${opp.id}]`);
@@ -455,7 +455,7 @@ ${OPP_FORECAST_SELECT}${totalCol}
     if ('serviceProviderPmId' in data && data.serviceProviderPmId) {
       await this.validatePm(data.serviceProviderPmId);
     }
-    const cd    = extractCustomData(data, KNOWN);
+    const cd = extractCustomData(data, KNOWN);
     const stage = data.stage ?? existing.stage;
     assertAllocationEndDateValid(data.allocationEndDate, data.allocationStartDate, stage, existing.allocationEndDate);
     const closeReason = resolveCloseReason(data, stage, existing);
@@ -491,8 +491,8 @@ ${OPP_FORECAST_SELECT}${totalCol}
 
     const priority = data.priority !== undefined ? (data.priority ?? null) : (existing.priority ?? null);
     const deliveryModel = data.deliveryModel !== undefined ? (data.deliveryModel || null) : (existing.deliveryModel ?? null);
-    const billingModel  = data.billingModel !== undefined ? (data.billingModel || null) : (existing.billingModel ?? null);
-    const tower         = data.tower !== undefined ? (data.tower || null) : (existing.tower ?? null);
+    const billingModel = data.billingModel !== undefined ? (data.billingModel || null) : (existing.billingModel ?? null);
+    const tower = data.tower !== undefined ? (data.tower || null) : (existing.tower ?? null);
 
     await this.db.query(
       `UPDATE opportunities SET
@@ -538,43 +538,43 @@ ${OPP_FORECAST_SELECT}${totalCol}
       if (existing.stage !== opp.stage && CLOSED_STAGES.has(opp.stage)) {
         this.logger.log(`Emitting Opportunity:StageChanged [userId=${opp.ownerId} ${existing.stage}→${opp.stage}]`);
         this.bus.emit({
-          userId:               opp.ownerId,
-          type:                 'Opportunity',
-          eventType:            'StageChanged',
-          title:                opp.stage === 'Won' ? 'Opportunity Won' : 'Opportunity Lost',
-          message:              `Opportunity "${opp.name}" was closed as ${opp.stage}. Reason: ${opp.closeReason}`,
-          severity:             opp.stage === 'Won' ? 'Success' : 'Warning',
+          userId: opp.ownerId,
+          type: 'Opportunity',
+          eventType: 'StageChanged',
+          title: opp.stage === 'Won' ? 'Opportunity Won' : 'Opportunity Lost',
+          message: `Opportunity "${opp.name}" was closed as ${opp.stage}. Reason: ${opp.closeReason}`,
+          severity: opp.stage === 'Won' ? 'Success' : 'Warning',
           notificationCategory: 'BUSINESS',
-          accountId:            opp.accountId,
-          opportunityId:        opp.id,
-          metadata:             { oldStage: existing.stage, newStage: opp.stage, closeReason: opp.closeReason },
+          accountId: opp.accountId,
+          opportunityId: opp.id,
+          metadata: { oldStage: existing.stage, newStage: opp.stage, closeReason: opp.closeReason },
         });
       } else if (existing.stage !== opp.stage) {
         this.logger.log(`Emitting Opportunity:StageChanged [userId=${opp.ownerId} ${existing.stage}→${opp.stage}]`);
         this.bus.emit({
-          userId:               opp.ownerId,
-          type:                 'Opportunity',
-          eventType:            'StageChanged',
-          title:                'Opportunity Stage Updated',
-          message:              `Opportunity "${opp.name}" moved from ${existing.stage} to ${opp.stage}.`,
-          severity:             'Info',
+          userId: opp.ownerId,
+          type: 'Opportunity',
+          eventType: 'StageChanged',
+          title: 'Opportunity Stage Updated',
+          message: `Opportunity "${opp.name}" moved from ${existing.stage} to ${opp.stage}.`,
+          severity: 'Info',
           notificationCategory: 'BUSINESS',
-          accountId:            opp.accountId,
-          opportunityId:        opp.id,
-          metadata:             { oldStage: existing.stage, newStage: opp.stage },
+          accountId: opp.accountId,
+          opportunityId: opp.id,
+          metadata: { oldStage: existing.stage, newStage: opp.stage },
         });
       } else {
         this.logger.log(`Emitting Opportunity:Updated [userId=${opp.ownerId} opportunityId=${opp.id}]`);
         this.bus.emit({
-          userId:               opp.ownerId,
-          type:                 'Opportunity',
-          eventType:            'Updated',
-          title:                'Opportunity Updated',
-          message:              `Opportunity "${opp.name}" details have been updated.`,
-          severity:             'Info',
+          userId: opp.ownerId,
+          type: 'Opportunity',
+          eventType: 'Updated',
+          title: 'Opportunity Updated',
+          message: `Opportunity "${opp.name}" details have been updated.`,
+          severity: 'Info',
           notificationCategory: 'BUSINESS',
-          accountId:            opp.accountId,
-          opportunityId:        opp.id,
+          accountId: opp.accountId,
+          opportunityId: opp.id,
         });
       }
     }
@@ -604,15 +604,15 @@ ${OPP_FORECAST_SELECT}${totalCol}
 
     if (opp.ownerId) {
       this.bus.emit({
-        userId:               opp.ownerId,
-        type:                 'Opportunity',
-        eventType:            'Updated',
-        title:                'Project Created',
-        message:              `A project has been created for opportunity "${opp.name}".`,
-        severity:             'Success',
+        userId: opp.ownerId,
+        type: 'Opportunity',
+        eventType: 'Updated',
+        title: 'Project Created',
+        message: `A project has been created for opportunity "${opp.name}".`,
+        severity: 'Success',
         notificationCategory: 'BUSINESS',
-        accountId:            opp.accountId,
-        opportunityId:        opp.id,
+        accountId: opp.accountId,
+        opportunityId: opp.id,
       });
     }
     return project;
@@ -625,15 +625,15 @@ ${OPP_FORECAST_SELECT}${totalCol}
 
     if (opp.ownerId) {
       this.bus.emit({
-        userId:               opp.ownerId,
-        type:                 'Opportunity',
-        eventType:            'Deactivated',
-        title:                'Opportunity Deactivated',
-        message:              `Opportunity "${opp.name}" has been deactivated.`,
-        severity:             'Warning',
+        userId: opp.ownerId,
+        type: 'Opportunity',
+        eventType: 'Deactivated',
+        title: 'Opportunity Deactivated',
+        message: `Opportunity "${opp.name}" has been deactivated.`,
+        severity: 'Warning',
         notificationCategory: 'BUSINESS',
-        accountId:            opp.accountId,
-        opportunityId:        opp.id,
+        accountId: opp.accountId,
+        opportunityId: opp.id,
       });
     }
     return { success: true };
@@ -678,15 +678,15 @@ ${OPP_FORECAST_SELECT}${totalCol}
 
     if (opp.ownerId) {
       this.bus.emit({
-        userId:               opp.ownerId,
-        type:                 'Opportunity',
-        eventType:            'Restored',
-        title:                'Opportunity Restored',
-        message:              `Opportunity "${opp.name}" has been restored.`,
-        severity:             'Success',
+        userId: opp.ownerId,
+        type: 'Opportunity',
+        eventType: 'Restored',
+        title: 'Opportunity Restored',
+        message: `Opportunity "${opp.name}" has been restored.`,
+        severity: 'Success',
         notificationCategory: 'BUSINESS',
-        accountId:            opp.accountId,
-        opportunityId:        opp.id,
+        accountId: opp.accountId,
+        opportunityId: opp.id,
       });
     }
     return opp;

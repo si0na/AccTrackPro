@@ -29,6 +29,7 @@ import { EmployeeMasterModule } from './modules/employee-master/employee-master.
 import { ImportExportModule } from './modules/import-export/import-export.module';
 import { ServiceProviderModule } from './modules/service-provider/service-provider.module';
 import { EmployeeAppreciationModule } from './modules/employee-appreciation/employee-appreciation.module';
+import { RisksModule } from './modules/risks/risks.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { EmployeeAppreciationModule } from './modules/employee-appreciation/empl
     SqaModule,
     NpsModule,
     EmployeeAppreciationModule,
+    RisksModule,
     ActionItemsModule,
     StakeholdersModule,
     ActivitiesModule,

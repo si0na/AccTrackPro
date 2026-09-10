@@ -24,6 +24,7 @@ export const VIEW_PATHS: Record<ViewType, string> = {
   'audit-log': '/audit-log',
   'performance-evaluation': '/performance',
   'employee-appreciation': '/employee-appreciation',
+  risks: '/risks',
 };
 
 /** Resolves the ViewType path, substituting real IDs where needed */

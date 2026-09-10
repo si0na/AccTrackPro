@@ -553,6 +553,61 @@ export interface ProjectRisk {
   updatedAt?: string;
 }
 
+export interface AccountRisk {
+  id: string;
+  accountId: string;
+  accountName?: string;
+  riskType: 'Risk' | 'Issue' | 'Dependency';
+  description: string;
+  priority: PriorityLevel;
+  rag?: 'Red' | 'Amber' | 'Green';
+  impact?: string;
+  likelihood?: string;
+  severity?: string;
+  ownerId?: string;
+  ownerName?: string;
+  mitigationPlan: string;
+  impactDescription?: string;
+  contingencyPlan?: string;
+  riskOpenDate?: string;
+  classification?: string;
+  status: RiskStatus;
+  targetResolutionDate?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface NormalizedRisk {
+  id: string;
+  sourceType: 'Account' | 'Project' | 'Opportunity';
+  sourceId: string;
+  sourceName: string;
+  accountId: string;
+  accountName: string;
+  projectId?: string;
+  projectName?: string;
+  opportunityId?: string;
+  opportunityName?: string;
+  riskType: 'Risk' | 'Issue';
+  classification?: string;
+  description: string;
+  priority: PriorityLevel;
+  rag?: 'Red' | 'Amber' | 'Green';
+  severity?: string;
+  impact?: string;
+  likelihood?: string;
+  impactDescription?: string;
+  contingencyPlan?: string;
+  riskOpenDate?: string;
+  ownerId?: string;
+  ownerName?: string;
+  mitigationPlan?: string;
+  status: string;
+  targetResolutionDate?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface ProjectAssumption {
   id: string;
   projectId: string;
@@ -678,6 +733,14 @@ export interface Stakeholder {
   stakeholderType: StakeholderType;
   department?: string;
   linkedinProfileUrl?: string;
+  primaryOwnerId?: string;
+  primaryOwnerName?: string;
+  secondaryOwnerId?: string;
+  secondaryOwnerName?: string;
+  tertiaryOwnerId?: string;
+  tertiaryOwnerName?: string;
+  thirdOwnerId?: string;
+  thirdOwnerName?: string;
   userId?: string;
   /** Whitelist (employee_master) row a Service Provider represents, set even before they register. */
   employeeId?: string;

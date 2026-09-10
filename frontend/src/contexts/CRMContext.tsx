@@ -39,7 +39,8 @@ export type ViewType =
   | 'administration'
   | 'audit-log'
   | 'performance-evaluation'
-  | 'employee-appreciation';
+  | 'employee-appreciation'
+  | 'risks';
 
 /**
  * The page that triggered deep-link navigation so target views can render a

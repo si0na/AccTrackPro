@@ -29,6 +29,7 @@ export const VIEW_MODULE: Record<ViewType, string | null> = {
   'audit-log':              null,
   'performance-evaluation': 'performance',
   'employee-appreciation':  'employeeAppreciation',
+  risks:                    'risks',
 };
 
 /** The RBAC module key backing a view, or null when the view is ungated. */

@@ -25,6 +25,7 @@ import {
   ClipboardCheck,
   BadgeCheck,
   HeartHandshake,
+  AlertTriangle,
   LogOut,
   Menu
 } from 'lucide-react';
@@ -90,6 +91,12 @@ export const Sidebar: React.FC = () => {
           icon: Users,
           badge: stakeholders.length,
         },
+        {
+          id: 'risks' as ViewType,
+          label: 'Risks & Issues',
+          icon: AlertTriangle,
+          badge: null,
+        },
       ],
     },
     {
@@ -132,12 +139,6 @@ export const Sidebar: React.FC = () => {
           icon: BarChart3,
           badge: null
         },
-        {
-          id: 'performance-evaluation' as ViewType,
-          label: 'Performance Evaluation',
-          icon: ClipboardCheck,
-          badge: null
-        },
       ],
     },
     {
@@ -147,6 +148,12 @@ export const Sidebar: React.FC = () => {
           id: 'employee-appreciation' as ViewType,
           label: 'Employee Appreciation',
           icon: HeartHandshake,
+          badge: null,
+        },
+        {
+          id: 'performance-evaluation' as ViewType,
+          label: 'Employee Feedback',
+          icon: ClipboardCheck,
           badge: null,
         },
       ],

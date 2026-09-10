@@ -22,7 +22,7 @@ export interface ScopeFragment {
  */
 @Injectable()
 export class AccessScopeService {
-  constructor(private readonly permissions: PermissionsService) {}
+  constructor(private readonly permissions: PermissionsService) { }
 
   /** Convenience: resolve the caller's authorization context. */
   getContext(userId: string): Promise<UserAccessContext> {

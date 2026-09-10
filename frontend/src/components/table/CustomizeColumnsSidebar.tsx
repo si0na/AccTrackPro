@@ -302,7 +302,7 @@ export const CustomizeColumnsSidebar: React.FC<CustomizeColumnsSidebarProps> = (
                     module === 'accounts' ? 'Accounts List' :
                     module === 'opportunities' ? 'Opportunities List' :
                     module === 'actionItems' ? 'Action Items' :
-                    'Performance Evaluations'
+                    'Employee Feedback'
                   }
                 </p>
               </div>

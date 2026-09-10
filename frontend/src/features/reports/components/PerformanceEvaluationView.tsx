@@ -759,12 +759,12 @@ export const PerformanceEvaluationView: React.FC = () => {
     <div className="space-y-6">
       {/* Header */}
       <PageHeader
-        title="Performance Evaluations"
+        title="Employee Feedback"
         subtitle="Analyze, track, and optimize professional delivery metrics, feedback loops, and AI adoption records."
         actions={<>
           <Button variant="secondary" icon={<Settings2 className="w-4 h-4 text-slate-400" aria-hidden="true" />} onClick={() => setIsCustomizerOpen(true)}>Customize Columns</Button>
           <Button variant="secondary" icon={<Download className="w-4 h-4 text-slate-400" aria-hidden="true" />} onClick={handleExportCSV}>Export CSV</Button>
-          <Button size="md" icon={<Plus className="w-4 h-4" aria-hidden="true" />} onClick={() => setIsAddModalOpen(true)}>Add Evaluation</Button>
+          <Button size="md" icon={<Plus className="w-4 h-4" aria-hidden="true" />} onClick={() => setIsAddModalOpen(true)}>Add Feedback</Button>
         </>}
       />
 

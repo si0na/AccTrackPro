@@ -13,13 +13,11 @@ import {
   BILLING_MODEL_OPTIONS,
   PRIORITY_OPTIONS,
 } from '@/constants';
-import { STAKEHOLDER_TYPE_LABELS } from '@/components/ui';
 import type { IEModuleKey, ModuleIEConfig, RefData } from './types';
 
 const PRIORITY = ['High', 'Medium', 'Low'] as const;
 const INFLUENCE = ['High', 'Medium', 'Low'] as const;
 const RELATIONSHIP = ['Strong', 'Neutral', 'Weak'] as const;
-const STAKEHOLDER_TYPES = ['CLIENT', 'SERVICE_PROVIDER'] as const;
 
 const accName = (id: string, ref: RefData) => ref.accounts.find((a) => a.id === id)?.name ?? '';
 const oppName = (id: string, ref: RefData) => ref.opportunities.find((o) => o.id === id)?.name ?? '';
@@ -137,11 +135,6 @@ const stakeholdersConfig: ModuleIEConfig = {
   fields: [
     { key: 'name', header: 'Name', type: 'string', required: true, example: 'Jane Doe' },
     { key: 'accountId', header: 'Account', type: 'reference', reference: 'account', required: true, example: 'Acme Corporation', hint: 'Must match an account in the Accounts sheet or an existing account' },
-    {
-      key: 'stakeholderType', header: 'Stakeholder Type', type: 'enum', options: STAKEHOLDER_TYPES, required: true,
-      aliases: { client: 'CLIENT', 'service provider': 'SERVICE_PROVIDER', 'service-provider': 'SERVICE_PROVIDER', serviceprovider: 'SERVICE_PROVIDER' },
-      example: 'CLIENT', hint: 'CLIENT or SERVICE_PROVIDER',
-    },
     { key: 'influence', header: 'Influence Level', type: 'enum', options: INFLUENCE, required: true, example: 'High' },
     { key: 'relationship', header: 'Relationship', type: 'enum', options: RELATIONSHIP, required: true, example: 'Strong' },
     { key: 'designation', header: 'Designation', type: 'string', example: 'CTO' },
@@ -152,7 +145,6 @@ const stakeholdersConfig: ModuleIEConfig = {
   exportColumns: [
     { key: 'name', header: 'Name', value: (e) => e.name ?? '' },
     { key: 'accountId', header: 'Account', value: (e, ref) => e.accountName ?? accName(e.accountId, ref) },
-    { key: 'stakeholderType', header: 'Stakeholder Type', value: (e) => STAKEHOLDER_TYPE_LABELS[e.stakeholderType as keyof typeof STAKEHOLDER_TYPE_LABELS] ?? e.stakeholderType ?? '' },
     { key: 'influence', header: 'Influence Level', value: (e) => e.influence ?? '' },
     { key: 'relationship', header: 'Relationship', value: (e) => e.relationship ?? '' },
     { key: 'designation', header: 'Designation', value: (e) => e.designation ?? '' },
