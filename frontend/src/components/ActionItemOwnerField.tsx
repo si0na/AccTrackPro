@@ -110,25 +110,31 @@ export const ActionItemOwnerField: React.FC<ActionItemOwnerFieldProps> = ({
           (s.userId === personId || s.employeeId === personId),
       );
 
-    const fromDirectory: ServiceProviderOption[] = serviceProviders.map((sp) => ({
-      key:           `dir-${sp.id}`,
-      directoryId:   sp.id,
-      stakeholderId: rowFor(sp.id)?.id,
-      // Pending people have no name on record yet — their email is the label.
-      name:          sp.name || sp.email,
-      designation:   sp.designation,
-      status:        serviceProviderStatus(sp),
-    }));
+    const seenNames = new Set<string>();
+    const fromDirectory: ServiceProviderOption[] = [];
+
+    for (const sp of serviceProviders) {
+      const nameStr = (sp.name || sp.email || '').toLowerCase().trim();
+      if (!nameStr || seenNames.has(nameStr)) continue;
+      seenNames.add(nameStr);
+      fromDirectory.push({
+        key:           `dir-${sp.id}`,
+        directoryId:   sp.id,
+        stakeholderId: rowFor(sp.id)?.id,
+        name:          sp.name || sp.email,
+        designation:   sp.designation,
+        status:        serviceProviderStatus(sp),
+      });
+    }
 
     const linked = new Set(serviceProviders.map((sp) => sp.id));
-    const seen = new Set<string>();
     const unlinked: ServiceProviderOption[] = [];
     for (const s of stakeholders) {
       if (s.stakeholderType !== 'SERVICE_PROVIDER') continue;
       if ((s.userId && linked.has(s.userId)) || (s.employeeId && linked.has(s.employeeId))) continue;
-      const key = s.name.toLowerCase().trim();
-      if (seen.has(key)) continue;
-      seen.add(key);
+      const key = (s.name || s.email || '').toLowerCase().trim();
+      if (!key || seenNames.has(key)) continue;
+      seenNames.add(key);
       unlinked.push({
         key:           `stk-${s.id}`,
         stakeholderId: s.id,

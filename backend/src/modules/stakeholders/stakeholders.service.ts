@@ -12,16 +12,28 @@ import { BulkModuleAdapter } from '../import-export/bulk-adapter';
 function rowToStakeholder(row: any): Stakeholder {
   const {
     is_deleted, created_at, updated_at, account_id, account_name,
-    stakeholder_type, user_id, employee_id, linkedin_profile_url, ...base
+    stakeholder_type, user_id, employee_id, linkedin_profile_url,
+    primary_owner_id, primary_owner_name,
+    secondary_owner_id, secondary_owner_name,
+    tertiary_owner_id, tertiary_owner_name,
+    ...base
   } = row;
   return {
     ...base,
-    accountId:          account_id,
-    accountName:        account_name ?? undefined,
-    stakeholderType:    stakeholder_type,
-    userId:             user_id ?? undefined,
-    employeeId:         employee_id ?? undefined,
+    accountId: account_id,
+    accountName: account_name ?? undefined,
+    stakeholderType: stakeholder_type,
+    userId: user_id ?? undefined,
+    employeeId: employee_id ?? undefined,
     linkedinProfileUrl: linkedin_profile_url ?? undefined,
+    primaryOwnerId: primary_owner_id ?? undefined,
+    primaryOwnerName: primary_owner_name ?? undefined,
+    secondaryOwnerId: secondary_owner_id ?? undefined,
+    secondaryOwnerName: secondary_owner_name ?? undefined,
+    tertiaryOwnerId: tertiary_owner_id ?? undefined,
+    tertiaryOwnerName: tertiary_owner_name ?? undefined,
+    thirdOwnerId: tertiary_owner_id ?? undefined,
+    thirdOwnerName: tertiary_owner_name ?? undefined,
     // A whitelist link with no user link means the person was assigned as a
     // Service Provider before completing registration.
     pendingRegistration: !!employee_id && !user_id,
@@ -37,7 +49,7 @@ export class StakeholdersService {
     private readonly filter: FilterContextService,
     private readonly access: AccessScopeService,
     private readonly bus: NotificationEventBus,
-  ) {}
+  ) { }
 
   /**
    * Role-aware visibility fragment for the stakeholders alias `s`. A stakeholder
@@ -64,12 +76,12 @@ export class StakeholdersService {
     return {
       moduleKey: 'stakeholders',
       fields: STAKEHOLDER_FIELDS,
-      validate: (row) => validateDto(CreateStakeholderDto, row),
+      validate: (row) => validateDto(CreateStakeholderDto, { ...row, stakeholderType: 'CLIENT' }),
       naturalKey: (row) =>
         row.accountId && row.email ? `${row.accountId}::${String(row.email).trim().toLowerCase()}` : null,
       findExistingId: (row) => this.findActiveByEmail(row.accountId, row.email, userId),
-      create: (row) => this.create(row, userId),
-      update: (id, row) => this.update(id, row, userId),
+      create: (row) => this.create({ ...row, stakeholderType: 'CLIENT' }, userId),
+      update: (id, row) => this.update(id, { ...row, stakeholderType: 'CLIENT' }, userId),
     };
   }
 
@@ -109,9 +121,15 @@ export class StakeholdersService {
     const conditions: string[] = ['s.is_deleted = FALSE', ...scope.conditions];
 
     const { rows } = await this.db.query(
-      `SELECT s.*, a.name AS account_name
+      `SELECT s.*, a.name AS account_name,
+              sp1.name AS primary_owner_name,
+              sp2.name AS secondary_owner_name,
+              sp3.name AS tertiary_owner_name
        FROM stakeholders s
        INNER JOIN accounts a ON s.account_id = a.id AND a.is_deleted = FALSE
+       LEFT JOIN stakeholders sp1 ON s.primary_owner_id = sp1.id
+       LEFT JOIN stakeholders sp2 ON s.secondary_owner_id = sp2.id
+       LEFT JOIN stakeholders sp3 ON s.tertiary_owner_id = sp3.id
        WHERE ${conditions.join(' AND ')}
        ORDER BY s.created_at DESC`,
       scope.params,
@@ -127,9 +145,15 @@ export class StakeholdersService {
     // The accounts join has no is_deleted condition: the parent may itself be
     // deactivated (cascade) and its name must still appear in the list.
     const { rows } = await this.db.query(
-      `SELECT s.*, a.name AS account_name
+      `SELECT s.*, a.name AS account_name,
+              sp1.name AS primary_owner_name,
+              sp2.name AS secondary_owner_name,
+              sp3.name AS tertiary_owner_name
        FROM stakeholders s
        LEFT JOIN accounts a ON s.account_id = a.id
+       LEFT JOIN stakeholders sp1 ON s.primary_owner_id = sp1.id
+       LEFT JOIN stakeholders sp2 ON s.secondary_owner_id = sp2.id
+       LEFT JOIN stakeholders sp3 ON s.tertiary_owner_id = sp3.id
        WHERE ${conditions.join(' AND ')}
        ORDER BY s.updated_at DESC`,
       scope.params,
@@ -141,9 +165,15 @@ export class StakeholdersService {
     const { conditions, params } = await this.childScope(userId ?? null, 2);
     const scopeClause = conditions.length ? ` AND ${conditions.join(' AND ')}` : '';
     const { rows } = await this.db.query(
-      `SELECT s.*, a.name AS account_name
+      `SELECT s.*, a.name AS account_name,
+              sp1.name AS primary_owner_name,
+              sp2.name AS secondary_owner_name,
+              sp3.name AS tertiary_owner_name
        FROM stakeholders s
        INNER JOIN accounts a ON s.account_id = a.id
+       LEFT JOIN stakeholders sp1 ON s.primary_owner_id = sp1.id
+       LEFT JOIN stakeholders sp2 ON s.secondary_owner_id = sp2.id
+       LEFT JOIN stakeholders sp3 ON s.tertiary_owner_id = sp3.id
        WHERE s.id = $1 AND s.is_deleted = FALSE${scopeClause}`,
       [id, ...params],
     );
@@ -156,15 +186,20 @@ export class StakeholdersService {
     await this.assertAccountExists(accountId, userId);
     await this.assertEmailAvailable(accountId, data.email);
 
+    const primaryOwnerId = data.primaryOwnerId ?? data.primary_owner_id ?? null;
+    const secondaryOwnerId = data.secondaryOwnerId ?? data.secondary_owner_id ?? null;
+    const tertiaryOwnerId = data.tertiaryOwnerId ?? data.thirdOwnerId ?? data.tertiary_owner_id ?? null;
+
     const { rows } = await this.db.query(
-      `INSERT INTO stakeholders (id, name, account_id, designation, influence, relationship, email, phone, stakeholder_type, department, linkedin_profile_url)
-       VALUES (gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+      `INSERT INTO stakeholders (id, name, account_id, designation, influence, relationship, email, phone, stakeholder_type, department, linkedin_profile_url, primary_owner_id, secondary_owner_id, tertiary_owner_id)
+       VALUES (gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
        RETURNING *`,
       [data.name, accountId, data.designation ?? '', data.influence,
-       data.relationship, data.email ?? '', data.phone ?? '',
-       data.stakeholderType, data.department ?? null, data.linkedinProfileUrl ?? null],
+      data.relationship, data.email ?? '', data.phone ?? '',
+      data.stakeholderType, data.department ?? null, data.linkedinProfileUrl ?? null,
+        primaryOwnerId, secondaryOwnerId, tertiaryOwnerId],
     );
-    const stk = rowToStakeholder(rows[0]);
+    const stk = await this.findOne(rows[0].id, userId);
     this.logger.log(`Stakeholder created [id=${stk.id} name="${stk.name}" accountId=${stk.accountId ?? 'NULL'}]`);
     await this.log(`Added Stakeholder '${stk.name}'`, stk.accountId);
 
@@ -172,15 +207,15 @@ export class StakeholdersService {
     if (notifyUserId) {
       this.logger.log(`Emitting Stakeholder:Created notification [userId=${notifyUserId} stakeholderId=${stk.id}]`);
       this.bus.emit({
-        userId:               notifyUserId,
-        type:                 'Stakeholder',
-        eventType:            'Created',
-        title:                'Stakeholder Added',
-        message:              `Stakeholder "${stk.name}" (${stk.designation || stk.influence}) has been added.`,
-        severity:             'Info',
+        userId: notifyUserId,
+        type: 'Stakeholder',
+        eventType: 'Created',
+        title: 'Stakeholder Added',
+        message: `Stakeholder "${stk.name}" (${stk.designation || stk.influence}) has been added.`,
+        severity: 'Info',
         notificationCategory: 'BUSINESS',
-        accountId:            stk.accountId,
-        stakeholderId:        stk.id,
+        accountId: stk.accountId,
+        stakeholderId: stk.id,
       });
     } else {
       this.logger.warn(`Stakeholder created but account has no owner_id — notification suppressed [accountId=${stk.accountId}]`);
@@ -194,31 +229,40 @@ export class StakeholdersService {
       await this.assertAccountExists(data.accountId, userId);
     }
     await this.assertEmailAvailable(data.accountId, data.email, id);
+
+    const primaryOwnerId = data.primaryOwnerId !== undefined ? (data.primaryOwnerId ?? null) : (existing.primaryOwnerId ?? null);
+    const secondaryOwnerId = data.secondaryOwnerId !== undefined ? (data.secondaryOwnerId ?? null) : (existing.secondaryOwnerId ?? null);
+    const tertiaryOwnerId = data.tertiaryOwnerId !== undefined
+      ? (data.tertiaryOwnerId ?? null)
+      : (data.thirdOwnerId !== undefined ? (data.thirdOwnerId ?? null) : (existing.tertiaryOwnerId ?? null));
+
     const { rows } = await this.db.query(
       `UPDATE stakeholders SET
          name=$1, account_id=$2, designation=$3, influence=$4,
-         relationship=$5, email=$6, phone=$7, stakeholder_type=$8, department=$9, linkedin_profile_url=$10, updated_at=NOW()
-       WHERE id=$11 AND is_deleted=FALSE RETURNING *`,
+         relationship=$5, email=$6, phone=$7, stakeholder_type=$8, department=$9, linkedin_profile_url=$10,
+         primary_owner_id=$11, secondary_owner_id=$12, tertiary_owner_id=$13, updated_at=NOW()
+       WHERE id=$14 AND is_deleted=FALSE RETURNING *`,
       [data.name, data.accountId, data.designation ?? '', data.influence,
-       data.relationship, data.email ?? '', data.phone ?? '',
-       data.stakeholderType, data.department ?? null, data.linkedinProfileUrl ?? null, id],
+      data.relationship, data.email ?? '', data.phone ?? '',
+      data.stakeholderType, data.department ?? null, data.linkedinProfileUrl ?? null,
+        primaryOwnerId, secondaryOwnerId, tertiaryOwnerId, id],
     );
-    const stk = rowToStakeholder(rows[0]);
+    const stk = await this.findOne(rows[0].id, userId);
     await this.log(`Updated Stakeholder '${stk.name}'`, stk.accountId);
 
     const notifyUserId = await this.accountOwner(stk.accountId);
     if (notifyUserId) {
       this.logger.log(`Emitting Stakeholder:Updated notification [userId=${notifyUserId} stakeholderId=${stk.id}]`);
       this.bus.emit({
-        userId:               notifyUserId,
-        type:                 'Stakeholder',
-        eventType:            'Updated',
-        title:                'Stakeholder Updated',
-        message:              `Stakeholder "${stk.name}" details have been updated.`,
-        severity:             'Info',
+        userId: notifyUserId,
+        type: 'Stakeholder',
+        eventType: 'Updated',
+        title: 'Stakeholder Updated',
+        message: `Stakeholder "${stk.name}" details have been updated.`,
+        severity: 'Info',
         notificationCategory: 'BUSINESS',
-        accountId:            stk.accountId,
-        stakeholderId:        stk.id,
+        accountId: stk.accountId,
+        stakeholderId: stk.id,
       });
     } else {
       this.logger.warn(`Stakeholder updated but account has no owner_id — notification suppressed [accountId=${stk.accountId}]`);
@@ -238,15 +282,15 @@ export class StakeholdersService {
     if (notifyUserId) {
       this.logger.log(`Emitting Stakeholder:Deleted notification [userId=${notifyUserId} stakeholderId=${stk.id}]`);
       this.bus.emit({
-        userId:               notifyUserId,
-        type:                 'Stakeholder',
-        eventType:            'Deleted',
-        title:                'Stakeholder Removed',
-        message:              `Stakeholder "${stk.name}" has been removed.`,
-        severity:             'Warning',
+        userId: notifyUserId,
+        type: 'Stakeholder',
+        eventType: 'Deleted',
+        title: 'Stakeholder Removed',
+        message: `Stakeholder "${stk.name}" has been removed.`,
+        severity: 'Warning',
         notificationCategory: 'BUSINESS',
-        accountId:            stk.accountId,
-        stakeholderId:        stk.id,
+        accountId: stk.accountId,
+        stakeholderId: stk.id,
       });
     }
     return { success: true };

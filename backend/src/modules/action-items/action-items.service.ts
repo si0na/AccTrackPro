@@ -15,10 +15,10 @@ import { BulkModuleAdapter } from '../import-export/bulk-adapter';
 // stripped instead of leaking into custom_data — fiscal periods are derived
 // from dueDate and never stored.
 const KNOWN = new Set([
-  'id','title','accountId','accountName','opportunityId','projectId','projectName','owner','ownerId','ownerStakeholderId',
-  'ownerName','ownerDesignation','ownerStakeholderType',
-  'openDate','dueDate','priority','status','notes','risksAndDependencies','completedDate',
-  'financialYear','quarter',
+  'id', 'title', 'accountId', 'accountName', 'opportunityId', 'projectId', 'projectName', 'owner', 'ownerId', 'ownerStakeholderId',
+  'ownerName', 'ownerDesignation', 'ownerStakeholderType',
+  'openDate', 'dueDate', 'priority', 'status', 'notes', 'risksAndDependencies', 'completedDate',
+  'financialYear', 'quarter',
 ]);
 
 /** Default open_date for rows created without one (e.g. older API clients). */
@@ -37,21 +37,21 @@ function rowToActionItem(row: any, derive: (date: string) => { financialYear: st
   } = row;
   return {
     ...base,
-    accountId:     account_id,
-    accountName:   account_name ?? undefined,
+    accountId: account_id,
+    accountName: account_name ?? undefined,
     opportunityId: opportunity_id ?? undefined,
-    projectId:     project_id ?? undefined,
-    projectName:   project_name ?? undefined,
-    ownerId:       owner_id   ?? undefined,
+    projectId: project_id ?? undefined,
+    projectName: project_name ?? undefined,
+    ownerId: owner_id ?? undefined,
     // Legacy free-text fallback, shown only for historical rows a stakeholder
     // backfill couldn't resolve (owner_stakeholder_id is NULL).
-    owner:                base.owner ?? undefined,
-    ownerStakeholderId:   owner_stakeholder_id ?? undefined,
-    ownerName:            stakeholder_owner_name ?? base.owner ?? '',
-    ownerDesignation:     stakeholder_owner_designation ?? undefined,
+    owner: base.owner ?? undefined,
+    ownerStakeholderId: owner_stakeholder_id ?? undefined,
+    ownerName: stakeholder_owner_name ?? base.owner ?? '',
+    ownerDesignation: stakeholder_owner_designation ?? undefined,
     ownerStakeholderType: stakeholder_owner_type ?? undefined,
-    openDate:      open_date,
-    dueDate:       due_date,
+    openDate: open_date,
+    dueDate: due_date,
     completedDate: completed_date ?? undefined,
     risksAndDependencies: risks_and_dependencies ?? '',
     // Read-only reporting labels derived from the business date (due date).
@@ -80,7 +80,7 @@ export class ActionItemsService {
     private readonly filter: FilterContextService,
     private readonly access: AccessScopeService,
     private readonly bus: NotificationEventBus,
-  ) {}
+  ) { }
 
   /**
    * Role-aware visibility fragment for the action_items alias `ai`. An action
@@ -153,9 +153,9 @@ export class ActionItemsService {
     const scope = await this.childScope(f.userId, 1);
     const where = ['ai.is_deleted = FALSE', ...scope.conditions].join(' AND ');
 
-    const totalCol    = pg ? ', COUNT(*) OVER()::INTEGER AS __total' : '';
+    const totalCol = pg ? ', COUNT(*) OVER()::INTEGER AS __total' : '';
     const limitClause = pg ? ` LIMIT $${scope.nextIdx} OFFSET $${scope.nextIdx + 1}` : '';
-    const qParams     = pg ? [...scope.params, pg.limit, pg.offset] : scope.params;
+    const qParams = pg ? [...scope.params, pg.limit, pg.offset] : scope.params;
 
     const { rows } = await this.db.query(
       `SELECT ai.*, u.name AS owner_name, a.name AS account_name, proj.name AS project_name,
@@ -234,15 +234,15 @@ export class ActionItemsService {
     if (item.ownerId) {
       this.logger.log(`Emitting ActionItem:Created notification [userId=${item.ownerId} actionItemId=${item.id}]`);
       this.bus.emit({
-        userId:               item.ownerId,
-        type:                 'ActionItem',
-        eventType:            'Created',
-        title:                'Action Item Created',
-        message:              `Action item "${item.title}" has been created.`,
-        severity:             'Info',
+        userId: item.ownerId,
+        type: 'ActionItem',
+        eventType: 'Created',
+        title: 'Action Item Created',
+        message: `Action item "${item.title}" has been created.`,
+        severity: 'Info',
         notificationCategory: 'BUSINESS',
-        accountId:            item.accountId,
-        actionItemId:         item.id,
+        accountId: item.accountId,
+        actionItemId: item.id,
       });
     } else {
       this.logger.warn(`ActionItem created without ownerId — notification suppressed [actionItemId=${item.id}]`);
@@ -288,41 +288,41 @@ export class ActionItemsService {
       if (item.status === 'Completed' && existing.status !== 'Completed') {
         this.logger.log(`Emitting ActionItem:Completed [userId=${item.ownerId} actionItemId=${item.id}]`);
         this.bus.emit({
-          userId:               item.ownerId,
-          type:                 'ActionItem',
-          eventType:            'Completed',
-          title:                'Action Item Completed',
-          message:              `Action item "${item.title}" has been marked as completed.`,
-          severity:             'Success',
+          userId: item.ownerId,
+          type: 'ActionItem',
+          eventType: 'Completed',
+          title: 'Action Item Completed',
+          message: `Action item "${item.title}" has been marked as completed.`,
+          severity: 'Success',
           notificationCategory: 'BUSINESS',
-          accountId:            item.accountId,
-          actionItemId:         item.id,
+          accountId: item.accountId,
+          actionItemId: item.id,
         });
       } else if (item.status !== existing.status) {
         this.logger.log(`Emitting ActionItem:StatusChanged [userId=${item.ownerId} ${existing.status}→${item.status}]`);
         this.bus.emit({
-          userId:               item.ownerId,
-          type:                 'ActionItem',
-          eventType:            'StatusChanged',
-          title:                'Action Item Status Updated',
-          message:              `Action item "${item.title}" status changed to ${item.status}.`,
-          severity:             'Info',
+          userId: item.ownerId,
+          type: 'ActionItem',
+          eventType: 'StatusChanged',
+          title: 'Action Item Status Updated',
+          message: `Action item "${item.title}" status changed to ${item.status}.`,
+          severity: 'Info',
           notificationCategory: 'BUSINESS',
-          accountId:            item.accountId,
-          actionItemId:         item.id,
+          accountId: item.accountId,
+          actionItemId: item.id,
         });
       } else {
         this.logger.log(`Emitting ActionItem:Updated [userId=${item.ownerId} actionItemId=${item.id}]`);
         this.bus.emit({
-          userId:               item.ownerId,
-          type:                 'ActionItem',
-          eventType:            'Updated',
-          title:                'Action Item Updated',
-          message:              `Action item "${item.title}" has been updated.`,
-          severity:             'Info',
+          userId: item.ownerId,
+          type: 'ActionItem',
+          eventType: 'Updated',
+          title: 'Action Item Updated',
+          message: `Action item "${item.title}" has been updated.`,
+          severity: 'Info',
           notificationCategory: 'BUSINESS',
-          accountId:            item.accountId,
-          actionItemId:         item.id,
+          accountId: item.accountId,
+          actionItemId: item.id,
         });
       }
     }
@@ -336,15 +336,15 @@ export class ActionItemsService {
 
     if (item.ownerId) {
       this.bus.emit({
-        userId:               item.ownerId,
-        type:                 'ActionItem',
-        eventType:            'Deactivated',
-        title:                'Action Item Removed',
-        message:              `Action item "${item.title}" has been removed.`,
-        severity:             'Warning',
+        userId: item.ownerId,
+        type: 'ActionItem',
+        eventType: 'Deactivated',
+        title: 'Action Item Removed',
+        message: `Action item "${item.title}" has been removed.`,
+        severity: 'Warning',
         notificationCategory: 'BUSINESS',
-        accountId:            item.accountId,
-        actionItemId:         item.id,
+        accountId: item.accountId,
+        actionItemId: item.id,
       });
     }
     return { success: true };

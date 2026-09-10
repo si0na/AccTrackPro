@@ -26,7 +26,7 @@ export const ExpandableTextCell: React.FC<ExpandableTextCellProps> = ({
   text,
   label,
   emptyLabel = '—',
-  widthClass = 'w-[240px] max-w-full',
+  widthClass = 'w-full max-w-full min-w-0',
   lines = 3,
 }) => {
   const value = (text ?? '').trim();

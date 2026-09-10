@@ -151,7 +151,7 @@ export const renderOpportunityCell = (
         <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg font-bold shrink-0">
           <TrendingUp className="w-4 h-4" aria-hidden="true" />
         </div>
-        <p className="font-bold text-slate-900 text-sm hover:text-indigo-600 transition-colors min-w-0">
+        <p className="font-bold text-slate-900 text-sm hover:text-indigo-600 transition-colors min-w-0 truncate">
           {opp.name}
         </p>
       </div>
@@ -159,7 +159,7 @@ export const renderOpportunityCell = (
   }
 
   if (col.key === 'accountId') {
-    return <span className="text-slate-600 font-semibold">{accountName}</span>;
+    return <span className="text-slate-600 font-semibold block truncate">{accountName}</span>;
   }
 
   if (col.key === 'stage') {

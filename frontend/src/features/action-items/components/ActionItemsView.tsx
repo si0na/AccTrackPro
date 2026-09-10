@@ -210,14 +210,13 @@ export const ActionItemsView: React.FC = () => {
     setIsAddModalOpen(true);
   };
 
-  // Owners actually assigned in the current list — deduped by stakeholder id.
-  const ownersList: { id: string; label: string }[] = Array.from(
-    new Map(
-      actionItems
-        .filter(ai => !!ai.ownerStakeholderId)
-        .map(ai => [ai.ownerStakeholderId as string, ai.ownerName || ai.owner || 'Unknown']),
-    ).entries(),
-  ).map(([id, label]) => ({ id, label }));
+  // Owners actually assigned in the current list — deduped by owner name.
+  const ownersList: string[] = useMemo(() => {
+    const names = actionItems
+      .map(ai => (ai.ownerName || ai.owner || '').trim())
+      .filter(Boolean);
+    return Array.from(new Set(names)).sort((a, b) => a.localeCompare(b));
+  }, [actionItems]);
 
   const todayStr = getTodayISODate();
 
@@ -234,7 +233,7 @@ export const ActionItemsView: React.FC = () => {
         (ai.ownerName || ai.owner || '').toLowerCase().includes(q);
       if (!matches) return false;
     }
-    if (selectedOwner !== 'All' && ai.ownerStakeholderId !== selectedOwner) return false;
+    if (selectedOwner !== 'All' && (ai.ownerName || ai.owner || '').trim().toLowerCase() !== selectedOwner.trim().toLowerCase()) return false;
     if (!matchesGlobalAccount(ai.accountId, selectedAccountFilter)) return false;
     if (!isProjectMode && selectedOpportunityFilter !== 'All' && ai.opportunityId !== selectedOpportunityFilter) return false;
     if (isProjectMode && selectedProjectFilter !== 'All' && ai.projectId !== selectedProjectFilter) return false;
@@ -438,7 +437,7 @@ export const ActionItemsView: React.FC = () => {
           onChange={setSelectedOwner}
           options={[
             { value: 'All', label: 'All Owners' },
-            ...ownersList.map(owner => ({ value: owner.id, label: owner.label })),
+            ...ownersList.map(name => ({ value: name, label: name })),
           ]}
         />
 
@@ -528,7 +527,7 @@ export const ActionItemsView: React.FC = () => {
                       if (col.key === 'title') {
                         return (
                           <TableCell key={col.key}>
-                            <div className="flex items-center flex-wrap gap-2 min-w-[180px]">
+                            <div className="flex items-center gap-2 min-w-0">
                               <div className="flex-1 min-w-0">
                                 <InlineTextEditCell
                                   value={item.title}
@@ -647,15 +646,8 @@ export const ActionItemsView: React.FC = () => {
                       }
                       if (col.key === 'owner') {
                         return (
-                          <TableCell key={col.key} className="text-slate-600 font-semibold">
-                            <InlineTextEditCell
-                              value={item.ownerName || item.owner}
-                              placeholder="Set Owner..."
-                              disabled={!canEdit}
-                              onSave={async (v) => {
-                                await updateActionItem({ ...item, owner: v, ownerName: v });
-                              }}
-                            />
+                          <TableCell key={col.key} className="text-slate-600 font-semibold text-xs">
+                            <span className="truncate block max-w-full">{item.ownerName || item.owner || '—'}</span>
                           </TableCell>
                         );
                       }

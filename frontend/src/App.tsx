@@ -22,6 +22,7 @@ import { ExecutiveDashboardView } from '@/features/reports/components/ExecutiveD
 import { AuditLogView } from '@/features/reports/components/AuditLogView';
 import { PerformanceEvaluationView } from '@/features/reports/components/PerformanceEvaluationView';
 import { EmployeeAppreciationView } from '@/features/employee-appreciation/components/EmployeeAppreciationView';
+import { RisksView } from '@/features/risks/components/RisksView';
 import { AlertsAndNotificationsView } from '@/features/notifications/components/AlertsAndNotificationsView';
 import { AdministrationPage } from '@/features/administration/components/AdministrationPage';
 import { ImportExportLauncher } from '@/features/import-export';
@@ -282,6 +283,7 @@ const InnerLayout: React.FC = () => {
           {currentView === 'audit-log'              && <AuditLogView />}
           {currentView === 'performance-evaluation' && <PerformanceEvaluationView />}
           {currentView === 'employee-appreciation' && <EmployeeAppreciationView />}
+          {currentView === 'risks'                 && <RisksView />}
           {currentView === 'notifications'          && <AlertsAndNotificationsView />}
           {currentView === 'administration'         && <AdministrationPage />}
           </>

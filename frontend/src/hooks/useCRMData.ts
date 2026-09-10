@@ -12,15 +12,21 @@ import {
 } from '@/api/crm.api';
 
 const DEFAULT_ACCOUNTS_COLUMNS: ColumnConfig[] = [
-  { key: 'name',     name: 'Account Name',   isStandard: true, isPinned: true,  isDisplayed: true, type: 'text'   },
-  { key: 'type',     name: 'Account Type',   isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
-  { key: 'industry', name: 'Industry',       isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
-  { key: 'status',   name: 'Status',         isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
-  { key: 'health',   name: 'Health',         isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
-  { key: 'location', name: 'Location',       isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
-  { key: 'tower',    name: 'Tower',          isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
-  { key: 'since',    name: 'Customer Since', isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
-  { key: 'revenue',  name: 'Revenue',        isStandard: true, isPinned: false, isDisplayed: true, type: 'number' },
+  { key: 'name',                   name: 'Account Name',               isStandard: true, isPinned: true,  isDisplayed: true, type: 'text'   },
+  { key: 'type',                   name: 'Account Type',               isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
+  { key: 'industry',               name: 'Industry',                   isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
+  { key: 'status',                 name: 'Status',                     isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
+  { key: 'health',                 name: 'Health',                     isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
+  { key: 'location',               name: 'Location',                   isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
+  { key: 'tower',                  name: 'Tower',                      isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
+  { key: 'accountManagerId',        name: 'Account Manager',            isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
+  { key: 'practiceLeadId',          name: 'Practice Lead',              isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
+  { key: 'clientPartnerId',         name: 'Client Partner',             isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
+  { key: 'verticalHeadId',          name: 'Vertical Head',              isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
+  { key: 'clientStakeholderIds',    name: 'Client Stakeholders',        isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
+  { key: 'serviceProviderUserIds',  name: 'Service Provider Stakeholders', isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
+  { key: 'since',                  name: 'Customer Since',             isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
+  { key: 'revenue',                name: 'Revenue',                    isStandard: true, isPinned: false, isDisplayed: true, type: 'number' },
 ];
 
 const DEFAULT_OPPORTUNITIES_COLUMNS: ColumnConfig[] = [

@@ -234,7 +234,7 @@ export const TableHeadCell: React.FC<TableHeadCellProps> = ({
   return (
     <th
       data-colid={columnId}
-      className={`py-3 px-3 font-semibold text-label uppercase tracking-wider leading-snug align-middle ${
+      className={`py-3 px-3 font-semibold text-label uppercase tracking-wider leading-snug align-middle overflow-hidden ${
         align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
       } ${
         sticky === 'right'
@@ -287,7 +287,7 @@ export const TableCell: React.FC<TableCellProps> = ({
       : '';
   return (
     <td
-      className={`py-3 px-3 align-middle ${
+      className={`py-3 px-3 align-middle overflow-hidden ${
         align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
       } ${stickyCls} ${className}`}
       {...rest}

@@ -3,7 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
+import { useCRM } from '@/contexts/CRMContext';
 import { Account, InfluenceLevel, RelationshipStatus, Stakeholder, StakeholderType } from '@/types';
 import { Pencil, Users } from 'lucide-react';
 import {
@@ -28,6 +29,10 @@ const EMPTY_STAKEHOLDER: Omit<Stakeholder, 'id'> = {
   stakeholderType: '' as StakeholderType,
   department: '',
   linkedinProfileUrl: '',
+  primaryOwnerId: undefined,
+  secondaryOwnerId: undefined,
+  tertiaryOwnerId: undefined,
+  thirdOwnerId: undefined,
 };
 
 export interface StakeholderFormModalProps {
@@ -69,6 +74,30 @@ export const StakeholderFormModal: React.FC<StakeholderFormModalProps> = ({
   const isTypeLocked = !isEdit && !!lockedType;
   const [draft, setDraft] = useState<Omit<Stakeholder, 'id'>>(EMPTY_STAKEHOLDER);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const { stakeholders: allContextStakeholders } = useCRM();
+  const serviceProviderStakeholders = useMemo(() => {
+    const sps = allContextStakeholders.filter((s) => s.stakeholderType === 'SERVICE_PROVIDER');
+    const seenNames = new Set<string>();
+    const uniqueSps: Stakeholder[] = [];
+
+    // Keep active selections intact even if duplicate names exist in context
+    const selectedIds = new Set(
+      [draft.primaryOwnerId, draft.secondaryOwnerId, draft.tertiaryOwnerId, draft.thirdOwnerId].filter(Boolean)
+    );
+
+    for (const sp of sps) {
+      const nameKey = (sp.name || sp.email || '').trim().toLowerCase();
+      if (selectedIds.has(sp.id)) {
+        if (nameKey) seenNames.add(nameKey);
+        uniqueSps.push(sp);
+      } else if (nameKey && !seenNames.has(nameKey)) {
+        seenNames.add(nameKey);
+        uniqueSps.push(sp);
+      }
+    }
+    return uniqueSps;
+  }, [allContextStakeholders, draft.primaryOwnerId, draft.secondaryOwnerId, draft.tertiaryOwnerId, draft.thirdOwnerId]);
 
   // Re-seed the draft each time the dialog opens (create → blank, edit → record).
   useEffect(() => {
@@ -224,40 +253,90 @@ export const StakeholderFormModal: React.FC<StakeholderFormModalProps> = ({
           </FormGrid>
         </FormSection>
 
-        {/* Relationship section — Client stakeholders only. Hidden entirely for
-            Service Providers so the layout reflows and no space is reserved. */}
+        {/* Relationship & Ownership section — Client stakeholders only. */}
         {!isServiceProvider && (
-          <FormSection title="Relationship">
-            <FormGrid>
-              <FormField label="Influence Level" required>
-                <select
-                  required
-                  value={draft.influence}
-                  onChange={(e) => setDraft({ ...draft, influence: e.target.value as InfluenceLevel })}
-                  className={selectCls}
-                >
-                  <option value="" disabled>Select influence level…</option>
-                  <option value="High">High</option>
-                  <option value="Medium">Medium</option>
-                  <option value="Low">Low</option>
-                </select>
-              </FormField>
+          <>
+            <FormSection title="Relationship">
+              <FormGrid>
+                <FormField label="Influence Level" required>
+                  <select
+                    required
+                    value={draft.influence}
+                    onChange={(e) => setDraft({ ...draft, influence: e.target.value as InfluenceLevel })}
+                    className={selectCls}
+                  >
+                    <option value="" disabled>Select influence level…</option>
+                    <option value="High">High</option>
+                    <option value="Medium">Medium</option>
+                    <option value="Low">Low</option>
+                  </select>
+                </FormField>
 
-              <FormField label="Relationship Status" required>
-                <select
-                  required
-                  value={draft.relationship}
-                  onChange={(e) => setDraft({ ...draft, relationship: e.target.value as RelationshipStatus })}
-                  className={selectCls}
-                >
-                  <option value="" disabled>Select relationship…</option>
-                  <option value="Strong">Strong</option>
-                  <option value="Neutral">Neutral</option>
-                  <option value="Weak">Weak</option>
-                </select>
-              </FormField>
-            </FormGrid>
-          </FormSection>
+                <FormField label="Relationship Status" required>
+                  <select
+                    required
+                    value={draft.relationship}
+                    onChange={(e) => setDraft({ ...draft, relationship: e.target.value as RelationshipStatus })}
+                    className={selectCls}
+                  >
+                    <option value="" disabled>Select relationship…</option>
+                    <option value="Strong">Strong</option>
+                    <option value="Neutral">Neutral</option>
+                    <option value="Weak">Weak</option>
+                  </select>
+                </FormField>
+              </FormGrid>
+            </FormSection>
+
+            <FormSection title="Service Provider Ownership">
+              <FormGrid columns={3}>
+                <FormField label="Primary Owner (Service Provider)">
+                  <select
+                    value={draft.primaryOwnerId ?? ''}
+                    onChange={(e) => setDraft({ ...draft, primaryOwnerId: e.target.value || undefined })}
+                    className={selectCls}
+                  >
+                    <option value="">None / Select Primary Owner…</option>
+                    {serviceProviderStakeholders.map((sp) => (
+                      <option key={sp.id} value={sp.id}>
+                        {sp.name}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+
+                <FormField label="Secondary Owner (Service Provider)">
+                  <select
+                    value={draft.secondaryOwnerId ?? ''}
+                    onChange={(e) => setDraft({ ...draft, secondaryOwnerId: e.target.value || undefined })}
+                    className={selectCls}
+                  >
+                    <option value="">None / Select Secondary Owner…</option>
+                    {serviceProviderStakeholders.map((sp) => (
+                      <option key={sp.id} value={sp.id}>
+                        {sp.name}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+
+                <FormField label="Third Owner (Service Provider)">
+                  <select
+                    value={draft.tertiaryOwnerId ?? draft.thirdOwnerId ?? ''}
+                    onChange={(e) => setDraft({ ...draft, tertiaryOwnerId: e.target.value || undefined, thirdOwnerId: e.target.value || undefined })}
+                    className={selectCls}
+                  >
+                    <option value="">None / Select Third Owner…</option>
+                    {serviceProviderStakeholders.map((sp) => (
+                      <option key={sp.id} value={sp.id}>
+                        {sp.name}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+              </FormGrid>
+            </FormSection>
+          </>
         )}
 
         <FormSection title="Contact Details">

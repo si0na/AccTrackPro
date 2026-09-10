@@ -87,11 +87,7 @@ export function opportunityPostValidate(payload: Record<string, any>): string[] 
 export const STAKEHOLDER_FIELDS: ImportFieldDef[] = [
   { key: 'name', header: 'Name', type: 'string', required: true },
   { key: 'accountId', header: 'Account', type: 'reference', reference: 'account', required: true },
-  {
-    key: 'stakeholderType', header: 'Stakeholder Type', type: 'enum', options: STAKEHOLDER_TYPE, required: true,
-    aliases: { client: 'CLIENT', 'service provider': 'SERVICE_PROVIDER', 'service-provider': 'SERVICE_PROVIDER', serviceprovider: 'SERVICE_PROVIDER' },
-  },
-  { key: 'influence', header: 'Influence', type: 'enum', options: INFLUENCE, required: true },
+  { key: 'influence', header: 'Influence Level', type: 'enum', options: INFLUENCE, required: true },
   { key: 'relationship', header: 'Relationship', type: 'enum', options: RELATIONSHIP, required: true },
   { key: 'designation', header: 'Designation', type: 'string' },
   { key: 'department', header: 'Department', type: 'string' },

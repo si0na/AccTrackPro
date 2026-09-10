@@ -32,10 +32,22 @@ export class CreateStakeholderDto {
   @EmptyToUndefined()
   @IsOptional()
   @IsString()
-  @Matches(/^(https?:\/\/)?(www\.)?linkedin\.com\/.*$/i, {
-    message: 'LinkedIn Profile URL must be a valid LinkedIn URL (e.g. https://www.linkedin.com/in/username)',
-  })
   linkedinProfileUrl?: string;
+
+  @EmptyToUndefined()
+  @IsOptional()
+  @IsString()
+  primaryOwnerId?: string;
+
+  @EmptyToUndefined()
+  @IsOptional()
+  @IsString()
+  secondaryOwnerId?: string;
+
+  @EmptyToUndefined()
+  @IsOptional()
+  @IsString()
+  tertiaryOwnerId?: string;
 }
 
 export class UpdateStakeholderDto extends CreateStakeholderDto {

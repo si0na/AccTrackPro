@@ -260,27 +260,15 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
           />
         );
 
-      case 'owner':
-        if (mode === 'actionItems') {
-          return (
-            <ActionItemOwnerField
-              accountId={entity.accountId}
-              stakeholders={stakeholders}
-              value={entity.ownerStakeholderId}
-              onChange={(ownerStakeholderId) => onChange({ ownerStakeholderId })}
-              tone="amber"
-            />
-          );
-        }
+      case 'owner': {
+        const ownerNameStr = val || entity.ownerName || '—';
         return (
-          <input
-            type="text"
-            value={val ?? ''}
-            onChange={(e) => onChange({ owner: e.target.value })}
-            placeholder="e.g., John Smith"
-            className={inputCls}
-          />
+          <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg">
+            <span className="text-xs font-medium text-slate-700">{ownerNameStr}</span>
+            <span className="text-[10px] text-slate-400 font-medium">(read-only)</span>
+          </div>
         );
+      }
 
       case 'revenue': {
         if (mode === 'accounts') {

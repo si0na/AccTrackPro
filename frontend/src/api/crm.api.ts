@@ -9,7 +9,7 @@ import type {
   OpportunityForecastResult, OpportunityForecastPayload,
   Role, PermissionMatrix, MyPermissions,
   SqaRecord, SqaWeeklyHealth, SqaAvailableProject, SqaTrackerSnapshot, NpsResponse,
-  EmployeeAppreciation,
+  EmployeeAppreciation, AccountRisk, NormalizedRisk,
 } from '@/types';
 
 /** Attributes an administrator can pre-assign / edit on a user or whitelist row. */
@@ -751,4 +751,22 @@ export const employeeAppreciationApi = {
     apiClient.put<EmployeeAppreciation>(`/employee-appreciation/${id}`, data).then((r) => r.data),
   delete: (id: string) =>
     apiClient.delete<{ success: boolean }>(`/employee-appreciation/${id}`).then((r) => r.data),
+};
+
+export const accountRisksApi = {
+  getAll: (accountId?: string) =>
+    apiClient.get<AccountRisk[]>('/account-risks', { params: { accountId } }).then((r) => r.data),
+  getById: (id: string) =>
+    apiClient.get<AccountRisk>(`/account-risks/${id}`).then((r) => r.data),
+  create: (data: Omit<AccountRisk, 'id' | 'createdAt' | 'updatedAt'>) =>
+    apiClient.post<AccountRisk>('/account-risks', data).then((r) => r.data),
+  update: (id: string, data: Partial<AccountRisk>) =>
+    apiClient.put<AccountRisk>(`/account-risks/${id}`, data).then((r) => r.data),
+  delete: (id: string) =>
+    apiClient.delete<{ success: boolean }>(`/account-risks/${id}`).then((r) => r.data),
+};
+
+export const centralRisksApi = {
+  getAll: (filters?: { source?: string; accountId?: string; rag?: string; priority?: string; status?: string }) =>
+    apiClient.get<NormalizedRisk[]>('/risks/all', { params: filters }).then((r) => r.data),
 };

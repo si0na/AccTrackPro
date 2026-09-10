@@ -24,10 +24,9 @@ export function serviceProviderStatus(sp: Pick<ServiceProviderUser, 'isActive' |
  */
 export function serviceProviderOptionLabel(sp: ServiceProviderUser): string {
   const base = sp.name || sp.email || '(Unnamed)';
-  const designation = sp.designation ? ` (${sp.designation})` : '';
   const status = serviceProviderStatus(sp);
   const suffix = status === 'Active' ? '' : ` [${status}]`;
-  return `${base}${designation}${suffix}`;
+  return `${base}${suffix}`;
 }
 
 /**

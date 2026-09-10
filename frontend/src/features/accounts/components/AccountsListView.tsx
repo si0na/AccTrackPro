@@ -87,9 +87,13 @@ export const AccountsListView: React.FC = () => {
     usersApi.getAll().then(setUsers).catch(() => setUsers([]));
   }, []);
 
-  const { practiceLeads, clientPartners, verticalHeads } = useCRM();
+  const { practiceLeads, clientPartners, verticalHeads, accountManagers } = useCRM();
 
   // Role-filtered option lists ({ value: id, label: name }) for each FK field.
+  const accountManagerOptions = useMemo(
+    () => (accountManagers || []).map(u => ({ value: u.id, label: serviceProviderOptionLabel(u) })),
+    [accountManagers],
+  );
   const practiceLeadOptions = useMemo(
     () => (practiceLeads || []).map(u => ({ value: u.id, label: serviceProviderOptionLabel(u) })),
     [practiceLeads],
@@ -415,7 +419,7 @@ export const AccountsListView: React.FC = () => {
                   const canUpdate = can('accounts', 'update');
                   return (
                     <TableRow key={acc.id}>
-                      {displayedConfigs.filter(col => col.key !== 'owner').map(col => {
+                      {displayedConfigs.map(col => {
                         if (col.key === 'name') {
                           return (
                             <TableCell key={col.key} onClick={() => handleRowClick(acc.id)} className="cursor-pointer">
@@ -460,7 +464,99 @@ export const AccountsListView: React.FC = () => {
                         if (col.key === 'owner') {
                           return (
                             <TableCell key={col.key} className="text-slate-600 font-medium">
-                              {acc.owner}
+                              {acc.owner || '—'}
+                            </TableCell>
+                          );
+                        }
+                        if (col.key === 'accountManagerId') {
+                          return (
+                            <TableCell key={col.key} onClick={(e) => e.stopPropagation()}>
+                              <InlineSelectEditCell
+                                value={acc.accountManagerId || ''}
+                                options={accountManagerOptions}
+                                disabled={!canUpdate}
+                                placeholder="Select Account Manager…"
+                                onSave={async (val) => { await updateAccount({ ...acc, accountManagerId: val || null }); }}
+                              />
+                            </TableCell>
+                          );
+                        }
+                        if (col.key === 'practiceLeadId') {
+                          return (
+                            <TableCell key={col.key} onClick={(e) => e.stopPropagation()}>
+                              <InlineSelectEditCell
+                                value={acc.practiceLeadId || ''}
+                                options={practiceLeadOptions}
+                                disabled={!canUpdate}
+                                placeholder="Select Practice Lead…"
+                                onSave={async (val) => { await updateAccount({ ...acc, practiceLeadId: val || null }); }}
+                              />
+                            </TableCell>
+                          );
+                        }
+                        if (col.key === 'clientPartnerId') {
+                          return (
+                            <TableCell key={col.key} onClick={(e) => e.stopPropagation()}>
+                              <InlineSelectEditCell
+                                value={acc.clientPartnerId || ''}
+                                options={clientPartnerOptions}
+                                disabled={!canUpdate}
+                                placeholder="Select Client Partner…"
+                                onSave={async (val) => { await updateAccount({ ...acc, clientPartnerId: val || null }); }}
+                              />
+                            </TableCell>
+                          );
+                        }
+                        if (col.key === 'verticalHeadId') {
+                          return (
+                            <TableCell key={col.key} onClick={(e) => e.stopPropagation()}>
+                              <InlineSelectEditCell
+                                value={acc.verticalHeadId || ''}
+                                options={verticalHeadOptions}
+                                disabled={!canUpdate}
+                                placeholder="Select Vertical Head…"
+                                onSave={async (val) => { await updateAccount({ ...acc, verticalHeadId: val || null }); }}
+                              />
+                            </TableCell>
+                          );
+                        }
+                        if (col.key === 'clientStakeholderIds') {
+                          const accountClientStakeholders = (stakeholders || []).filter(
+                            (s) => (acc.clientStakeholderIds && acc.clientStakeholderIds.includes(s.id)) || (s.accountId === acc.id && s.stakeholderType === 'CLIENT')
+                          );
+                          return (
+                            <TableCell key={col.key} onClick={(e) => e.stopPropagation()}>
+                              {accountClientStakeholders.length === 0 ? (
+                                <span className="text-slate-400 font-medium italic text-xs">No client stakeholders</span>
+                              ) : (
+                                <div className="flex flex-wrap gap-1 max-w-[220px]">
+                                  {accountClientStakeholders.map((stk) => (
+                                    <span key={stk.id} className="px-2 py-0.5 rounded text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200 truncate max-w-[150px]" title={`${stk.name} (${stk.designation || 'Client'})`}>
+                                      {stk.name}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
+                            </TableCell>
+                          );
+                        }
+                        if (col.key === 'serviceProviderUserIds') {
+                          const accountSpUsers = (serviceProviders || []).filter(
+                            (sp) => acc.serviceProviderUserIds && acc.serviceProviderUserIds.includes(sp.id)
+                          );
+                          return (
+                            <TableCell key={col.key} onClick={(e) => e.stopPropagation()}>
+                              {accountSpUsers.length === 0 ? (
+                                <span className="text-slate-400 font-medium italic text-xs">No SP stakeholders</span>
+                              ) : (
+                                <div className="flex flex-wrap gap-1 max-w-[220px]">
+                                  {accountSpUsers.map((sp) => (
+                                    <span key={sp.id} className="px-2 py-0.5 rounded text-[11px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200 truncate max-w-[150px]" title={`${sp.name} (${sp.designation || 'Service Provider'})`}>
+                                      {sp.name}
+                                    </span>
+                                  ))}
+                                </div>
+                              )}
                             </TableCell>
                           );
                         }
