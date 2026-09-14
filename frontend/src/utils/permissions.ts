@@ -29,6 +29,7 @@ export const VIEW_MODULE: Record<ViewType, string | null> = {
   'audit-log':              null,
   'performance-evaluation': 'performance',
   'employee-appreciation':  'employeeAppreciation',
+  'employee-rewards-recognition': 'employeeRewardsRecognition',
   risks:                    'risks',
 };
 
@@ -43,5 +44,5 @@ export function moduleForView(view: ViewType): string | null {
  */
 export function canAccessView(view: ViewType, can: (m: string, p: string) => boolean): boolean {
   const moduleKey = moduleForView(view);
-  return moduleKey === null || can(moduleKey, 'view');
+  return moduleKey === null || can(moduleKey, 'view') || can(moduleKey, 'view-all');
 }

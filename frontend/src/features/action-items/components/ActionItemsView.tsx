@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
 import { ActionItem, ActionItemStatus, PriorityLevel } from '@/types';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -86,27 +86,49 @@ export const ActionItemsView: React.FC = () => {
   } = useCRM();
 
   const isProjectMode = currentView === 'projectActionItems';
+  const isDrillDown = cameFromDashboard || openActionItemsFilter || overdueActionItemsFilter || dueThisWeekFilter;
 
-  const actionItems = useMemo(() => {
-    return isProjectMode
-      ? rawActionItems.filter(ai => !!ai.projectId)
-      : rawActionItems.filter(ai => !ai.projectId);
-  }, [rawActionItems, isProjectMode]);
+  // Type filter state: 'AccountOpp' | 'Project'
+  const [selectedTypeFilter, setSelectedTypeFilter] = useState<'AccountOpp' | 'Project'>(() => {
+    return isProjectMode ? 'Project' : 'AccountOpp';
+  });
 
-  const deactivatedActionItems = useMemo(() => {
-    return isProjectMode
-      ? rawDeactivatedActionItems.filter(ai => !!ai.projectId)
-      : rawDeactivatedActionItems.filter(ai => !ai.projectId);
-  }, [rawDeactivatedActionItems, isProjectMode]);
+  useEffect(() => {
+    setSelectedTypeFilter(isProjectMode ? 'Project' : 'AccountOpp');
+  }, [isProjectMode]);
+
+  const baseRawActionItems = useMemo(() => {
+    if (isProjectMode || selectedTypeFilter === 'Project') {
+      return rawActionItems.filter(ai => !!ai.projectId);
+    }
+    if (selectedTypeFilter === 'AccountOpp') {
+      return rawActionItems.filter(ai => !ai.projectId);
+    }
+    return rawActionItems;
+  }, [rawActionItems, isProjectMode, selectedTypeFilter]);
+
+  const baseRawDeactivatedActionItems = useMemo(() => {
+    if (isProjectMode || selectedTypeFilter === 'Project') {
+      return rawDeactivatedActionItems.filter(ai => !!ai.projectId);
+    }
+    if (selectedTypeFilter === 'AccountOpp') {
+      return rawDeactivatedActionItems.filter(ai => !ai.projectId);
+    }
+    return rawDeactivatedActionItems;
+  }, [rawDeactivatedActionItems, isProjectMode, selectedTypeFilter]);
+
+  const actionItems = baseRawActionItems;
+  const deactivatedActionItems = baseRawDeactivatedActionItems;
+
+  const resolveAccount = useCallback((accountId?: string) =>
+    accountId ? (accounts.find(a => a.id === accountId) || deactivatedAccounts.find(a => a.id === accountId)) : undefined,
+  [accounts, deactivatedAccounts]);
 
   // Single-record focus set when the user opens an action-item notification
   const focusedActionItemId = focusedRecord?.type === 'actionItem' ? focusedRecord.id : null;
   const focusedItem = focusedActionItemId
     ? actionItems.find(ai => ai.id === focusedActionItemId)
     : undefined;
-
-  const resolveAccount = (accountId: string) =>
-    accounts.find(a => a.id === accountId) || deactivatedAccounts.find(a => a.id === accountId);
 
   // Sidebar Open State
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -129,7 +151,7 @@ export const ActionItemsView: React.FC = () => {
 
   // Client-side pagination over the already-filtered/sorted rows (display only)
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(50);
 
   // The Global Account Selector represents a workspace switch — clear
   // page-specific state so the newly selected account starts from a clean view.
@@ -220,40 +242,53 @@ export const ActionItemsView: React.FC = () => {
 
   const todayStr = getTodayISODate();
 
-  // Operational task list — module-specific filters only, never fiscal-period-based.
-  const filteredActionItems = actionItems.filter(ai => {
+  const matchesCommonFilters = useCallback((ai: ActionItem) => {
     if (focusedActionItemId && ai.id !== focusedActionItemId) return false;
+
+    const effAccId = ai.accountId || (ai.projectId ? projects.find(p => p.id === ai.projectId)?.accountId : '') || '';
+    if (!matchesGlobalAccount(effAccId, selectedAccountFilter)) return false;
+
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
-      const account = resolveAccount(ai.accountId);
+      const account = resolveAccount(effAccId);
       const matches =
         ai.title.toLowerCase().includes(q) ||
         (ai.notes || '').toLowerCase().includes(q) ||
         (account?.name || '').toLowerCase().includes(q) ||
-        (ai.ownerName || ai.owner || '').toLowerCase().includes(q);
+        (ai.ownerName || ai.owner || '').toLowerCase().includes(q) ||
+        (ai.projectName || '').toLowerCase().includes(q);
       if (!matches) return false;
     }
+
     if (selectedOwner !== 'All' && (ai.ownerName || ai.owner || '').trim().toLowerCase() !== selectedOwner.trim().toLowerCase()) return false;
-    if (!matchesGlobalAccount(ai.accountId, selectedAccountFilter)) return false;
-    if (!isProjectMode && selectedOpportunityFilter !== 'All' && ai.opportunityId !== selectedOpportunityFilter) return false;
-    if (isProjectMode && selectedProjectFilter !== 'All' && ai.projectId !== selectedProjectFilter) return false;
+    if (selectedOpportunityFilter !== 'All' && ai.opportunityId !== selectedOpportunityFilter) return false;
+    if (selectedProjectFilter !== 'All' && ai.projectId !== selectedProjectFilter) return false;
     if (selectedStatus !== 'All' && ai.status !== selectedStatus) return false;
     if (selectedPriority !== 'All' && ai.priority !== selectedPriority) return false;
-    // Quick due-date filters apply to open (not completed/cancelled) items with a valid date.
+
     if (dueFilter === 'Overdue' &&
-        (!isOpenActionItemStatus(ai.status) || !ai.dueDate || ai.dueDate >= todayStr)) return false;
+        (!isOpenActionItemStatus(ai.status) || !ai.dueDate || !/^\d{4}-\d{2}-\d{2}$/.test(ai.dueDate) || ai.dueDate >= todayStr)) return false;
     if (dueFilter === 'Due Today' &&
         (!isOpenActionItemStatus(ai.status) || ai.dueDate !== todayStr)) return false;
     if (dueFilter === 'Due This Week' &&
         (!isOpenActionItemStatus(ai.status) || !isDueThisWeek(ai.dueDate))) return false;
-    // Dashboard "Due This Week" drill-down: same rule as the dashboard widget.
+
     if (dueThisWeekFilter && (!isOpenActionItemStatus(ai.status) || !isDueThisWeek(ai.dueDate))) return false;
-    // Dashboard "My Action Items" drill-down: only open items.
     if (openActionItemsFilter && !isOpenActionItemStatus(ai.status)) return false;
-    // Dashboard "Overdue Tasks" drill-down: open items past their due date.
-    if (overdueActionItemsFilter && (!isOpenActionItemStatus(ai.status) || !ai.dueDate || ai.dueDate >= todayStr)) return false;
+    if (overdueActionItemsFilter && (!isOpenActionItemStatus(ai.status) || !ai.dueDate || !/^\d{4}-\d{2}-\d{2}$/.test(ai.dueDate) || ai.dueDate >= todayStr)) return false;
+
     return true;
-  });
+  }, [
+    focusedActionItemId, selectedAccountFilter, searchQuery, selectedOwner,
+    selectedOpportunityFilter, selectedProjectFilter, selectedStatus, selectedPriority,
+    dueFilter, dueThisWeekFilter, openActionItemsFilter, overdueActionItemsFilter,
+    todayStr, projects, resolveAccount
+  ]);
+
+  // Operational task list — module-specific filters only, never fiscal-period-based.
+  const filteredActionItems = useMemo(() => {
+    return baseRawActionItems.filter(matchesCommonFilters);
+  }, [baseRawActionItems, matchesCommonFilters]);
 
   const sortedActionItems = [...filteredActionItems].sort((a, b) =>
     compareForSort(getSortValue(a, sortField), getSortValue(b, sortField), sortDirection),
@@ -289,15 +324,36 @@ export const ActionItemsView: React.FC = () => {
 
   const displayedConfigs = useMemo(() => {
     const cols = actionItemsColumnConfig.filter(col => col.isDisplayed);
-    if (isProjectMode) {
+    if (selectedTypeFilter === 'Project') {
       return cols.filter(col => col.key !== 'opportunityId');
     }
-    return cols.filter(col => col.key !== 'projectId');
-  }, [actionItemsColumnConfig, isProjectMode]);
+    if (selectedTypeFilter === 'AccountOpp') {
+      return cols.filter(col => col.key !== 'projectId');
+    }
+    return cols;
+  }, [actionItemsColumnConfig, selectedTypeFilter]);
 
   // User-added (non-standard) columns widen the table past the viewport and
   // trigger horizontal scroll; the default column set always fits the screen.
   const extraColumnCount = displayedConfigs.filter(col => !col.isStandard).length;
+
+  const headerTitle = overdueActionItemsFilter
+    ? "Overdue Action Items"
+    : openActionItemsFilter
+    ? "Open Action Items"
+    : dueThisWeekFilter
+    ? "Action Items Due This Week"
+    : isProjectMode
+    ? "Project Action Items"
+    : "Governance & Action Items";
+
+  const headerSubtitle = overdueActionItemsFilter
+    ? "Review and resolve overdue action items across all accounts and projects."
+    : openActionItemsFilter
+    ? "Track and manage all open action items requiring execution."
+    : isProjectMode
+    ? "Coordinate delivery, track critical project tasks, and resolve blocks instantly."
+    : "Coordinate delivery, track critical dependencies, and resolve blocks instantly.";
 
   if (loading) return <LoadingState label="Loading action items…" />;
 
@@ -326,7 +382,7 @@ export const ActionItemsView: React.FC = () => {
 
           {overdueActionItemsFilter && (
             <FilterChip
-              label="Showing overdue tasks"
+              label="Showing overdue action items"
               active
               onClick={() => setOverdueActionItemsFilter(false)}
             />
@@ -344,8 +400,8 @@ export const ActionItemsView: React.FC = () => {
       )}
 
       <PageHeader
-        title={isProjectMode ? "Project Action Items" : "Governance & Action Items"}
-        subtitle={isProjectMode ? "Coordinate delivery, track critical project tasks, and resolve blocks instantly." : "Coordinate delivery, track critical dependencies, and resolve blocks instantly."}
+        title={headerTitle}
+        subtitle={headerSubtitle}
         actions={
           <>
             <Button
@@ -400,11 +456,11 @@ export const ActionItemsView: React.FC = () => {
         <SearchBar
           value={searchQuery}
           onChange={setSearchQuery}
-          placeholder="Search tasks, accounts, owners..."
+          placeholder="Search tasks, accounts, owners, projects..."
           className="w-full"
         />
 
-        {isProjectMode ? (
+        {selectedTypeFilter !== 'AccountOpp' && (
           <FilterSelect
             label="Project"
             hideLabel
@@ -417,7 +473,9 @@ export const ActionItemsView: React.FC = () => {
                 .map(p => ({ value: p.id, label: p.name })),
             ]}
           />
-        ) : (
+        )}
+
+        {selectedTypeFilter !== 'Project' && (
           <FilterSelect
             label="Opportunity"
             hideLabel
@@ -625,6 +683,13 @@ export const ActionItemsView: React.FC = () => {
                         );
                       }
                       if (col.key === 'projectId') {
+                        if (!item.projectId) {
+                          return (
+                            <TableCell key={col.key} className="text-slate-400 font-medium italic text-xs">
+                              Not Applicable
+                            </TableCell>
+                          );
+                        }
                         const proj = projects.find(p => p.id === item.projectId);
                         const projOptions = [
                           { value: '', label: '— None —' },

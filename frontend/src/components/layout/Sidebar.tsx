@@ -25,6 +25,7 @@ import {
   ClipboardCheck,
   BadgeCheck,
   HeartHandshake,
+  Award,
   AlertTriangle,
   LogOut,
   Menu
@@ -41,6 +42,12 @@ export const Sidebar: React.FC = () => {
     projects: allProjects,
     actionItems: allActionItems,
     stakeholders: allStakeholders,
+    serviceProviders: allServiceProviders,
+    sqaRecords: allSqaRecords,
+    risks: allRisks,
+    performanceEvaluations: allPerformanceEvaluations,
+    employeeAppreciations: allEmployeeAppreciations,
+    employeeRewardsRecognitions: allEmployeeRewardsRecognitions,
     globalAccountId,
     unreadNotificationCount,
     setCameFromDashboard,
@@ -54,8 +61,23 @@ export const Sidebar: React.FC = () => {
   const accounts = allAccounts.filter(a => matchesGlobalAccount(a.id, globalAccountId));
   const opportunities = allOpportunities.filter(o => matchesGlobalAccount(o.accountId, globalAccountId));
   const projects = allProjects.filter(p => matchesGlobalAccount(p.accountId, globalAccountId));
-  const actionItems = allActionItems.filter(ai => matchesGlobalAccount(ai.accountId, globalAccountId));
-  const stakeholders = allStakeholders.filter(s => matchesGlobalAccount(s.accountId, globalAccountId) && s.stakeholderType === 'CLIENT');
+  const actionItems = allActionItems.filter(ai => {
+    const effAccId = ai.accountId || (ai.projectId ? allProjects.find(p => p.id === ai.projectId)?.accountId : '');
+    return matchesGlobalAccount(effAccId, globalAccountId);
+  });
+  const normalActionItemsCount = actionItems.filter(ai => !ai.projectId).length;
+  const projectActionItemsCount = actionItems.filter(ai => !!ai.projectId).length;
+
+  const clientStakeholdersCount = allStakeholders.filter(s => s.stakeholderType === 'CLIENT' && matchesGlobalAccount(s.accountId, globalAccountId)).length;
+  const activeServiceProvidersCount = (allServiceProviders ?? []).filter(sp => sp.isActive !== false).length;
+  const totalStakeholdersCount = clientStakeholdersCount + activeServiceProvidersCount;
+
+  const risksAndIssuesCount = (allRisks ?? []).filter(r => matchesGlobalAccount(r.accountId, globalAccountId)).length;
+  const sqaCount = (allSqaRecords ?? []).filter(s => matchesGlobalAccount(s.accountId, globalAccountId)).length;
+
+  const employeeAppreciationCount = (allEmployeeAppreciations ?? []).filter(e => matchesGlobalAccount(e.accountId, globalAccountId)).length;
+  const employeeRewardsCount = (allEmployeeRewardsRecognitions ?? []).length;
+  const employeeFeedbackCount = (allPerformanceEvaluations ?? []).filter(p => matchesGlobalAccount(p.accountId, globalAccountId)).length;
 
   const sections = [
     {
@@ -83,19 +105,19 @@ export const Sidebar: React.FC = () => {
           id: 'actionItems' as ViewType,
           label: 'Action Items',
           icon: CheckSquare,
-          badge: actionItems.filter(ai => !ai.projectId && isOpenActionItemStatus(ai.status)).length,
+          badge: normalActionItemsCount,
         },
         {
           id: 'stakeholders' as ViewType,
           label: 'Stakeholders',
           icon: Users,
-          badge: stakeholders.length,
+          badge: totalStakeholdersCount,
         },
         {
           id: 'risks' as ViewType,
           label: 'Risks & Issues',
           icon: AlertTriangle,
-          badge: null,
+          badge: risksAndIssuesCount,
         },
       ],
     },
@@ -112,15 +134,13 @@ export const Sidebar: React.FC = () => {
           id: 'projectActionItems' as ViewType,
           label: 'Project Action Items',
           icon: CheckSquare,
-          badge: actionItems.filter(ai => ai.projectId && isOpenActionItemStatus(ai.status)).length,
+          badge: projectActionItemsCount,
         },
         {
-          // SQA records aren't held in CRM context (the module fetches its own
-          // list), so there is no count to badge here.
           id: 'sqa' as ViewType,
           label: 'SQA',
           icon: BadgeCheck,
-          badge: null,
+          badge: sqaCount,
         },
       ],
     },
@@ -148,13 +168,19 @@ export const Sidebar: React.FC = () => {
           id: 'employee-appreciation' as ViewType,
           label: 'Employee Appreciation',
           icon: HeartHandshake,
-          badge: null,
+          badge: employeeAppreciationCount,
+        },
+        {
+          id: 'employee-rewards-recognition' as ViewType,
+          label: 'Employee R&R',
+          icon: Award,
+          badge: employeeRewardsCount,
         },
         {
           id: 'performance-evaluation' as ViewType,
           label: 'Employee Feedback',
           icon: ClipboardCheck,
-          badge: null,
+          badge: employeeFeedbackCount,
         },
       ],
     },
@@ -163,9 +189,9 @@ export const Sidebar: React.FC = () => {
       items: [
         {
           id: 'notifications' as ViewType,
-          label: 'Notifications',
+          label: 'Alerts & Notifications',
           icon: Bell,
-          badge: unreadNotificationCount > 0 ? unreadNotificationCount : null
+          badge: unreadNotificationCount,
         },
         {
           id: 'audit-log' as ViewType,
@@ -194,7 +220,7 @@ export const Sidebar: React.FC = () => {
 
   return (
     <aside className={`bg-slate-900 flex flex-col h-screen shrink-0 border-r border-slate-800 transition-all duration-300 ease-in-out ${
-      sidebarCollapsed ? 'w-16' : 'w-60'
+      sidebarCollapsed ? 'w-16' : 'w-64'
     }`}>
       {/* Brand Logo Header with Toggle Button */}
       <div className={`p-4 border-b border-slate-800/60 flex ${
@@ -224,12 +250,12 @@ export const Sidebar: React.FC = () => {
 
       {/* Navigation Links */}
       <nav className={`flex-1 space-y-1 overflow-y-auto no-scrollbar py-4 ${
-        sidebarCollapsed ? 'px-2' : 'px-4'
+        sidebarCollapsed ? 'px-2' : 'px-3'
       }`}>
         {visibleSections.map((section, sectionIndex) => (
           <div key={section.label} className={sectionIndex > 0 ? 'pt-3 mt-3 border-t border-slate-800/60' : ''}>
             {!sidebarCollapsed && (
-              <div className="px-3 pb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+              <div className="px-2.5 pb-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap">
                 {section.label}
               </div>
             )}
@@ -256,25 +282,29 @@ export const Sidebar: React.FC = () => {
                     className={`flex items-center rounded-lg text-sm font-medium transition-all duration-150 group cursor-pointer ${
                       sidebarCollapsed
                         ? 'justify-center w-10 h-10 mx-auto px-0'
-                        : 'w-full justify-between px-3 py-2'
+                        : 'w-full justify-between gap-2 px-2.5 py-2'
                     } ${
                       isActive
                         ? 'bg-slate-800 text-white font-semibold'
                         : 'text-slate-400 hover:bg-slate-800/50 hover:text-white'
                     }`}
                   >
-                    <div className={`flex items-center ${sidebarCollapsed ? 'space-x-0' : 'space-x-3'}`}>
+                    <div className={`flex items-center min-w-0 flex-1 ${sidebarCollapsed ? 'justify-center space-x-0' : 'space-x-2'}`}>
                       <Icon
                         className={`w-4 h-4 transition-colors shrink-0 ${
                           isActive ? 'text-white' : 'text-slate-500 group-hover:text-slate-300'
                         }`}
                       />
-                      {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
+                      {!sidebarCollapsed && (
+                        <span className="whitespace-nowrap text-xs sm:text-[13px] font-medium">
+                          {item.label}
+                        </span>
+                      )}
                     </div>
 
                     {!sidebarCollapsed && item.badge !== null && (
                       <span
-                        className={`text-[11px] px-2 py-0.5 rounded-full font-bold transition-all shrink-0 ${
+                        className={`text-[11px] px-2 py-0.5 rounded-full font-bold transition-all shrink-0 ml-auto ${
                           isActive
                             ? 'bg-slate-700 text-white'
                             : 'bg-slate-800 text-slate-400 group-hover:bg-slate-700 group-hover:text-white'

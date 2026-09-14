@@ -53,6 +53,8 @@ export interface ImportFieldDef {
   key: string;
   /** User-friendly column header shown in templates and exported files. */
   header: string;
+  /** Optional column header aliases for backward compatibility on import. */
+  headerAliases?: string[];
   type: ImportFieldType;
   required?: boolean;
   /** Allowed values for `enum` fields (canonical casing). */
@@ -60,7 +62,7 @@ export interface ImportFieldDef {
   /** Lowercased alias → canonical option, for friendlier enum input. */
   aliases?: Record<string, string>;
   /** For `reference` fields: which entity the human value resolves against. */
-  reference?: 'account' | 'opportunity' | 'stakeholder';
+  reference?: 'account' | 'opportunity' | 'stakeholder' | 'project' | 'user';
   /** Extra format validation for `string` fields. */
   format?: 'email' | 'phone' | 'website';
   /** Applied when the cell is empty. */

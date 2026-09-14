@@ -12,11 +12,13 @@ export class ProjectDependenciesController {
   constructor(private readonly dependenciesService: ProjectDependenciesService) {}
 
   @Get()
+  @RequirePermission('projects', 'view')
   findAll(@Param('projectId') projectId: string, @AuthUser() authUser: JwtPayload) {
     return this.dependenciesService.findAll(projectId, authUser.sub);
   }
 
   @Post()
+  @RequirePermission('projects', 'create')
   @HttpCode(HttpStatus.CREATED)
   create(
     @Param('projectId') projectId: string,
@@ -27,6 +29,7 @@ export class ProjectDependenciesController {
   }
 
   @Put(':id')
+  @RequirePermission('projects', 'update')
   update(
     @Param('projectId') projectId: string,
     @Param('id') id: string,

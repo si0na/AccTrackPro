@@ -16,7 +16,7 @@ import { BulkModuleAdapter } from '../import-export/bulk-adapter';
 // older clients are stripped instead of leaking into custom_data — fiscal
 // periods are derived from dates and never stored.
 const KNOWN = new Set([
-  'id','name','type','health','owner','ownerId','revenue','industry','since',
+  'id','name','type','health','healthReason','owner','ownerId','revenue','industry','since',
   'website','phone','email','address','location','description','tower',
   'accountManagerId','practiceLeadId','clientPartnerId','verticalHeadId',
   'financial_year','quarter','financialYear',
@@ -37,7 +37,7 @@ function rowToAccount(row: any): Account {
   // Clean custom_data by stripping first-class fields to avoid overwriting them
   const cleanedCustomData = { ...custom_data };
   const firstClassFields = [
-    'id', 'name', 'type', 'health', 'owner', 'ownerId', 'revenue', 'industry', 'since',
+    'id', 'name', 'type', 'health', 'healthReason', 'owner', 'ownerId', 'revenue', 'industry', 'since',
     'website', 'phone', 'email', 'address', 'location', 'description', 'tower',
     'accountManagerId', 'accountManagerName',
     'practiceLeadId', 'practiceLeadName',
@@ -51,6 +51,7 @@ function rowToAccount(row: any): Account {
 
   return {
     ...base,
+    healthReason: row.health_reason ?? cleanedCustomData.healthReason ?? undefined,
     revenue:   Number(base.revenue),
     ownerId:   owner_id   ?? undefined,
     owner:     owner_name ?? base.owner ?? '',
@@ -150,7 +151,18 @@ export class AccountsService {
     pg: Pagination | null = null,
   ): Promise<Account[] | Paginated<Account>> {
     const f = this.filter.normalize(params);
-    const { conditions, params: qParams, nextIdx } = await this.accountScope(f.userId, 1);
+    const { conditions, params: qParams, nextIdx: scopeNextIdx } = await this.accountScope(f.userId, 1);
+    let nextIdx = scopeNextIdx;
+
+    if (f.accountManagerId) {
+      conditions.push(`a.account_manager_id = $${nextIdx++}`);
+      qParams.push(f.accountManagerId);
+    }
+    if (f.ownerId) {
+      conditions.push(`a.owner_id = $${nextIdx++}`);
+      qParams.push(f.ownerId);
+    }
+
     const where = ['a.is_deleted = FALSE', ...conditions].join(' AND ');
 
     if (!pg) {
@@ -216,13 +228,13 @@ export class AccountsService {
 
     const { rows } = await this.db.query(
       `INSERT INTO accounts
-         (id, name, type, health, owner_id, owner,
+         (id, name, type, health, health_reason, owner_id, owner,
           account_manager_id, practice_lead_id, client_partner_id, vertical_head_id,
           revenue, industry, since, website, phone, email, address, location, description, tower, custom_data)
-       VALUES (gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+       VALUES (gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
        RETURNING *`,
       [
-        name, data.type, data.health,
+        name, data.type, data.health, data.healthReason ?? null,
         data.ownerId ?? null, ownerDisplayName,
         data.accountManagerId ?? null, data.practiceLeadId ?? null,
         data.clientPartnerId ?? null, data.verticalHeadId ?? null,
@@ -338,15 +350,17 @@ export class AccountsService {
     const clientPartnerId  = keepFk(data.clientPartnerId,  existing.clientPartnerId);
     const verticalHeadId   = keepFk(data.verticalHeadId,   existing.verticalHeadId);
 
+    const healthReason = data.healthReason !== undefined ? (data.healthReason || null) : (existing.healthReason ?? null);
+
     await this.db.query(
       `UPDATE accounts SET
-         name=$1, type=$2, health=$3, owner_id=$4, owner=$5,
-         account_manager_id=$6, practice_lead_id=$7, client_partner_id=$8, vertical_head_id=$9,
-         revenue=$10, industry=$11, since=$12, website=$13, phone=$14, email=$15,
-         address=$16, location=$17, description=$18, tower=$19, custom_data=$20, updated_at=NOW()
-       WHERE id=$21 AND is_deleted=FALSE`,
+         name=$1, type=$2, health=$3, health_reason=$4, owner_id=$5, owner=$6,
+         account_manager_id=$7, practice_lead_id=$8, client_partner_id=$9, vertical_head_id=$10,
+         revenue=$11, industry=$12, since=$13, website=$14, phone=$15, email=$16,
+         address=$17, location=$18, description=$19, tower=$20, custom_data=$21, updated_at=NOW()
+       WHERE id=$22 AND is_deleted=FALSE`,
       [
-        name, data.type, data.health,
+        name, data.type, data.health, healthReason,
         effectiveOwnerId, ownerDisplayName || existing.owner,
         accountManagerId, practiceLeadId, clientPartnerId, verticalHeadId,
         data.revenue ?? 0, data.industry ?? '', since,

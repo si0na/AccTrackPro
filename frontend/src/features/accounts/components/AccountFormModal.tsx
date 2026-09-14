@@ -209,6 +209,16 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
                   ))}
                 </select>
               </FormField>
+
+              <FormField label="Reason for Health" wide>
+                <input
+                  type="text"
+                  value={draft.healthReason || ''}
+                  onChange={(e) => setDraft({ ...draft, healthReason: e.target.value })}
+                  placeholder="e.g. Key stakeholder transition, budget freeze, operational stability..."
+                  className={inputCls}
+                />
+              </FormField>
             </FormGrid>
           </FormSection>
 

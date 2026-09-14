@@ -51,6 +51,7 @@ export const ProjectsListView: React.FC = () => {
     projects,
     deactivatedProjects,
     accounts,
+    addProject,
     deleteProject,
     restoreProject,
     updateProject,
@@ -78,6 +79,8 @@ export const ProjectsListView: React.FC = () => {
     description: '',
     accountId: '',
     accountName: '',
+    startDate: '',
+    endDate: '',
     status: 'Active',
     health: 'Green',
     methodology: 'Agile',
@@ -91,6 +94,8 @@ export const ProjectsListView: React.FC = () => {
       description: '',
       accountId: firstAcc ? firstAcc.id : '',
       accountName: firstAcc ? firstAcc.name : '',
+      startDate: '',
+      endDate: '',
       status: 'Active',
       health: 'Green',
       methodology: 'Agile',
@@ -101,12 +106,18 @@ export const ProjectsListView: React.FC = () => {
   const handleSaveDirectProject = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newProjectDraft.name.trim() || !newProjectDraft.accountId) return;
+    if (newProjectDraft.startDate && newProjectDraft.endDate && newProjectDraft.endDate < newProjectDraft.startDate) {
+      alert('Project End Date cannot be earlier than Project Start Date.');
+      return;
+    }
     setIsSubmittingCreate(true);
     try {
-      const created = await projectsApi.create({
+      const created = await addProject({
         name: newProjectDraft.name.trim(),
         description: newProjectDraft.description || '',
         accountId: newProjectDraft.accountId,
+        startDate: newProjectDraft.startDate || undefined,
+        endDate: newProjectDraft.endDate || undefined,
         dealValue: newProjectDraft.dealValue,
         priority: newProjectDraft.priority,
         deliveryModel: newProjectDraft.deliveryModel,
@@ -121,7 +132,6 @@ export const ProjectsListView: React.FC = () => {
         methodology: newProjectDraft.methodology || 'Agile',
       });
       setIsCreateModalOpen(false);
-      await refreshData();
       setSelectedProjectId(created.id);
       setView('project-details');
     } catch (err: any) {
@@ -159,7 +169,7 @@ export const ProjectsListView: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<string>('All');
 
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(50);
 
   const [sortField, setSortField] = useState<string>('name');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');

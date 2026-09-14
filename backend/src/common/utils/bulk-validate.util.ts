@@ -25,6 +25,8 @@ export interface ImportFieldDef {
   key: string;
   /** Column header as it appears in the uploaded file / template. */
   header: string;
+  /** Optional column header aliases for backward compatibility on import. */
+  headerAliases?: string[];
   type: ImportFieldType;
   required?: boolean;
   /** Allowed values for `enum` fields (canonical casing). */
@@ -32,7 +34,7 @@ export interface ImportFieldDef {
   /** Lowercased alias → canonical option, for friendlier enum input. */
   aliases?: Record<string, string>;
   /** For `reference` fields: which entity the human value resolves against. */
-  reference?: 'account' | 'opportunity' | 'stakeholder';
+  reference?: 'account' | 'opportunity' | 'stakeholder' | 'project' | 'user';
   /** Extra format validation for `string` fields. */
   format?: 'email' | 'phone' | 'website';
   /** Applied when the cell is empty. */
@@ -142,6 +144,15 @@ export function coerceAndValidateRow(
 
   for (const field of fields) {
     let actualKey = headerMap.get(normalizeHeader(field.header));
+    if (actualKey === undefined && field.headerAliases) {
+      for (const alias of field.headerAliases) {
+        const found = headerMap.get(normalizeHeader(alias));
+        if (found !== undefined) {
+          actualKey = found;
+          break;
+        }
+      }
+    }
     if (actualKey === undefined) {
       actualKey = headerMap.get(normalizeHeader(field.key));
     }
@@ -223,9 +234,26 @@ export async function runBulkValidate(
   const headerMap = new Map<string, string>();
   for (const h of headers) headerMap.set(normalizeHeader(h), h);
 
-  const knownHeaders = new Set(fields.map((f) => normalizeHeader(f.header)));
+  const knownHeaders = new Set<string>();
+  for (const f of fields) {
+    knownHeaders.add(normalizeHeader(f.header));
+    if (f.headerAliases) {
+      for (const alias of f.headerAliases) {
+        knownHeaders.add(normalizeHeader(alias));
+      }
+    }
+  }
+
+  const hasHeader = (f: ImportFieldDef) => {
+    if (headerMap.has(normalizeHeader(f.header))) return true;
+    if (f.headerAliases) {
+      return f.headerAliases.some((alias) => headerMap.has(normalizeHeader(alias)));
+    }
+    return false;
+  };
+
   const missingRequiredColumns = fields
-    .filter((f) => f.required && !headerMap.has(normalizeHeader(f.header)))
+    .filter((f) => f.required && !hasHeader(f))
     .map((f) => f.header);
   const unknownColumns = headers.filter((h) => !knownHeaders.has(normalizeHeader(h)));
 

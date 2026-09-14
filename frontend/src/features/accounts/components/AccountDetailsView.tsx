@@ -88,6 +88,7 @@ import {
   Navigation,
   AlertTriangle,
   Layers,
+  FolderKanban,
 } from 'lucide-react';
 
 /** First letters of up to the first two words of the account name, for the avatar chip. */
@@ -137,6 +138,8 @@ export const AccountDetailsView: React.FC = () => {
     serviceProviders,
     associateServiceProvider,
     projects,
+    setSelectedProjectId,
+    setProjectDetailsSourceView,
     setCreateProjectIntent,
   } = useCRM();
 
@@ -144,7 +147,7 @@ export const AccountDetailsView: React.FC = () => {
   const account = accounts.find(a => a.id === selectedAccountId);
 
   // Tab State
-  const activeTab = accountDetailsActiveTab as 'overview' | 'opportunities' | 'stakeholders' | 'action-items' | 'comments' | 'documents' | 'nps' | 'appreciation' | 'risks-dependencies';
+  const activeTab = accountDetailsActiveTab as 'overview' | 'projects' | 'opportunities' | 'stakeholders' | 'action-items' | 'comments' | 'documents' | 'nps' | 'appreciation' | 'risks-dependencies';
   const setActiveTab = setAccountDetailsActiveTab;
 
   // Selected opportunity in opportunities tab
@@ -380,11 +383,17 @@ export const AccountDetailsView: React.FC = () => {
     );
   }
 
-  // Filter lists for current account
+  // Filter lists for current account — action items exclude project tasks (opportunity/account items only)
   const accountOpps = opportunities.filter(o => o.accountId === account.id);
-  const accountActions = actionItems.filter(ai => ai.accountId === account.id);
+  const accountActions = actionItems.filter(ai => ai.accountId === account.id && !ai.projectId && ai.sourceType !== 'Project');
   const accountStks = stakeholders.filter(s => s.accountId === account.id);
   const accountComments = comments.filter(c => c.targetType === 'account' && c.targetId === account.id);
+  const accountProjects = (projects || []).filter(p => p.accountId === account.id);
+
+  // Displayed columns for the Action Items table in Account Details View — excludes Project column
+  const displayActionItemColumns = actionItemsColumnConfig.filter(
+    c => c.isDisplayed && c.key !== 'projectId' && c.key !== 'projectName'
+  );
 
   // Open subsets backing the overview summary cards: opportunities still in 'Open'
   // lifecycle status, action items not yet Completed
@@ -544,7 +553,15 @@ export const AccountDetailsView: React.FC = () => {
         badges={
           <>
             <StatusBadge value={account.type} colorMap={ACCOUNT_TYPE_COLORS} shape="rounded" />
-            <StatusBadge value={account.health} colorMap={HEALTH_COLORS} />
+            <div className="inline-flex items-center gap-2 flex-wrap">
+              <StatusBadge value={account.health} colorMap={HEALTH_COLORS} />
+              {account.healthReason && (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-amber-50/80 text-amber-900 border border-amber-200/80 shadow-2xs" title={`Reason for Health: ${account.healthReason}`}>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700/80">Reason:</span>
+                  <span className="truncate max-w-sm">{account.healthReason}</span>
+                </span>
+              )}
+            </div>
           </>
         }
         description={account.description}
@@ -602,6 +619,7 @@ export const AccountDetailsView: React.FC = () => {
           },
           { icon: <Calendar className="w-4 h-4" />, label: 'Customer Since', value: account.since },
           { icon: <Layers className="w-4 h-4" />, label: 'Tower', value: account.tower },
+          ...(account.healthReason ? [{ icon: <AlertTriangle className="w-4 h-4" />, label: 'Reason for Health', value: account.healthReason }] : []),
         ]}
       />
 
@@ -609,6 +627,7 @@ export const AccountDetailsView: React.FC = () => {
       <DetailTabBar
         tabs={[
           { id: 'overview', label: 'Overview', icon: Briefcase, count: null },
+          { id: 'projects', label: 'Projects', icon: FolderKanban, count: accountProjects.length },
           { id: 'stakeholders', label: 'Stakeholders', icon: Users, count: accountStks.length },
           { id: 'opportunities', label: 'Opportunities', icon: DollarSign, count: visibleOpps.length },
           { id: 'action-items', label: 'Action Items', icon: CheckSquare, count: visibleActions.length },
@@ -631,7 +650,15 @@ export const AccountDetailsView: React.FC = () => {
         {activeTab === 'overview' && (
           <div className="space-y-6">
             {/* KPI Summary Cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <SummaryCard
+                label="Active Projects"
+                value={accountProjects.filter((p) => p.status === 'Active' || !p.status).length}
+                icon={<FolderKanban className="w-4.5 h-4.5" />}
+                tone="indigo"
+                actionLabel="View Details"
+                onAction={() => setActiveTab('projects')}
+              />
               <SummaryCard
                 label="Open Opportunities"
                 value={openAccountOpps.length}
@@ -858,6 +885,145 @@ export const AccountDetailsView: React.FC = () => {
           </div>
         )}
 
+        {/* Projects Tab */}
+        {activeTab === 'projects' && (
+          <Card padding="cozy">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-100">
+              <div>
+                <h3 className="text-base font-bold text-slate-800 flex items-center gap-2">
+                  <FolderKanban className="w-5 h-5 text-indigo-600" />
+                  Projects ({accountProjects.length})
+                </h3>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Projects associated with {account.name}
+                </p>
+              </div>
+              {can('projects', 'create') && (
+                <Button
+                  variant="primary"
+                  size="sm"
+                  onClick={() => setView('projects')}
+                  icon={<Plus className="w-4 h-4" />}
+                >
+                  Manage Projects
+                </Button>
+              )}
+            </div>
+
+            {accountProjects.length === 0 ? (
+              <div className="py-6 flex flex-col items-center">
+                <EmptyState
+                  icon={<FolderKanban className="w-10 h-10 text-slate-300" />}
+                  title="No projects found"
+                  hint={`There are currently no projects associated with ${account.name}.`}
+                />
+                {can('projects', 'create') && (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => setView('projects')}
+                    icon={<Plus className="w-4 h-4" />}
+                    className="mt-2"
+                  >
+                    Go to Projects Module
+                  </Button>
+                )}
+              </div>
+            ) : (
+              <div className="overflow-x-auto mt-4">
+                <Table>
+                  <TableHead>
+                    <TableHeadCell>Project Name</TableHeadCell>
+                    <TableHeadCell>Opportunity</TableHeadCell>
+                    <TableHeadCell>Project Manager</TableHeadCell>
+                    <TableHeadCell>Methodology</TableHeadCell>
+                    <TableHeadCell align="right">Deal Value</TableHeadCell>
+                    <TableHeadCell align="center">Status</TableHeadCell>
+                    <TableHeadCell align="center">Health</TableHeadCell>
+                    <TableHeadCell align="center">Actions</TableHeadCell>
+                  </TableHead>
+                  <tbody>
+                    {accountProjects.map((p) => {
+                      const opp = opportunities.find((o) => o.id === p.opportunityId);
+                      return (
+                        <TableRow
+                          key={p.id}
+                          onClick={() => {
+                            setSelectedProjectId(p.id);
+                            setProjectDetailsSourceView('account-details');
+                            setView('project-details');
+                          }}
+                          className="hover:bg-slate-50/80 transition-colors cursor-pointer"
+                        >
+                          <TableCell className="font-semibold text-slate-900">
+                            {p.name}
+                          </TableCell>
+                          <TableCell className="text-slate-600 text-xs">
+                            {opp ? opp.name : (p.opportunityName || '—')}
+                          </TableCell>
+                          <TableCell className="text-slate-600 text-xs">
+                            {p.serviceProviderPmName || 'Unassigned'}
+                          </TableCell>
+                          <TableCell className="text-slate-600 text-xs">
+                            {p.methodology || 'Agile'}
+                          </TableCell>
+                          <TableCell align="right" className="font-mono text-xs font-semibold text-slate-900">
+                            {p.dealValue != null
+                              ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(p.dealValue)
+                              : (opp?.value != null
+                                  ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(opp.value)
+                                  : '—')}
+                          </TableCell>
+                          <TableCell align="center">
+                            <StatusBadge
+                              value={p.status || 'Active'}
+                              colorMap={{
+                                Active: 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/20',
+                                'On Hold': 'bg-amber-50 text-amber-700 ring-1 ring-amber-600/20',
+                                Completed: 'bg-blue-50 text-blue-700 ring-1 ring-blue-600/20',
+                                Cancelled: 'bg-slate-100 text-slate-600 ring-1 ring-slate-400/20',
+                              }}
+                            />
+                          </TableCell>
+                          <TableCell align="center">
+                            <span
+                              className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${
+                                p.health === 'Green'
+                                  ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/20'
+                                  : p.health === 'Amber'
+                                  ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-600/20'
+                                  : p.health === 'Red'
+                                  ? 'bg-rose-50 text-rose-700 ring-1 ring-rose-600/20'
+                                  : 'bg-slate-50 text-slate-600'
+                              }`}
+                            >
+                              {p.health || 'Green'}
+                            </span>
+                          </TableCell>
+                          <TableCell align="center">
+                            <Button
+                              variant="ghost"
+                              size="xs"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSelectedProjectId(p.id);
+                                setProjectDetailsSourceView('account-details');
+                                setView('project-details');
+                              }}
+                            >
+                              View Details
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </tbody>
+                </Table>
+              </div>
+            )}
+          </Card>
+        )}
+
         {/* Opportunities Tab (Standard Design) */}
         {activeTab === 'opportunities' && (
           <div className="space-y-6">
@@ -1033,12 +1199,12 @@ export const AccountDetailsView: React.FC = () => {
             <Card padding="none" clip>
               <div className="overflow-x-auto">
                 <Table
-                  extraColumns={actionItemsColumnConfig.filter(c => c.isDisplayed && !c.isStandard).length}
+                  extraColumns={displayActionItemColumns.filter(c => !c.isStandard).length}
                   resizable
                   storageKey="account-details:action-items"
                 >
                   <TableHead>
-                    {actionItemsColumnConfig.filter(c => c.isDisplayed).map(col => (
+                    {displayActionItemColumns.map(col => (
                       <TableHeadCell
                         key={col.key}
                         columnId={col.key}
@@ -1052,7 +1218,7 @@ export const AccountDetailsView: React.FC = () => {
                   <tbody>
                     {visibleActions.length === 0 ? (
                       <EmptyRow
-                        colSpan={actionItemsColumnConfig.filter(c => c.isDisplayed).length + 1}
+                        colSpan={displayActionItemColumns.length + 1}
                         message={showOpenActionsOnly
                           ? 'No open action items for this account.'
                           : "No action items configured. Click 'New Task' to get started."}
@@ -1063,7 +1229,7 @@ export const AccountDetailsView: React.FC = () => {
                         return (
                           <React.Fragment key={item.id}>
                             <TableRow className="hover:bg-slate-50/50">
-                              {actionItemsColumnConfig.filter(c => c.isDisplayed).map(col => {
+                              {displayActionItemColumns.map(col => {
                                 if (col.key === 'title') {
                                   return (
                                     <TableCell key={col.key}>
@@ -1441,7 +1607,7 @@ export const AccountDetailsView: React.FC = () => {
           <InlineEditModal
             mode="actionItems"
             entity={editingAi}
-            displayedConfigs={actionItemsColumnConfig.filter(c => c.isDisplayed)}
+            displayedConfigs={displayActionItemColumns}
             accounts={accounts}
             opportunities={opportunities}
             projects={projects}

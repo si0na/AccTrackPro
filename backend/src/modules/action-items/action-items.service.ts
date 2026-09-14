@@ -91,7 +91,7 @@ export class ActionItemsService {
   private async childScope(userId: string | null, startIdx: number) {
     if (!userId) return { conditions: [], params: [], nextIdx: startIdx };
     const ctx = await this.access.getContext(userId);
-    return this.access.buildChildVisibility('ai', ctx, startIdx);
+    return this.access.buildActionItemVisibility('ai', ctx, startIdx);
   }
 
   /**

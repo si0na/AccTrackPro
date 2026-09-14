@@ -17,6 +17,7 @@ export class ProjectsController {
   // userId is ignored. Optional ?page=&pageSize= switches the response to a
   // paginated envelope.
   @Get()
+  @RequirePermission('projects', 'view')
   findAll(
     @AuthUser() authUser: JwtPayload,
     @Query('page') page?: string,
@@ -26,16 +27,19 @@ export class ProjectsController {
   }
 
   @Get('deactivated')
+  @RequirePermission('projects', 'view')
   findAllDeactivated(@AuthUser() authUser: JwtPayload) {
     return this.projectsService.findAllDeactivated({ userId: authUser.sub });
   }
 
   @Get(':id')
+  @RequirePermission('projects', 'view')
   findOne(@Param('id') id: string, @AuthUser() authUser: JwtPayload) {
     return this.projectsService.findOne(id, authUser.sub);
   }
 
   @Post()
+  @RequirePermission('projects', 'create')
   @HttpCode(HttpStatus.CREATED)
   create(
     @Body() body: CreateProjectDto,
@@ -49,6 +53,7 @@ export class ProjectsController {
   }
 
   @Put(':id')
+  @RequirePermission('projects', 'update')
   update(
     @Param('id') id: string,
     @Body() body: UpdateProjectDto,
@@ -62,6 +67,7 @@ export class ProjectsController {
   }
 
   @Patch(':id/restore')
+  @RequirePermission('projects', 'update')
   @HttpCode(HttpStatus.OK)
   restore(@Param('id') id: string, @AuthUser() authUser: JwtPayload) {
     return this.projectsService.restore(id, authUser.sub);

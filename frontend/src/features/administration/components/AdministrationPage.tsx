@@ -21,12 +21,16 @@ import {
   ConfirmDialog,
   EmptyRow,
   ErrorBanner,
+  FilterBar,
+  FilterSelect,
   FormField,
   FormGrid,
   FormModal,
   INPUT_CLS,
   PageHeader,
+  Pagination,
   RowActionButton,
+  SearchBar,
   SearchableSelect,
   SELECT_CLS,
   StatusBadge,
@@ -156,9 +160,23 @@ export const AdministrationPage: React.FC = () => {
   const [overview, setOverview] = useState<AdminSystemOverview | null>(null);
   const [overviewLoading, setOverviewLoading] = useState(true);
 
-  // User Management List
+  // User Management List & Pagination/Filters
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [usersLoading, setUsersLoading] = useState(true);
+  const [userSearchQuery, setUserSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  const [selectedUserStatus, setSelectedUserStatus] = useState<string>('All');
+  const [userPage, setUserPage] = useState(1);
+  const [userPageSize, setUserPageSize] = useState(50);
+  const [totalUsersCount, setTotalUsersCount] = useState(0);
+
+  // Debounce search query changes (300ms)
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearchQuery(userSearchQuery);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [userSearchQuery]);
 
   // Financial Year
   const [newFYYear, setNewFYYear]     = useState('');
@@ -195,15 +213,26 @@ export const AdministrationPage: React.FC = () => {
     }
   }, []);
 
-  const loadUsers = useCallback(async () => {
-    setUsersLoading(true);
+  const loadUsers = useCallback(async (silent = false) => {
+    if (!silent) setUsersLoading(true);
     try {
-      const data = await administrationApi.getUsers();
-      setUsers(data);
+      const res = await administrationApi.getUsers({
+        page: userPage,
+        pageSize: userPageSize,
+        search: debouncedSearchQuery,
+        status: selectedUserStatus,
+      });
+      if (Array.isArray(res)) {
+        setUsers(res);
+        setTotalUsersCount(res.length);
+      } else {
+        setUsers(res.data);
+        setTotalUsersCount(res.total);
+      }
     } catch { /* swallow */ } finally {
-      setUsersLoading(false);
+      if (!silent) setUsersLoading(false);
     }
-  }, []);
+  }, [userPage, userPageSize, debouncedSearchQuery, selectedUserStatus]);
 
   const loadRoles = useCallback(async () => {
     try {
@@ -217,6 +246,19 @@ export const AdministrationPage: React.FC = () => {
     loadUsers();
     loadRoles();
   }, [loadOverview, loadUsers, loadRoles]);
+
+  // Silent 10-second presence refresh while viewing the System Users tab
+  useEffect(() => {
+    if (activeTab !== 'users') return;
+
+    const intervalId = setInterval(() => {
+      loadUsers(true);
+    }, 10_000);
+
+    return () => {
+      clearInterval(intervalId);
+    };
+  }, [activeTab, loadUsers]);
 
   const roleOptions = roles.map((r) => ({ value: r.id, label: r.name }));
   const roleNameById = (id?: string | null) => roles.find((r) => r.id === id)?.name ?? null;
@@ -561,119 +603,182 @@ export const AdministrationPage: React.FC = () => {
               Add User
             </Button>
             <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded font-bold font-mono">
-              {users.length} TOTAL
+              {totalUsersCount} TOTAL
             </span>
           </div>
         }
         padding="cozy"
       >
+        <FilterBar className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4 items-center mb-4">
+          <SearchBar
+            value={userSearchQuery}
+            onChange={(val) => {
+              setUserSearchQuery(val);
+              setUserPage(1);
+            }}
+            placeholder="Search users by name, email, employee ID, department..."
+            className="sm:col-span-2 md:col-span-3 w-full"
+          />
+
+          <FilterSelect
+            label="Account Status"
+            hideLabel
+            value={selectedUserStatus}
+            onChange={(val) => {
+              setSelectedUserStatus(val);
+              setUserPage(1);
+            }}
+            options={[
+              { value: 'All', label: 'All Statuses' },
+              { value: 'Active', label: 'Active' },
+              { value: 'Inactive', label: 'Inactive' },
+            ]}
+          />
+        </FilterBar>
+
         {usersLoading ? (
           <p className="text-xs text-slate-400 italic py-4 text-center">Loading system users…</p>
         ) : (
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHead>
-                <TableHeadCell>Name</TableHeadCell>
-                <TableHeadCell>Email</TableHeadCell>
-                <TableHeadCell>Employee ID</TableHeadCell>
-                <TableHeadCell>Department</TableHeadCell>
-                <TableHeadCell>Designation</TableHeadCell>
-                <TableHeadCell>Role(s)</TableHeadCell>
-                <TableHeadCell>Registration Status</TableHeadCell>
-                <TableHeadCell>Active/Inactive Status</TableHeadCell>
-                <TableHeadCell>Actions</TableHeadCell>
-              </TableHead>
-              <tbody>
-                {users.length === 0 ? (
-                  <EmptyRow colSpan={9} message="No whitelisted system users found." />
-                ) : (
-                  users.map((u) => {
-                    const isToggling = togglingUserId === u.id;
-                    const isDeleting = deletingUserId === u.id;
-                    return (
-                    <TableRow key={u.id} className="hover:bg-slate-50/50">
-                      <TableCell className="font-semibold text-slate-800">
-                        <div className="flex items-center gap-2">
-                          <div
-                            className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
-                              u.isPending ? 'bg-amber-100 text-amber-700' : 'bg-indigo-100 text-indigo-700'
-                            }`}
-                            aria-hidden="true"
-                          >
-                            {(u.name || u.email).charAt(0).toUpperCase()}
+          <>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHead>
+                  <TableHeadCell>Name</TableHeadCell>
+                  <TableHeadCell>Email</TableHeadCell>
+                  <TableHeadCell>Employee ID</TableHeadCell>
+                  <TableHeadCell>Department</TableHeadCell>
+                  <TableHeadCell>Designation</TableHeadCell>
+                  <TableHeadCell>Role(s)</TableHeadCell>
+                  <TableHeadCell>Registration Status</TableHeadCell>
+                  <TableHeadCell>Account Status</TableHeadCell>
+                  <TableHeadCell>Presence</TableHeadCell>
+                  <TableHeadCell>Last Login</TableHeadCell>
+                  <TableHeadCell>Actions</TableHeadCell>
+                </TableHead>
+                <tbody>
+                  {users.length === 0 ? (
+                    <EmptyRow colSpan={11} message={debouncedSearchQuery || selectedUserStatus !== 'All' ? "No users match your search criteria." : "No whitelisted system users found."} />
+                  ) : (
+                    users.map((u) => {
+                      const isToggling = togglingUserId === u.id;
+                      const isDeleting = deletingUserId === u.id;
+                      return (
+                      <TableRow key={u.id} className="hover:bg-slate-50/50">
+                        <TableCell className="font-semibold text-slate-800">
+                          <div className="flex items-center gap-2">
+                            <div
+                              className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
+                                u.isPending ? 'bg-amber-100 text-amber-700' : 'bg-indigo-100 text-indigo-700'
+                              }`}
+                              aria-hidden="true"
+                            >
+                              {(u.name || u.email).charAt(0).toUpperCase()}
+                            </div>
+                            {u.name || <span className="text-slate-400 italic text-[11px]">Pending self-registration</span>}
                           </div>
-                          {u.name || <span className="text-slate-400 italic text-[11px]">Pending self-registration</span>}
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-slate-500 font-mono text-xs">{u.email}</TableCell>
-                      <TableCell className="text-slate-600 font-mono text-[11px]">
-                        {u.employeeId || <span className="text-slate-400 italic">—</span>}
-                      </TableCell>
-                      <TableCell className="text-slate-600">
-                        {u.department || <span className="text-slate-400 italic">—</span>}
-                      </TableCell>
-                      <TableCell className="text-slate-600">
-                        {u.designation || <span className="text-slate-400 italic">—</span>}
-                      </TableCell>
-                      <TableCell className="text-slate-600 text-xs">
-                        {roleNamesFor(u) || <span className="text-slate-400 italic">—</span>}
-                      </TableCell>
-                      <TableCell>
-                        <StatusBadge
-                          value={u.isPending ? 'Pending Registration' : 'Registered'}
-                          colorMap={REG_STATUS_COLORS}
-                        />
-                      </TableCell>
-                      <TableCell>
-                        {u.isPending ? (
-                          <span className="text-slate-300 italic text-[11px]">—</span>
-                        ) : (
+                        </TableCell>
+                        <TableCell className="text-slate-500 font-mono text-xs">{u.email}</TableCell>
+                        <TableCell className="text-slate-600 font-mono text-[11px]">
+                          {u.employeeId || <span className="text-slate-400 italic">—</span>}
+                        </TableCell>
+                        <TableCell className="text-slate-600">
+                          {u.department || <span className="text-slate-400 italic">—</span>}
+                        </TableCell>
+                        <TableCell className="text-slate-600">
+                          {u.designation || <span className="text-slate-400 italic">—</span>}
+                        </TableCell>
+                        <TableCell className="text-slate-600 text-xs">
+                          {roleNamesFor(u) || <span className="text-slate-400 italic">—</span>}
+                        </TableCell>
+                        <TableCell>
                           <StatusBadge
-                            value={u.isActive ? 'Active' : 'Inactive'}
-                            colorMap={USER_STATUS_COLORS}
+                            value={u.isPending ? 'Pending Registration' : 'Registered'}
+                            colorMap={REG_STATUS_COLORS}
                           />
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-1.5">
-                          {can('administration', 'update') && (
-                            <RowActionButton
-                              intent="edit"
-                              label={`Edit user ${u.email}`}
-                              icon={<Pencil className="w-3.5 h-3.5" />}
-                              onClick={() => handleStartEditUser(u)}
+                        </TableCell>
+                        <TableCell>
+                          {u.isPending ? (
+                            <span className="text-slate-300 italic text-[11px]">—</span>
+                          ) : (
+                            <StatusBadge
+                              value={u.isActive ? 'Active' : 'Inactive'}
+                              colorMap={USER_STATUS_COLORS}
                             />
                           )}
-                          {can('administration', 'delete') && (
-                            u.isPending ? (
-                              <RowActionButton
-                                intent="delete"
-                                label={`Delete whitelist entry for ${u.email}`}
-                                icon={<Trash2 className="w-3.5 h-3.5" />}
-                                onClick={() => setDeletePendingTarget(u)}
-                                disabled={isDeleting}
-                              />
-                            ) : (
-                              <RowActionButton
-                                intent={u.isActive ? 'delete' : 'view'}
-                                label={u.isActive ? `Deactivate ${u.name}` : `Activate ${u.name}`}
-                                icon={u.isActive
-                                  ? <PowerOff className="w-3.5 h-3.5" />
-                                  : <Power className="w-3.5 h-3.5" />}
-                                onClick={() => setStatusTarget(u)}
-                                disabled={isToggling}
-                              />
-                            )
+                        </TableCell>
+                        <TableCell>
+                          {u.isPending || !u.isActive ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-500 border border-slate-200/80">
+                              <span className="w-2 h-2 rounded-full bg-slate-400" />
+                              Offline
+                            </span>
+                          ) : u.isOnline ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                              Online
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-100 text-slate-500 border border-slate-200/80">
+                              <span className="w-2 h-2 rounded-full bg-slate-400" />
+                              Offline
+                            </span>
                           )}
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                    );
-                  })
-                )}
-              </tbody>
-            </Table>
-          </div>
+                        </TableCell>
+                        <TableCell className="text-slate-500 text-xs">
+                          {u.lastLogin ? new Date(u.lastLogin).toLocaleString() : <span className="text-slate-400 italic">Never</span>}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-1.5">
+                            {can('administration', 'update') && (
+                              <RowActionButton
+                                intent="edit"
+                                label={`Edit user ${u.email}`}
+                                icon={<Pencil className="w-3.5 h-3.5" />}
+                                onClick={() => handleStartEditUser(u)}
+                              />
+                            )}
+                            {can('administration', 'delete') && (
+                              u.isPending ? (
+                                <RowActionButton
+                                  intent="delete"
+                                  label={`Delete whitelist entry for ${u.email}`}
+                                  icon={<Trash2 className="w-3.5 h-3.5" />}
+                                  onClick={() => setDeletePendingTarget(u)}
+                                  disabled={isDeleting}
+                                />
+                              ) : (
+                                <RowActionButton
+                                  intent={u.isActive ? 'delete' : 'view'}
+                                  label={u.isActive ? `Deactivate ${u.name}` : `Activate ${u.name}`}
+                                  icon={u.isActive
+                                    ? <PowerOff className="w-3.5 h-3.5" />
+                                    : <Power className="w-3.5 h-3.5" />}
+                                  onClick={() => setStatusTarget(u)}
+                                  disabled={isToggling}
+                                />
+                              )
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                      );
+                    })
+                  )}
+                </tbody>
+              </Table>
+            </div>
+            <Pagination
+              page={userPage}
+              pageSize={userPageSize}
+              totalItems={totalUsersCount}
+              onPageChange={setUserPage}
+              onPageSizeChange={(size) => {
+                setUserPageSize(size);
+                setUserPage(1);
+              }}
+              itemLabel="users"
+            />
+          </>
         )}
       </Card>
       )}

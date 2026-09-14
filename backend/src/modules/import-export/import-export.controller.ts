@@ -4,6 +4,7 @@ import { ImportExportAuditService } from './import-export-audit.service';
 import { GlobalImportDto, ExportLogDto } from './dto/import-export.dto';
 import { MODULE_ORDER, IEModuleKey } from './import-field-schemas';
 import { AuthUser, JwtPayload } from '../auth/auth-user.decorator';
+import { RequirePermission } from '../rbac/require-permission.decorator';
 
 /**
  * Global Import/Export surface — one workbook, four worksheets. Validation and
@@ -47,6 +48,7 @@ export class ImportExportController {
 
   // Dry-run validation across every populated worksheet — no writes.
   @Post('validate')
+  @RequirePermission('import-export', 'create')
   @HttpCode(HttpStatus.OK)
   validate(@Req() req: { body: { sheets?: Record<string, any> } }, @AuthUser() authUser: JwtPayload) {
     return this.service.validateWorkbook(this.readSheets(req.body), authUser.sub);
@@ -54,6 +56,7 @@ export class ImportExportController {
 
   // Commit the kept rows in dependency order.
   @Post('import')
+  @RequirePermission('import-export', 'create')
   @HttpCode(HttpStatus.OK)
   import(
     @Body() body: GlobalImportDto,
@@ -69,6 +72,7 @@ export class ImportExportController {
   }
 
   @Post('export-log')
+  @RequirePermission('import-export', 'view')
   @HttpCode(HttpStatus.CREATED)
   async logExport(@Body() body: ExportLogDto, @AuthUser() authUser: JwtPayload) {
     const modules = (body.modules ?? [])
@@ -79,6 +83,7 @@ export class ImportExportController {
   }
 
   @Get('audit')
+  @RequirePermission('import-export', 'view')
   getAudit(@AuthUser() authUser: JwtPayload) {
     return this.audit.findForUser(authUser.sub);
   }

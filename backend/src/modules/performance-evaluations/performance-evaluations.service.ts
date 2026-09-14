@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
 import { EmployeeMasterService, EmployeeMaster } from '../employee-master/employee-master.service';
+import { PermissionsService } from '../rbac/permissions.service';
 import { extractCustomData } from '../../common/utils/db-mapping.util';
 
 // Fixed schema fields — anything else in the request body is a dynamic
@@ -57,6 +58,7 @@ export class PerformanceEvaluationsService {
   constructor(
     private readonly db: DatabaseService,
     private readonly employeeMaster: EmployeeMasterService,
+    private readonly permissions: PermissionsService,
   ) {}
 
   /** Only employees in the Employee Master can be evaluated. */
@@ -92,7 +94,12 @@ export class PerformanceEvaluationsService {
   }
 
   async findAll(userId?: string): Promise<any[]> {
-    const { rows } = userId
+    let canViewAll = false;
+    if (userId) {
+      const ctx = await this.permissions.getUserAccessContext(userId);
+      canViewAll = ctx.permissions.has('performance:view-all') || ctx.canViewAllAccounts;
+    }
+    const { rows } = (userId && !canViewAll)
       ? await this.db.query(
           'SELECT * FROM performance_evaluations WHERE is_deleted = FALSE AND created_by = $1 ORDER BY created_at DESC',
           [userId],

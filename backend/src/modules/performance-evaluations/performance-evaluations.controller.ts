@@ -14,22 +14,26 @@ export class PerformanceEvaluationsController {
 
   // Scope is always the authenticated user (JWT); any client-sent userId is ignored.
   @Get()
+  @RequirePermission('performance', 'view')
   findAll(@AuthUser() authUser: JwtPayload) {
     return this.service.findAll(authUser.sub);
   }
 
   // Per-employee aggregates for the reporting header (scoped to the evaluator).
   @Get('summary')
+  @RequirePermission('performance', 'view')
   summary(@AuthUser() authUser: JwtPayload) {
     return this.service.summary(authUser.sub);
   }
 
   @Get(':id')
+  @RequirePermission('performance', 'view')
   findOne(@Param('id') id: string, @AuthUser() authUser: JwtPayload) {
     return this.service.findOne(id, authUser.sub);
   }
 
   @Post()
+  @RequirePermission('performance', 'create')
   @HttpCode(HttpStatus.CREATED)
   create(
     @Body() body: CreatePerformanceEvaluationDto,
@@ -41,6 +45,7 @@ export class PerformanceEvaluationsController {
   }
 
   @Put(':id')
+  @RequirePermission('performance', 'update')
   update(
     @Param('id') id: string,
     @Body() body: UpdatePerformanceEvaluationDto,

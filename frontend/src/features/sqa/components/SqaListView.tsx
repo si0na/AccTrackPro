@@ -103,7 +103,7 @@ export const SqaListView: React.FC = () => {
   const [escalationFilter, setEscalationFilter] = useState('All');
 
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(50);
 
   const [sortField, setSortField] = useState<string>('projectName');
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');

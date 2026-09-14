@@ -28,9 +28,10 @@ const BILLING_MODEL = ['T&M', 'Milestone Based', 'Monthly Fixed', 'Others'] as c
 export type IEModuleKey = 'accounts' | 'opportunities' | 'stakeholders' | 'actionItems';
 
 export const ACCOUNT_FIELDS: ImportFieldDef[] = [
-  { key: 'name', header: 'Account Name', type: 'string', required: true },
+  { key: 'name', header: 'Account Name', headerAliases: ['Target Corporate Account', 'Account'], type: 'string', required: true },
   { key: 'type', header: 'Account Type', type: 'enum', options: ACCOUNT_TYPE, required: true },
   { key: 'health', header: 'Health', type: 'enum', options: ACCOUNT_HEALTH, required: true },
+  { key: 'healthReason', header: 'Reason for Health', type: 'string' },
   { key: 'industry', header: 'Industry', type: 'string', default: '' },
   { key: 'revenue', header: 'Revenue', type: 'number', default: 0 },
   { key: 'location', header: 'Location', type: 'string' },
@@ -41,11 +42,15 @@ export const ACCOUNT_FIELDS: ImportFieldDef[] = [
   { key: 'address', header: 'Address', type: 'string' },
   { key: 'description', header: 'Description', type: 'string' },
   { key: 'tower', header: 'Tower', type: 'enum', options: TOWER },
+  { key: 'accountManagerId', header: 'Account Manager', type: 'reference', reference: 'user' },
+  { key: 'practiceLeadId', header: 'Practice Lead', type: 'reference', reference: 'user' },
+  { key: 'clientPartnerId', header: 'Client Partner', type: 'reference', reference: 'user' },
+  { key: 'verticalHeadId', header: 'Vertical Head', type: 'reference', reference: 'user' },
 ];
 
 export const OPPORTUNITY_FIELDS: ImportFieldDef[] = [
   { key: 'name', header: 'Opportunity Name', type: 'string', required: true },
-  { key: 'accountId', header: 'Account', type: 'reference', reference: 'account', required: true },
+  { key: 'accountId', header: 'Account', headerAliases: ['Target Corporate Account', 'Account Name'], type: 'reference', reference: 'account', required: true },
   { key: 'stage', header: 'Stage', type: 'enum', options: OPPORTUNITY_STAGE, default: 'Lead' },
   { key: 'value', header: 'Deal Value', type: 'number', default: 0 },
   { key: 'probability', header: 'Probability (%)', type: 'integer' },
@@ -54,8 +59,9 @@ export const OPPORTUNITY_FIELDS: ImportFieldDef[] = [
   { key: 'serviceLine', header: 'Service Line', type: 'enum', options: SERVICE_LINE, required: true },
   { key: 'aopAvailable', header: 'AOP Available', type: 'boolean', default: false },
   { key: 'aopYear', header: 'AOP Year', type: 'enum', options: AOP_YEAR_OPTIONS },
-  { key: 'allocationStartDate', header: 'Expected Project Start Date', type: 'date' },
-  { key: 'allocationEndDate', header: 'Expected Project End Date', type: 'date' },
+  { key: 'serviceProviderStakeholderId', header: 'Owner', headerAliases: ['Service Provider Stakeholder', 'Service Provider Owner', 'Owner Stakeholder'], type: 'reference', reference: 'user' },
+  { key: 'allocationStartDate', header: 'Expected Project Start Date', headerAliases: ['Allocation Start Date', 'Project Start Date'], type: 'date' },
+  { key: 'allocationEndDate', header: 'Expected Project End Date (Optional)', headerAliases: ['Allocation End Date', 'Expected Project End Date', 'Project End Date'], type: 'date' },
   { key: 'dealStartDate', header: 'Deal Start Date', type: 'date' },
   { key: 'dealCloseDate', header: 'Deal Close Date', type: 'date' },
   { key: 'nextStep', header: 'Next Step', type: 'string' },
@@ -86,25 +92,28 @@ export function opportunityPostValidate(payload: Record<string, any>): string[] 
 
 export const STAKEHOLDER_FIELDS: ImportFieldDef[] = [
   { key: 'name', header: 'Name', type: 'string', required: true },
-  { key: 'accountId', header: 'Account', type: 'reference', reference: 'account', required: true },
-  { key: 'influence', header: 'Influence Level', type: 'enum', options: INFLUENCE, required: true },
+  { key: 'accountId', header: 'Account', headerAliases: ['Account Name'], type: 'reference', reference: 'account', required: true },
+  { key: 'stakeholderType', header: 'Stakeholder Type', headerAliases: ['Type'], type: 'enum', options: STAKEHOLDER_TYPE, required: true, default: 'CLIENT' },
+  { key: 'influence', header: 'Influence Level', headerAliases: ['Influence'], type: 'enum', options: INFLUENCE, required: true },
   { key: 'relationship', header: 'Relationship', type: 'enum', options: RELATIONSHIP, required: true },
   { key: 'designation', header: 'Designation', type: 'string' },
   { key: 'department', header: 'Department', type: 'string' },
   { key: 'email', header: 'Email', type: 'string', format: 'email' },
   { key: 'phone', header: 'Phone', type: 'string', format: 'phone' },
+  { key: 'linkedinProfileUrl', header: 'LinkedIn Profile URL', headerAliases: ['LinkedIn', 'LinkedIn Profile', 'LinkedIn URL'], type: 'string', format: 'website' },
 ];
 
 export const ACTION_ITEM_FIELDS: ImportFieldDef[] = [
-  { key: 'title', header: 'Title', type: 'string', required: true },
-  { key: 'accountId', header: 'Account', type: 'reference', reference: 'account', required: true },
-  { key: 'ownerStakeholderId', header: 'Owner', type: 'reference', reference: 'stakeholder', required: true },
+  { key: 'title', header: 'Task Title', headerAliases: ['Title', 'Task'], type: 'string', required: true },
+  { key: 'accountId', header: 'Account', headerAliases: ['Account Name'], type: 'reference', reference: 'account', required: true },
+  { key: 'ownerStakeholderId', header: 'Owner', headerAliases: ['Task Owner', 'Owner Stakeholder'], type: 'reference', reference: 'stakeholder', required: true },
   { key: 'priority', header: 'Priority', type: 'enum', options: PRIORITY, required: true },
   { key: 'status', header: 'Status', type: 'enum', options: ACTION_ITEM_STATUS, required: true },
-  { key: 'opportunityId', header: 'Opportunity', type: 'reference', reference: 'opportunity' },
+  { key: 'projectId', header: 'Project', headerAliases: ['Project Name'], type: 'reference', reference: 'project' },
+  { key: 'opportunityId', header: 'Opportunity', headerAliases: ['Opportunity Name'], type: 'reference', reference: 'opportunity' },
   { key: 'openDate', header: 'Open Date', type: 'date' },
   { key: 'dueDate', header: 'Due Date', type: 'date' },
-  { key: 'notes', header: 'Description', type: 'string' },
+  { key: 'notes', header: 'Description', headerAliases: ['Notes'], type: 'string' },
   { key: 'risksAndDependencies', header: 'Risks & Dependencies', type: 'string' },
   { key: 'completedDate', header: 'Completed Date', type: 'date' },
 ];

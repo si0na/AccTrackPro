@@ -61,7 +61,7 @@ export const AccountRisksDependenciesTab: React.FC<AccountRisksDependenciesTabPr
   const [levelFilter, setLevelFilter] = useState<'ALL' | 'Account' | 'Project'>('ALL');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(50);
 
   // Expanded Row
   const [expandedId, setExpandedId] = useState<string | null>(null);

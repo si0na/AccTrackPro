@@ -3,7 +3,10 @@ import { DatabaseService } from '../../database/database.service';
 import { TtlCacheService } from '../../common/services/ttl-cache.service';
 import { UsersService } from '../users/users.service';
 import { PermissionsService } from '../rbac/permissions.service';
+import { Pagination, Paginated, extractTotal } from '../../common/utils/pagination.util';
 import type { UpdateFinancialCalendarDto, UpdateSettingsDto, UpdateUserDto, CreateUserDto } from './dto/administration.dto';
+
+import { PresenceService } from '../auth/presence.service';
 
 const OVERVIEW_CACHE_TTL_MS = 30_000;
 
@@ -34,6 +37,8 @@ export interface AdminUser {
   department: string | null;
   designation: string | null;
   isActive: boolean;
+  isOnline: boolean;
+  presence: 'Online' | 'Offline';
   lastLogin: string | null;
   createdAt: string;
   failedAttempts: number;
@@ -61,6 +66,36 @@ const DEFAULT_QUARTERS: FYQuarterDef[] = [
   { label: 'Q4', startMonth: 1,  endMonth: 3  },
 ];
 
+function rowToAdminUser(r: any, presenceService?: PresenceService): AdminUser {
+  const isActive = r.is_active;
+  const isPending = r.is_pending ?? false;
+  // Inactive users and pending registration users are strictly Offline
+  const isOnline = (!isPending && isActive) ? (presenceService ? presenceService.isUserOnline(r.id) : false) : false;
+
+  return {
+    id:             r.id,
+    name:           r.name,
+    email:          r.email,
+    role:           r.role || '',
+    roleId:         r.role_id ?? null,
+    roleKey:        r.role_key ?? null,
+    roleName:       r.role_name ?? null,
+    roleIds:        (r.role_ids ?? []) as string[],
+    roleKeys:       (r.role_keys ?? []) as string[],
+    employeeId:     r.employee_id ?? null,
+    department:     r.department ?? null,
+    designation:    r.designation ?? null,
+    isActive:       isActive,
+    isOnline:       isOnline,
+    presence:       isOnline ? 'Online' : 'Offline',
+    lastLogin:      r.last_login ?? null,
+    createdAt:      r.created_at,
+    failedAttempts: r.failed_attempts ?? 0,
+    lockedUntil:    r.locked_until ?? null,
+    isPending:      isPending,
+  };
+}
+
 @Injectable()
 export class AdministrationService {
   constructor(
@@ -68,6 +103,7 @@ export class AdministrationService {
     private readonly cache: TtlCacheService,
     private readonly users: UsersService,
     private readonly permissions: PermissionsService,
+    private readonly presenceService: PresenceService,
   ) {}
 
   // Five COUNT(*) scans — cached briefly; admin counters tolerate 30 s staleness.
@@ -96,7 +132,81 @@ export class AdministrationService {
     };
   }
 
-  async getUsers(): Promise<AdminUser[]> {
+  async getUsers(
+    filter: { search?: string; status?: string } = {},
+    pg: Pagination | null = null,
+  ): Promise<AdminUser[] | Paginated<AdminUser>> {
+    const conditions: string[] = [];
+    const params: any[] = [];
+    let idx = 1;
+
+    if (filter.search && filter.search.trim() !== '') {
+      const q = `%${filter.search.trim()}%`;
+      conditions.push(
+        `(COALESCE(u.name, em.name) ILIKE $${idx} OR COALESCE(u.email, em.email) ILIKE $${idx} OR COALESCE(u.employee_id, em.employee_id) ILIKE $${idx} OR COALESCE(u.department, em.department) ILIKE $${idx} OR COALESCE(u.designation, em.designation) ILIKE $${idx})`,
+      );
+      params.push(q);
+      idx++;
+    }
+
+    if (filter.status && filter.status !== 'All') {
+      if (filter.status === 'Active') {
+        conditions.push(`COALESCE(u.is_active, TRUE) = TRUE`);
+      } else if (filter.status === 'Inactive') {
+        conditions.push(`COALESCE(u.is_active, TRUE) = FALSE`);
+      }
+    }
+
+    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    const baseSql = `
+      FROM employee_master em
+      FULL OUTER JOIN users u ON LOWER(u.email) = LOWER(em.email)
+      LEFT JOIN roles r ON r.id = COALESCE(u.role_id, em.role_id)
+      LEFT JOIN LATERAL (
+        SELECT array_agg(rr.id ORDER BY rr.is_system DESC, rr.name ASC) AS role_ids,
+               array_agg(rr.key ORDER BY rr.is_system DESC, rr.name ASC) AS role_keys
+        FROM user_roles x
+        JOIN roles rr ON rr.id = x.role_id
+        WHERE x.user_id = u.id
+      ) ur ON TRUE
+      LEFT JOIN LATERAL (
+        SELECT array_agg(rr.id ORDER BY rr.is_system DESC, rr.name ASC) AS role_ids,
+               array_agg(rr.key ORDER BY rr.is_system DESC, rr.name ASC) AS role_keys
+        FROM employee_roles x
+        JOIN roles rr ON rr.id = x.role_id
+        WHERE x.employee_id = em.id
+      ) er ON TRUE
+      ${whereClause}
+      ORDER BY COALESCE(u.name, em.name) ASC`;
+
+    if (!pg) {
+      const { rows } = await this.db.query(`
+        SELECT
+          COALESCE(u.id, em.id) AS id,
+          COALESCE(NULLIF(u.name, ''), NULLIF(em.name, ''), u.email, em.email) AS name,
+          COALESCE(u.email, em.email) AS email,
+          u.role,
+          COALESCE(u.role_id, em.role_id) AS role_id,
+          r.key AS role_key,
+          r.name AS role_name,
+          COALESCE(u.employee_id, em.employee_id) AS employee_id,
+          COALESCE(u.department, em.department) AS department,
+          COALESCE(u.designation, em.designation) AS designation,
+          COALESCE(u.is_active, TRUE) AS is_active,
+          u.last_login::TEXT AS last_login,
+          COALESCE(u.created_at::TEXT, em.created_at::TEXT) AS created_at,
+          COALESCE(u.failed_attempts, 0) AS failed_attempts,
+          u.locked_until::TEXT AS locked_until,
+          COALESCE(ur.role_ids, er.role_ids, CASE WHEN em.role_id IS NOT NULL THEN ARRAY[em.role_id] ELSE ARRAY[]::TEXT[] END) AS role_ids,
+          COALESCE(ur.role_keys, er.role_keys, CASE WHEN r.key IS NOT NULL THEN ARRAY[r.key] ELSE ARRAY[]::TEXT[] END) AS role_keys,
+          (u.id IS NULL) AS is_pending
+        ${baseSql}`, params);
+      return rows.map(r => rowToAdminUser(r, this.presenceService));
+    }
+
+    const limitIdx = idx;
+    const offsetIdx = idx + 1;
     const { rows } = await this.db.query(`
       SELECT
         COALESCE(u.id, em.id) AS id,
@@ -116,46 +226,18 @@ export class AdministrationService {
         u.locked_until::TEXT AS locked_until,
         COALESCE(ur.role_ids, er.role_ids, CASE WHEN em.role_id IS NOT NULL THEN ARRAY[em.role_id] ELSE ARRAY[]::TEXT[] END) AS role_ids,
         COALESCE(ur.role_keys, er.role_keys, CASE WHEN r.key IS NOT NULL THEN ARRAY[r.key] ELSE ARRAY[]::TEXT[] END) AS role_keys,
-        (u.id IS NULL) AS is_pending
-      FROM employee_master em
-      FULL OUTER JOIN users u ON LOWER(u.email) = LOWER(em.email)
-      LEFT JOIN roles r ON r.id = COALESCE(u.role_id, em.role_id)
-      LEFT JOIN LATERAL (
-        SELECT array_agg(rr.id ORDER BY rr.is_system DESC, rr.name ASC) AS role_ids,
-               array_agg(rr.key ORDER BY rr.is_system DESC, rr.name ASC) AS role_keys
-        FROM user_roles x
-        JOIN roles rr ON rr.id = x.role_id
-        WHERE x.user_id = u.id
-      ) ur ON TRUE
-      LEFT JOIN LATERAL (
-        SELECT array_agg(rr.id ORDER BY rr.is_system DESC, rr.name ASC) AS role_ids,
-               array_agg(rr.key ORDER BY rr.is_system DESC, rr.name ASC) AS role_keys
-        FROM employee_roles x
-        JOIN roles rr ON rr.id = x.role_id
-        WHERE x.employee_id = em.id
-      ) er ON TRUE
-      ORDER BY COALESCE(u.name, em.name) ASC
-    `);
-    return rows.map((r) => ({
-      id:             r.id,
-      name:           r.name,
-      email:          r.email,
-      role:           r.role || '',
-      roleId:         r.role_id ?? null,
-      roleKey:        r.role_key ?? null,
-      roleName:       r.role_name ?? null,
-      roleIds:        (r.role_ids ?? []) as string[],
-      roleKeys:       (r.role_keys ?? []) as string[],
-      employeeId:     r.employee_id ?? null,
-      department:     r.department ?? null,
-      designation:    r.designation ?? null,
-      isActive:       r.is_active,
-      lastLogin:      r.last_login ?? null,
-      createdAt:      r.created_at,
-      failedAttempts: r.failed_attempts ?? 0,
-      lockedUntil:    r.locked_until ?? null,
-      isPending:      r.is_pending ?? false,
-    }));
+        (u.id IS NULL) AS is_pending,
+        COUNT(*) OVER()::INTEGER AS __total
+      ${baseSql}
+      LIMIT $${limitIdx} OFFSET $${offsetIdx}`, [...params, pg.limit, pg.offset]);
+
+    const total = extractTotal(rows);
+    return {
+      data: rows.map(r => rowToAdminUser(r, this.presenceService)),
+      total,
+      page: pg.page,
+      pageSize: pg.pageSize,
+    };
   }
 
   async createUser(dto: CreateUserDto, actorUserId: string): Promise<AdminUser> {
@@ -192,7 +274,7 @@ export class AdministrationService {
 
     this.cache.invalidatePrefix('admin:');
 
-    const list = await this.getUsers();
+    const list = (await this.getUsers()) as AdminUser[];
     const created = list.find((u) => u.email.toLowerCase() === email.toLowerCase());
     if (!created) throw new NotFoundException('Whitelisted user not found');
     return created;
@@ -329,7 +411,7 @@ export class AdministrationService {
     this.permissions.invalidate();
     this.cache.invalidatePrefix('admin:');
 
-    const users = await this.getUsers();
+    const users = (await this.getUsers()) as AdminUser[];
     const updated = users.find((u) => u.id === id);
     if (!updated) throw new NotFoundException('User not found');
     return updated;

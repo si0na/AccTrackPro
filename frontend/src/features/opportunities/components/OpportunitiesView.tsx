@@ -116,7 +116,7 @@ export const OpportunitiesView: React.FC = () => {
 
   // Client-side pagination over the already-filtered rows
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(50);
 
   // The Global Account Selector represents a workspace switch — clear
   // page-specific state so the newly selected account starts from a clean view.

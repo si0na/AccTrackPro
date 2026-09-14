@@ -7,6 +7,7 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
 import { Account, InfluenceLevel, RelationshipStatus, Stakeholder, StakeholderType } from '@/types';
 import { Pencil, Users } from 'lucide-react';
+import { serviceProviderOptionLabel } from '@/utils';
 import {
   FormField,
   FormGrid,
@@ -75,29 +76,34 @@ export const StakeholderFormModal: React.FC<StakeholderFormModalProps> = ({
   const [draft, setDraft] = useState<Omit<Stakeholder, 'id'>>(EMPTY_STAKEHOLDER);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { stakeholders: allContextStakeholders } = useCRM();
-  const serviceProviderStakeholders = useMemo(() => {
-    const sps = allContextStakeholders.filter((s) => s.stakeholderType === 'SERVICE_PROVIDER');
-    const seenNames = new Set<string>();
-    const uniqueSps: Stakeholder[] = [];
+  const { stakeholders: allContextStakeholders, serviceProviders, associateServiceProvider } = useCRM();
+  const serviceProviderOptions = useMemo(() => {
+    const list: Array<{ id: string; name: string; isSystemUser?: boolean }> = [];
+    const seenIds = new Set<string>();
 
-    // Keep active selections intact even if duplicate names exist in context
-    const selectedIds = new Set(
-      [draft.primaryOwnerId, draft.secondaryOwnerId, draft.tertiaryOwnerId, draft.thirdOwnerId].filter(Boolean)
-    );
-
-    for (const sp of sps) {
-      const nameKey = (sp.name || sp.email || '').trim().toLowerCase();
-      if (selectedIds.has(sp.id)) {
-        if (nameKey) seenNames.add(nameKey);
-        uniqueSps.push(sp);
-      } else if (nameKey && !seenNames.has(nameKey)) {
-        seenNames.add(nameKey);
-        uniqueSps.push(sp);
+    // 1. All SERVICE_PROVIDER stakeholders from stakeholders list
+    const spStks = (allContextStakeholders || []).filter((s) => s.stakeholderType === 'SERVICE_PROVIDER');
+    for (const sp of spStks) {
+      if (sp.id && !seenIds.has(sp.id)) {
+        seenIds.add(sp.id);
+        const label = sp.designation ? `${sp.name} (${sp.designation})` : (sp.name || sp.email || 'Service Provider');
+        list.push({ id: sp.id, name: label });
       }
     }
-    return uniqueSps;
-  }, [allContextStakeholders, draft.primaryOwnerId, draft.secondaryOwnerId, draft.tertiaryOwnerId, draft.thirdOwnerId]);
+
+    // 2. All system Service Providers (system users / employees)
+    if (serviceProviders && serviceProviders.length > 0) {
+      for (const spUser of serviceProviders) {
+        if (spUser.id && !seenIds.has(spUser.id)) {
+          seenIds.add(spUser.id);
+          const label = serviceProviderOptionLabel(spUser);
+          list.push({ id: spUser.id, name: label, isSystemUser: true });
+        }
+      }
+    }
+
+    return list.sort((a, b) => a.name.localeCompare(b.name));
+  }, [allContextStakeholders, serviceProviders]);
 
   // Re-seed the draft each time the dialog opens (create → blank, edit → record).
   useEffect(() => {
@@ -139,7 +145,32 @@ export const StakeholderFormModal: React.FC<StakeholderFormModalProps> = ({
             influence: (draft.influence || 'Medium') as InfluenceLevel,
             relationship: (draft.relationship || 'Neutral') as RelationshipStatus,
           }
-        : draft;
+        : { ...draft };
+
+      // Auto-resolve any system user selection for owner fields if accountId is present
+      if (payload.accountId) {
+        const resolveOwnerId = async (ownerId: string | undefined): Promise<string | undefined> => {
+          if (!ownerId) return undefined;
+          const opt = serviceProviderOptions.find((o) => o.id === ownerId);
+          if (opt?.isSystemUser) {
+            const resolvedStkId = await associateServiceProvider(ownerId, payload.accountId!);
+            return resolvedStkId || ownerId;
+          }
+          return ownerId;
+        };
+
+        const [pId, sId, tId] = await Promise.all([
+          resolveOwnerId(payload.primaryOwnerId),
+          resolveOwnerId(payload.secondaryOwnerId),
+          resolveOwnerId(payload.tertiaryOwnerId || payload.thirdOwnerId),
+        ]);
+
+        payload.primaryOwnerId = pId;
+        payload.secondaryOwnerId = sId;
+        payload.tertiaryOwnerId = tId;
+        payload.thirdOwnerId = tId;
+      }
+
       await onSubmit(payload);
       onClose();
     } catch {
@@ -297,7 +328,7 @@ export const StakeholderFormModal: React.FC<StakeholderFormModalProps> = ({
                     className={selectCls}
                   >
                     <option value="">None / Select Primary Owner…</option>
-                    {serviceProviderStakeholders.map((sp) => (
+                    {serviceProviderOptions.map((sp) => (
                       <option key={sp.id} value={sp.id}>
                         {sp.name}
                       </option>
@@ -312,7 +343,7 @@ export const StakeholderFormModal: React.FC<StakeholderFormModalProps> = ({
                     className={selectCls}
                   >
                     <option value="">None / Select Secondary Owner…</option>
-                    {serviceProviderStakeholders.map((sp) => (
+                    {serviceProviderOptions.map((sp) => (
                       <option key={sp.id} value={sp.id}>
                         {sp.name}
                       </option>
@@ -327,7 +358,7 @@ export const StakeholderFormModal: React.FC<StakeholderFormModalProps> = ({
                     className={selectCls}
                   >
                     <option value="">None / Select Third Owner…</option>
-                    {serviceProviderStakeholders.map((sp) => (
+                    {serviceProviderOptions.map((sp) => (
                       <option key={sp.id} value={sp.id}>
                         {sp.name}
                       </option>

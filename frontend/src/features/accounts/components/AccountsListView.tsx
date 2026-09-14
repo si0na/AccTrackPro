@@ -130,10 +130,29 @@ export const AccountsListView: React.FC = () => {
   const [selectedType, setSelectedType] = useState<string>('All');
   const [selectedIndustry, setSelectedIndustry] = useState<string>('All');
   const [selectedLocation, setSelectedLocation] = useState<string>('All');
+  const [selectedAccountManager, setSelectedAccountManager] = useState<string>('All');
+  const [selectedOwner, setSelectedOwner] = useState<string>('All');
+
+  // Filter option lists for Account Manager and Owner filters
+  const accountManagerFilterOptions = useMemo(
+    () => [
+      { value: 'All', label: 'All Account Managers' },
+      ...(accountManagers || []).map((u) => ({ value: u.id, label: serviceProviderOptionLabel(u) })),
+    ],
+    [accountManagers],
+  );
+
+  const ownerFilterOptions = useMemo(
+    () => [
+      { value: 'All', label: 'All Owners' },
+      ...(users || []).map((u) => ({ value: u.id, label: u.name || u.email || '(Unnamed)' })),
+    ],
+    [users],
+  );
 
   // Client-side pagination over the already-filtered rows (display only)
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(50);
 
   // The Global Account Selector represents a workspace switch — clear
   // page-specific state so the newly selected account starts from a clean view.
@@ -205,7 +224,9 @@ export const AccountsListView: React.FC = () => {
     const matchesHealth   = selectedHealth === 'All' || acc.health === selectedHealth;
     const matchesIndustry = selectedIndustry === 'All' || acc.industry?.trim() === selectedIndustry;
     const matchesLocation = selectedLocation === 'All' || acc.location?.trim() === selectedLocation;
-    return matchesSearch && matchesGlobalScope && matchesType && matchesHealth && matchesIndustry && matchesLocation;
+    const matchesAccountManager = selectedAccountManager === 'All' || acc.accountManagerId === selectedAccountManager;
+    const matchesOwner          = selectedOwner          === 'All' || acc.ownerId          === selectedOwner;
+    return matchesSearch && matchesGlobalScope && matchesType && matchesHealth && matchesIndustry && matchesLocation && matchesAccountManager && matchesOwner;
   });
 
   const sortedAccounts = [...filteredAccounts].sort((a, b) =>
@@ -332,12 +353,12 @@ export const AccountsListView: React.FC = () => {
       />
 
       {/* Control Panel: Search & Module-Specific Filters */}
-      <FilterBar className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 items-center">
+      <FilterBar className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-3 items-center">
         <SearchBar
           value={searchQuery}
           onChange={setSearchQuery}
           placeholder="Search accounts..."
-          className="lg:col-span-2 w-full"
+          className="sm:col-span-2 md:col-span-2 lg:col-span-2 w-full"
         />
 
         <FilterSelect
@@ -383,6 +404,22 @@ export const AccountsListView: React.FC = () => {
             ...locationOptions.map(loc => ({ value: loc as string, label: loc as string })),
           ]}
         />
+
+        <FilterSelect
+          label="Account Manager"
+          hideLabel
+          value={selectedAccountManager}
+          onChange={setSelectedAccountManager}
+          options={accountManagerFilterOptions}
+        />
+
+        <FilterSelect
+          label="Owner"
+          hideLabel
+          value={selectedOwner}
+          onChange={setSelectedOwner}
+          options={ownerFilterOptions}
+        />
       </FilterBar>
 
       {/* Accounts Excel-style List Table */}
@@ -390,7 +427,7 @@ export const AccountsListView: React.FC = () => {
         <div className="overflow-x-auto">
           <Table extraColumns={extraColumnCount} resizable storageKey="accounts">
             <TableHead>
-              {displayedConfigs.filter(col => col.key !== 'owner').map(col => (
+              {displayedConfigs.map(col => (
                 <TableHeadCell
                   key={col.key}
                   columnId={col.key}
@@ -452,12 +489,26 @@ export const AccountsListView: React.FC = () => {
                         if (col.key === 'health') {
                           return (
                             <TableCell key={col.key} onClick={(e) => e.stopPropagation()}>
-                              <InlineSelectEditCell
-                                value={acc.health}
-                                options={ACCOUNT_HEALTH_OPTIONS}
-                                disabled={!canUpdate}
-                                onSave={async (val) => { await updateAccount({ ...acc, health: val as any }); }}
-                              />
+                              <div className="flex flex-col gap-1">
+                                <InlineSelectEditCell
+                                  value={acc.health}
+                                  options={ACCOUNT_HEALTH_OPTIONS}
+                                  disabled={!canUpdate}
+                                  onSave={async (val) => { await updateAccount({ ...acc, health: val as any }); }}
+                                />
+                                {acc.healthReason && (
+                                  <span className="text-[11px] text-slate-500 font-medium truncate max-w-[180px]" title={`Reason: ${acc.healthReason}`}>
+                                    Reason: {acc.healthReason}
+                                  </span>
+                                )}
+                              </div>
+                            </TableCell>
+                          );
+                        }
+                        if (col.key === 'healthReason') {
+                          return (
+                            <TableCell key={col.key} className="text-slate-600 font-medium text-xs">
+                              {acc.healthReason || '—'}
                             </TableCell>
                           );
                         }

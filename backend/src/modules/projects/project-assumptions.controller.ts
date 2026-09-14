@@ -12,11 +12,13 @@ export class ProjectAssumptionsController {
   constructor(private readonly assumptionsService: ProjectAssumptionsService) {}
 
   @Get()
+  @RequirePermission('projects', 'view')
   findAll(@Param('projectId') projectId: string, @AuthUser() authUser: JwtPayload) {
     return this.assumptionsService.findAll(projectId, authUser.sub);
   }
 
   @Post()
+  @RequirePermission('projects', 'create')
   @HttpCode(HttpStatus.CREATED)
   create(
     @Param('projectId') projectId: string,
@@ -27,6 +29,7 @@ export class ProjectAssumptionsController {
   }
 
   @Put(':id')
+  @RequirePermission('projects', 'update')
   update(
     @Param('projectId') projectId: string,
     @Param('id') id: string,

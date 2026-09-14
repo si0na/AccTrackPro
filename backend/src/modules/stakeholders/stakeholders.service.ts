@@ -76,12 +76,12 @@ export class StakeholdersService {
     return {
       moduleKey: 'stakeholders',
       fields: STAKEHOLDER_FIELDS,
-      validate: (row) => validateDto(CreateStakeholderDto, { ...row, stakeholderType: 'CLIENT' }),
+      validate: (row) => validateDto(CreateStakeholderDto, { stakeholderType: 'CLIENT', ...row }),
       naturalKey: (row) =>
         row.accountId && row.email ? `${row.accountId}::${String(row.email).trim().toLowerCase()}` : null,
       findExistingId: (row) => this.findActiveByEmail(row.accountId, row.email, userId),
-      create: (row) => this.create({ ...row, stakeholderType: 'CLIENT' }, userId),
-      update: (id, row) => this.update(id, { ...row, stakeholderType: 'CLIENT' }, userId),
+      create: (row) => this.create({ stakeholderType: 'CLIENT', ...row }, userId),
+      update: (id, row) => this.update(id, { stakeholderType: 'CLIENT', ...row }, userId),
     };
   }
 

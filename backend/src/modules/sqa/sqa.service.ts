@@ -3,6 +3,7 @@ import {
 } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
 import { FilterContextService, FilterParams } from '../../common/services/filter-context.service';
+import { AccessScopeService } from '../rbac/access-scope.service';
 import { ProjectsService } from '../projects/projects.service';
 import { ProjectHealthService, ProjectWeeklyHealth } from '../projects/project-health.service';
 import { SqaAvailableProject, SqaRecord, SqaTrackerSnapshot } from '../../types';
@@ -240,6 +241,7 @@ export class SqaService {
   constructor(
     private readonly db: DatabaseService,
     private readonly filter: FilterContextService,
+    private readonly access: AccessScopeService,
     private readonly projects: ProjectsService,
     private readonly projectHealth: ProjectHealthService,
   ) {}
@@ -287,6 +289,15 @@ export class SqaService {
     }
   }
 
+  private async sqaScope(userId: string | null, startIdx: number) {
+    if (!userId) return { conditions: [], params: [], nextIdx: startIdx };
+    const ctx = await this.access.getContext(userId);
+    if (ctx.permissions.has('sqa:view-all') || ctx.canViewAllAccounts) {
+      return { conditions: [], params: [], nextIdx: startIdx };
+    }
+    return this.access.buildProjectVisibility('p', ctx, startIdx);
+  }
+
   async findAll(
     params: FilterParams = {},
     pg: Pagination | null = null,
@@ -294,16 +305,16 @@ export class SqaService {
   ): Promise<SqaRecord[] | Paginated<SqaRecord>> {
     await this.autoProvisionSqaRecords();
     const f = this.filter.normalize(params);
-    const owner = this.filter.buildOwnerConditions('s', f, 1);
+    const scope = await this.sqaScope(f.userId, 1);
     const where = [
       's.is_deleted = FALSE',
       'p.is_deleted = FALSE',
       'a.is_deleted = FALSE',
-      ...owner.conditions,
+      ...scope.conditions,
     ].join(' AND ');
 
-    const limitClause = pg ? ` LIMIT $${owner.nextIdx} OFFSET $${owner.nextIdx + 1}` : '';
-    const qParams = pg ? [...owner.params, pg.limit, pg.offset] : owner.params;
+    const limitClause = pg ? ` LIMIT $${scope.nextIdx} OFFSET $${scope.nextIdx + 1}` : '';
+    const qParams = pg ? [...scope.params, pg.limit, pg.offset] : scope.params;
 
     const { rows } = await this.db.query(
       `${sqaSelect({ accountJoin: 'inner', withTotal: !!pg })}

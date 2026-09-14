@@ -7,6 +7,7 @@ import { JwtAuthGuard } from './jwt.guard';
 import { UsersModule } from '../users/users.module';
 import { EmployeeMasterModule } from '../employee-master/employee-master.module';
 import { ServiceProviderModule } from '../service-provider/service-provider.module';
+import { PresenceService } from './presence.service';
 import { GraphMailService } from './graph-mail.service';
 
 @Module({
@@ -25,10 +26,11 @@ import { GraphMailService } from './graph-mail.service';
   controllers: [AuthController],
   providers: [
     AuthService,
+    PresenceService,
     JwtAuthGuard,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     GraphMailService,
   ],
-  exports: [JwtModule, AuthService],
+  exports: [JwtModule, AuthService, PresenceService],
 })
 export class AuthModule {}

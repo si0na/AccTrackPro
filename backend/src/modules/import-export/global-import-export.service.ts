@@ -62,6 +62,11 @@ class ParentIndex {
   private readonly stkByKey = new Map<string, ParentRef>(); // `${accountId}::${lcName}`
   private readonly stkById = new Map<string, ParentRef & { accountId: string }>();
   private readonly pendingStk = new Map<string, ParentRef>(); // `${accountId}::${lcName}`
+  private readonly userByName = new Map<string, ParentRef>();
+  private readonly userByEmail = new Map<string, ParentRef>();
+  private readonly userById = new Map<string, ParentRef>();
+  private readonly prjByKey = new Map<string, ParentRef>(); // `${accountId}::${lcName}`
+  private readonly prjById = new Map<string, ParentRef & { accountId?: string }>();
 
   seedAccount(id: string, name: string): void {
     const ref = { id, name };
@@ -75,6 +80,17 @@ class ParentIndex {
   seedStakeholder(id: string, name: string, accountId: string): void {
     this.stkByKey.set(`${accountId}::${norm(name)}`, { id, name });
     this.stkById.set(id, { id, name, accountId });
+  }
+  seedUser(id: string, name: string, email: string): void {
+    const ref = { id, name };
+    if (name) this.userByName.set(norm(name), ref);
+    if (email) this.userByEmail.set(norm(email), ref);
+    this.userById.set(id, ref);
+  }
+  seedProject(id: string, name: string, accountId: string): void {
+    const ref = { id, name };
+    this.prjByKey.set(`${accountId}::${norm(name)}`, ref);
+    this.prjById.set(id, { id, name, accountId });
   }
 
   /** A NEW account defined in the workbook — resolves to a marker until committed. */
@@ -115,6 +131,20 @@ class ParentIndex {
     if (this.pendingStk.has(key)) return this.pendingStk.get(key)!;
     const byId = this.stkById.get(raw.trim());
     if (byId && byId.accountId === accountId) return byId;
+    return null;
+  }
+  resolveUser(raw: string): ParentRef | null {
+    const lc = norm(raw);
+    return this.userByName.get(lc) ?? this.userByEmail.get(lc) ?? this.userById.get(raw.trim()) ?? null;
+  }
+  resolveProject(raw: string, accountId?: string): ParentRef | null {
+    const lc = norm(raw);
+    if (accountId) {
+      const key = `${accountId}::${lc}`;
+      if (this.prjByKey.has(key)) return this.prjByKey.get(key)!;
+    }
+    const byId = this.prjById.get(raw.trim());
+    if (byId && (!accountId || byId.accountId === accountId)) return byId;
     return null;
   }
 }
@@ -221,7 +251,25 @@ export class GlobalImportExportService {
             continue;
           }
           payload[f.key] = stk.id;
-          refNames.stakeholder = stk.name;
+          refNames[f.key] = stk.name;
+        } else if (f.reference === 'user') {
+          if (!raw) continue;
+          const usr = parents.resolveUser(raw);
+          if (!usr) {
+            errors.push(`User "${raw}" was not found`);
+            continue;
+          }
+          payload[f.key] = usr.id;
+          refNames[f.key] = usr.name;
+        } else if (f.reference === 'project') {
+          if (!raw) continue;
+          const prj = parents.resolveProject(raw, resolvedAccountId);
+          if (!prj) {
+            errors.push(`Project "${raw}" was not found${resolvedAccountId ? ' for this account' : ''}`);
+            continue;
+          }
+          payload[f.key] = prj.id;
+          refNames[f.key] = prj.name;
         }
       }
       return { errors, refNames };
@@ -398,6 +446,17 @@ export class GlobalImportExportService {
       [userId ?? null],
     );
     for (const r of stkRes.rows) index.seedStakeholder(r.id, r.name, r.account_id);
+
+    const userRes = await this.db.query(
+      `SELECT id, name, email FROM users WHERE is_active = TRUE`,
+    );
+    for (const r of userRes.rows) index.seedUser(r.id, r.name, r.email ?? '');
+
+    const prjRes = await this.db.query(
+      `SELECT id, name, account_id FROM projects WHERE is_deleted = FALSE`,
+    );
+    for (const r of prjRes.rows) index.seedProject(r.id, r.name, r.account_id);
+
     return index;
   }
 }
