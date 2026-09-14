@@ -1,8 +1,9 @@
-import { Controller, Get, Put, Post, Body, Param } from '@nestjs/common';
+import { Controller, Get, Put, Post, Body, Param, Query } from '@nestjs/common';
 import { AdministrationService } from './administration.service';
 import { UpdateFinancialCalendarDto, UpdateSettingsDto, UpdateUserDto, CreateUserDto } from './dto/administration.dto';
 import { RequirePermission } from '../rbac/require-permission.decorator';
 import { AuthUser, JwtPayload } from '../auth/auth-user.decorator';
+import { parsePagination } from '../../common/utils/pagination.util';
 
 @Controller('administration')
 export class AdministrationController {
@@ -16,8 +17,16 @@ export class AdministrationController {
 
   @Get('users')
   @RequirePermission('administration', 'view')
-  getUsers() {
-    return this.service.getUsers();
+  getUsers(
+    @Query('page') page?: string,
+    @Query('pageSize') pageSize?: string,
+    @Query('search') search?: string,
+    @Query('status') status?: string,
+  ) {
+    return this.service.getUsers(
+      { search, status },
+      parsePagination(page, pageSize),
+    );
   }
 
   @Post('users')

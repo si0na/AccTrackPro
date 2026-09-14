@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, Logger, NotFoundExc
 import { DatabaseService } from '../../database/database.service';
 import { FilterContextService, FilterParams } from '../../common/services/filter-context.service';
 import { PermissionsService } from '../rbac/permissions.service';
+import { AccessScopeService } from '../rbac/access-scope.service';
 import { Project } from '../../types';
 import { extractCustomData } from '../../common/utils/db-mapping.util';
 import { Pagination, Paginated, extractTotal } from '../../common/utils/pagination.util';
@@ -98,8 +99,15 @@ export class ProjectsService {
   constructor(
     private readonly db: DatabaseService,
     private readonly filter: FilterContextService,
+    private readonly access: AccessScopeService,
     private readonly permissions: PermissionsService,
   ) {}
+
+  private async projectScope(userId: string | null, startIdx: number) {
+    if (!userId) return { conditions: [], params: [], nextIdx: startIdx };
+    const ctx = await this.access.getContext(userId);
+    return this.access.buildProjectVisibility('p', ctx, startIdx);
+  }
 
   /**
    * Operational list — every project remains visible until deactivated;
@@ -111,12 +119,12 @@ export class ProjectsService {
     pg: Pagination | null = null,
   ): Promise<Project[] | Paginated<Project>> {
     const f = this.filter.normalize(params);
-    const owner = this.filter.buildOwnerConditions('p', f, 1);
-    const where = ['p.is_deleted = FALSE', ...owner.conditions].join(' AND ');
+    const scope = await this.projectScope(f.userId, 1);
+    const where = ['p.is_deleted = FALSE', ...scope.conditions].join(' AND ');
 
     const totalCol    = pg ? ', COUNT(*) OVER()::INTEGER AS __total' : '';
-    const limitClause = pg ? ` LIMIT $${owner.nextIdx} OFFSET $${owner.nextIdx + 1}` : '';
-    const qParams     = pg ? [...owner.params, pg.limit, pg.offset] : owner.params;
+    const limitClause = pg ? ` LIMIT $${scope.nextIdx} OFFSET $${scope.nextIdx + 1}` : '';
+    const qParams     = pg ? [...scope.params, pg.limit, pg.offset] : scope.params;
 
     const { rows } = await this.db.query(
       `SELECT p.*, a.name AS account_name, o.name AS opportunity_name,
@@ -140,10 +148,11 @@ export class ProjectsService {
   }
 
   async findOne(id: string, userId?: string): Promise<Project> {
+    const scope = await this.projectScope(userId ?? null, 2);
+    const scopeClause = scope.conditions.length ? ` AND ${scope.conditions.join(' AND ')}` : '';
     const { rows } = await this.db.query(
-      `${PROJECT_SELECT} WHERE p.id = $1 AND p.is_deleted = FALSE
-       AND ($2::TEXT IS NULL OR p.owner_id = $2)`,
-      [id, userId ?? null],
+      `${PROJECT_SELECT} WHERE p.id = $1 AND p.is_deleted = FALSE${scopeClause}`,
+      [id, ...scope.params],
     );
     if (!rows.length) throw new NotFoundException(`Project "${id}" not found`);
     return rowToProject(rows[0]);
@@ -152,14 +161,20 @@ export class ProjectsService {
   async create(data: any): Promise<Project> {
     this.logger.log(`Creating project [name="${data.name}" accountId=${data.accountId} opportunityId=${data.opportunityId ?? 'NONE'}]`);
 
-    await this.assertAccountExists(data.accountId, data.ownerId);
+    await this.assertAccountExists(data.accountId);
     if (data.opportunityId) {
-      await this.assertOpportunityBelongsToAccount(data.opportunityId, data.accountId, data.ownerId);
+      await this.assertOpportunityBelongsToAccount(data.opportunityId, data.accountId);
     }
     return this.insertProject({
       ...data,
       opportunityId: data.opportunityId || null,
     });
+  }
+
+  private assertProjectDateOrder(startDate?: string, endDate?: string): void {
+    if (startDate && endDate && endDate < startDate) {
+      throw new BadRequestException('Project End Date cannot be earlier than Project Start Date.');
+    }
   }
 
   /**
@@ -180,6 +195,7 @@ export class ProjectsService {
     if (data.asOnDate) {
       assertNotFutureDate(data.asOnDate);
     }
+    this.assertProjectDateOrder(data.startDate, data.endDate);
     await this.validatePm(data);
     await this.validatePracticeLead(data);
     await this.validateClientPartner(data);
@@ -244,11 +260,15 @@ export class ProjectsService {
     if (data.asOnDate) {
       assertNotFutureDate(data.asOnDate);
     }
+    const effectiveStartDate = 'startDate' in data ? data.startDate : existing.startDate;
+    const effectiveEndDate   = 'endDate' in data ? data.endDate : existing.endDate;
+    this.assertProjectDateOrder(effectiveStartDate, effectiveEndDate);
+
     if (data.accountId && data.accountId !== existing.accountId) {
-      await this.assertAccountExists(data.accountId, requestingUserId);
+      await this.assertAccountExists(data.accountId);
     }
     if (data.opportunityId && data.opportunityId !== existing.opportunityId) {
-      await this.assertOpportunityBelongsToAccount(data.opportunityId, data.accountId ?? existing.accountId, requestingUserId);
+      await this.assertOpportunityBelongsToAccount(data.opportunityId, data.accountId ?? existing.accountId);
     }
     if ('serviceProviderPmId' in data) {
       await this.validatePm(data);
@@ -388,6 +408,9 @@ export class ProjectsService {
     const parentPracticeLeadId = accountRows.length ? accountRows[0].practice_lead_id : null;
     const parentClientPartnerId = accountRows.length ? accountRows[0].client_partner_id : null;
 
+    const startDate = (typeof data.startDate === 'string' && data.startDate.trim()) ? data.startDate.trim() : (opp.allocationStartDate || undefined);
+    const endDate   = (typeof data.endDate === 'string' && data.endDate.trim())     ? data.endDate.trim()   : (opp.allocationEndDate || undefined);
+
     const merged = {
       ...data,
       accountId:     opp.accountId,
@@ -395,8 +418,8 @@ export class ProjectsService {
       ownerId:       opp.ownerId ?? null,
       name:          typeof data.name === 'string' && data.name.trim() ? data.name.trim() : opp.name,
       description:   data.description ?? opp.description ?? '',
-      startDate:     data.startDate ?? opp.allocationStartDate ?? undefined,
-      endDate:       data.endDate ?? opp.allocationEndDate ?? undefined,
+      startDate,
+      endDate,
       clientPartnerId: data.clientPartnerId ?? parentClientPartnerId ?? undefined,
       dealValue:     data.dealValue ?? opp.value ?? undefined,
       serviceProviderPmId: data.serviceProviderPmId ?? undefined,
@@ -411,22 +434,20 @@ export class ProjectsService {
     return project;
   }
 
-  /** Relational rule: the parent account must exist, be active, and belong to the requesting user. */
-  private async assertAccountExists(accountId: string, ownerId?: string): Promise<void> {
+  /** Relational rule: the parent account must exist and be active. */
+  private async assertAccountExists(accountId: string): Promise<void> {
     const { rows } = await this.db.query(
-      `SELECT id FROM accounts WHERE id = $1 AND is_deleted = FALSE
-       AND ($2::TEXT IS NULL OR owner_id = $2)`,
-      [accountId, ownerId ?? null],
+      `SELECT id FROM accounts WHERE id = $1 AND is_deleted = FALSE`,
+      [accountId],
     );
     if (!rows.length) throw new BadRequestException('The selected account does not exist');
   }
 
   /** Relational rule: the originating opportunity must exist, be active, and belong to the same account. */
-  private async assertOpportunityBelongsToAccount(opportunityId: string, accountId: string, ownerId?: string): Promise<void> {
+  private async assertOpportunityBelongsToAccount(opportunityId: string, accountId: string): Promise<void> {
     const { rows } = await this.db.query(
-      `SELECT account_id FROM opportunities WHERE id = $1 AND is_deleted = FALSE
-       AND ($2::TEXT IS NULL OR owner_id = $2)`,
-      [opportunityId, ownerId ?? null],
+      `SELECT account_id FROM opportunities WHERE id = $1 AND is_deleted = FALSE`,
+      [opportunityId],
     );
     if (!rows.length) throw new BadRequestException('The selected opportunity does not exist');
     if (rows[0].account_id !== accountId) {

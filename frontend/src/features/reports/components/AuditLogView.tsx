@@ -37,7 +37,7 @@ import { compareForSort, SortDirection } from '@/utils';
 
 /** Chunk size for incremental server fetches (the display page size is user-selectable). */
 const SERVER_PAGE_SIZE = 50;
-const PAGE_SIZE_OPTIONS = [10, 25, 50];
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
 export const AuditLogView: React.FC = () => {
   const {
@@ -66,7 +66,7 @@ export const AuditLogView: React.FC = () => {
   // Display pagination (shared Pagination component) layered over the
   // incrementally-loaded rows; paging forward transparently loads more.
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(50);
 
   useEffect(() => {
     let cancelled = false;

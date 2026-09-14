@@ -157,6 +157,9 @@ export class PermissionsService {
   /** Central permission check — the single authority used by the guard and services. */
   async can(userId: string, moduleKey: string, permissionKey: string): Promise<boolean> {
     const ctx = await this.getUserAccessContext(userId);
+    if (permissionKey === 'view') {
+      return ctx.permissions.has(`${moduleKey}:view`) || ctx.permissions.has(`${moduleKey}:view-all`);
+    }
     return ctx.permissions.has(`${moduleKey}:${permissionKey}`);
   }
 

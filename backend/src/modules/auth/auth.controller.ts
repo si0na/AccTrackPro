@@ -11,6 +11,8 @@ import { ChangePasswordDto } from './dto/change-password.dto';
 import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { ResetPasswordDto } from './dto/reset-password.dto';
 
+import { PresenceService } from './presence.service';
+
 function clientIp(req: ExpressRequest): string {
   const forwarded = req.headers['x-forwarded-for'];
   if (forwarded) return (Array.isArray(forwarded) ? forwarded[0] : forwarded).split(',')[0].trim();
@@ -23,7 +25,10 @@ function clientUa(req: ExpressRequest): string {
 
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private readonly presenceService: PresenceService,
+  ) {}
 
   // POST /api/auth/register  — public, rate-limited to 5/min per IP
   @Public()
@@ -60,7 +65,7 @@ export class AuthController {
     await this.authService.refresh(rawRefresh, res, clientIp(req), clientUa(req));
   }
 
-  // POST /api/auth/logout  — protected; revokes refresh token
+  // POST /api/auth/logout  — protected; revokes refresh token & clears presence
   @SkipThrottle()
   @Post('logout')
   @HttpCode(HttpStatus.NO_CONTENT)
@@ -69,7 +74,21 @@ export class AuthController {
     @Res({ passthrough: true }) res: ExpressResponse,
   ) {
     const rawRefresh = req.cookies?.['crm_refresh'];
+    if (req.user?.sub) {
+      this.presenceService.clearPresence(req.user.sub);
+    }
     await this.authService.logout(rawRefresh, req.user?.sub, res, clientIp(req), clientUa(req));
+  }
+
+  // POST /api/auth/heartbeat  — protected; updates active presence timestamp
+  @SkipThrottle()
+  @Post('heartbeat')
+  @HttpCode(HttpStatus.OK)
+  heartbeat(@Req() req: any) {
+    if (req.user?.sub) {
+      this.presenceService.recordPresence(req.user.sub);
+    }
+    return { ok: true };
   }
 
   // GET /api/auth/me  — protected

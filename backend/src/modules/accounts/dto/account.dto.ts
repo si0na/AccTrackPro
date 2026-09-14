@@ -16,6 +16,7 @@ export class CreateAccountDto {
 
   @IsIn(['Strategic', 'Non Strategic', 'New']) type!: string;
   @IsIn(['Green', 'Amber', 'Red']) health!: string;
+  @IsString() @IsOptional() @MaxLength(1000) healthReason?: string;
 
   // ownerId is optional in the DTO — the controller always overrides it from the JWT.
   // Keeping the field optional so existing API clients that still send it don't fail validation.

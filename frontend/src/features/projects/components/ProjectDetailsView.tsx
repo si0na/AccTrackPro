@@ -158,6 +158,9 @@ export const ProjectDetailsView: React.FC = () => {
     cameFromDashboard,
     navSource,
     can,
+    projectDetailsSourceView,
+    setProjectDetailsSourceView,
+    setAccountDetailsActiveTab,
   } = useCRM();
 
   // Single RBAC gate for every delete surface on this page — the project itself
@@ -515,7 +518,7 @@ export const ProjectDetailsView: React.FC = () => {
   const [aiSortField, setAiSortField] = useState<string | null>(null);
   const [aiSortDirection, setAiSortDirection] = useState<SortDirection>('asc');
   const [aiPage, setAiPage] = useState(1);
-  const [aiPageSize, setAiPageSize] = useState(10);
+  const [aiPageSize, setAiPageSize] = useState(50);
   const [selectedActionItemId, setSelectedActionItemId] = useState<string | null>(null);
 
   const handleAiSort = (field: string) => {
@@ -567,7 +570,15 @@ export const ProjectDetailsView: React.FC = () => {
 
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'actionItem' | 'comment' | 'risk' | 'dependency'; id: string; label: string } | null>(null);
 
-  const goBack = () => setView('projects');
+  const goBack = () => {
+    if (projectDetailsSourceView === 'account-details') {
+      setAccountDetailsActiveTab('projects');
+      setView('account-details');
+      setProjectDetailsSourceView(null);
+    } else {
+      setView('projects');
+    }
+  };
 
   if (!project || !account) {
     return (
@@ -627,7 +638,7 @@ export const ProjectDetailsView: React.FC = () => {
 
       <DetailHeaderCard
         onBack={!navSource ? goBack : undefined}
-        backTitle="Back to Projects"
+        backTitle={projectDetailsSourceView === 'account-details' ? 'Back to Account' : 'Back to Projects'}
         avatarContent={<FolderKanban className="w-6 h-6" aria-hidden="true" />}
         avatarColorClass="bg-indigo-50 text-indigo-600"
         title={project.name}

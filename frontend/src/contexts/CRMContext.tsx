@@ -4,7 +4,7 @@ import { authApi, rbacApi, serviceProvidersApi, projectManagersApi, practiceLead
 import type {
   Account, Opportunity, ActionItem, Stakeholder, Activity, Comment, CustomColumn, ColumnConfig,
   User, FinancialYear, FinancialCalendar, AdminSettings, Project, MyPermissions, ServiceProviderUser,
-  EmployeeAppreciation,
+  EmployeeAppreciation, EmployeeRewardsRecognition, SqaRecord, NormalizedRisk, PerformanceEvaluation,
 } from '@/types';
 
 // ─── User profiles ────────────────────────────────────────────────────────────
@@ -14,6 +14,7 @@ export interface UserProfile {
   role: string;
   avatarUrl: string;
   email: string;
+  department?: string;
 }
 
 // ─── View types ───────────────────────────────────────────────────────────────
@@ -40,6 +41,7 @@ export type ViewType =
   | 'audit-log'
   | 'performance-evaluation'
   | 'employee-appreciation'
+  | 'employee-rewards-recognition'
   | 'risks';
 
 /**
@@ -76,6 +78,9 @@ interface CRMContextProps {
   stakeholders: Stakeholder[];
   activities: Activity[];
   comments: Comment[];
+  sqaRecords: SqaRecord[];
+  risks: NormalizedRisk[];
+  performanceEvaluations: PerformanceEvaluation[];
   loading: boolean;
   /** All system users as Service Provider options (no is_active filter). */
   serviceProviders: ServiceProviderUser[];
@@ -131,6 +136,8 @@ interface CRMContextProps {
   setCreateProjectIntent: (val: boolean) => void;
   oppDetailsSourceView: ViewType | null;
   setOppDetailsSourceView: (view: ViewType | null) => void;
+  projectDetailsSourceView: ViewType | null;
+  setProjectDetailsSourceView: (view: ViewType | null) => void;
   accountDetailsActiveTab: string;
   setAccountDetailsActiveTab: (tab: string) => void;
   cameFromDashboard: boolean;
@@ -238,6 +245,12 @@ interface CRMContextProps {
   addEmployeeAppreciation: (data: Omit<EmployeeAppreciation, 'id' | 'createdAt' | 'updatedAt'>) => Promise<EmployeeAppreciation>;
   updateEmployeeAppreciation: (id: string, data: Partial<EmployeeAppreciation>) => Promise<void>;
   deleteEmployeeAppreciation: (id: string) => Promise<void>;
+
+  // Employee Rewards and Recognition
+  employeeRewardsRecognitions: EmployeeRewardsRecognition[];
+  addEmployeeRewardsRecognition: (data: Omit<EmployeeRewardsRecognition, 'id' | 'createdAt' | 'updatedAt'>) => Promise<EmployeeRewardsRecognition>;
+  updateEmployeeRewardsRecognition: (id: string, data: Partial<EmployeeRewardsRecognition>) => Promise<void>;
+  deleteEmployeeRewardsRecognition: (id: string) => Promise<void>;
 }
 
 // ─── Context & Provider ───────────────────────────────────────────────────────
@@ -347,7 +360,12 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     [myPermissions],
   );
   const can = useCallback(
-    (module: string, permission: string): boolean => permissionSet.has(`${module}:${permission}`),
+    (module: string, permission: string): boolean => {
+      if (permission === 'view') {
+        return permissionSet.has(`${module}:view`) || permissionSet.has(`${module}:view-all`);
+      }
+      return permissionSet.has(`${module}:${permission}`);
+    },
     [permissionSet],
   );
 
@@ -424,6 +442,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [selectedSqaId, setSelectedSqaId] = useState<string | null>(() => getInitialId('/sqa/'));
   const [createProjectIntent, setCreateProjectIntent] = useState<boolean>(false);
   const [oppDetailsSourceView, setOppDetailsSourceView] = useState<ViewType | null>(null);
+  const [projectDetailsSourceView, setProjectDetailsSourceView] = useState<ViewType | null>(null);
   const [accountDetailsActiveTab, setAccountDetailsActiveTab] = useState<string>('overview');
   const [cameFromDashboard, setCameFromDashboard] = useState<boolean>(false);
   const [navSource, setNavSource] = useState<NavSource | null>(null);
@@ -462,6 +481,22 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     serviceProvidersApi.getAll()
       .then(setServiceProviders)
       .catch(() => {}); // non-blocking
+  }, [isLoggedIn]);
+
+  // Real-time presence heartbeat (runs every 20 seconds while logged in)
+  useEffect(() => {
+    if (!isLoggedIn) return;
+
+    // Send immediate heartbeat on session start / login
+    authApi.heartbeat();
+
+    const intervalId = setInterval(() => {
+      authApi.heartbeat();
+    }, 20_000);
+
+    return () => {
+      clearInterval(intervalId);
+    };
   }, [isLoggedIn]);
 
   // Role-filtered users (registered users + pending registration employees)
@@ -543,6 +578,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setNavSource(opts.source);
     } else if (!detailsRoundTrip) {
       setNavSource(null);
+      setProjectDetailsSourceView(null);
     }
 
     // A notification-driven single-record focus never survives a navigation.
@@ -585,6 +621,8 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setCreateProjectIntent,
         oppDetailsSourceView,
         setOppDetailsSourceView,
+        projectDetailsSourceView,
+        setProjectDetailsSourceView,
         accountDetailsActiveTab,
         setAccountDetailsActiveTab,
         cameFromDashboard,

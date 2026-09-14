@@ -163,7 +163,7 @@ export const OpportunityDetailsView: React.FC = () => {
   const [aiSortField, setAiSortField] = useState<string | null>(null);
   const [aiSortDirection, setAiSortDirection] = useState<SortDirection>('asc');
   const [aiPage, setAiPage] = useState(1);
-  const [aiPageSize, setAiPageSize] = useState(10);
+  const [aiPageSize, setAiPageSize] = useState(50);
 
   const handleAiSort = (field: string) => {
     if (aiSortField === field) {

@@ -25,12 +25,16 @@ export interface FilterParams {
   financialYear?: string;
   quarter?: string;
   userId?: string;
+  accountManagerId?: string;
+  ownerId?: string;
 }
 
 export interface NormalizedFilter {
   fy: string | null;
   quarter: string | null;
   userId: string | null;
+  accountManagerId: string | null;
+  ownerId: string | null;
 }
 
 interface FiscalYearRange {
@@ -71,9 +75,11 @@ export class FilterContextService {
 
   normalize(params: FilterParams): NormalizedFilter {
     return {
-      fy:      params.financialYear && params.financialYear !== 'All' ? params.financialYear : null,
-      quarter: params.quarter       && params.quarter       !== 'All' ? params.quarter       : null,
-      userId:  params.userId        && params.userId        !== 'All' ? params.userId        : null,
+      fy:               params.financialYear && params.financialYear !== 'All' ? params.financialYear : null,
+      quarter:          params.quarter       && params.quarter       !== 'All' ? params.quarter       : null,
+      userId:           params.userId        && params.userId        !== 'All' ? params.userId        : null,
+      accountManagerId: params.accountManagerId && params.accountManagerId !== 'All' ? params.accountManagerId : null,
+      ownerId:          params.ownerId          && params.ownerId          !== 'All' ? params.ownerId          : null,
     };
   }
 

@@ -66,7 +66,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
   stakeholders,
   mode = 'edit',
 }) => {
-  const { projectManagers, practiceLeads, clientPartners, accounts } = useCRM();
+  const { projectManagers, practiceLeads, clientPartners, accounts, stakeholders: crmStakeholders } = useCRM();
 
   const projectManagerOptions = React.useMemo(() => {
     return (projectManagers || []).map((pm) => ({
@@ -88,6 +88,25 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
       label: serviceProviderOptionLabel(cp),
     }));
   }, [clientPartners]);
+
+  const clientPmOptions = React.useMemo(() => {
+    const source = (stakeholders && stakeholders.length > 0) ? stakeholders : (crmStakeholders || []);
+    let accountStks = source.filter((s) => s.stakeholderType === 'CLIENT' && s.accountId === value.accountId);
+    if (accountStks.length === 0) {
+      accountStks = source.filter((s) => s.stakeholderType === 'CLIENT');
+    }
+
+    const options = accountStks.map((s) => ({
+      value: s.name,
+      label: s.designation ? `${s.name} (${s.designation})` : s.name,
+    }));
+
+    if (value.clientPmName && !options.some((o) => o.value === value.clientPmName)) {
+      options.unshift({ value: value.clientPmName, label: value.clientPmName });
+    }
+
+    return options;
+  }, [stakeholders, crmStakeholders, value.accountId, value.clientPmName]);
 
   const isCreate = mode === 'create';
 
@@ -222,9 +241,10 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
 
         <FormSection title="Timeline & Methodology">
           <FormGrid columns={3}>
-            <FormField label="Start Date">
+            <FormField label="Start Date" required>
               <input
                 type="date"
+                required
                 value={value.startDate ?? ''}
                 onChange={(e) => onChange({ startDate: e.target.value || undefined })}
                 className={`${INPUT_CLS} font-mono`}
@@ -233,6 +253,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
             <FormField label="End Date">
               <input
                 type="date"
+                min={value.startDate || undefined}
                 value={value.endDate ?? ''}
                 onChange={(e) => onChange({ endDate: e.target.value || undefined })}
                 className={`${INPUT_CLS} font-mono`}
@@ -288,13 +309,18 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
               </select>
             </FormField>
             <FormField label="Client Project Manager">
-              <input
-                type="text"
+              <select
                 value={value.clientPmName ?? ''}
                 onChange={(e) => onChange({ clientPmName: e.target.value || undefined })}
-                placeholder="Enter client project manager..."
-                className={INPUT_CLS}
-              />
+                className={SELECT_CLS}
+              >
+                <option value="">Not assigned</option>
+                {clientPmOptions.map((u) => (
+                  <option key={u.value} value={u.value}>
+                    {u.label}
+                  </option>
+                ))}
+              </select>
             </FormField>
           </FormGrid>
         </FormSection>

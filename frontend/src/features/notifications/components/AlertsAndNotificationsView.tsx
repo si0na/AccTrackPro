@@ -158,7 +158,7 @@ const RelatedTo: React.FC<{ accountName?: string; opportunityName?: string }> = 
   );
 };
 
-const PAGE_SIZE_OPTIONS = [10, 25, 50];
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
 export const AlertsAndNotificationsView: React.FC = () => {
   const {
@@ -206,7 +206,7 @@ export const AlertsAndNotificationsView: React.FC = () => {
   const [sortField, setSortField] = useState<SortField>('date');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [notifPage, setNotifPage] = useState(1);
-  const [notifPageSize, setNotifPageSize] = useState(10);
+  const [notifPageSize, setNotifPageSize] = useState(50);
 
   // Alerts are fully loaded up front (no server pagination), so search/category/
   // account/opportunity/date filters are plain client-side reshaping.
@@ -218,7 +218,7 @@ export const AlertsAndNotificationsView: React.FC = () => {
   const [alertSortField, setAlertSortField] = useState<SortField>('severity');
   const [alertSortDirection, setAlertSortDirection] = useState<SortDirection>('desc');
   const [alertPage, setAlertPage] = useState(1);
-  const [alertPageSize, setAlertPageSize] = useState(10);
+  const [alertPageSize, setAlertPageSize] = useState(50);
 
   const clearAlertFilters = () => {
     setAlertSearchQuery('');

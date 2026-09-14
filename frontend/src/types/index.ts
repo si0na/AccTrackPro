@@ -48,6 +48,7 @@ export interface Account {
   name: string;
   type: AccountType;
   health: AccountHealth;
+  healthReason?: string;
   owner: string;
   ownerId?: string;
   /** Role-ownership FKs driving account visibility (joined names alongside). */
@@ -719,6 +720,29 @@ export interface EmployeeAppreciation {
   updatedAt?: string;
 }
 
+export type RewardsRecognitionType = 'Continous' | 'Quarterly' | 'Annual';
+
+export type RewardsRecognitionTeamOrIndividual = 'Individual' | 'Team';
+
+export type RewardsRecognitionStatus = 'Nominated - Not Won' | 'Won' | 'Nomination Rejected';
+
+export interface EmployeeRewardsRecognition {
+  id: string;
+  monthOfRr: string;
+  nominatedById?: string;
+  nominatedByName: string;
+  type: RewardsRecognitionType;
+  category: string;
+  teamOrIndividual: RewardsRecognitionTeamOrIndividual;
+  employeeId?: string;
+  employeeName?: string;
+  status: RewardsRecognitionStatus;
+  details: string;
+  createdBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface Stakeholder {
   id: string;
   name: string;
@@ -795,6 +819,13 @@ export interface ColumnConfig {
   isPinned: boolean;
   isDisplayed: boolean;
   type: 'text' | 'number' | 'date' | 'boolean' | 'custom';
+}
+
+export interface Paginated<T> {
+  data: T[];
+  total: number;
+  page: number;
+  pageSize: number;
 }
 
 export interface User {
@@ -960,6 +991,8 @@ export interface AdminUser {
   department?: string | null;
   designation?: string | null;
   isActive: boolean;
+  isOnline?: boolean;
+  presence?: 'Online' | 'Offline';
   lastLogin?: string | null;
   createdAt: string;
   failedAttempts?: number;

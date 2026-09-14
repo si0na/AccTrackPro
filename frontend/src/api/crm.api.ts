@@ -9,7 +9,7 @@ import type {
   OpportunityForecastResult, OpportunityForecastPayload,
   Role, PermissionMatrix, MyPermissions,
   SqaRecord, SqaWeeklyHealth, SqaAvailableProject, SqaTrackerSnapshot, NpsResponse,
-  EmployeeAppreciation, AccountRisk, NormalizedRisk,
+  EmployeeAppreciation, EmployeeRewardsRecognition, AccountRisk, NormalizedRisk,
 } from '@/types';
 
 /** Attributes an administrator can pre-assign / edit on a user or whitelist row. */
@@ -24,6 +24,8 @@ export interface UserRbacAttrs {
 /** Owner scoping only — for entities that are never fiscal-period-filtered. */
 export interface OwnerFilter {
   userId?: string; // Authenticated user UUID (replaces display-name 'owner')
+  accountManagerId?: string;
+  ownerId?: string;
 }
 
 /**
@@ -417,8 +419,8 @@ export const financialYearsApi = {
 export const administrationApi = {
   getSystemOverview:        () =>
     apiClient.get<AdminSystemOverview>('/administration/system-overview').then((r) => r.data),
-  getUsers:                 () =>
-    apiClient.get<AdminUser[]>('/administration/users').then((r) => r.data),
+  getUsers: (params?: { page?: number; pageSize?: number; search?: string; status?: string }) =>
+    apiClient.get<any>('/administration/users', { params }).then((r) => r.data),
   getFinancialCalendar:     () =>
     apiClient.get<FinancialCalendar>('/administration/financial-calendar').then((r) => r.data),
   updateFinancialCalendar:  (data: FinancialCalendar) =>
@@ -641,6 +643,8 @@ export const authApi = {
   changePassword: (currentPassword: string, newPassword: string) =>
     apiClient.post('/auth/change-password', { currentPassword, newPassword }),
 
+  heartbeat: () => apiClient.post('/auth/heartbeat').catch(() => { /* best-effort retry */ }),
+
   forgotPassword: (email: string) =>
     apiClient.post('/auth/forgot-password', { email }),
 
@@ -751,6 +755,19 @@ export const employeeAppreciationApi = {
     apiClient.put<EmployeeAppreciation>(`/employee-appreciation/${id}`, data).then((r) => r.data),
   delete: (id: string) =>
     apiClient.delete<{ success: boolean }>(`/employee-appreciation/${id}`).then((r) => r.data),
+};
+
+export const employeeRewardsRecognitionApi = {
+  getAll: (params?: { type?: string; category?: string; teamOrIndividual?: string; status?: string; monthOfRr?: string; search?: string }) =>
+    apiClient.get<EmployeeRewardsRecognition[]>('/employee-rewards-recognition', { params }).then((r) => r.data),
+  getById: (id: string) =>
+    apiClient.get<EmployeeRewardsRecognition>(`/employee-rewards-recognition/${id}`).then((r) => r.data),
+  create: (data: Omit<EmployeeRewardsRecognition, 'id' | 'createdAt' | 'updatedAt'>) =>
+    apiClient.post<EmployeeRewardsRecognition>('/employee-rewards-recognition', data).then((r) => r.data),
+  update: (id: string, data: Partial<EmployeeRewardsRecognition>) =>
+    apiClient.put<EmployeeRewardsRecognition>(`/employee-rewards-recognition/${id}`, data).then((r) => r.data),
+  delete: (id: string) =>
+    apiClient.delete<{ success: boolean }>(`/employee-rewards-recognition/${id}`).then((r) => r.data),
 };
 
 export const accountRisksApi = {

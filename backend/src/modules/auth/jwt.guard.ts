@@ -3,6 +3,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { Reflector } from '@nestjs/core';
+import { PresenceService } from './presence.service';
 import { IS_PUBLIC_KEY } from './public.decorator';
 
 @Injectable()
@@ -10,6 +11,7 @@ export class JwtAuthGuard implements CanActivate {
   constructor(
     private readonly jwtService: JwtService,
     private readonly reflector: Reflector,
+    private readonly presenceService: PresenceService,
   ) {}
 
   canActivate(context: ExecutionContext): boolean {
@@ -39,6 +41,9 @@ export class JwtAuthGuard implements CanActivate {
       // Reject refresh tokens used as access tokens
       if (payload.type !== 'access') throw new Error('Invalid token type');
       request.user = payload;
+      if (payload.sub) {
+        this.presenceService.recordPresence(payload.sub);
+      }
       return true;
     } catch {
       throw new UnauthorizedException('Invalid or expired session');

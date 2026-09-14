@@ -41,7 +41,7 @@ export const SqaTrackerTab: React.FC<SqaTrackerTabProps> = ({ sqaRecordId, stora
   const [healthFilter, setHealthFilter] = useState<string>('All');
   const [viewMode, setViewMode] = useState<'cards' | 'table'>('cards');
   const [page, setPage] = useState<number>(1);
-  const [pageSize, setPageSize] = useState<number>(10);
+  const [pageSize, setPageSize] = useState<number>(50);
   const [sortField, setSortField] = useState<string>('week');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
 

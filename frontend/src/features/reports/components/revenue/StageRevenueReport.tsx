@@ -51,7 +51,7 @@ export const StageRevenueReport: React.FC<StageRevenueReportProps> = ({
   const [sortField, setSortField] = useState<keyof StageRevenueRow>('pipelineValue');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(50);
 
   const handleSort = (field: keyof StageRevenueRow) => {
     if (sortField === field) setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));

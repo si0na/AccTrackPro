@@ -73,7 +73,7 @@ export const RisksView: React.FC = () => {
   const [localAccountId, setLocalAccountId] = useState<string>('All');
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(50);
 
   // Modals & Actions
   const [riskModalOpen, setRiskModalOpen] = useState(false);

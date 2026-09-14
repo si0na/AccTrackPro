@@ -27,7 +27,7 @@ export function useProjectProgress(projectId: string) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const canUpdate = can('projects', 'update') || roleKey === 'admin';
+  const canUpdate = can('projects', 'update');
 
   const loadHistory = useCallback(() => {
     if (!projectId) return;

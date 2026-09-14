@@ -36,8 +36,13 @@ export class AccountsController {
     @AuthUser() authUser: JwtPayload,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
+    @Query('accountManagerId') accountManagerId?: string,
+    @Query('ownerId') ownerId?: string,
   ) {
-    return this.accountsService.findAll({ userId: authUser.sub }, parsePagination(page, pageSize));
+    return this.accountsService.findAll(
+      { userId: authUser.sub, accountManagerId, ownerId },
+      parsePagination(page, pageSize),
+    );
   }
 
   @Get('deactivated')

@@ -30,6 +30,7 @@ export interface Account {
   name: string;
   type: AccountType;
   health: AccountHealth;
+  healthReason?: string;
   owner: string;
   ownerId?: string;
   /** Ownership FKs driving role-based account visibility (joined names alongside). */
@@ -681,4 +682,27 @@ export interface Alert {
   actionItemTitle?: string;
   dueDate?: string;
   createdAt: string;
+}
+
+export type RewardsRecognitionType = 'Continous' | 'Quarterly' | 'Annual';
+
+export type RewardsRecognitionTeamOrIndividual = 'Individual' | 'Team';
+
+export type RewardsRecognitionStatus = 'Nominated - Not Won' | 'Won' | 'Nomination Rejected';
+
+export interface EmployeeRewardsRecognition {
+  id: string;
+  monthOfRr: string;
+  nominatedById?: string;
+  nominatedByName: string;
+  type: RewardsRecognitionType;
+  category: string;
+  teamOrIndividual: RewardsRecognitionTeamOrIndividual;
+  employeeId?: string;
+  employeeName?: string;
+  status: RewardsRecognitionStatus;
+  details: string;
+  createdBy?: string;
+  createdAt: string;
+  updatedAt: string;
 }

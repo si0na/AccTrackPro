@@ -52,7 +52,7 @@ export const ServiceRevenueReport: React.FC<ServiceRevenueReportProps> = ({
   const [sortField, setSortField] = useState<keyof ServiceRevenueRow>('pipelineValue');
   const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(50);
 
   const handleSort = (field: keyof ServiceRevenueRow) => {
     if (sortField === field) setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'));

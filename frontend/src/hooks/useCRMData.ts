@@ -2,13 +2,14 @@ import { useState, useEffect } from 'react';
 import type {
   Account, Opportunity, ActionItem, Stakeholder, Activity, Comment,
   CustomColumn, ColumnConfig, FinancialYear, FinancialCalendar, AdminSettings, Project,
-  EmployeeAppreciation,
+  EmployeeAppreciation, EmployeeRewardsRecognition, SqaRecord, NormalizedRisk, PerformanceEvaluation,
 } from '@/types';
 import type { OwnerFilter } from '@/api/crm.api';
 import {
   accountsApi, opportunitiesApi, actionItemsApi, stakeholdersApi,
   activitiesApi, commentsApi, customColumnsApi, columnConfigsApi, financialYearsApi,
   notificationsApi, administrationApi, projectsApi, serviceProvidersApi, employeeAppreciationApi,
+  employeeRewardsRecognitionApi, sqaApi, centralRisksApi, performanceEvaluationsApi,
 } from '@/api/crm.api';
 
 const DEFAULT_ACCOUNTS_COLUMNS: ColumnConfig[] = [
@@ -17,9 +18,11 @@ const DEFAULT_ACCOUNTS_COLUMNS: ColumnConfig[] = [
   { key: 'industry',               name: 'Industry',                   isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
   { key: 'status',                 name: 'Status',                     isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
   { key: 'health',                 name: 'Health',                     isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
+  { key: 'healthReason',           name: 'Reason for Health',          isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
   { key: 'location',               name: 'Location',                   isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
   { key: 'tower',                  name: 'Tower',                      isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
   { key: 'accountManagerId',        name: 'Account Manager',            isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
+  { key: 'owner',                   name: 'Owner',                      isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
   { key: 'practiceLeadId',          name: 'Practice Lead',              isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
   { key: 'clientPartnerId',         name: 'Client Partner',             isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
   { key: 'verticalHeadId',          name: 'Vertical Head',              isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
@@ -177,6 +180,10 @@ export const useCRMData = (
   const [activities, setActivities] = useState<Activity[]>([]);
   const [comments, setComments] = useState<Comment[]>([]);
   const [employeeAppreciations, setEmployeeAppreciations] = useState<EmployeeAppreciation[]>([]);
+  const [employeeRewardsRecognitions, setEmployeeRewardsRecognitions] = useState<EmployeeRewardsRecognition[]>([]);
+  const [sqaRecords, setSqaRecords] = useState<SqaRecord[]>([]);
+  const [risks, setRisks] = useState<NormalizedRisk[]>([]);
+  const [performanceEvaluations, setPerformanceEvaluations] = useState<PerformanceEvaluation[]>([]);
   const [accountColumns, setAccountColumns] = useState<CustomColumn[]>([]);
   const [opportunityColumns, setOpportunityColumns] = useState<CustomColumn[]>([]);
   const [actionItemColumns, setActionItemColumns] = useState<CustomColumn[]>([]);
@@ -221,7 +228,8 @@ export const useCRMData = (
         actvData, commentsData,
         customCols, configs,
         projectsData, deactivatedProjectsData,
-        apprData,
+        apprData, rewardsData,
+        sqaData, risksData, perfData,
       ] = await Promise.all([
         accountsApi.getAll(owner),
         accountsApi.getDeactivated(owner),
@@ -238,6 +246,10 @@ export const useCRMData = (
         projectsApi.getAll(owner),
         projectsApi.getDeactivated(owner),
         employeeAppreciationApi.getAll(),
+        employeeRewardsRecognitionApi.getAll(),
+        sqaApi.getAll().catch(() => []),
+        centralRisksApi.getAll().catch(() => []),
+        performanceEvaluationsApi.getAll(owner).catch(() => []),
       ]);
 
       setAccounts(accountsData);
@@ -253,6 +265,10 @@ export const useCRMData = (
       setActivities(actvData);
       setComments(commentsData);
       setEmployeeAppreciations(apprData ?? []);
+      setEmployeeRewardsRecognitions(rewardsData ?? []);
+      setSqaRecords(sqaData ?? []);
+      setRisks(risksData ?? []);
+      setPerformanceEvaluations(perfData ?? []);
       setAccountColumns(customCols.accountColumns ?? []);
       setOpportunityColumns(customCols.opportunityColumns ?? []);
       setActionItemColumns(customCols.actionItemColumns ?? []);
@@ -612,6 +628,29 @@ export const useCRMData = (
     setEmployeeAppreciations((prev) => prev.filter((item) => item.id !== id));
   };
 
+  // ─── Employee Rewards and Recognition actions ─────────────────────────────
+
+  const addEmployeeRewardsRecognition = async (
+    data: Omit<EmployeeRewardsRecognition, 'id' | 'createdAt' | 'updatedAt'>,
+  ): Promise<EmployeeRewardsRecognition> => {
+    const created = await employeeRewardsRecognitionApi.create(data);
+    setEmployeeRewardsRecognitions((prev) => [created, ...prev]);
+    return created;
+  };
+
+  const updateEmployeeRewardsRecognition = async (
+    id: string,
+    data: Partial<EmployeeRewardsRecognition>,
+  ): Promise<void> => {
+    const updated = await employeeRewardsRecognitionApi.update(id, data);
+    setEmployeeRewardsRecognitions((prev) => prev.map((item) => (item.id === id ? updated : item)));
+  };
+
+  const deleteEmployeeRewardsRecognition = async (id: string): Promise<void> => {
+    await employeeRewardsRecognitionApi.delete(id);
+    setEmployeeRewardsRecognitions((prev) => prev.filter((item) => item.id !== id));
+  };
+
   // ─── Custom column actions ─────────────────────────────────────────────────
 
   const addCustomColumn = async (
@@ -671,6 +710,10 @@ export const useCRMData = (
     activities,
     comments,
     employeeAppreciations,
+    employeeRewardsRecognitions,
+    sqaRecords,
+    risks,
+    performanceEvaluations,
     accountColumns, opportunityColumns, actionItemColumns, performanceEvaluationColumns,
     accountsColumnConfig, opportunitiesColumnConfig, actionItemsColumnConfig, performanceEvaluationColumnConfig,
     loading,
@@ -687,6 +730,7 @@ export const useCRMData = (
     addStakeholder, updateStakeholder, deleteStakeholder, associateServiceProvider,
     addComment, updateComment, deleteComment,
     addEmployeeAppreciation, updateEmployeeAppreciation, deleteEmployeeAppreciation,
+    addEmployeeRewardsRecognition, updateEmployeeRewardsRecognition, deleteEmployeeRewardsRecognition,
     addCustomColumn, deleteCustomColumn,
     updateColumnConfig, resetColumnConfig,
   };

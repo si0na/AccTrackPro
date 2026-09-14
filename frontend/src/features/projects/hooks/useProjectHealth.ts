@@ -25,7 +25,7 @@ export function useProjectHealth(projectId: string) {
   const [editingId, setEditingId] = useState<string | null>(null);
 
   /** Users with 'projects:update' can add health updates. */
-  const canUpdate = can('projects', 'update') || roleKey === 'admin';
+  const canUpdate = can('projects', 'update');
 
   const loadHistory = useCallback(() => {
     setLoading(true);

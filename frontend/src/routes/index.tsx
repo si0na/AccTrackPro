@@ -35,6 +35,7 @@ export const VIEW_TO_PATH: Record<ViewType, string> = {
   'audit-log':            '/audit-log',
   'performance-evaluation': '/performance',
   'employee-appreciation': '/employee-appreciation',
+  'employee-rewards-recognition': '/employee-rewards-recognition',
   risks:                   '/risks',
 };
 

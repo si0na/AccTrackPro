@@ -99,6 +99,7 @@ export const DashboardView: React.FC = () => {
     opportunities: allOpportunities,
     actionItems: allActionItems,
     activities: allActivities,
+    projects: allProjects,
     globalAccountId,
     setView,
     setSelectedAccountId,
@@ -118,7 +119,10 @@ export const DashboardView: React.FC = () => {
   // names, so the whole dashboard narrows automatically.
   const accounts = allAccounts.filter(a => matchesGlobalAccount(a.id, globalAccountId));
   const opportunities = allOpportunities.filter(o => matchesGlobalAccount(o.accountId, globalAccountId));
-  const actionItems = allActionItems.filter(ai => matchesGlobalAccount(ai.accountId, globalAccountId));
+  const actionItems = allActionItems.filter(ai => {
+    const effAccountId = ai.accountId || (ai.projectId ? allProjects?.find(p => p.id === ai.projectId)?.accountId : '');
+    return matchesGlobalAccount(effAccountId, globalAccountId);
+  });
   const activities = allActivities.filter(a => matchesGlobalAccount(a.accountId, globalAccountId));
 
   const [lastUpdated, setLastUpdated] = useState<Date>(new Date());
@@ -152,8 +156,8 @@ export const DashboardView: React.FC = () => {
   const todayStr = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD, local
   const totalAccountsVal = accounts.length;
   const myOpenOpps = opportunities.filter(o => deriveOppStatus(o.stage) === 'Open');
-  const myOpenTasks = actionItems.filter(ai => isOpenActionItemStatus(ai.status));
-  const overdueTasks = myOpenTasks.filter(
+  const openActionItemsList = actionItems.filter(ai => isOpenActionItemStatus(ai.status));
+  const overdueActionItemsList = openActionItemsList.filter(
     ai => ai.dueDate && /^\d{4}-\d{2}-\d{2}$/.test(ai.dueDate) && ai.dueDate < todayStr,
   );
   const formatCurrency = (val: number) => {
@@ -323,20 +327,20 @@ export const DashboardView: React.FC = () => {
           onAction={() => { setDashboardOppStatusFilter('Open'); setView('opportunities', { fromDashboard: true }); }}
         />
         <SummaryCard
-          label="My Action Items"
-          value={myOpenTasks.length}
+          label="Open Action Items"
+          value={openActionItemsList.length}
           icon={<CheckSquare className="w-5 h-5" />}
           tone="emerald"
-          actionLabel="View action items"
+          actionLabel="View open action items"
           onAction={() => { setOpenActionItemsFilter(true); setView('actionItems', { fromDashboard: true }); }}
         />
         <SummaryCard
-          label="Overdue Tasks"
-          value={<span className={overdueTasks.length > 0 ? 'text-red-600' : ''}>{overdueTasks.length}</span>}
+          label="Overdue Action Items"
+          value={<span className={overdueActionItemsList.length > 0 ? 'text-red-600' : ''}>{overdueActionItemsList.length}</span>}
           icon={<AlertTriangle className="w-5 h-5" />}
           tone="amber"
-          urgent={overdueTasks.length > 0}
-          actionLabel="View overdue tasks"
+          urgent={overdueActionItemsList.length > 0}
+          actionLabel="View overdue action items"
           onAction={() => { setOverdueActionItemsFilter(true); setView('actionItems', { fromDashboard: true }); }}
         />
       </div>
@@ -475,7 +479,8 @@ export const DashboardView: React.FC = () => {
                     <tbody>
                       {pagedActionItems.map(item => {
                         const isOverdue = item.dueDate && /^\d{4}-\d{2}-\d{2}$/.test(item.dueDate) && item.dueDate < todayStr;
-                        const accountName = accounts.find(a => a.id === item.accountId)?.name || 'Account';
+                        const effAccId = item.accountId || (item.projectId ? allProjects?.find(p => p.id === item.projectId)?.accountId : '');
+                        const accountName = accounts.find(a => a.id === effAccId)?.name || item.accountName || 'Account';
                         return (
                           <TableRow key={item.id} className={isOverdue ? 'bg-red-50/40' : ''}>
                             <TableCell>
