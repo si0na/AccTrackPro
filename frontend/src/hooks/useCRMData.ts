@@ -26,8 +26,6 @@ const DEFAULT_ACCOUNTS_COLUMNS: ColumnConfig[] = [
   { key: 'practiceLeadId',          name: 'Practice Lead',              isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
   { key: 'clientPartnerId',         name: 'Client Partner',             isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
   { key: 'verticalHeadId',          name: 'Vertical Head',              isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
-  { key: 'clientStakeholderIds',    name: 'Client Stakeholders',        isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
-  { key: 'serviceProviderUserIds',  name: 'Service Provider Stakeholders', isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
   { key: 'since',                  name: 'Customer Since',             isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
   { key: 'revenue',                name: 'Revenue',                    isStandard: true, isPinned: false, isDisplayed: true, type: 'number' },
 ];
@@ -421,8 +419,7 @@ export const useCRMData = (
     const fresh = await opportunitiesApi.getAll(f);
     setOpportunities(fresh);
     activitiesApi.getAll(f).then(setActivities);
-    // Marking an opportunity Won no longer creates a Project — that happens only
-    // via the explicit "Create Project" action (createProjectFromOpportunity).
+    stakeholdersApi.getAll(f).then(setStakeholders);
   };
 
   const deleteOpportunity = async (id: string): Promise<void> => {

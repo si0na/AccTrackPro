@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
 import { Opportunity, OpportunityStage, PriorityLevel, ActionItem, ActionItemStatus, Stakeholder, StakeholderType, Project, AdminUser } from '@/types';
 import { administrationApi } from '@/api/crm.api';
@@ -34,8 +34,12 @@ import { DocumentsPanel } from '@/components/documents/DocumentsPanel';
 import { InlineEditModal } from '@/components/InlineEditModal';
 import { CustomColumnFields } from '@/components/CustomColumnFields';
 import { ActionItemOwnerField } from '@/components/ActionItemOwnerField';
+import { CommentCard } from '@/components/CommentCard';
 import { OpportunityPipelineProgress } from './OpportunityPipelineProgress';
 import { StakeholderTabs } from '@/features/stakeholders/components/StakeholderTabs';
+import { StakeholderFormModal } from '@/features/stakeholders/components/StakeholderFormModal';
+import { OpportunityClientStakeholderSelector } from './OpportunityClientStakeholderSelector';
+import { ActionItemFormModal } from '@/features/action-items/components/ActionItemFormModal';
 import { ACTION_ITEM_STATUS_OPTIONS, OPPORTUNITY_STAGE_OPTIONS, stageChangePatch } from '@/constants';
 import {
   ACTION_STATUS_COLORS,
@@ -68,6 +72,8 @@ import {
   TableHeadCell,
   TableCell,
   TableRow,
+  InlineSelectEditCell,
+  InlineTextEditCell,
 } from '@/components/ui';
 import { compareForSort, getTodayISODate, isOpenActionItemStatus, serviceProviderOptionLabel, SortDirection } from '@/utils';
 
@@ -113,7 +119,9 @@ export const OpportunityDetailsView: React.FC = () => {
     associateServiceProvider,
     addStakeholder,
     updateStakeholder,
+    deleteStakeholder,
     projects,
+    can,
   } = useCRM();
 
   // Find current opportunity
@@ -127,7 +135,7 @@ export const OpportunityDetailsView: React.FC = () => {
   const [commentText, setCommentText] = useState('');
 
   // Delete confirmation state
-  const [deleteTarget, setDeleteTarget] = useState<{ type: 'actionItem' | 'comment' | 'opportunity'; id: string; label: string } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<{ type: 'actionItem' | 'comment' | 'opportunity' | 'stakeholder'; id: string; label: string } | null>(null);
 
   // Header overflow actions menu
   const [showOppMenu, setShowOppMenu] = useState(false);
@@ -138,20 +146,12 @@ export const OpportunityDetailsView: React.FC = () => {
 
   // Opportunity Stakeholder modals state
   const [showOppClientModal, setShowOppClientModal] = useState(false);
+  const [showMainStakeholderCreateModal, setShowMainStakeholderCreateModal] = useState(false);
   const [showOppSpModal, setShowOppSpModal] = useState(false);
 
   // Client stakeholder modal states
   const [selectedOppClientStkId, setSelectedOppClientStkId] = useState('');
-  const [createOppNewClient, setCreateOppNewClient] = useState(false);
-  const [oppClientDraft, setOppClientDraft] = useState({
-    name: '',
-    designation: '',
-    department: '',
-    email: '',
-    phone: '',
-    influence: 'Medium' as const,
-    relationship: 'Neutral' as const,
-  });
+  const [editingStk, setEditingStk] = useState<Stakeholder | null>(null);
 
   // Service Provider modal state
   const [selectedOppSpUserId, setSelectedOppSpUserId] = useState('');
@@ -277,7 +277,7 @@ export const OpportunityDetailsView: React.FC = () => {
       endDate: o.allocationEndDate || undefined,
       clientPartnerId: parentAccount?.clientPartnerId || undefined,
       dealValue: o.value,
-      serviceProviderPmId: o.serviceProviderPmId || o.serviceProviderUserId || undefined,
+      serviceProviderPmId: o.serviceProviderPmId || undefined,
       practiceLeadId: parentAccount?.practiceLeadId || undefined,
       priority: o.priority || undefined,
       deliveryModel: o.deliveryModel || undefined,
@@ -336,16 +336,20 @@ export const OpportunityDetailsView: React.FC = () => {
   };
   const [newAi, setNewAi] = useState<Omit<ActionItem, 'id'>>(emptyTask);
 
-  const handleCreateAddTask = (e: React.FormEvent) => {
+  const handleCreateAddTask = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newAi.title.trim() || !newAi.ownerStakeholderId || !opp) return;
-    addActionItem({
+    await addActionItem({
       ...newAi,
       accountId: opp.accountId,
       opportunityId: opp.id,
     });
     setIsAddTaskOpen(false);
-    setNewAi(emptyTask);
+    setNewAi({
+      ...emptyTask,
+      accountId: opp.accountId,
+      opportunityId: opp.id,
+    });
   };
 
   // Shared by the "no opportunity" fallback and by post-deactivation
@@ -382,34 +386,29 @@ export const OpportunityDetailsView: React.FC = () => {
 
   // Stakeholders linked to THIS opportunity, split by type for the two-tab view.
   // Prefer the full record from state; if it isn't loaded (e.g. deactivated or
-  // out of scope) fall back to a minimal row from the opportunity's own
-  // denormalised fields so the linked contact still appears.
-  const linkedStakeholder = (
-    id: string | undefined,
-    name: string | undefined,
-    designation: string | undefined,
-    type: StakeholderType,
-  ): Stakeholder[] => {
-    if (!id) return [];
-    const found = stakeholders.find(s => s.id === id);
-    if (found) return [found];
-    return [{
-      id,
-      name: name ?? 'Unknown',
-      accountId: opp.accountId,
-      designation: designation ?? '',
-      influence: '' as Stakeholder['influence'],
-      relationship: '' as Stakeholder['relationship'],
-      email: '',
-      phone: '',
-      stakeholderType: type,
-      department: '',
-    }];
-  };
-  const oppClientStks = linkedStakeholder(
-    opp.clientStakeholderId, opp.clientStakeholderName, opp.clientStakeholderDesignation, 'CLIENT');
-  const oppServiceProviderStks = linkedStakeholder(
-    opp.serviceProviderStakeholderId, opp.serviceProviderStakeholderName, opp.serviceProviderStakeholderDesignation, 'SERVICE_PROVIDER');
+  // Stakeholders linked to THIS opportunity's account.
+  // Displays all client stakeholders registered for this opportunity's account.
+  const oppClientStks = useMemo(() => {
+    const list = (stakeholders || []).filter(
+      s => s.accountId === opp.accountId && s.stakeholderType === 'CLIENT'
+    );
+    if (opp.clientStakeholderId && !list.some(s => s.id === opp.clientStakeholderId)) {
+      const found = (stakeholders || []).find(s => s.id === opp.clientStakeholderId);
+      if (found) return [found, ...list];
+    }
+    return list;
+  }, [stakeholders, opp.accountId, opp.clientStakeholderId]);
+
+  const oppServiceProviderStks = useMemo(() => {
+    const list = (stakeholders || []).filter(
+      s => s.accountId === opp.accountId && s.stakeholderType === 'SERVICE_PROVIDER'
+    );
+    if (opp.serviceProviderStakeholderId && !list.some(s => s.id === opp.serviceProviderStakeholderId)) {
+      const found = (stakeholders || []).find(s => s.id === opp.serviceProviderStakeholderId);
+      if (found) return [found, ...list];
+    }
+    return list;
+  }, [stakeholders, opp.accountId, opp.serviceProviderStakeholderId]);
 
   const stages: OpportunityStage[] = ['Lead', 'Qualified', 'Proposal', 'Negotiation', 'Verbal Agreement', 'Won'];
   const currentStageIdx = stages.indexOf(opp.stage);
@@ -424,8 +423,8 @@ export const OpportunityDetailsView: React.FC = () => {
     setCommentText('');
   };
 
-  // Action items: filter -> sort -> paginate
-  const displayedActionCols = actionItemsColumnConfig.filter(col => col.isDisplayed);
+  // Action items: filter -> sort -> paginate (omit Project column in Opportunity Detailed View)
+  const displayedActionCols = actionItemsColumnConfig.filter(col => col.isDisplayed && col.key !== 'projectId');
   // User-added (non-standard) columns widen the table past the viewport and
   // trigger horizontal scroll; the default column set always fits the screen.
   const extraActionColCount = displayedActionCols.filter(col => !col.isStandard).length;
@@ -599,9 +598,7 @@ export const OpportunityDetailsView: React.FC = () => {
         <div className="flex items-center gap-3 p-4 rounded-xl border bg-blue-50 border-blue-200">
           <Info className="w-5 h-5 text-blue-600 shrink-0" aria-hidden="true" />
           <p className="text-xs text-blue-800 font-semibold">
-            {opp.projectId
-              ? 'This opportunity is Won and read-only. A Project has been created — manage ongoing work there.'
-              : 'This opportunity is Won and read-only. Use “Create Project” to begin delivery — it will not appear in the Projects module until you do.'}
+            This opportunity has been converted to a project and is now read-only. No further actions can be performed.
           </p>
         </div>
       )}
@@ -716,7 +713,7 @@ export const OpportunityDetailsView: React.FC = () => {
                     <select
                       value={opp.stage}
                       disabled={opp.stage === 'Won'}
-                      title={opp.stage === 'Won' ? 'Won opportunities are read-only — manage ongoing work in the linked Project.' : undefined}
+                      title={opp.stage === 'Won' ? 'This opportunity has been converted to a project and is now read-only. No further actions can be performed.' : undefined}
                       onChange={(e) => {
                         const stage = e.target.value as OpportunityStage;
                         if (stage === 'Won' || stage === 'Lost') {
@@ -870,7 +867,7 @@ export const OpportunityDetailsView: React.FC = () => {
                 <FormSection title="Scope & Risk">
                   <div className="space-y-4">
                     <div>
-                      <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">Scope Description</span>
+                      <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">Description</span>
                       <p className="text-sm text-slate-600 leading-relaxed font-medium">{opp.description}</p>
                     </div>
                     <div>
@@ -899,44 +896,19 @@ export const OpportunityDetailsView: React.FC = () => {
                 hideAccountColumn
                 storageKeyPrefix={`opp-${opp.id}-stk`}
                 canCreate={true}
-                canEdit={false}
+                canEdit={true}
                 canDelete={true}
                 onAdd={(type) => {
                   if (type === 'CLIENT') {
                     setSelectedOppClientStkId('');
-                    setCreateOppNewClient(false);
-                    setOppClientDraft({
-                      name: '',
-                      designation: '',
-                      department: '',
-                      email: '',
-                      phone: '',
-                      influence: 'Medium',
-                      relationship: 'Neutral',
-                    });
                     setShowOppClientModal(true);
                   } else {
                     setSelectedOppSpUserId('');
                     setShowOppSpModal(true);
                   }
                 }}
-                onDelete={async (s) => {
-                  if (s.stakeholderType === 'CLIENT') {
-                    await updateOpportunity({
-                      ...opp,
-                      clientStakeholderId: undefined,
-                      clientStakeholderName: undefined,
-                      clientStakeholderDesignation: undefined,
-                    });
-                  } else {
-                    await updateOpportunity({
-                      ...opp,
-                      serviceProviderStakeholderId: undefined,
-                      serviceProviderStakeholderName: undefined,
-                      serviceProviderStakeholderDesignation: undefined,
-                    });
-                  }
-                }}
+                onEdit={(s) => setEditingStk(s)}
+                onDelete={(s) => setDeleteTarget({ type: 'stakeholder', id: s.id, label: s.name })}
                 onRowClick={(s) => {
                   setFocusedRecord({ type: 'stakeholder', id: s.id });
                   setView('stakeholders');
@@ -946,7 +918,23 @@ export const OpportunityDetailsView: React.FC = () => {
               />
             </Card>
 
-            {/* Custom Opportunity Client Stakeholder Modal */}
+            {/* Modal for editing an existing stakeholder */}
+            {editingStk && (
+              <StakeholderFormModal
+                isOpen={!!editingStk}
+                mode="edit"
+                stakeholder={editingStk}
+                accounts={accounts}
+                lockedAccount={account ? { id: account.id, name: account.name } : undefined}
+                onClose={() => setEditingStk(null)}
+                onSubmit={async (draft) => {
+                  await updateStakeholder({ id: editingStk.id, ...draft });
+                  setEditingStk(null);
+                }}
+              />
+            )}
+
+            {/* Opportunity Client Stakeholder Selection Modal */}
             <FormModal
               isOpen={showOppClientModal}
               title="Add Client Stakeholder to Opportunity"
@@ -954,113 +942,54 @@ export const OpportunityDetailsView: React.FC = () => {
               onClose={() => setShowOppClientModal(false)}
               onSubmit={async (e: React.FormEvent) => {
                 e.preventDefault();
-                let clientStkId = selectedOppClientStkId;
-                if (createOppNewClient) {
-                  const created = await addStakeholder({
-                    ...oppClientDraft,
-                    accountId: opp.accountId,
-                    stakeholderType: 'CLIENT',
-                  });
-                  clientStkId = created.id;
-                }
-                if (clientStkId) {
-                  const s = stakeholders.find(st => st.id === clientStkId) || (createOppNewClient ? { name: oppClientDraft.name, designation: oppClientDraft.designation } : null);
+                if (selectedOppClientStkId) {
+                  const s = stakeholders.find((st) => st.id === selectedOppClientStkId);
                   await updateOpportunity({
                     ...opp,
-                    clientStakeholderId: clientStkId,
+                    clientStakeholderId: selectedOppClientStkId,
                     clientStakeholderName: s?.name || '',
                     clientStakeholderDesignation: s?.designation || '',
                   });
                 }
                 setShowOppClientModal(false);
               }}
-              submitLabel="Add Client Stakeholder"
+              submitLabel="Save Stakeholder"
             >
-              <div className="space-y-4">
-                <div className="flex items-center space-x-2">
-                  <input
-                    type="checkbox"
-                    id="createOppNewClient"
-                    checked={createOppNewClient}
-                    onChange={(e) => setCreateOppNewClient(e.target.checked)}
-                    className="w-4 h-4 text-blue-600 border-slate-300 rounded cursor-pointer"
-                  />
-                  <label htmlFor="createOppNewClient" className="text-xs font-semibold text-slate-700 cursor-pointer select-none">
-                    Create new Client Stakeholder
-                  </label>
-                </div>
-
-                {createOppNewClient ? (
-                  <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 border border-slate-200 rounded-lg">
-                    <div className="col-span-2">
-                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Name</label>
-                      <input
-                        type="text"
-                        required={createOppNewClient}
-                        value={oppClientDraft.name}
-                        onChange={(e) => setOppClientDraft({ ...oppClientDraft, name: e.target.value })}
-                        placeholder="Jane Doe"
-                        className={INPUT_CLS}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Designation</label>
-                      <input
-                        type="text"
-                        value={oppClientDraft.designation}
-                        onChange={(e) => setOppClientDraft({ ...oppClientDraft, designation: e.target.value })}
-                        placeholder="Director"
-                        className={INPUT_CLS}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Department</label>
-                      <input
-                        type="text"
-                        value={oppClientDraft.department}
-                        onChange={(e) => setOppClientDraft({ ...oppClientDraft, department: e.target.value })}
-                        placeholder="Procurement"
-                        className={INPUT_CLS}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Email</label>
-                      <input
-                        type="email"
-                        value={oppClientDraft.email}
-                        onChange={(e) => setOppClientDraft({ ...oppClientDraft, email: e.target.value })}
-                        placeholder="jane@tesla.com"
-                        className={INPUT_CLS}
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">Phone</label>
-                      <input
-                        type="text"
-                        value={oppClientDraft.phone}
-                        onChange={(e) => setOppClientDraft({ ...oppClientDraft, phone: e.target.value })}
-                        placeholder="+1-555-0199"
-                        className={INPUT_CLS}
-                      />
-                    </div>
-                  </div>
-                ) : (
-                  <select
-                    value={selectedOppClientStkId}
-                    onChange={(e) => setSelectedOppClientStkId(e.target.value)}
-                    className={SELECT_CLS}
-                    required
-                  >
-                    <option value="" disabled>— Select existing Client Stakeholder —</option>
-                    {stakeholders
-                      .filter((s) => s.stakeholderType === 'CLIENT')
-                      .map((s) => (
-                        <option key={s.id} value={s.id}>{s.name} ({s.designation})</option>
-                      ))}
-                  </select>
-                )}
-              </div>
+              <OpportunityClientStakeholderSelector
+                accountId={opp.accountId}
+                currentClientStakeholderId={opp.clientStakeholderId}
+                selectedStakeholderId={selectedOppClientStkId}
+                onSelectStakeholderId={setSelectedOppClientStkId}
+                onCreateNew={() => {
+                  setShowOppClientModal(false);
+                  setShowMainStakeholderCreateModal(true);
+                }}
+              />
             </FormModal>
+
+            {/* Canonical Main Client Stakeholder Registration Form Modal */}
+            {showMainStakeholderCreateModal && (
+              <StakeholderFormModal
+                isOpen={showMainStakeholderCreateModal}
+                mode="create"
+                accounts={accounts}
+                lockedAccount={account ? { id: account.id, name: account.name } : undefined}
+                lockedType="CLIENT"
+                onClose={() => setShowMainStakeholderCreateModal(false)}
+                onSubmit={async (draft) => {
+                  const created = await addStakeholder(draft);
+                  if (created && created.id) {
+                    await updateOpportunity({
+                      ...opp,
+                      clientStakeholderId: created.id,
+                      clientStakeholderName: created.name,
+                      clientStakeholderDesignation: created.designation || '',
+                    });
+                  }
+                  setShowMainStakeholderCreateModal(false);
+                }}
+              />
+            )}
 
             {/* Custom Opportunity Service Provider Modal */}
             <FormModal
@@ -1160,9 +1089,16 @@ export const OpportunityDetailsView: React.FC = () => {
                   </Button>
                   <Button
                     icon={<Plus className="w-3.5 h-3.5" aria-hidden="true" />}
-                    onClick={() => setIsAddTaskOpen(true)}
+                    onClick={() => {
+                      setNewAi({
+                        ...emptyTask,
+                        accountId: opp.accountId,
+                        opportunityId: opp.id,
+                      });
+                      setIsAddTaskOpen(true);
+                    }}
                   >
-                    Add Task
+                    Action Item
                   </Button>
                 </>
               }
@@ -1210,8 +1146,14 @@ export const OpportunityDetailsView: React.FC = () => {
                                     return (
                                       <TableCell key={col.key}>
                                         <div className="flex items-center flex-wrap gap-1">
-                                          <div className="flex-1">
-                                            <p className="font-extrabold text-slate-900 text-sm">{item.title}</p>
+                                          <div className="flex-1 min-w-0">
+                                            <InlineTextEditCell
+                                              value={item.title}
+                                              disabled={!can('actionItems', 'update')}
+                                              onSave={async (v) => {
+                                                await updateActionItem({ ...item, title: v });
+                                              }}
+                                            />
                                           </div>
                                           <button
                                             onClick={(e) => {
@@ -1236,51 +1178,122 @@ export const OpportunityDetailsView: React.FC = () => {
                                   if (col.key === 'notes') {
                                     return (
                                       <TableCell key={col.key} className="text-slate-600 font-medium">
-                                        <span className="block max-w-[280px] line-clamp-2" title={item.notes || undefined}>
-                                          {item.notes || '—'}
-                                        </span>
+                                        <InlineTextEditCell
+                                          value={item.notes || ''}
+                                          placeholder="Add notes..."
+                                          disabled={!can('actionItems', 'update')}
+                                          onSave={async (v) => {
+                                            await updateActionItem({ ...item, notes: v });
+                                          }}
+                                        />
                                       </TableCell>
                                     );
                                   }
                                   if (col.key === 'accountId') {
                                     return (
                                       <TableCell key={col.key} className="text-slate-600 font-bold">
-                                        {account ? account.name : 'Unknown Account'}
+                                        {account ? account.name : (item.accountName || 'Unknown Account')}
                                       </TableCell>
                                     );
                                   }
-                                  if (col.key === 'owner') {
+                                  if (col.key === 'opportunityId') {
+                                    const oppItem = opportunities.find(o => o.id === item.opportunityId);
                                     return (
                                       <TableCell key={col.key} className="text-slate-600 font-semibold">
-                                        {item.ownerName || item.owner || '—'}
+                                        {oppItem ? oppItem.name : (item.opportunityName || opp.name || '—')}
+                                      </TableCell>
+                                    );
+                                  }
+                                  if (col.key === 'projectId') {
+                                    const projItem = projects.find(p => p.id === item.projectId);
+                                    const oppProjects = projects.filter(p => p.accountId === opp.accountId);
+                                    const projOptions = [
+                                      { value: '', label: '— None —' },
+                                      ...oppProjects.map(p => ({ value: p.id, label: p.name })),
+                                    ];
+                                    return (
+                                      <TableCell key={col.key} className="text-slate-600 font-semibold">
+                                        <InlineSelectEditCell
+                                          value={item.projectId ?? ''}
+                                          options={projOptions}
+                                          disabled={!can('actionItems', 'update')}
+                                          placeholder={projItem ? projItem.name : (item.projectName || '— None —')}
+                                          onSave={async (id) => {
+                                            const selectedProj = projects.find(p => p.id === id);
+                                            await updateActionItem({
+                                              ...item,
+                                              projectId: id || undefined,
+                                              projectName: selectedProj?.name || undefined,
+                                            });
+                                          }}
+                                        />
+                                      </TableCell>
+                                    );
+                                  }
+                                  if (col.key === 'owner' || col.key === 'ownerStakeholderId') {
+                                    return (
+                                      <TableCell key={col.key} className="text-slate-600 font-semibold" onClick={(e) => e.stopPropagation()}>
+                                        {can('actionItems', 'update') ? (
+                                          <ActionItemOwnerField
+                                            accountId={opp.accountId}
+                                            stakeholders={stakeholders}
+                                            value={item.ownerStakeholderId}
+                                            fallbackName={item.ownerName || item.owner}
+                                            onChange={async (stkId) => {
+                                              const stk = stakeholders.find(s => s.id === stkId);
+                                              await updateActionItem({
+                                                ...item,
+                                                ownerStakeholderId: stkId || undefined,
+                                                owner: stk?.name || item.owner || '',
+                                                ownerName: stk?.name || item.ownerName || '',
+                                              });
+                                            }}
+                                          />
+                                        ) : (
+                                          item.ownerName || item.owner || '—'
+                                        )}
                                       </TableCell>
                                     );
                                   }
                                   if (col.key === 'priority') {
                                     return (
                                       <TableCell key={col.key}>
-                                        <StatusBadge value={item.priority} colorMap={PRIORITY_COLORS} shape="rounded" />
+                                        <InlineSelectEditCell
+                                          value={item.priority}
+                                          options={['Low', 'Medium', 'High', 'Critical']}
+                                          disabled={!can('actionItems', 'update')}
+                                          onSave={async (v) => {
+                                            await updateActionItem({ ...item, priority: v as PriorityLevel });
+                                          }}
+                                        />
                                       </TableCell>
                                     );
                                   }
                                   if (col.key === 'status') {
                                     return (
                                       <TableCell key={col.key}>
-                                        <StatusBadge value={item.status} colorMap={ACTION_STATUS_COLORS} shape="rounded" />
+                                        <InlineSelectEditCell
+                                          value={item.status}
+                                          options={ACTION_ITEM_STATUS_OPTIONS}
+                                          disabled={!can('actionItems', 'update')}
+                                          onSave={async (v) => {
+                                            await updateActionItem({ ...item, status: v as ActionItemStatus });
+                                          }}
+                                        />
                                       </TableCell>
                                     );
                                   }
-                                  if (col.key === 'openDate') {
+                                  if (col.key === 'openDate' || col.key === 'dueDate') {
                                     return (
                                       <TableCell key={col.key} className="font-mono font-medium text-slate-500">
-                                        {item.openDate}
-                                      </TableCell>
-                                    );
-                                  }
-                                  if (col.key === 'dueDate') {
-                                    return (
-                                      <TableCell key={col.key} className="font-mono font-medium text-slate-500">
-                                        {item.dueDate}
+                                        <InlineTextEditCell
+                                          type="date"
+                                          value={item[col.key] || ''}
+                                          disabled={!can('actionItems', 'update')}
+                                          onSave={async (v) => {
+                                            await updateActionItem({ ...item, [col.key]: v });
+                                          }}
+                                        />
                                       </TableCell>
                                     );
                                   }
@@ -1473,22 +1486,12 @@ export const OpportunityDetailsView: React.FC = () => {
                 <p className="text-xs text-slate-400 font-medium italic">No comments posted yet. Start the dialogue above.</p>
               ) : (
                 oppComments.map(c => (
-                  <div key={c.id} className="bg-slate-50 p-3.5 rounded-lg border border-slate-100 space-y-2 relative group">
-                    <div className="flex items-center justify-between text-xs">
-                      <div className="flex items-center space-x-2">
-                        <span className="font-extrabold text-slate-700">{c.user}</span>
-                        <span className="text-slate-400">•</span>
-                        <span className="text-[10px] text-slate-400 font-mono">{c.timestamp}</span>
-                      </div>
-                      <button
-                        onClick={() => setDeleteTarget({ type: 'comment', id: c.id, label: c.text.substring(0, 40) })}
-                        className="text-slate-300 hover:text-red-500 hidden group-hover:block cursor-pointer transition-colors"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                    <p className="text-xs text-slate-600 font-medium leading-relaxed">{c.text}</p>
-                  </div>
+                  <CommentCard
+                    key={c.id}
+                    comment={c}
+                    onEdit={updateComment}
+                    onDelete={deleteComment}
+                  />
                 ))
               )}
             </div>
@@ -1561,108 +1564,23 @@ export const OpportunityDetailsView: React.FC = () => {
       />
 
       {/* New Action Item Modal */}
-      <FormModal
+      {/* Canonical Action Item Creation Modal */}
+      <ActionItemFormModal
         isOpen={isAddTaskOpen}
-        title="Create Deliverable Task"
-        icon={<CheckSquare className="w-5 h-5 text-blue-600" aria-hidden="true" />}
         onClose={() => setIsAddTaskOpen(false)}
         onSubmit={handleCreateAddTask}
         submitLabel="Create Task"
-        maxWidth="max-w-4xl"
-      >
-        <FormGrid columns={3}>
-          <FormField label="Task Title" required>
-            <input
-              type="text"
-              required
-              value={newAi.title}
-              onChange={(e) => setNewAi({ ...newAi, title: e.target.value })}
-              placeholder="e.g., Deliver SLA Agreement Draft"
-              className={INPUT_CLS}
-            />
-          </FormField>
-
-          <FormField label="Task Owner" required>
-            <ActionItemOwnerField
-              accountId={opp?.accountId ?? ''}
-              stakeholders={stakeholders}
-              value={newAi.ownerStakeholderId}
-              onChange={(ownerStakeholderId) => setNewAi({ ...newAi, ownerStakeholderId })}
-            />
-          </FormField>
-
-          <FormField label="Priority">
-            <select
-              value={newAi.priority}
-              onChange={(e) => setNewAi({ ...newAi, priority: e.target.value as PriorityLevel })}
-              className={SELECT_CLS}
-            >
-              <option value="High">High</option>
-              <option value="Medium">Medium</option>
-              <option value="Low">Low</option>
-            </select>
-          </FormField>
-
-          <FormField label="Status">
-            <select
-              value={newAi.status}
-              onChange={(e) => setNewAi({ ...newAi, status: e.target.value as ActionItemStatus })}
-              className={SELECT_CLS}
-            >
-              {ACTION_ITEM_STATUS_OPTIONS.map(s => (
-                <option key={s} value={s}>{s}</option>
-              ))}
-            </select>
-          </FormField>
-
-          <FormField label="Open Date" required>
-            <input
-              type="date"
-              required
-              value={newAi.openDate}
-              onChange={(e) => setNewAi({ ...newAi, openDate: e.target.value })}
-              className={`${INPUT_CLS} font-mono`}
-            />
-          </FormField>
-
-          <FormField label="Due Date" required>
-            <input
-              type="date"
-              required
-              value={newAi.dueDate}
-              onChange={(e) => setNewAi({ ...newAi, dueDate: e.target.value })}
-              className={`${INPUT_CLS} font-mono`}
-            />
-          </FormField>
-
-          <FormField label="Task Details" wide>
-            <textarea
-              rows={2}
-              value={newAi.notes}
-              onChange={(e) => setNewAi({ ...newAi, notes: e.target.value })}
-              placeholder="Additional operational context..."
-              className={`${INPUT_CLS} resize-none`}
-            />
-          </FormField>
-
-          <FormField label="Risks & Dependencies" wide>
-            <textarea
-              rows={2}
-              value={newAi.risksAndDependencies}
-              onChange={(e) => setNewAi({ ...newAi, risksAndDependencies: e.target.value })}
-              placeholder="e.g., Pending budget approval, dependent on vendor SOW sign-off"
-              className={`${INPUT_CLS} resize-none`}
-            />
-          </FormField>
-        </FormGrid>
-
-        <CustomColumnFields
-          columns={actionItemColumns}
-          config={actionItemsColumnConfig}
-          values={newAi}
-          onChange={(key, value) => setNewAi({ ...newAi, [key]: value })}
-        />
-      </FormModal>
+        value={newAi}
+        onChange={(patch) => setNewAi({ ...newAi, ...patch })}
+        accounts={accounts}
+        opportunities={opportunities}
+        stakeholders={stakeholders}
+        actionItemColumns={actionItemColumns}
+        actionItemsColumnConfig={actionItemsColumnConfig}
+        lockedAccount={{ id: opp.accountId, name: account.name }}
+        lockedOpportunity={{ id: opp.id, name: opp.name }}
+        mode="normal"
+      />
 
       <ConfirmDialog
         isOpen={!!deleteTarget}
@@ -1687,6 +1605,8 @@ export const OpportunityDetailsView: React.FC = () => {
             setDeleteTarget(null);
             goBackFromOpportunity();
             return;
+          } else if (deleteTarget.type === 'stakeholder') {
+            await deleteStakeholder(deleteTarget.id);
           } else await deleteComment(deleteTarget.id);
           setDeleteTarget(null);
         }}

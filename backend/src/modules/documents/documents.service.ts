@@ -109,9 +109,8 @@ export class DocumentsService {
       `SELECT d.*
        FROM documents d
        INNER JOIN accounts a ON d.account_id = a.id
-       WHERE d.id=$1
-       AND ($2::TEXT IS NULL OR a.owner_id = $2)`,
-      [id, userId ?? null],
+       WHERE d.id=$1 AND a.is_deleted = FALSE`,
+      [id],
     );
     if (!rows.length) throw new NotFoundException(`Document "${id}" not found`);
     return rowToDoc(rows[0]);
@@ -152,20 +151,20 @@ export class DocumentsService {
     if (opportunityId) {
       // Opportunity attachment: the parent account is derived server-side so
       // account-level cascade delete continues to cover these documents.
-      // Also verifies the opportunity belongs to the uploading user.
       const { rows: opp } = await this.db.query(
-        `SELECT id, account_id FROM opportunities WHERE id=$1 AND is_deleted=FALSE
-         AND ($2::TEXT IS NULL OR owner_id = $2)`,
-        [opportunityId, uploader.id || null],
+        `SELECT id, account_id, stage FROM opportunities WHERE id=$1 AND is_deleted=FALSE`,
+        [opportunityId],
       );
       if (!opp.length) throw new BadRequestException('The selected opportunity does not exist');
+      if (opp[0].stage === 'Won') {
+        throw new ConflictException('This opportunity has been converted to a project and is now read-only. No further actions can be performed.');
+      }
       accountId = opp[0].account_id;
     } else {
       if (!accountId) throw new BadRequestException('An accountId or opportunityId is required');
       const { rows: acct } = await this.db.query(
-        `SELECT id FROM accounts WHERE id=$1 AND is_deleted=FALSE
-         AND ($2::TEXT IS NULL OR owner_id = $2)`,
-        [accountId, uploader.id || null],
+        `SELECT id FROM accounts WHERE id=$1 AND is_deleted=FALSE`,
+        [accountId],
       );
       if (!acct.length) throw new BadRequestException('The selected account does not exist');
     }
@@ -230,6 +229,15 @@ export class DocumentsService {
 
   async remove(id: string, requestingUserId?: string): Promise<{ success: boolean }> {
     const doc = await this.findOne(id, requestingUserId);
+    if (doc.opportunityId) {
+      const { rows: opp } = await this.db.query(
+        `SELECT stage FROM opportunities WHERE id=$1 AND is_deleted=FALSE`,
+        [doc.opportunityId],
+      );
+      if (opp.length && opp[0].stage === 'Won') {
+        throw new ConflictException('This opportunity has been converted to a project and is now read-only. No further actions can be performed.');
+      }
+    }
     await this.db.query(`DELETE FROM documents WHERE id=$1`, [id]);
     try { await fs.promises.unlink(path.join(UPLOAD_DIR, doc.fileName)); } catch (_) {}
 
@@ -251,25 +259,21 @@ export class DocumentsService {
     return { success: true };
   }
 
-  /** Verify the requesting user owns the account before listing its documents. */
   private async assertAccountAccess(accountId: string, userId?: string): Promise<void> {
     if (!accountId) throw new BadRequestException('accountId is required');
     const { rows } = await this.db.query(
-      `SELECT id FROM accounts WHERE id=$1 AND is_deleted=FALSE
-       AND ($2::TEXT IS NULL OR owner_id = $2)`,
-      [accountId, userId ?? null],
+      `SELECT id FROM accounts WHERE id=$1 AND is_deleted=FALSE`,
+      [accountId],
     );
     if (!rows.length) throw new NotFoundException(`Account "${accountId}" not found`);
   }
 
-  /** Verify the requesting user owns the opportunity (via its account) before listing its documents. */
   private async assertOpportunityAccess(opportunityId: string, userId?: string): Promise<void> {
     const { rows } = await this.db.query(
       `SELECT o.id FROM opportunities o
        INNER JOIN accounts a ON o.account_id = a.id
-       WHERE o.id=$1 AND o.is_deleted=FALSE
-       AND ($2::TEXT IS NULL OR a.owner_id = $2)`,
-      [opportunityId, userId ?? null],
+       WHERE o.id=$1 AND o.is_deleted=FALSE`,
+      [opportunityId],
     );
     if (!rows.length) throw new NotFoundException(`Opportunity "${opportunityId}" not found`);
   }

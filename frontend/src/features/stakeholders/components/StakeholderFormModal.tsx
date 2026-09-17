@@ -77,32 +77,54 @@ export const StakeholderFormModal: React.FC<StakeholderFormModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const { stakeholders: allContextStakeholders, serviceProviders, associateServiceProvider } = useCRM();
-  const serviceProviderOptions = useMemo(() => {
+  const { serviceProviderOptions, stkIdToOptionIdMap } = useMemo(() => {
     const list: Array<{ id: string; name: string; isSystemUser?: boolean }> = [];
-    const seenIds = new Set<string>();
+    const seenKeys = new Set<string>();
+    const idMap = new Map<string, string>();
 
-    // 1. All SERVICE_PROVIDER stakeholders from stakeholders list
-    const spStks = (allContextStakeholders || []).filter((s) => s.stakeholderType === 'SERVICE_PROVIDER');
-    for (const sp of spStks) {
-      if (sp.id && !seenIds.has(sp.id)) {
-        seenIds.add(sp.id);
-        const label = sp.designation ? `${sp.name} (${sp.designation})` : (sp.name || sp.email || 'Service Provider');
-        list.push({ id: sp.id, name: label });
+    // 1. System Service Providers (system users / employees) take precedence
+    if (serviceProviders && serviceProviders.length > 0) {
+      for (const spUser of serviceProviders) {
+        if (!spUser.id) continue;
+        const nameKey = (spUser.email || spUser.name || '').toLowerCase().trim();
+        if (seenKeys.has(spUser.id)) continue;
+        if (nameKey && seenKeys.has(nameKey)) continue;
+
+        seenKeys.add(spUser.id);
+        if (nameKey) seenKeys.add(nameKey);
+
+        const label = serviceProviderOptionLabel(spUser);
+        list.push({ id: spUser.id, name: label, isSystemUser: true });
       }
     }
 
-    // 2. All system Service Providers (system users / employees)
-    if (serviceProviders && serviceProviders.length > 0) {
-      for (const spUser of serviceProviders) {
-        if (spUser.id && !seenIds.has(spUser.id)) {
-          seenIds.add(spUser.id);
-          const label = serviceProviderOptionLabel(spUser);
-          list.push({ id: spUser.id, name: label, isSystemUser: true });
+    // 2. Map any SERVICE_PROVIDER stakeholder rows to system user options (if matching) or add as unlinked option
+    const spStks = (allContextStakeholders || []).filter((s) => s.stakeholderType === 'SERVICE_PROVIDER');
+    for (const sp of spStks) {
+      if (!sp.id) continue;
+      const nameKey = (sp.email || sp.name || '').toLowerCase().trim();
+      const matchingUser = (serviceProviders || []).find(
+        (u) =>
+          (sp.userId && u.id === sp.userId) ||
+          (sp.employeeId && u.id === sp.employeeId) ||
+          (u.email && sp.email && u.email.toLowerCase().trim() === sp.email.toLowerCase().trim()) ||
+          (nameKey && (u.name || u.email || '').toLowerCase().trim() === nameKey),
+      );
+
+      if (matchingUser) {
+        idMap.set(sp.id, matchingUser.id);
+      } else {
+        if (!seenKeys.has(sp.id) && (!nameKey || !seenKeys.has(nameKey))) {
+          seenKeys.add(sp.id);
+          if (nameKey) seenKeys.add(nameKey);
+          const label = sp.designation ? `${sp.name} (${sp.designation})` : (sp.name || sp.email || 'Service Provider');
+          list.push({ id: sp.id, name: label });
         }
       }
     }
 
-    return list.sort((a, b) => a.name.localeCompare(b.name));
+    list.sort((a, b) => a.name.localeCompare(b.name));
+    return { serviceProviderOptions: list, stkIdToOptionIdMap: idMap };
   }, [allContextStakeholders, serviceProviders]);
 
   // Re-seed the draft each time the dialog opens (create → blank, edit → record).
@@ -323,7 +345,7 @@ export const StakeholderFormModal: React.FC<StakeholderFormModalProps> = ({
               <FormGrid columns={3}>
                 <FormField label="Primary Owner (Service Provider)">
                   <select
-                    value={draft.primaryOwnerId ?? ''}
+                    value={stkIdToOptionIdMap.get(draft.primaryOwnerId ?? '') ?? draft.primaryOwnerId ?? ''}
                     onChange={(e) => setDraft({ ...draft, primaryOwnerId: e.target.value || undefined })}
                     className={selectCls}
                   >
@@ -338,7 +360,7 @@ export const StakeholderFormModal: React.FC<StakeholderFormModalProps> = ({
 
                 <FormField label="Secondary Owner (Service Provider)">
                   <select
-                    value={draft.secondaryOwnerId ?? ''}
+                    value={stkIdToOptionIdMap.get(draft.secondaryOwnerId ?? '') ?? draft.secondaryOwnerId ?? ''}
                     onChange={(e) => setDraft({ ...draft, secondaryOwnerId: e.target.value || undefined })}
                     className={selectCls}
                   >
@@ -353,7 +375,12 @@ export const StakeholderFormModal: React.FC<StakeholderFormModalProps> = ({
 
                 <FormField label="Third Owner (Service Provider)">
                   <select
-                    value={draft.tertiaryOwnerId ?? draft.thirdOwnerId ?? ''}
+                    value={
+                      stkIdToOptionIdMap.get(draft.tertiaryOwnerId ?? draft.thirdOwnerId ?? '') ??
+                      draft.tertiaryOwnerId ??
+                      draft.thirdOwnerId ??
+                      ''
+                    }
                     onChange={(e) => setDraft({ ...draft, tertiaryOwnerId: e.target.value || undefined, thirdOwnerId: e.target.value || undefined })}
                     className={selectCls}
                   >

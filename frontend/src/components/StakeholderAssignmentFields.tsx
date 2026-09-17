@@ -67,6 +67,18 @@ export const StakeholderAssignmentFields: React.FC<StakeholderAssignmentFieldsPr
     onChange({ clientStakeholderId: created.id });
   };
 
+  const uniqueServiceProviders = React.useMemo(() => {
+    const list: typeof serviceProviders = [];
+    const seen = new Set<string>();
+    for (const sp of serviceProviders) {
+      if (sp.id && !seen.has(sp.id)) {
+        seen.add(sp.id);
+        list.push(sp);
+      }
+    }
+    return list;
+  }, [serviceProviders]);
+
   return (
     <>
       {/* Client Stakeholder — unchanged */}
@@ -102,11 +114,11 @@ export const StakeholderAssignmentFields: React.FC<StakeholderAssignmentFieldsPr
           className={selectCls}
         >
           <option value="">— None —</option>
-          {serviceProviders.map((sp) => (
+          {uniqueServiceProviders.map((sp) => (
             <option key={sp.id} value={sp.id}>{serviceProviderOptionLabel(sp)}</option>
           ))}
         </select>
-        {serviceProviders.length === 0 && (
+        {uniqueServiceProviders.length === 0 && (
           <p className="text-xs text-slate-400 italic">No system users found.</p>
         )}
       </div>

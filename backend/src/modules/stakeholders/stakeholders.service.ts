@@ -96,9 +96,8 @@ export class StakeholdersService {
       `SELECT s.id FROM stakeholders s
        INNER JOIN accounts a ON s.account_id = a.id
        WHERE s.account_id = $1 AND LOWER(s.email) = $2 AND s.is_deleted = FALSE
-         AND ($3::TEXT IS NULL OR a.owner_id = $3)
        LIMIT 1`,
-      [accountId, e, ownerId ?? null],
+      [accountId, e],
     );
     return rows[0]?.id ?? null;
   }

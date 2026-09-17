@@ -1,7 +1,8 @@
-import { Controller, Get, Query, UseGuards, Req } from '@nestjs/common';
+import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt.guard';
 import { CentralRisksService } from './central-risks.service';
 import { RequirePermission } from '../rbac/require-permission.decorator';
+import { AuthUser, JwtPayload } from '../auth/auth-user.decorator';
 
 @Controller('risks')
 @UseGuards(JwtAuthGuard)
@@ -16,9 +17,8 @@ export class RisksController {
     @Query('rag') rag?: string,
     @Query('priority') priority?: string,
     @Query('status') status?: string,
-    @Req() req?: any,
+    @AuthUser() authUser?: JwtPayload,
   ) {
-    const userId = req?.user?.id;
-    return this.service.findAll(source, accountId, rag, priority, status, userId);
+    return this.service.findAll(source, accountId, rag, priority, status, authUser?.sub);
   }
 }

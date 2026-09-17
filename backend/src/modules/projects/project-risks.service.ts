@@ -39,13 +39,13 @@ function toValues(data: any): any[] {
   const computedSeverity = calculateRiskSeverity(data.impact, data.likelihood) ?? data.severity ?? null;
   return [
     data.priority, data.description,
-    data.impact ?? null, data.likelihood ?? null, computedSeverity,
-    data.ownerId ?? null, data.mitigationPlan ?? '', data.status || 'Open',
+    data.impact || null, data.likelihood || null, computedSeverity,
+    data.ownerId || null, data.mitigationPlan ?? '', data.status || 'Open',
     data.targetResolutionDate || null,
-    data.rag ?? null,
-    data.impactDescription ?? null,
-    data.classification ?? null,
-    data.contingencyPlan ?? null,
+    data.rag || null,
+    data.impactDescription || null,
+    data.classification || null,
+    data.contingencyPlan || null,
     data.riskOpenDate || null,
   ];
 }

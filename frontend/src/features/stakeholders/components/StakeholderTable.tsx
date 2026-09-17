@@ -13,6 +13,7 @@ import {
   FilterBar,
   INFLUENCE_COLORS,
   InlineTextEditCell,
+  InlineSelectEditCell,
   Pagination,
   RELATIONSHIP_COLORS,
   SearchBar,
@@ -177,15 +178,47 @@ export const StakeholderTable: React.FC<StakeholderTableProps> = ({
                       {!hideAccountColumn && (
                         <TableCell className="text-slate-600 font-bold">{account?.name || s.accountName || 'Unknown'}</TableCell>
                       )}
-                      <TableCell className="text-slate-500 font-semibold">{s.department || '—'}</TableCell>
-                      <TableCell className="text-slate-500 font-semibold">{s.designation}</TableCell>
+                      <TableCell className="text-slate-500 font-semibold">
+                        <InlineTextEditCell
+                          value={s.department ?? ''}
+                          disabled={!canEdit}
+                          placeholder="—"
+                          onSave={async (val) => {
+                            await updateStakeholder({ ...s, department: val });
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell className="text-slate-500 font-semibold">
+                        <InlineTextEditCell
+                          value={s.designation ?? ''}
+                          disabled={!canEdit}
+                          placeholder="Set designation…"
+                          onSave={async (val) => {
+                            await updateStakeholder({ ...s, designation: val });
+                          }}
+                        />
+                      </TableCell>
                       {!isServiceProvider && (
                         <>
                           <TableCell align="center">
-                            <StatusBadge value={s.influence} colorMap={INFLUENCE_COLORS} shape="rounded" />
+                            <InlineSelectEditCell
+                              value={s.influence}
+                              options={['High', 'Medium', 'Low']}
+                              disabled={!canEdit}
+                              onSave={async (val) => {
+                                await updateStakeholder({ ...s, influence: val as any });
+                              }}
+                            />
                           </TableCell>
                           <TableCell align="center">
-                            <StatusBadge value={s.relationship} colorMap={RELATIONSHIP_COLORS} />
+                            <InlineSelectEditCell
+                              value={s.relationship}
+                              options={['Strong', 'Neutral', 'Weak']}
+                              disabled={!canEdit}
+                              onSave={async (val) => {
+                                await updateStakeholder({ ...s, relationship: val as any });
+                              }}
+                            />
                           </TableCell>
                           <TableCell className="text-slate-700 font-medium">
                             {s.primaryOwnerName ? (
@@ -220,16 +253,24 @@ export const StakeholderTable: React.FC<StakeholderTableProps> = ({
                         </>
                       )}
                       <TableCell className="select-all text-slate-500 hover:text-blue-500 transition-colors">
-                        <a href={`mailto:${s.email}`} className="flex items-center space-x-1 font-semibold">
-                          <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden="true" />
-                          <span className="truncate max-w-[150px]">{s.email}</span>
-                        </a>
+                        <InlineTextEditCell
+                          value={s.email ?? ''}
+                          disabled={!canEdit}
+                          placeholder="Set email…"
+                          onSave={async (val) => {
+                            await updateStakeholder({ ...s, email: val });
+                          }}
+                        />
                       </TableCell>
                       <TableCell className="font-mono select-all text-slate-500">
-                        <span className="flex items-center space-x-1">
-                          <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" aria-hidden="true" />
-                          <span>{s.phone}</span>
-                        </span>
+                        <InlineTextEditCell
+                          value={s.phone ?? ''}
+                          disabled={!canEdit}
+                          placeholder="Set phone…"
+                          onSave={async (val) => {
+                            await updateStakeholder({ ...s, phone: val });
+                          }}
+                        />
                       </TableCell>
                       <TableCell className="text-slate-500" onDoubleClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center gap-1.5">

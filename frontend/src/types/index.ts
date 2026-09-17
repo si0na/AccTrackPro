@@ -672,6 +672,8 @@ export interface ActionItem {
   /** Parent account display name (joined server-side; valid even when the account is deactivated). */
   accountName?: string;
   opportunityId?: string;
+  /** Joined display field (server-side) for the linked Opportunity. */
+  opportunityName?: string;
   /** Linked Project (optional) — populated once the parent Opportunity has gone Won. */
   projectId?: string;
   /** Joined display field (server-side) for the linked Project. */

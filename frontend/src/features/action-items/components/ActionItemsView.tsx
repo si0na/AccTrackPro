@@ -15,6 +15,7 @@ import {
   MessageSquare,
 } from 'lucide-react';
 import { CustomizeColumnsSidebar } from '@/components/table/CustomizeColumnsSidebar';
+import { ActionItemOwnerField } from '@/components/ActionItemOwnerField';
 import {
   ACTION_STATUS_COLORS,
   BackButton,
@@ -184,7 +185,7 @@ export const ActionItemsView: React.FC = () => {
   };
   const getSortValue = (item: ActionItem, key: string) => {
     if (key === 'accountId') return resolveAccount(item.accountId)?.name || item.accountName || '';
-    if (key === 'opportunityId') return opportunities.find(o => o.id === item.opportunityId)?.name || '';
+    if (key === 'opportunityId') return opportunities.find(o => o.id === item.opportunityId)?.name || item.opportunityName || '';
     if (key === 'projectId') return projects.find(p => p.id === item.projectId)?.name || '';
     if (key === 'owner') return item.ownerName || item.owner || '';
     return (item as any)[key];
@@ -647,16 +648,24 @@ export const ActionItemsView: React.FC = () => {
                           { value: '', label: 'Select Account...' },
                           ...accounts.map(a => ({ value: a.id, label: a.name }))
                         ];
+                        const acc = resolveAccount(item.accountId);
                         return (
                           <TableCell key={col.key} className="text-slate-600 font-bold">
                             <InlineSelectEditCell
                               value={item.accountId}
                               options={accountOptions}
                               disabled={!canEdit}
-                              placeholder={account?.name || item.accountName || 'Unknown Account'}
+                              placeholder={acc?.name || item.accountName || 'Select Account...'}
                               onSave={async (id) => {
-                                const acc = accounts.find(a => a.id === id);
-                                await updateActionItem({ ...item, accountId: id, accountName: acc?.name || '' });
+                                if (!id) return;
+                                const selectedAcc = accounts.find(a => a.id === id);
+                                await updateActionItem({
+                                  ...item,
+                                  accountId: id,
+                                  accountName: selectedAcc?.name || '',
+                                  opportunityId: item.opportunityId && opportunities.find(o => o.id === item.opportunityId)?.accountId !== id ? undefined : item.opportunityId,
+                                  projectId: item.projectId && projects.find(p => p.id === item.projectId)?.accountId !== id ? undefined : item.projectId,
+                                });
                               }}
                             />
                           </TableCell>
@@ -664,9 +673,12 @@ export const ActionItemsView: React.FC = () => {
                       }
                       if (col.key === 'opportunityId') {
                         const opp = opportunities.find(o => o.id === item.opportunityId);
+                        const filteredOpps = (item.accountId
+                          ? opportunities.filter(o => o.accountId === item.accountId)
+                          : opportunities).filter(o => o.stage !== 'Won' || o.id === item.opportunityId);
                         const oppOptions = [
                           { value: '', label: '— None —' },
-                          ...opportunities.map(o => ({ value: o.id, label: o.name }))
+                          ...filteredOpps.map(o => ({ value: o.id, label: o.name }))
                         ];
                         return (
                           <TableCell key={col.key} className="text-slate-600 font-semibold text-xs">
@@ -674,26 +686,29 @@ export const ActionItemsView: React.FC = () => {
                               value={item.opportunityId ?? ''}
                               options={oppOptions}
                               disabled={!canEdit}
-                              placeholder={opp ? opp.name : '—'}
+                              placeholder={opp ? opp.name : (item.opportunityName || '— None —')}
                               onSave={async (id) => {
-                                await updateActionItem({ ...item, opportunityId: id || undefined });
+                                const selectedOpp = opportunities.find(o => o.id === id);
+                                await updateActionItem({
+                                  ...item,
+                                  opportunityId: id || undefined,
+                                  opportunityName: selectedOpp?.name || undefined,
+                                  accountId: selectedOpp && !item.accountId ? selectedOpp.accountId : item.accountId,
+                                  accountName: selectedOpp && !item.accountId ? (selectedOpp.accountName || accounts.find(a => a.id === selectedOpp.accountId)?.name || '') : item.accountName,
+                                });
                               }}
                             />
                           </TableCell>
                         );
                       }
                       if (col.key === 'projectId') {
-                        if (!item.projectId) {
-                          return (
-                            <TableCell key={col.key} className="text-slate-400 font-medium italic text-xs">
-                              Not Applicable
-                            </TableCell>
-                          );
-                        }
                         const proj = projects.find(p => p.id === item.projectId);
+                        const filteredProjs = item.accountId
+                          ? projects.filter(p => p.accountId === item.accountId)
+                          : projects;
                         const projOptions = [
                           { value: '', label: '— None —' },
-                          ...projects.map(p => ({ value: p.id, label: p.name }))
+                          ...filteredProjs.map(p => ({ value: p.id, label: p.name }))
                         ];
                         return (
                           <TableCell key={col.key} className="text-slate-600 font-semibold text-xs">
@@ -701,18 +716,43 @@ export const ActionItemsView: React.FC = () => {
                               value={item.projectId ?? ''}
                               options={projOptions}
                               disabled={!canEdit}
-                              placeholder={proj ? proj.name : '—'}
+                              placeholder={proj ? proj.name : '— None —'}
                               onSave={async (id) => {
-                                await updateActionItem({ ...item, projectId: id || undefined });
+                                const selectedProj = projects.find(p => p.id === id);
+                                await updateActionItem({
+                                  ...item,
+                                  projectId: id || undefined,
+                                  projectName: selectedProj?.name || undefined,
+                                  accountId: selectedProj && !item.accountId ? selectedProj.accountId : item.accountId,
+                                  accountName: selectedProj && !item.accountId ? (accounts.find(a => a.id === selectedProj.accountId)?.name || '') : item.accountName,
+                                });
                               }}
                             />
                           </TableCell>
                         );
                       }
-                      if (col.key === 'owner') {
+                      if (col.key === 'owner' || col.key === 'ownerStakeholderId') {
                         return (
-                          <TableCell key={col.key} className="text-slate-600 font-semibold text-xs">
-                            <span className="truncate block max-w-full">{item.ownerName || item.owner || '—'}</span>
+                          <TableCell key={col.key} className="text-slate-600 font-semibold text-xs" onClick={(e) => e.stopPropagation()}>
+                            {canEdit ? (
+                              <ActionItemOwnerField
+                                accountId={item.accountId ?? ''}
+                                stakeholders={stakeholders}
+                                value={item.ownerStakeholderId}
+                                fallbackName={item.ownerName || item.owner}
+                                onChange={async (stkId) => {
+                                  const stk = stakeholders.find(s => s.id === stkId);
+                                  await updateActionItem({
+                                    ...item,
+                                    ownerStakeholderId: stkId || undefined,
+                                    owner: stk?.name || item.owner || '',
+                                    ownerName: stk?.name || item.ownerName || '',
+                                  });
+                                }}
+                              />
+                            ) : (
+                              item.ownerName || item.owner || '—'
+                            )}
                           </TableCell>
                         );
                       }

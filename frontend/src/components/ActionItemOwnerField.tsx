@@ -17,6 +17,8 @@ export interface ActionItemOwnerFieldProps {
   onChange: (stakeholderId: string) => void;
   tone?: 'blue' | 'amber';
   required?: boolean;
+  disabled?: boolean;
+  title?: string;
 }
 
 /** One row in the Service Providers column of the owner picker. */
@@ -59,6 +61,8 @@ export const ActionItemOwnerField: React.FC<ActionItemOwnerFieldProps> = ({
   fallbackName,
   onChange,
   required = true,
+  disabled = false,
+  title,
 }) => {
   const { accounts, addStakeholder, serviceProviders, associateServiceProvider } = useCRM();
   const [isPickerOpen, setPickerOpen] = useState(false);
@@ -70,11 +74,22 @@ export const ActionItemOwnerField: React.FC<ActionItemOwnerFieldProps> = ({
   const account = accounts.find((a) => a.id === accountId);
   const createDisabledReason = account ? undefined : NO_ACCOUNT_MSG;
 
-  // The currently-selected stakeholder (resolved from all stakeholders)
-  const selected = React.useMemo(
-    () => stakeholders.find((s) => s.id === value),
-    [stakeholders, value],
-  );
+  // The currently-selected stakeholder (resolved from all stakeholders or service providers directory)
+  const selected = React.useMemo(() => {
+    if (value) {
+      const stk = stakeholders.find((s) => s.id === value);
+      if (stk) return stk;
+      const sp = serviceProviders?.find((p) => p.id === value || (p as any).directoryId === value);
+      if (sp) return { id: sp.id, name: sp.name, designation: sp.designation || 'Service Provider' } as any;
+    }
+    if (fallbackName) {
+      const stk = stakeholders.find((s) => s.name.toLowerCase().trim() === fallbackName.toLowerCase().trim());
+      if (stk) return stk;
+      const sp = serviceProviders?.find((p) => p.name.toLowerCase().trim() === fallbackName.toLowerCase().trim());
+      if (sp) return { id: sp.id, name: sp.name, designation: sp.designation || 'Service Provider' } as any;
+    }
+    return undefined;
+  }, [stakeholders, serviceProviders, value, fallbackName]);
 
   const query = globalSearchQuery.toLowerCase().trim();
 
@@ -204,8 +219,8 @@ export const ActionItemOwnerField: React.FC<ActionItemOwnerFieldProps> = ({
           setGlobalSearchQuery('');
           setPickerOpen(true);
         }}
-        disabled={!accountId}
-        title={!accountId ? NO_ACCOUNT_MSG : 'Click to select task owner'}
+        disabled={disabled || !accountId}
+        title={title ?? (!accountId ? NO_ACCOUNT_MSG : 'Click to select task owner')}
         className={`
           w-full flex items-center justify-between gap-2
           text-xs pl-3 pr-2.5 py-2 rounded-lg border transition-all

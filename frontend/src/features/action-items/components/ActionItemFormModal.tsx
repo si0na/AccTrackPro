@@ -35,6 +35,8 @@ export interface ActionItemFormModalProps {
   actionItemsColumnConfig: ColumnConfig[];
   /** Fixes the account association (used inside Account Details, where the account is already known). */
   lockedAccount?: { id: string; name: string };
+  /** Fixes the opportunity association (used inside Opportunity Details, where the opportunity is already known). */
+  lockedOpportunity?: { id: string; name: string };
   /** Fixes the project association (used inside Project Details, where the project — and its account — are already known). */
   lockedProject?: { id: string; name: string };
   projects?: any[];
@@ -61,6 +63,7 @@ export const ActionItemFormModal: React.FC<ActionItemFormModalProps> = ({
   actionItemColumns,
   actionItemsColumnConfig,
   lockedAccount,
+  lockedOpportunity,
   lockedProject,
   projects,
   mode,
@@ -154,6 +157,16 @@ export const ActionItemFormModal: React.FC<ActionItemFormModalProps> = ({
                   </select>
                 </FormField>
               )
+            ) : lockedOpportunity ? (
+              <FormField label="Associated Opportunity">
+                <input
+                  type="text"
+                  value={lockedOpportunity.name}
+                  disabled
+                  aria-readonly="true"
+                  className={`${INPUT_CLS} bg-slate-50 text-slate-500 cursor-not-allowed`}
+                />
+              </FormField>
             ) : (
               <FormField label="Associated Opportunity">
                 <select
@@ -163,7 +176,7 @@ export const ActionItemFormModal: React.FC<ActionItemFormModalProps> = ({
                 >
                   <option value="">None / General Task</option>
                   {opportunities
-                    .filter((opp) => !value.accountId || opp.accountId === value.accountId)
+                    .filter((opp) => (!value.accountId || opp.accountId === value.accountId) && opp.stage !== 'Won')
                     .map((opp) => (
                       <option key={opp.id} value={opp.id}>{opp.name}</option>
                     ))}

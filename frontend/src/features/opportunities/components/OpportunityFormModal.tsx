@@ -321,7 +321,7 @@ export const OpportunityFormModal: React.FC<OpportunityFormModalProps> = ({
 
         <FormSection title="Additional Details">
           <FormGrid>
-            <FormField label="Detailed Scope" wide>
+            <FormField label="Description" wide>
               <textarea
                 rows={2}
                 value={value.description}

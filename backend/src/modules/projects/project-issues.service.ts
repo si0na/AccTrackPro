@@ -11,7 +11,7 @@ const COLUMNS = [
 
 function toValues(data: any): any[] {
   return [
-    data.priority, data.description, data.impact ?? null, data.ownerId ?? null,
+    data.priority, data.description, data.impact || null, data.ownerId || null,
     data.dateIdentified || null, data.status || 'Open', data.resolutionPlan ?? '',
     data.targetResolutionDate || null, data.remarks ?? '',
   ];

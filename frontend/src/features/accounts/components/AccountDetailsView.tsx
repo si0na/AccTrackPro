@@ -9,14 +9,16 @@ import { useCRM } from '@/contexts/CRMContext';
 import { usersApi } from '@/api/crm.api';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ActionItemQuickPanel } from '@/features/action-items/components/ActionItemQuickPanel';
-import { Account, Opportunity, OpportunityStage, ActionItem, Stakeholder, StakeholderType, ActionItemStatus, PriorityLevel, User as UserRecord } from '@/types';
+import { Account, Opportunity, OpportunityStage, ActionItem, Stakeholder, StakeholderType, ActionItemStatus, PriorityLevel, User as UserRecord, Project } from '@/types';
 import { AccountFormModal } from '@/features/accounts/components/AccountFormModal';
 import { InlineEditModal } from '@/components/InlineEditModal';
 import { DocumentsPanel } from '@/components/documents/DocumentsPanel';
 import { OpportunityActionsCommentsPanel } from '@/features/opportunities/components/OpportunityActionsCommentsPanel';
 import { OpportunityFormModal } from '@/features/opportunities/components/OpportunityFormModal';
+import { CommentCard } from '@/components/CommentCard';
 import { renderOpportunityCell } from '@/features/opportunities/components/OpportunityTableCells';
 import { ActionItemFormModal } from '@/features/action-items/components/ActionItemFormModal';
+import { ProjectFormModal } from '@/features/projects/components/ProjectFormModal';
 import { CustomizeColumnsSidebar } from '@/components/table/CustomizeColumnsSidebar';
 import {
   ACCOUNT_TYPE_COLORS,
@@ -49,13 +51,17 @@ import {
   INPUT_CLS,
   SELECT_CLS,
   InlineCreateField,
+  RowActionButton,
+  InlineSelectEditCell,
+  InlineTextEditCell,
 } from '@/components/ui';
+import { ActionItemOwnerField } from '@/components/ActionItemOwnerField';
 import { StakeholderFormModal } from '@/features/stakeholders/components/StakeholderFormModal';
 import { StakeholderTabs } from '@/features/stakeholders/components/StakeholderTabs';
 import { NpsTab } from '@/features/nps/components/NpsTab';
 import { EmployeeAppreciationTab } from '@/features/employee-appreciation/components/EmployeeAppreciationTab';
 import { AccountRisksDependenciesTab } from './AccountRisksDependenciesTab';
-import { LOCATION_OPTIONS, STAGE_DEFAULT_PROBABILITY, stageChangePatch } from '@/constants';
+import { LOCATION_OPTIONS, STAGE_DEFAULT_PROBABILITY, stageChangePatch, ACTION_ITEM_STATUS_OPTIONS } from '@/constants';
 import {
   deriveOppStatus,
   getTodayISODate,
@@ -89,6 +95,8 @@ import {
   AlertTriangle,
   Layers,
   FolderKanban,
+  Eye,
+  Trash2,
 } from 'lucide-react';
 
 /** First letters of up to the first two words of the account name, for the avatar chip. */
@@ -101,15 +109,16 @@ const getInitials = (name: string): string => {
 
 export const AccountDetailsView: React.FC = () => {
   const {
+    selectedAccountId,
+    accountDetailsActiveTab,
+    setAccountDetailsActiveTab,
     accounts,
     opportunities,
-    actionItems,
+    projects,
     stakeholders,
+    actionItems,
     comments,
-    selectedAccountId,
-    setView,
-    setSelectedAccountId,
-    setSelectedOpportunityId,
+    deactivatedAccounts,
     updateAccount,
     deleteAccount,
     addOpportunity,
@@ -122,6 +131,7 @@ export const AccountDetailsView: React.FC = () => {
     updateStakeholder,
     deleteStakeholder,
     addComment,
+    updateComment,
     deleteComment,
     accountsColumnConfig,
     opportunityColumns,
@@ -129,18 +139,19 @@ export const AccountDetailsView: React.FC = () => {
     actionItemColumns,
     actionItemsColumnConfig,
     setOppDetailsSourceView,
-    accountDetailsActiveTab,
-    setAccountDetailsActiveTab,
     cameFromDashboard,
     navSource,
     currentUser,
     can,
     serviceProviders,
     associateServiceProvider,
-    projects,
     setSelectedProjectId,
     setProjectDetailsSourceView,
     setCreateProjectIntent,
+    setSelectedOpportunityId,
+    setView,
+    updateProject,
+    deleteProject,
   } = useCRM();
 
   // Find current account
@@ -222,6 +233,27 @@ export const AccountDetailsView: React.FC = () => {
     notes: '',
     risksAndDependencies: ''
   });
+
+  // Edit Project Modal State
+  const [isEditProjectModalOpen, setIsEditProjectModalOpen] = useState(false);
+  const [editingProjectDraft, setEditingProjectDraft] = useState<Project | null>(null);
+  const [isSubmittingEditProject, setIsSubmittingEditProject] = useState(false);
+  const [deleteProjectTarget, setDeleteProjectTarget] = useState<{ id: string; name: string } | null>(null);
+
+  const handleSaveEditProject = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingProjectDraft || !editingProjectDraft.name.trim()) return;
+    setIsSubmittingEditProject(true);
+    try {
+      await updateProject(editingProjectDraft);
+      setIsEditProjectModalOpen(false);
+      setEditingProjectDraft(null);
+    } catch (err: any) {
+      alert(err?.response?.data?.message || err?.message || 'Failed to update project.');
+    } finally {
+      setIsSubmittingEditProject(false);
+    }
+  };
 
   const handleEditOppClick = (opp: Opportunity) => {
     setEditingOpp({ ...opp });
@@ -553,15 +585,7 @@ export const AccountDetailsView: React.FC = () => {
         badges={
           <>
             <StatusBadge value={account.type} colorMap={ACCOUNT_TYPE_COLORS} shape="rounded" />
-            <div className="inline-flex items-center gap-2 flex-wrap">
-              <StatusBadge value={account.health} colorMap={HEALTH_COLORS} />
-              {account.healthReason && (
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-medium bg-amber-50/80 text-amber-900 border border-amber-200/80 shadow-2xs" title={`Reason for Health: ${account.healthReason}`}>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700/80">Reason:</span>
-                  <span className="truncate max-w-sm">{account.healthReason}</span>
-                </span>
-              )}
-            </div>
+            <StatusBadge value={account.health} colorMap={HEALTH_COLORS} />
           </>
         }
         description={account.description}
@@ -619,7 +643,6 @@ export const AccountDetailsView: React.FC = () => {
           },
           { icon: <Calendar className="w-4 h-4" />, label: 'Customer Since', value: account.since },
           { icon: <Layers className="w-4 h-4" />, label: 'Tower', value: account.tower },
-          ...(account.healthReason ? [{ icon: <AlertTriangle className="w-4 h-4" />, label: 'Reason for Health', value: account.healthReason }] : []),
         ]}
       />
 
@@ -692,194 +715,232 @@ export const AccountDetailsView: React.FC = () => {
               />
             </div>
 
+            {account.healthReason && (() => {
+              const healthStyleMap: Record<string, { bg: string; border: string; text: string; titleText: string; iconColor: string }> = {
+                Green: {
+                  bg: 'bg-emerald-50/80',
+                  border: 'border-emerald-200/80',
+                  text: 'text-emerald-950',
+                  titleText: 'text-emerald-800',
+                  iconColor: 'text-emerald-600',
+                },
+                Red: {
+                  bg: 'bg-red-50/80',
+                  border: 'border-red-200/80',
+                  text: 'text-red-950',
+                  titleText: 'text-red-800',
+                  iconColor: 'text-red-600',
+                },
+                Amber: {
+                  bg: 'bg-amber-50/80',
+                  border: 'border-amber-200/80',
+                  text: 'text-amber-950',
+                  titleText: 'text-amber-800',
+                  iconColor: 'text-amber-600',
+                },
+              };
+              const styles = healthStyleMap[account.health] || healthStyleMap.Amber;
+              return (
+                <div className={`p-4 rounded-xl ${styles.bg} border ${styles.border} ${styles.text} shadow-2xs`}>
+                  <div className={`flex items-center gap-2 mb-1.5 ${styles.titleText} font-bold text-xs uppercase tracking-wider`}>
+                    <AlertTriangle className={`w-4 h-4 ${styles.iconColor} shrink-0`} />
+                    <span>Reason for Health ({account.health})</span>
+                  </div>
+                  <p className={`text-xs ${styles.text} font-medium leading-relaxed`}>
+                    {account.healthReason}
+                  </p>
+                </div>
+              );
+            })()}
+
             {/* Account Summary (left) / Primary Contact (right) — balanced two-column layout */}
             <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 items-start">
               <div className="lg:col-span-3 space-y-6">
-              <Card
-                padding="none"
-                title="Account Summary"
-                actions={isEditingSummary ? (
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => {
-                        updateAccount({ ...account, description: summaryDraft });
-                        setIsEditingSummary(false);
-                      }}
-                      className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold rounded-lg cursor-pointer transition-colors"
-                    >
-                      Save
-                    </button>
-                    <button
-                      onClick={() => setIsEditingSummary(false)}
-                      className="px-3 py-1 border border-slate-200 text-slate-500 hover:bg-slate-50 text-[11px] font-semibold rounded-lg cursor-pointer transition-colors"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => { setSummaryDraft(account.description || ''); setIsEditingSummary(true); }}
-                    className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-blue-600 font-bold transition-colors cursor-pointer"
-                  >
-                    <Pencil className="w-3 h-3" />
-                    Edit
-                  </button>
-                )}
-              >
-                <div className="p-5">
-                  {isEditingSummary ? (
-                    <textarea
-                      rows={7}
-                      value={summaryDraft}
-                      onChange={(e) => setSummaryDraft(e.target.value)}
-                      placeholder="Enter company summary, background, or profile..."
-                      className="w-full text-xs p-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 resize-none text-slate-700 leading-relaxed"
-                      autoFocus
-                    />
-                  ) : account.description ? (
-                    <p className="text-xs text-slate-600 font-medium leading-relaxed whitespace-pre-wrap">
-                      {account.description}
-                    </p>
-                  ) : (
-                    <p className="text-xs text-slate-300 italic min-h-[100px]">No summary added yet. Click Edit to add one.</p>
-                  )}
-                </div>
-              </Card>
-
-              <Card
-                padding="none"
-                title="Account Leadership"
-              >
-                <div className="p-5 divide-y divide-slate-100">
-                  {[
-                    { label: 'Client Partner', name: account.clientPartnerName },
-                    { label: 'Vertical Head', name: account.verticalHeadName },
-                    { label: 'Account Manager', name: account.accountManagerName },
-                    { label: 'Practice Lead', name: account.practiceLeadName },
-                  ].map((row) => (
-                    <div key={row.label} className="py-3.5 first:pt-0 last:pb-0 flex items-center justify-between text-xs">
-                      <span className="font-bold text-slate-400 uppercase tracking-wider">{row.label}</span>
-                      <span className="font-semibold text-slate-800">{row.name || <span className="text-slate-400 font-normal italic">Not assigned</span>}</span>
+                <Card
+                  padding="none"
+                  title="Account Summary"
+                  actions={isEditingSummary ? (
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          updateAccount({ ...account, description: summaryDraft });
+                          setIsEditingSummary(false);
+                        }}
+                        className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold rounded-lg cursor-pointer transition-colors"
+                      >
+                        Save
+                      </button>
+                      <button
+                        onClick={() => setIsEditingSummary(false)}
+                        className="px-3 py-1 border border-slate-200 text-slate-500 hover:bg-slate-50 text-[11px] font-semibold rounded-lg cursor-pointer transition-colors"
+                      >
+                        Cancel
+                      </button>
                     </div>
-                  ))}
-                </div>
-              </Card>
+                  ) : (
+                    <button
+                      onClick={() => { setSummaryDraft(account.description || ''); setIsEditingSummary(true); }}
+                      className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-blue-600 font-bold transition-colors cursor-pointer"
+                    >
+                      <Pencil className="w-3 h-3" />
+                      Edit
+                    </button>
+                  )}
+                >
+                  <div className="p-5">
+                    {isEditingSummary ? (
+                      <textarea
+                        rows={7}
+                        value={summaryDraft}
+                        onChange={(e) => setSummaryDraft(e.target.value)}
+                        placeholder="Enter company summary, background, or profile..."
+                        className="w-full text-xs p-3 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 resize-none text-slate-700 leading-relaxed"
+                        autoFocus
+                      />
+                    ) : account.description ? (
+                      <p className="text-xs text-slate-600 font-medium leading-relaxed whitespace-pre-wrap">
+                        {account.description}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-slate-300 italic min-h-[100px]">No summary added yet. Click Edit to add one.</p>
+                    )}
+                  </div>
+                </Card>
+
+                <Card
+                  padding="none"
+                  title="Account Leadership"
+                >
+                  <div className="p-5 divide-y divide-slate-100">
+                    {[
+                      { label: 'Client Partner', name: account.clientPartnerName },
+                      { label: 'Vertical Head', name: account.verticalHeadName },
+                      { label: 'Account Manager', name: account.accountManagerName },
+                      { label: 'Practice Lead', name: account.practiceLeadName },
+                    ].map((row) => (
+                      <div key={row.label} className="py-3.5 first:pt-0 last:pb-0 flex items-center justify-between text-xs">
+                        <span className="font-bold text-slate-400 uppercase tracking-wider">{row.label}</span>
+                        <span className="font-semibold text-slate-800">{row.name || <span className="text-slate-400 font-normal italic">Not assigned</span>}</span>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
 
               </div>
 
               <div className="lg:col-span-2">
-              <Card
-                padding="none"
-                title="Primary Contact"
-                actions={isEditingContact ? (
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => {
-                        updateAccount({ ...account, ...contactDraft });
-                        setIsEditingContact(false);
-                      }}
-                      disabled={!isValidPhone(contactDraft.phone)}
-                      title={!isValidPhone(contactDraft.phone) ? 'Fix the phone number before saving' : undefined}
-                      className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold rounded-lg cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      Save
-                    </button>
-                    <button
-                      onClick={() => setIsEditingContact(false)}
-                      className="px-3 py-1 border border-slate-200 text-slate-500 hover:bg-slate-50 text-[11px] font-semibold rounded-lg cursor-pointer transition-colors"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    onClick={() => {
-                      setContactDraft({ website: account.website || '', phone: account.phone || '', email: account.email || '', address: account.address || '', location: mapLocationToOption(account.location) });
-                      setIsEditingContact(true);
-                    }}
-                    className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-blue-600 font-bold transition-colors cursor-pointer"
-                  >
-                    <Pencil className="w-3 h-3" />
-                    Edit
-                  </button>
-                )}
-              >
-                <div className="p-5">
-                  {isEditingContact ? (
-                    <div className="space-y-3 text-xs">
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                          <Globe className="w-3 h-3" /> Website
-                        </label>
-                        <input
-                          type="text"
-                          value={contactDraft.website}
-                          onChange={(e) => setContactDraft({ ...contactDraft, website: e.target.value })}
-                          placeholder="www.example.com"
-                          className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-slate-800"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                          <Phone className="w-3 h-3" /> Phone
-                        </label>
-                        <PhoneInput
-                          value={contactDraft.phone}
-                          onChange={(phone) => setContactDraft({ ...contactDraft, phone })}
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                          <Mail className="w-3 h-3" /> Email
-                        </label>
-                        <input
-                          type="email"
-                          value={contactDraft.email}
-                          onChange={(e) => setContactDraft({ ...contactDraft, email: e.target.value })}
-                          placeholder="contact@example.com"
-                          className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-slate-800"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                          <MapPin className="w-3 h-3" /> Address
-                        </label>
-                        <input
-                          type="text"
-                          value={contactDraft.address}
-                          onChange={(e) => setContactDraft({ ...contactDraft, address: e.target.value })}
-                          placeholder="123 Business Ave, City, State"
-                          className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-slate-800"
-                        />
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                          <Navigation className="w-3 h-3" /> Location
-                        </label>
-                        <SearchableSelect
-                          value={contactDraft.location}
-                          onChange={(location) => setContactDraft({ ...contactDraft, location })}
-                          options={LOCATION_OPTIONS}
-                          placeholder="Search countries…"
-                          aria-label="Account location"
-                        />
-                      </div>
+                <Card
+                  padding="none"
+                  title="Primary Contact"
+                  actions={isEditingContact ? (
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => {
+                          updateAccount({ ...account, ...contactDraft });
+                          setIsEditingContact(false);
+                        }}
+                        disabled={!isValidPhone(contactDraft.phone)}
+                        title={!isValidPhone(contactDraft.phone) ? 'Fix the phone number before saving' : undefined}
+                        className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold rounded-lg cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        Save
+                      </button>
+                      <button
+                        onClick={() => setIsEditingContact(false)}
+                        className="px-3 py-1 border border-slate-200 text-slate-500 hover:bg-slate-50 text-[11px] font-semibold rounded-lg cursor-pointer transition-colors"
+                      >
+                        Cancel
+                      </button>
                     </div>
                   ) : (
-                    <div className="space-y-4">
-                      {[
-                        { icon: <Globe className="w-4 h-4" />, label: 'Website', value: account.website, href: account.website ? `https://${account.website}` : undefined },
-                        { icon: <Phone className="w-4 h-4" />, label: 'Phone', value: account.phone, mono: true },
-                        { icon: <Mail className="w-4 h-4" />, label: 'Email', value: account.email },
-                        { icon: <MapPin className="w-4 h-4" />, label: 'Address', value: account.address },
-                        { icon: <Navigation className="w-4 h-4" />, label: 'Location', value: account.location },
-                      ].map((item) => (
-                        <InfoBlock key={item.label} icon={item.icon} label={item.label} value={item.value} href={item.href} mono={item.mono} />
-                      ))}
-                    </div>
+                    <button
+                      onClick={() => {
+                        setContactDraft({ website: account.website || '', phone: account.phone || '', email: account.email || '', address: account.address || '', location: mapLocationToOption(account.location) });
+                        setIsEditingContact(true);
+                      }}
+                      className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-blue-600 font-bold transition-colors cursor-pointer"
+                    >
+                      <Pencil className="w-3 h-3" />
+                      Edit
+                    </button>
                   )}
-                </div>
-              </Card>
+                >
+                  <div className="p-5">
+                    {isEditingContact ? (
+                      <div className="space-y-3 text-xs">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                            <Globe className="w-3 h-3" /> Website
+                          </label>
+                          <input
+                            type="text"
+                            value={contactDraft.website}
+                            onChange={(e) => setContactDraft({ ...contactDraft, website: e.target.value })}
+                            placeholder="www.example.com"
+                            className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-slate-800"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                            <Phone className="w-3 h-3" /> Phone
+                          </label>
+                          <PhoneInput
+                            value={contactDraft.phone}
+                            onChange={(phone) => setContactDraft({ ...contactDraft, phone })}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                            <Mail className="w-3 h-3" /> Email
+                          </label>
+                          <input
+                            type="email"
+                            value={contactDraft.email}
+                            onChange={(e) => setContactDraft({ ...contactDraft, email: e.target.value })}
+                            placeholder="contact@example.com"
+                            className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-slate-800"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                            <MapPin className="w-3 h-3" /> Address
+                          </label>
+                          <input
+                            type="text"
+                            value={contactDraft.address}
+                            onChange={(e) => setContactDraft({ ...contactDraft, address: e.target.value })}
+                            placeholder="123 Business Ave, City, State"
+                            className="w-full px-3 py-2 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 text-slate-800"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                            <Navigation className="w-3 h-3" /> Location
+                          </label>
+                          <SearchableSelect
+                            value={contactDraft.location}
+                            onChange={(location) => setContactDraft({ ...contactDraft, location })}
+                            options={LOCATION_OPTIONS}
+                            placeholder="Search countries…"
+                            aria-label="Account location"
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        {[
+                          { icon: <Globe className="w-4 h-4" />, label: 'Website', value: account.website, href: account.website ? `https://${account.website}` : undefined },
+                          { icon: <Phone className="w-4 h-4" />, label: 'Phone', value: account.phone, mono: true },
+                          { icon: <Mail className="w-4 h-4" />, label: 'Email', value: account.email },
+                          { icon: <MapPin className="w-4 h-4" />, label: 'Address', value: account.address },
+                          { icon: <Navigation className="w-4 h-4" />, label: 'Location', value: account.location },
+                        ].map((item) => (
+                          <InfoBlock key={item.label} icon={item.icon} label={item.label} value={item.value} href={item.href} mono={item.mono} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </Card>
               </div>
             </div>
           </div>
@@ -898,16 +959,6 @@ export const AccountDetailsView: React.FC = () => {
                   Projects associated with {account.name}
                 </p>
               </div>
-              {can('projects', 'create') && (
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={() => setView('projects')}
-                  icon={<Plus className="w-4 h-4" />}
-                >
-                  Manage Projects
-                </Button>
-              )}
             </div>
 
             {accountProjects.length === 0 ? (
@@ -934,17 +985,20 @@ export const AccountDetailsView: React.FC = () => {
                 <Table>
                   <TableHead>
                     <TableHeadCell>Project Name</TableHeadCell>
-                    <TableHeadCell>Opportunity</TableHeadCell>
-                    <TableHeadCell>Project Manager</TableHeadCell>
+                    <TableHeadCell>Client Partner Name</TableHeadCell>
+                    <TableHeadCell>Service Provider PM</TableHeadCell>
+                    <TableHeadCell>Practice Lead</TableHeadCell>
                     <TableHeadCell>Methodology</TableHeadCell>
-                    <TableHeadCell align="right">Deal Value</TableHeadCell>
-                    <TableHeadCell align="center">Status</TableHeadCell>
                     <TableHeadCell align="center">Health</TableHeadCell>
-                    <TableHeadCell align="center">Actions</TableHeadCell>
+                    <TableHeadCell align="center">Progress</TableHeadCell>
+                    <TableHeadCell align="center">Status</TableHeadCell>
+                    <TableHeadCell>Start Date</TableHeadCell>
+                    <TableHeadCell>End Date</TableHeadCell>
+                    <TableHeadCell align="center" sticky="right">Actions</TableHeadCell>
                   </TableHead>
                   <tbody>
                     {accountProjects.map((p) => {
-                      const opp = opportunities.find((o) => o.id === p.opportunityId);
+                      const pct = p.actualCompletionPct ?? 0;
                       return (
                         <TableRow
                           key={p.id}
@@ -956,23 +1010,38 @@ export const AccountDetailsView: React.FC = () => {
                           className="hover:bg-slate-50/80 transition-colors cursor-pointer"
                         >
                           <TableCell className="font-semibold text-slate-900">
-                            {p.name}
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg font-bold shrink-0">
+                                <FolderKanban className="w-4 h-4" aria-hidden="true" />
+                              </div>
+                              <p className="font-bold text-slate-900 text-xs min-w-0 truncate hover:text-indigo-600 transition-colors">{p.name}</p>
+                            </div>
                           </TableCell>
                           <TableCell className="text-slate-600 text-xs">
-                            {opp ? opp.name : (p.opportunityName || '—')}
+                            {p.clientPartnerName || '—'}
                           </TableCell>
                           <TableCell className="text-slate-600 text-xs">
                             {p.serviceProviderPmName || 'Unassigned'}
                           </TableCell>
                           <TableCell className="text-slate-600 text-xs">
+                            {p.practiceLeadName || '—'}
+                          </TableCell>
+                          <TableCell className="text-slate-600 text-xs">
                             {p.methodology || 'Agile'}
                           </TableCell>
-                          <TableCell align="right" className="font-mono text-xs font-semibold text-slate-900">
-                            {p.dealValue != null
-                              ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(p.dealValue)
-                              : (opp?.value != null
-                                  ? new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(opp.value)
-                                  : '—')}
+                          <TableCell align="center">
+                            <StatusBadge value={p.health || 'Green'} colorMap={HEALTH_COLORS} />
+                          </TableCell>
+                          <TableCell align="center">
+                            <div className="flex items-center justify-center gap-2">
+                              <div className="w-14 bg-slate-100 h-2 rounded-full overflow-hidden shrink-0">
+                                <div
+                                  className={`h-full ${pct >= 80 ? 'bg-green-500' : pct >= 50 ? 'bg-blue-500' : 'bg-yellow-500'}`}
+                                  style={{ width: `${Math.min(100, Math.max(0, pct))}%` }}
+                                />
+                              </div>
+                              <span className="font-bold text-slate-700 font-mono text-[11px]">{pct}%</span>
+                            </div>
                           </TableCell>
                           <TableCell align="center">
                             <StatusBadge
@@ -985,34 +1054,40 @@ export const AccountDetailsView: React.FC = () => {
                               }}
                             />
                           </TableCell>
-                          <TableCell align="center">
-                            <span
-                              className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${
-                                p.health === 'Green'
-                                  ? 'bg-emerald-50 text-emerald-700 ring-1 ring-emerald-600/20'
-                                  : p.health === 'Amber'
-                                  ? 'bg-amber-50 text-amber-700 ring-1 ring-amber-600/20'
-                                  : p.health === 'Red'
-                                  ? 'bg-rose-50 text-rose-700 ring-1 ring-rose-600/20'
-                                  : 'bg-slate-50 text-slate-600'
-                              }`}
-                            >
-                              {p.health || 'Green'}
-                            </span>
-                          </TableCell>
-                          <TableCell align="center">
-                            <Button
-                              variant="ghost"
-                              size="xs"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedProjectId(p.id);
-                                setProjectDetailsSourceView('account-details');
-                                setView('project-details');
-                              }}
-                            >
-                              View Details
-                            </Button>
+                          <TableCell className="font-mono text-slate-500 text-xs whitespace-nowrap">{p.startDate || 'N/A'}</TableCell>
+                          <TableCell className="font-mono text-slate-500 text-xs whitespace-nowrap">{p.endDate || 'N/A'}</TableCell>
+                          <TableCell align="center" sticky="right" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-center gap-1.5 whitespace-nowrap">
+                              <RowActionButton
+                                intent="view"
+                                label={`View project ${p.name}`}
+                                icon={<Eye className="w-3.5 h-3.5" />}
+                                onClick={() => {
+                                  setSelectedProjectId(p.id);
+                                  setProjectDetailsSourceView('account-details');
+                                  setView('project-details');
+                                }}
+                              />
+                              {can('projects', 'update') && (
+                                <RowActionButton
+                                  intent="edit"
+                                  label={`Edit project ${p.name}`}
+                                  icon={<Pencil className="w-3.5 h-3.5" />}
+                                  onClick={() => {
+                                    setEditingProjectDraft({ ...p });
+                                    setIsEditProjectModalOpen(true);
+                                  }}
+                                />
+                              )}
+                              {can('projects', 'delete') && (
+                                <RowActionButton
+                                  intent="delete"
+                                  label={`Delete project ${p.name}`}
+                                  icon={<Trash2 className="w-3.5 h-3.5" />}
+                                  onClick={() => setDeleteProjectTarget({ id: p.id, name: p.name })}
+                                />
+                              )}
+                            </div>
                           </TableCell>
                         </TableRow>
                       );
@@ -1096,7 +1171,13 @@ export const AccountDetailsView: React.FC = () => {
                         >
                           {opportunitiesColumnConfig.filter(c => c.isDisplayed).map(col => (
                             <TableCell key={col.key}>
-                              {renderOpportunityCell(col, opp, account.name, can('opportunities', 'update') ? handleStageChange : undefined)}
+                              {renderOpportunityCell(
+                                col,
+                                opp,
+                                account.name,
+                                can('opportunities', 'update') ? handleStageChange : undefined,
+                                can('opportunities', 'update') ? (targetOpp, patch) => updateOpportunity({ ...targetOpp, ...patch }) : undefined
+                              )}
                             </TableCell>
                           ))}
                           <TableCell
@@ -1105,16 +1186,38 @@ export const AccountDetailsView: React.FC = () => {
                             className={selectedExcelOppId === opp.id ? 'bg-blue-50' : ''}
                             onClick={e => e.stopPropagation()}
                           >
-                            <TableActions
-                              entityLabel={`opportunity ${opp.name}`}
-                              onView={() => {
-                                setSelectedOpportunityId(opp.id);
-                                setOppDetailsSourceView('account-details');
-                                setView('opportunity-details');
-                              }}
-                              onEdit={() => handleEditOppClick(opp)}
-                              onDelete={() => handleDeleteOpportunity(opp.id, opp.name)}
-                            />
+                            <div className="flex items-center justify-center gap-1.5 whitespace-nowrap">
+                              <RowActionButton
+                                intent="view"
+                                label={`View opportunity ${opp.name}`}
+                                icon={<Eye className="w-3.5 h-3.5" />}
+                                onClick={() => {
+                                  setSelectedOpportunityId(opp.id);
+                                  setOppDetailsSourceView('account-details');
+                                  setView('opportunity-details');
+                                }}
+                              />
+                              {can('opportunities', 'update') && (
+                                <RowActionButton
+                                  intent="edit"
+                                  label={`Edit opportunity ${opp.name}`}
+                                  icon={<Pencil className="w-3.5 h-3.5" />}
+                                  disabled={opp.stage === 'Won'}
+                                  title={opp.stage === 'Won' ? "This opportunity has been converted to a project and is now read-only. No further actions can be performed." : `Edit opportunity ${opp.name}`}
+                                  onClick={() => handleEditOppClick(opp)}
+                                />
+                              )}
+                              {can('opportunities', 'delete') && (
+                                <RowActionButton
+                                  intent="delete"
+                                  label={`Delete opportunity ${opp.name}`}
+                                  icon={<Trash2 className="w-3.5 h-3.5" />}
+                                  disabled={opp.stage === 'Won'}
+                                  title={opp.stage === 'Won' ? "This opportunity has been converted to a project and is now read-only. No further actions can be performed." : `Delete opportunity ${opp.name}`}
+                                  onClick={() => handleDeleteOpportunity(opp.id, opp.name)}
+                                />
+                              )}
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))
@@ -1153,10 +1256,10 @@ export const AccountDetailsView: React.FC = () => {
               )}
             </AnimatePresence>
 
-            <CustomizeColumnsSidebar 
-              module="opportunities" 
-              isOpen={isOppSidebarOpen} 
-              onClose={() => setIsOppSidebarOpen(false)} 
+            <CustomizeColumnsSidebar
+              module="opportunities"
+              isOpen={isOppSidebarOpen}
+              onClose={() => setIsOppSidebarOpen(false)}
             />
           </div>
         )}
@@ -1286,51 +1389,95 @@ export const AccountDetailsView: React.FC = () => {
                                 }
                                 if (col.key === 'opportunityId') {
                                   const opp = opportunities.find(o => o.id === item.opportunityId);
+                                  const filteredOpps = opportunities
+                                    .filter(o => o.accountId === account.id && (o.stage !== 'Won' || o.id === item.opportunityId));
+                                  const oppOptions = [
+                                    { value: '', label: '— None —' },
+                                    ...filteredOpps.map(o => ({ value: o.id, label: o.name }))
+                                  ];
                                   return (
                                     <TableCell key={col.key} className="text-slate-600 font-semibold text-xs">
-                                      {opp ? opp.name : '—'}
+                                      <InlineSelectEditCell
+                                        value={item.opportunityId ?? ''}
+                                        options={oppOptions}
+                                        disabled={!can('actionItems', 'update')}
+                                        placeholder={opp ? opp.name : (item.opportunityName || '— None —')}
+                                        onSave={async (id) => {
+                                          const selectedOpp = opportunities.find(o => o.id === id);
+                                          await updateActionItem({
+                                            ...item,
+                                            opportunityId: id || undefined,
+                                            opportunityName: selectedOpp?.name || undefined,
+                                          });
+                                        }}
+                                      />
                                     </TableCell>
                                   );
                                 }
-                                if (col.key === 'owner') {
+                                if (col.key === 'owner' || col.key === 'ownerStakeholderId') {
                                   return (
-                                    <TableCell key={col.key} className="text-slate-600 font-medium text-xs">
-                                      {item.ownerName || item.owner || '—'}
+                                    <TableCell key={col.key} className="text-slate-600 font-semibold text-xs" onClick={(e) => e.stopPropagation()}>
+                                      {can('actionItems', 'update') ? (
+                                        <ActionItemOwnerField
+                                          accountId={account.id}
+                                          stakeholders={stakeholders}
+                                          value={item.ownerStakeholderId}
+                                          fallbackName={item.ownerName || item.owner}
+                                          onChange={async (stkId) => {
+                                            const stk = stakeholders.find(s => s.id === stkId);
+                                            await updateActionItem({
+                                              ...item,
+                                              ownerStakeholderId: stkId || undefined,
+                                              owner: stk?.name || item.owner || '',
+                                              ownerName: stk?.name || item.ownerName || '',
+                                            });
+                                          }}
+                                        />
+                                      ) : (
+                                        item.ownerName || item.owner || '—'
+                                      )}
                                     </TableCell>
                                   );
                                 }
                                 if (col.key === 'priority') {
                                   return (
                                     <TableCell key={col.key}>
-                                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold tracking-wide ${
-                                        item.priority === 'High' ? 'bg-red-100 text-red-700' :
-                                        item.priority === 'Medium' ? 'bg-amber-100 text-amber-700' :
-                                        'bg-blue-100 text-blue-700'
-                                      }`}>
-                                        {item.priority}
-                                      </span>
+                                      <InlineSelectEditCell
+                                        value={item.priority}
+                                        options={['Low', 'Medium', 'High', 'Critical']}
+                                        disabled={!can('actionItems', 'update')}
+                                        onSave={async (v) => {
+                                          await updateActionItem({ ...item, priority: v as PriorityLevel });
+                                        }}
+                                      />
                                     </TableCell>
                                   );
                                 }
                                 if (col.key === 'status') {
                                   return (
                                     <TableCell key={col.key}>
-                                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold tracking-wide ${
-                                        item.status === 'Completed' ? 'bg-green-100 text-green-700' :
-                                        item.status === 'Blocked' ? 'bg-red-100 text-red-700' :
-                                        item.status === 'In Progress' ? 'bg-blue-100 text-blue-700' :
-                                        item.status === 'Cancelled' ? 'bg-zinc-200 text-zinc-500' :
-                                        'bg-slate-100 text-slate-700'
-                                      }`}>
-                                        {item.status}
-                                      </span>
+                                      <InlineSelectEditCell
+                                        value={item.status}
+                                        options={ACTION_ITEM_STATUS_OPTIONS}
+                                        disabled={!can('actionItems', 'update')}
+                                        onSave={async (v) => {
+                                          await updateActionItem({ ...item, status: v as ActionItemStatus });
+                                        }}
+                                      />
                                     </TableCell>
                                   );
                                 }
-                                if (col.key === 'dueDate') {
+                                if (col.key === 'dueDate' || col.key === 'openDate') {
                                   return (
                                     <TableCell key={col.key} className="text-slate-500 font-mono text-xs font-medium">
-                                      {item.dueDate}
+                                      <InlineTextEditCell
+                                        type="date"
+                                        value={item[col.key] || ''}
+                                        disabled={!can('actionItems', 'update')}
+                                        onSave={async (v) => {
+                                          await updateActionItem({ ...item, [col.key]: v });
+                                        }}
+                                      />
                                     </TableCell>
                                   );
                                 }
@@ -1372,8 +1519,8 @@ export const AccountDetailsView: React.FC = () => {
 
             <CustomizeColumnsSidebar
               module="actionItems"
-              isOpen={isAiSidebarOpen} 
-              onClose={() => setIsAiSidebarOpen(false)} 
+              isOpen={isAiSidebarOpen}
+              onClose={() => setIsAiSidebarOpen(false)}
             />
           </div>
         )}
@@ -1540,22 +1687,12 @@ export const AccountDetailsView: React.FC = () => {
                 <p className="text-xs text-slate-400 font-medium">No comments posted yet. Start the dialogue above.</p>
               ) : (
                 accountComments.map(c => (
-                  <div key={c.id} className="bg-slate-50 p-3.5 rounded-lg border border-slate-100 space-y-2 relative group">
-                    <div className="flex items-center justify-between text-xs">
-                      <div className="flex items-center space-x-2">
-                        <span className="font-extrabold text-slate-700">{c.user}</span>
-                        <span className="text-slate-400">•</span>
-                        <span className="text-[10px] text-slate-400 font-mono">{c.timestamp}</span>
-                      </div>
-                      <button
-                        onClick={() => setDeleteTarget({ type: 'comment', id: c.id, label: c.text.substring(0, 40) })}
-                        className="text-slate-300 hover:text-red-500 hidden group-hover:block cursor-pointer transition-colors"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                    <p className="text-xs text-slate-600 font-medium leading-relaxed">{c.text}</p>
-                  </div>
+                  <CommentCard
+                    key={c.id}
+                    comment={c}
+                    onEdit={updateComment}
+                    onDelete={deleteComment}
+                  />
                 ))
               )}
             </div>
@@ -1731,6 +1868,33 @@ export const AccountDetailsView: React.FC = () => {
         />
       </div>
 
+      {isEditProjectModalOpen && editingProjectDraft && (
+        <ProjectFormModal
+          isOpen={isEditProjectModalOpen}
+          mode="edit"
+          onClose={() => { setIsEditProjectModalOpen(false); setEditingProjectDraft(null); }}
+          onSubmit={handleSaveEditProject}
+          isSubmitting={isSubmittingEditProject}
+          value={editingProjectDraft}
+          onChange={(patch) => setEditingProjectDraft((prev) => (prev ? { ...prev, ...patch } : null))}
+          users={[]}
+          stakeholders={stakeholders}
+        />
+      )}
+
+      <ConfirmDialog
+        isOpen={!!deleteProjectTarget}
+        title="Delete Project"
+        message={deleteProjectTarget ? <>Deactivate project <span className="font-bold">"{deleteProjectTarget.name}"</span>? It will move to the Deactivated section.</> : undefined}
+        onConfirm={async () => {
+          if (deleteProjectTarget) {
+            await deleteProject(deleteProjectTarget.id);
+            setDeleteProjectTarget(null);
+          }
+        }}
+        onCancel={() => setDeleteProjectTarget(null)}
+      />
+
       {/* Edit Account Modal */}
       <AccountFormModal
         isOpen={isEditingAccount && !!accountDraft}
@@ -1753,10 +1917,10 @@ export const AccountDetailsView: React.FC = () => {
         isOpen={!!deleteTarget}
         title={
           deleteTarget?.type === 'opportunity' ? 'Delete Opportunity' :
-          deleteTarget?.type === 'actionItem' ? 'Delete Action Item' :
-          deleteTarget?.type === 'stakeholder' ? 'Delete Stakeholder' :
-          deleteTarget?.type === 'account' ? 'Deactivate Account' :
-          'Delete Comment'
+            deleteTarget?.type === 'actionItem' ? 'Delete Action Item' :
+              deleteTarget?.type === 'stakeholder' ? 'Delete Stakeholder' :
+                deleteTarget?.type === 'account' ? 'Deactivate Account' :
+                  'Delete Comment'
         }
         message={
           deleteTarget?.type === 'account'

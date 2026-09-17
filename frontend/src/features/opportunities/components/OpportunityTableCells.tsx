@@ -5,8 +5,9 @@
 
 import React from 'react';
 import { TrendingUp, FolderKanban } from 'lucide-react';
-import type { ColumnConfig, Opportunity, OpportunityStage } from '@/types';
-import { ExpandableTextCell, STAGE_COLORS, StatusBadge, HEALTH_COLORS } from '@/components/ui';
+import type { ColumnConfig, Opportunity, OpportunityStage, OpportunityHealth, PriorityLevel } from '@/types';
+import { ExpandableTextCell, STAGE_COLORS, StatusBadge, HEALTH_COLORS, InlineTextEditCell, InlineSelectEditCell } from '@/components/ui';
+import { LOCATION_OPTIONS, OPPORTUNITY_TYPE_OPTIONS } from '@/constants';
 
 const formatCurrency = (val: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(val);
@@ -143,17 +144,28 @@ export const renderOpportunityCell = (
   col: ColumnConfig,
   opp: Opportunity,
   accountName: string,
-  onStageChange?: (opp: Opportunity, newStage: OpportunityStage) => void,
+  onStageChangeRaw?: (opp: Opportunity, newStage: OpportunityStage) => void,
+  onUpdateOppRaw?: (opp: Opportunity, patch: Partial<Opportunity>) => void,
 ): React.ReactNode => {
+  const isWon = opp.stage === 'Won';
+  const onStageChange = isWon ? undefined : onStageChangeRaw;
+  const onUpdateOpp = isWon ? undefined : onUpdateOppRaw;
   if (col.key === 'name') {
     return (
-      <div className="flex items-center gap-2.5 min-w-0">
+      <div className="flex items-center gap-2.5 min-w-0" onClick={(e) => onUpdateOpp && e.stopPropagation()}>
         <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg font-bold shrink-0">
           <TrendingUp className="w-4 h-4" aria-hidden="true" />
         </div>
-        <p className="font-bold text-slate-900 text-sm hover:text-indigo-600 transition-colors min-w-0 truncate">
-          {opp.name}
-        </p>
+        {onUpdateOpp ? (
+          <InlineTextEditCell
+            value={opp.name}
+            onSave={(v) => onUpdateOpp(opp, { name: v })}
+          />
+        ) : (
+          <p className="font-bold text-slate-900 text-sm hover:text-indigo-600 transition-colors min-w-0 truncate">
+            {opp.name}
+          </p>
+        )}
       </div>
     );
   }
@@ -195,11 +207,31 @@ export const renderOpportunityCell = (
   }
 
   if (col.key === 'value') {
-    return <span className="text-slate-900 font-bold font-mono text-sm">{formatCurrency(opp.value)}</span>;
+    return onUpdateOpp ? (
+      <div onClick={(e) => e.stopPropagation()}>
+        <InlineTextEditCell
+          type="number"
+          value={opp.value}
+          formatDisplay={(v) => formatCurrency(Number(v))}
+          onSave={(v) => onUpdateOpp(opp, { value: Number(v) || 0 })}
+        />
+      </div>
+    ) : (
+      <span className="text-slate-900 font-bold font-mono text-sm">{formatCurrency(opp.value)}</span>
+    );
   }
 
   if (col.key === 'probability') {
-    return (
+    return onUpdateOpp ? (
+      <div className="flex items-center justify-center space-x-2" onClick={(e) => e.stopPropagation()}>
+        <InlineTextEditCell
+          type="number"
+          value={opp.probability}
+          formatDisplay={(v) => `${v}%`}
+          onSave={(v) => onUpdateOpp(opp, { probability: Math.min(100, Math.max(0, Number(v) || 0)) })}
+        />
+      </div>
+    ) : (
       <div className="flex items-center justify-center space-x-2">
         <div className="w-12 bg-slate-100 h-2 rounded-full overflow-hidden shrink-0">
           <div
@@ -217,16 +249,50 @@ export const renderOpportunityCell = (
     );
   }
 
-  if (col.key === 'allocationStartDate') {
-    return <span className="text-slate-500 font-mono font-medium whitespace-nowrap">{opp.allocationStartDate || '—'}</span>;
+  if (col.key === 'allocationStartDate' || col.key === 'startDate' || col.key === 'projectStartDate') {
+    const raw = opp.allocationStartDate || (opp as any).startDate || (opp as any).projectStartDate || '';
+    const val = raw ? (raw.includes('T') ? raw.split('T')[0] : raw) : '';
+    return onUpdateOpp ? (
+      <div onClick={(e) => e.stopPropagation()}>
+        <InlineTextEditCell
+          type="date"
+          value={val}
+          placeholder="Set start date…"
+          onSave={(v) => onUpdateOpp(opp, { allocationStartDate: v })}
+        />
+      </div>
+    ) : (
+      <span className="text-slate-500 font-mono font-medium whitespace-nowrap">{val || '—'}</span>
+    );
   }
 
-  if (col.key === 'allocationEndDate') {
-    return <span className="text-slate-500 font-mono font-medium whitespace-nowrap">{opp.allocationEndDate || '—'}</span>;
+  if (col.key === 'allocationEndDate' || col.key === 'endDate' || col.key === 'projectEndDate') {
+    const raw = opp.allocationEndDate || (opp as any).endDate || (opp as any).projectEndDate || '';
+    const val = raw ? (raw.includes('T') ? raw.split('T')[0] : raw) : '';
+    return onUpdateOpp ? (
+      <div onClick={(e) => e.stopPropagation()}>
+        <InlineTextEditCell
+          type="date"
+          value={val}
+          placeholder="Set end date…"
+          onSave={(v) => onUpdateOpp(opp, { allocationEndDate: v })}
+        />
+      </div>
+    ) : (
+      <span className="text-slate-500 font-mono font-medium whitespace-nowrap">{val || '—'}</span>
+    );
   }
 
   if (col.key === 'description') {
-    return (
+    return onUpdateOpp ? (
+      <div onClick={(e) => e.stopPropagation()}>
+        <InlineTextEditCell
+          value={opp.description || ''}
+          placeholder="Add description…"
+          onSave={(v) => onUpdateOpp(opp, { description: v })}
+        />
+      </div>
+    ) : (
       <ExpandableTextCell
         text={opp.description}
         label="Description"
@@ -235,46 +301,148 @@ export const renderOpportunityCell = (
     );
   }
 
-  if (col.key === 'serviceProviderStakeholderId') {
-    return <span className="text-slate-600 font-semibold">{opp.serviceProviderStakeholderName || '—'}</span>;
+  if (col.key === 'serviceProviderStakeholderId' || col.key === 'owner' || col.key === 'ownerId' || col.key === 'serviceProviderUserId') {
+    const ownerName = opp.serviceProviderStakeholderName || opp.ownerName || (opp as any).owner || '—';
+    return <span className="text-slate-600 font-semibold">{ownerName}</span>;
   }
 
   if (col.key === 'dealStartDate') {
-    return <span className="text-slate-500 font-mono font-medium whitespace-nowrap">{opp.dealStartDate || 'N/A'}</span>;
+    return onUpdateOpp ? (
+      <div onClick={(e) => e.stopPropagation()}>
+        <InlineTextEditCell
+          type="date"
+          value={opp.dealStartDate || ''}
+          placeholder="Set deal start date…"
+          onSave={(v) => onUpdateOpp(opp, { dealStartDate: v })}
+        />
+      </div>
+    ) : (
+      <span className="text-slate-500 font-mono font-medium whitespace-nowrap">{opp.dealStartDate || 'N/A'}</span>
+    );
   }
 
   if (col.key === 'dealCloseDate') {
-    return <span className="text-slate-500 font-mono font-medium whitespace-nowrap">{opp.dealCloseDate || 'N/A'}</span>;
+    return onUpdateOpp ? (
+      <div onClick={(e) => e.stopPropagation()}>
+        <InlineTextEditCell
+          type="date"
+          value={opp.dealCloseDate || ''}
+          placeholder="Set deal close date…"
+          onSave={(v) => onUpdateOpp(opp, { dealCloseDate: v })}
+        />
+      </div>
+    ) : (
+      <span className="text-slate-500 font-mono font-medium whitespace-nowrap">{opp.dealCloseDate || 'N/A'}</span>
+    );
   }
 
   if (col.key === 'opportunityType') {
-    return <span className="text-slate-600 font-medium">{opp.opportunityType}</span>;
+    return onUpdateOpp ? (
+      <div onClick={(e) => e.stopPropagation()}>
+        <InlineSelectEditCell
+          value={opp.opportunityType}
+          options={OPPORTUNITY_TYPE_OPTIONS as any}
+          onSave={(v) => onUpdateOpp(opp, { opportunityType: v as any })}
+        />
+      </div>
+    ) : (
+      <span className="text-slate-600 font-medium">{opp.opportunityType}</span>
+    );
   }
 
   if (col.key === 'opportunityHealth') {
-    return opp.opportunityHealth
-      ? <StatusBadge value={opp.opportunityHealth} colorMap={HEALTH_COLORS} />
-      : <span className="text-slate-400 italic">—</span>;
+    return onUpdateOpp ? (
+      <div onClick={(e) => e.stopPropagation()}>
+        <InlineSelectEditCell
+          value={opp.opportunityHealth || ''}
+          options={['Green', 'Amber', 'Red']}
+          placeholder="Set health…"
+          onSave={(v) => onUpdateOpp(opp, { opportunityHealth: v as OpportunityHealth })}
+        />
+      </div>
+    ) : opp.opportunityHealth ? (
+      <StatusBadge value={opp.opportunityHealth} colorMap={HEALTH_COLORS} />
+    ) : (
+      <span className="text-slate-400 italic">—</span>
+    );
+  }
+
+  if (col.key === 'priority') {
+    return onUpdateOpp ? (
+      <div onClick={(e) => e.stopPropagation()}>
+        <InlineSelectEditCell
+          value={opp.priority || ''}
+          options={['Low', 'Medium', 'High', 'Critical']}
+          placeholder="Set priority…"
+          onSave={(v) => onUpdateOpp(opp, { priority: v as PriorityLevel })}
+        />
+      </div>
+    ) : opp.priority ? (
+      <StatusBadge value={opp.priority} colorMap={{ High: 'bg-amber-50 text-amber-700', Medium: 'bg-blue-50 text-blue-700', Low: 'bg-slate-100 text-slate-600', Critical: 'bg-red-50 text-red-700' }} />
+    ) : (
+      <span className="text-slate-400 italic">—</span>
+    );
   }
 
   if (col.key === 'location') {
-    return <span className="text-slate-600 font-medium">{opp.location || '—'}</span>;
+    return onUpdateOpp ? (
+      <div onClick={(e) => e.stopPropagation()}>
+        <InlineSelectEditCell
+          value={opp.location || ''}
+          options={LOCATION_OPTIONS}
+          placeholder="Set location…"
+          onSave={(v) => onUpdateOpp(opp, { location: v })}
+        />
+      </div>
+    ) : (
+      <span className="text-slate-600 font-medium">{opp.location || '—'}</span>
+    );
   }
 
   if (col.key === 'cost') {
-    return opp.cost != null
-      ? <span className="text-slate-900 font-bold font-mono text-sm">{formatCurrency(opp.cost)}</span>
-      : <span className="text-slate-400 font-mono text-sm">—</span>;
+    return onUpdateOpp ? (
+      <div onClick={(e) => e.stopPropagation()}>
+        <InlineTextEditCell
+          type="number"
+          value={opp.cost ?? ''}
+          formatDisplay={(v) => (v != null && v !== '' ? formatCurrency(Number(v)) : '—')}
+          onSave={(v) => onUpdateOpp(opp, { cost: v !== '' ? Number(v) : undefined })}
+        />
+      </div>
+    ) : opp.cost != null ? (
+      <span className="text-slate-900 font-bold font-mono text-sm">{formatCurrency(opp.cost)}</span>
+    ) : (
+      <span className="text-slate-400 font-mono text-sm">—</span>
+    );
   }
 
   if (col.key === 'grossMargin') {
-    return opp.grossMargin != null
-      ? <span className="font-bold text-slate-700 font-mono text-[11px]">{opp.grossMargin}%</span>
-      : <span className="text-slate-400 font-mono text-[11px]">—</span>;
+    return onUpdateOpp ? (
+      <div onClick={(e) => e.stopPropagation()}>
+        <InlineTextEditCell
+          type="number"
+          value={opp.grossMargin ?? ''}
+          formatDisplay={(v) => (v != null && v !== '' ? `${v}%` : '—')}
+          onSave={(v) => onUpdateOpp(opp, { grossMargin: v !== '' ? Number(v) : undefined })}
+        />
+      </div>
+    ) : opp.grossMargin != null ? (
+      <span className="font-bold text-slate-700 font-mono text-[11px]">{opp.grossMargin}%</span>
+    ) : (
+      <span className="text-slate-400 font-mono text-[11px]">—</span>
+    );
   }
 
   if (col.key === 'risksAndDependencies') {
-    return (
+    return onUpdateOpp ? (
+      <div onClick={(e) => e.stopPropagation()}>
+        <InlineTextEditCell
+          value={opp.risksAndDependencies || ''}
+          placeholder="Add risks/dependencies…"
+          onSave={(v) => onUpdateOpp(opp, { risksAndDependencies: v })}
+        />
+      </div>
+    ) : (
       <ExpandableTextCell
         text={opp.risksAndDependencies}
         label="Risks & Dependencies"
@@ -285,6 +453,29 @@ export const renderOpportunityCell = (
 
   // Customizable dynamic custom columns
   const rawVal = (opp as any)[col.key] ?? (col.type === 'boolean' ? false : '');
+  if (onUpdateOpp) {
+    if (col.type === 'boolean') {
+      return (
+        <div onClick={(e) => e.stopPropagation()}>
+          <InlineSelectEditCell
+            value={rawVal ? 'Yes' : 'No'}
+            options={['Yes', 'No']}
+            onSave={(v) => onUpdateOpp(opp, { [col.key]: v === 'Yes' } as any)}
+          />
+        </div>
+      );
+    }
+    return (
+      <div onClick={(e) => e.stopPropagation()}>
+        <InlineTextEditCell
+          type={col.type === 'number' ? 'number' : col.type === 'date' ? 'date' : 'text'}
+          value={rawVal}
+          onSave={(v) => onUpdateOpp(opp, { [col.key]: v } as any)}
+        />
+      </div>
+    );
+  }
+
   if (col.type === 'boolean') {
     return (
       <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${rawVal ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>

@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
 import { FilterContextService, FilterParams, FiscalContext } from '../../common/services/filter-context.service';
 import { AccessScopeService } from '../rbac/access-scope.service';
@@ -15,7 +15,7 @@ import { BulkModuleAdapter } from '../import-export/bulk-adapter';
 // stripped instead of leaking into custom_data — fiscal periods are derived
 // from dueDate and never stored.
 const KNOWN = new Set([
-  'id', 'title', 'accountId', 'accountName', 'opportunityId', 'projectId', 'projectName', 'owner', 'ownerId', 'ownerStakeholderId',
+  'id', 'title', 'accountId', 'accountName', 'opportunityId', 'opportunityName', 'projectId', 'projectName', 'owner', 'ownerId', 'ownerStakeholderId',
   'ownerName', 'ownerDesignation', 'ownerStakeholderType',
   'openDate', 'dueDate', 'priority', 'status', 'notes', 'risksAndDependencies', 'completedDate',
   'financialYear', 'quarter',
@@ -29,7 +29,7 @@ function todayIsoDate(): string {
 function rowToActionItem(row: any, derive: (date: string) => { financialYear: string; quarter: string }): ActionItem {
   const {
     custom_data, is_deleted, created_at, updated_at,
-    account_id, account_name, opportunity_id, project_id, project_name, open_date, due_date, completed_date,
+    account_id, account_name, opportunity_id, opportunity_name, project_id, project_name, open_date, due_date, completed_date,
     risks_and_dependencies,
     owner_id, owner_name,
     owner_stakeholder_id, stakeholder_owner_name, stakeholder_owner_designation, stakeholder_owner_type,
@@ -40,6 +40,7 @@ function rowToActionItem(row: any, derive: (date: string) => { financialYear: st
     accountId: account_id,
     accountName: account_name ?? undefined,
     opportunityId: opportunity_id ?? undefined,
+    opportunityName: opportunity_name ?? undefined,
     projectId: project_id ?? undefined,
     projectName: project_name ?? undefined,
     ownerId: owner_id ?? undefined,
@@ -61,13 +62,14 @@ function rowToActionItem(row: any, derive: (date: string) => { financialYear: st
 }
 
 const AI_SELECT = `
-  SELECT ai.*, u.name AS owner_name, a.name AS account_name, proj.name AS project_name,
+  SELECT ai.*, u.name AS owner_name, a.name AS account_name, proj.name AS project_name, opp.name AS opportunity_name,
          COALESCE(NULLIF(os.name, ''), os.email) AS stakeholder_owner_name, os.designation AS stakeholder_owner_designation,
          os.stakeholder_type AS stakeholder_owner_type
   FROM action_items ai
   LEFT JOIN accounts     a ON ai.account_id = a.id
   LEFT JOIN users        u ON ai.owner_id   = u.id
   LEFT JOIN projects     proj ON ai.project_id = proj.id
+  LEFT JOIN opportunities opp ON ai.opportunity_id = opp.id
   LEFT JOIN stakeholders os ON ai.owner_stakeholder_id = os.id AND os.is_deleted = FALSE
 `;
 
@@ -158,13 +160,14 @@ export class ActionItemsService {
     const qParams = pg ? [...scope.params, pg.limit, pg.offset] : scope.params;
 
     const { rows } = await this.db.query(
-      `SELECT ai.*, u.name AS owner_name, a.name AS account_name, proj.name AS project_name,
+      `SELECT ai.*, u.name AS owner_name, a.name AS account_name, proj.name AS project_name, opp.name AS opportunity_name,
               COALESCE(NULLIF(os.name, ''), os.email) AS stakeholder_owner_name, os.designation AS stakeholder_owner_designation,
               os.stakeholder_type AS stakeholder_owner_type${totalCol}
        FROM action_items ai
        INNER JOIN accounts     a ON ai.account_id = a.id AND a.is_deleted = FALSE
        LEFT  JOIN users        u ON ai.owner_id   = u.id
        LEFT  JOIN projects     proj ON ai.project_id = proj.id
+       LEFT  JOIN opportunities opp ON ai.opportunity_id = opp.id
        LEFT  JOIN stakeholders os ON ai.owner_stakeholder_id = os.id AND os.is_deleted = FALSE
        WHERE ${where}
        ORDER BY ai.created_at DESC${limitClause}`,
@@ -331,6 +334,15 @@ export class ActionItemsService {
 
   async remove(id: string, userId?: string): Promise<{ success: boolean }> {
     const item = await this.findOne(id, userId);
+    if (item.opportunityId) {
+      const { rows: opp } = await this.db.query(
+        `SELECT stage FROM opportunities WHERE id = $1 AND is_deleted = FALSE`,
+        [item.opportunityId],
+      );
+      if (opp.length && opp[0].stage === 'Won') {
+        throw new ConflictException('This opportunity has been converted to a project and is now read-only. No further actions can be performed.');
+      }
+    }
     await this.db.query(`UPDATE action_items SET is_deleted=TRUE, updated_at=NOW() WHERE id=$1`, [id]);
     await this.log(`Deleted Action Item '${item.title}'`, item.accountId);
 
@@ -374,11 +386,13 @@ export class ActionItemsService {
 
     if (opportunityId) {
       const { rows: opp } = await this.db.query(
-        `SELECT account_id FROM opportunities WHERE id = $1 AND is_deleted = FALSE
-         AND ($2::TEXT IS NULL OR owner_id = $2)`,
-        [opportunityId, ownerId ?? null],
+        `SELECT account_id, stage FROM opportunities WHERE id = $1 AND is_deleted = FALSE`,
+        [opportunityId],
       );
       if (!opp.length) throw new BadRequestException('The linked opportunity does not exist');
+      if (opp[0].stage === 'Won') {
+        throw new ConflictException('This opportunity has been converted to a project and is now read-only. No further actions can be performed.');
+      }
       if (opp[0].account_id !== accountId) {
         throw new BadRequestException('The linked opportunity belongs to a different account');
       }
@@ -386,9 +400,8 @@ export class ActionItemsService {
 
     if (projectId) {
       const { rows: proj } = await this.db.query(
-        `SELECT account_id FROM projects WHERE id = $1 AND is_deleted = FALSE
-         AND ($2::TEXT IS NULL OR owner_id = $2)`,
-        [projectId, ownerId ?? null],
+        `SELECT account_id FROM projects WHERE id = $1 AND is_deleted = FALSE`,
+        [projectId],
       );
       if (!proj.length) throw new BadRequestException('The linked project does not exist');
       if (proj[0].account_id !== accountId) {

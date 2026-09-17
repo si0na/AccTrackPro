@@ -160,6 +160,12 @@ export class PermissionsService {
     if (permissionKey === 'view') {
       return ctx.permissions.has(`${moduleKey}:view`) || ctx.permissions.has(`${moduleKey}:view-all`);
     }
+    if (permissionKey === 'import') {
+      return ctx.permissions.has(`${moduleKey}:import`) || ctx.permissions.has(`${moduleKey}:create`);
+    }
+    if (permissionKey === 'export') {
+      return ctx.permissions.has(`${moduleKey}:export`) || ctx.permissions.has(`${moduleKey}:view`);
+    }
     return ctx.permissions.has(`${moduleKey}:${permissionKey}`);
   }
 

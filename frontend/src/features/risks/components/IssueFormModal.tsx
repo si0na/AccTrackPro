@@ -112,7 +112,8 @@ export const IssueFormModal: React.FC<IssueFormModalProps> = ({
       setLevel(fixedLevel || 'Account');
       const accId = fixedAccountId || (accounts.length > 0 ? accounts[0].id : '');
       setSelectedAccountId(accId);
-      setSelectedProjectId(fixedProjectId || '');
+      const validProjs = projects.filter((p) => p.accountId === accId);
+      setSelectedProjectId(fixedProjectId || (validProjs.length > 0 ? validProjs[0].id : ''));
       setDescription('');
       setPriority('Medium');
       setStatus('Open');

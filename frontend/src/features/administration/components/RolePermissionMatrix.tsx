@@ -42,18 +42,21 @@ const ROLE_TYPE_COLORS: Record<string, string> = {
 };
 
 const SUPPORTED_PERMISSIONS: Record<string, string[]> = {
-  dashboard:      ['view'],
-  accounts:       ['view', 'view-all', 'create', 'update', 'delete', 'import', 'export'],
-  opportunities:  ['view', 'view-all', 'create', 'update', 'delete', 'export'],
+  dashboard: ['view'],
+  accounts: ['view', 'view-all', 'create', 'update', 'delete', 'import', 'export'],
+  opportunities: ['view', 'view-all', 'create', 'update', 'delete', 'export'],
   'action-items': ['view', 'view-all', 'create', 'update', 'delete'],
-  stakeholders:   ['view', 'view-all', 'create', 'update', 'delete'],
-  projects:       ['view', 'view-all', 'create', 'update', 'delete'],
-  sqa:            ['view', 'view-all', 'create', 'update', 'delete', 'export'],
-  forecast:       ['view', 'export'],
-  reports:        ['view', 'export'],
-  performance:    ['view', 'create', 'update', 'delete'],
-  'import-export':['view', 'import', 'export'],
+  stakeholders: ['view', 'view-all', 'create', 'update', 'delete'],
+  projects: ['view', 'view-all', 'create', 'update', 'delete'],
+  sqa: ['view', 'view-all', 'create', 'update', 'delete', 'export'],
+  forecast: ['view', 'export'],
+  reports: ['view', 'export'],
+  performance: ['view', 'create', 'update', 'delete'],
+  'import-export': ['view', 'import', 'export'],
   administration: ['view', 'create', 'update', 'delete', 'manage'],
+  employeeAppreciation: ['view', 'create', 'update', 'delete'],
+  employeeRewardsRecognition: ['view', 'create', 'update', 'delete'],
+  risks: ['view', 'view-all', 'create', 'update', 'delete', 'export'],
 };
 
 const DISPLAY_PERMISSIONS = [
@@ -393,20 +396,18 @@ export const RolePermissionMatrix: React.FC<RolePermissionMatrixProps> = ({ onPe
                   type="button"
                   key={r.id}
                   onClick={() => setSelectedRoleId(r.id)}
-                  className={`flex flex-col text-left p-3.5 rounded-xl border transition-all cursor-pointer select-none relative overflow-hidden h-28 ${
-                    isSelected
+                  className={`flex flex-col text-left p-3.5 rounded-xl border transition-all cursor-pointer select-none relative overflow-hidden h-28 ${isSelected
                       ? 'border-indigo-600 bg-indigo-50/50 ring-2 ring-indigo-600/10'
                       : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
-                  }`}
+                    }`}
                 >
                   <span className="font-bold text-xs text-slate-800 mb-1 line-clamp-1">{r.name}</span>
                   <span className="text-[10px] text-slate-500 line-clamp-2 leading-relaxed flex-grow">
                     {r.description || 'No description provided.'}
                   </span>
                   <div className="mt-auto flex items-center justify-between w-full pt-1.5">
-                    <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider ${
-                      r.isSystem ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600'
-                    }`}>
+                    <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider ${r.isSystem ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600'
+                      }`}>
                       {r.isSystem ? 'System' : 'Custom'}
                     </span>
                     {isSelected && (
@@ -468,9 +469,8 @@ export const RolePermissionMatrix: React.FC<RolePermissionMatrixProps> = ({ onPe
                                       disabled={isLocked}
                                       onChange={() => toggleCell(selectedRoleId, mod.key, p.key)}
                                       title={isLocked ? 'Locked by system business rules' : `Allow ${p.label} on ${mod.name}`}
-                                      className={`w-4 h-4 rounded text-blue-600 border-slate-300 focus:ring-blue-500 cursor-pointer ${
-                                        isLocked ? 'cursor-not-allowed opacity-50' : ''
-                                      }`}
+                                      className={`w-4 h-4 rounded text-blue-600 border-slate-300 focus:ring-blue-500 cursor-pointer ${isLocked ? 'cursor-not-allowed opacity-50' : ''
+                                        }`}
                                     />
                                   </label>
                                   {isLocked && (

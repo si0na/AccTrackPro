@@ -624,6 +624,7 @@ export const OpportunitiesView: React.FC = () => {
                             opp,
                             associatedAccount ? associatedAccount.name : (opp.accountName ?? 'Unknown Account'),
                             can('opportunities', 'update') ? handleStageChange : undefined,
+                            can('opportunities', 'update') ? (targetOpp, patch) => updateOpportunity({ ...targetOpp, ...patch }) : undefined
                           )}
                         </TableCell>
                       ))}
@@ -646,6 +647,8 @@ export const OpportunitiesView: React.FC = () => {
                             intent="forecast"
                             label={`Forecast for ${opp.name}`}
                             icon={<LineChart className="w-3.5 h-3.5" />}
+                            disabled={opp.stage === 'Won'}
+                            title={opp.stage === 'Won' ? "This opportunity has been converted to a project and is now read-only. No further actions can be performed." : `Forecast for ${opp.name}`}
                             onClick={() => handleForecastClick(opp.id)}
                           />
                           {opp.stage === 'Won' ? (
@@ -665,6 +668,8 @@ export const OpportunitiesView: React.FC = () => {
                                   intent="edit"
                                   label={`Create project for ${opp.name}`}
                                   icon={<FolderKanban className="w-3.5 h-3.5" />}
+                                  disabled={true}
+                                  title="This opportunity has been converted to a project and is now read-only. No further actions can be performed."
                                   onClick={() => {
                                     // Open the details view and auto-launch its Create Project modal.
                                     setCreateProjectIntent(true);
@@ -689,6 +694,8 @@ export const OpportunitiesView: React.FC = () => {
                               intent="delete"
                               label={`Delete opportunity ${opp.name}`}
                               icon={<Trash2 className="w-3.5 h-3.5" />}
+                              disabled={opp.stage === 'Won'}
+                              title={opp.stage === 'Won' ? "This opportunity has been converted to a project and is now read-only. No further actions can be performed." : `Delete opportunity ${opp.name}`}
                               onClick={() => setDeleteTarget({ id: opp.id, label: opp.name })}
                             />
                           )}

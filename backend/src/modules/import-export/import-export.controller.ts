@@ -48,7 +48,7 @@ export class ImportExportController {
 
   // Dry-run validation across every populated worksheet — no writes.
   @Post('validate')
-  @RequirePermission('import-export', 'create')
+  @RequirePermission('import-export', 'import')
   @HttpCode(HttpStatus.OK)
   validate(@Req() req: { body: { sheets?: Record<string, any> } }, @AuthUser() authUser: JwtPayload) {
     return this.service.validateWorkbook(this.readSheets(req.body), authUser.sub);
@@ -56,7 +56,7 @@ export class ImportExportController {
 
   // Commit the kept rows in dependency order.
   @Post('import')
-  @RequirePermission('import-export', 'create')
+  @RequirePermission('import-export', 'import')
   @HttpCode(HttpStatus.OK)
   import(
     @Body() body: GlobalImportDto,
@@ -72,7 +72,7 @@ export class ImportExportController {
   }
 
   @Post('export-log')
-  @RequirePermission('import-export', 'view')
+  @RequirePermission('import-export', 'export')
   @HttpCode(HttpStatus.CREATED)
   async logExport(@Body() body: ExportLogDto, @AuthUser() authUser: JwtPayload) {
     const modules = (body.modules ?? [])

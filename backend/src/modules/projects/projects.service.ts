@@ -365,9 +365,8 @@ export class ProjectsService {
       `SELECT p.id, a.is_deleted AS account_deleted
        FROM projects p
        LEFT JOIN accounts a ON p.account_id = a.id
-       WHERE p.id = $1 AND p.is_deleted = TRUE
-       AND ($2::TEXT IS NULL OR p.owner_id = $2)`,
-      [id, userId ?? null],
+       WHERE p.id = $1 AND p.is_deleted = TRUE`,
+      [id],
     );
     if (!existing.length) throw new NotFoundException(`Deactivated project "${id}" not found`);
     // Business rule: a child record cannot be active under a deactivated parent.
@@ -422,7 +421,7 @@ export class ProjectsService {
       endDate,
       clientPartnerId: data.clientPartnerId ?? parentClientPartnerId ?? undefined,
       dealValue:     data.dealValue ?? opp.value ?? undefined,
-      serviceProviderPmId: data.serviceProviderPmId ?? undefined,
+      serviceProviderPmId: data.serviceProviderPmId ?? opp.serviceProviderPmId ?? undefined,
       practiceLeadId: data.practiceLeadId ?? parentPracticeLeadId ?? undefined,
       priority:      data.priority ?? opp.priority ?? undefined,
       deliveryModel: data.deliveryModel ?? opp.deliveryModel ?? undefined,
