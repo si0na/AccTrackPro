@@ -272,7 +272,7 @@ export const ActionItemQuickPanel: React.FC<ActionItemQuickPanelProps> = ({
                   >
                     <option value="">— None / General —</option>
                     {opportunities
-                      .filter((o) => !editForm.accountId || o.accountId === editForm.accountId)
+                      .filter((o) => (!editForm.accountId || o.accountId === editForm.accountId) && (o.stage !== 'Won' || o.id === editForm.opportunityId))
                       .map((o) => (
                         <option key={o.id} value={o.id}>{o.name}</option>
                       ))}

@@ -136,32 +136,46 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
     // Risks & Dependencies must always be editable, even when the user has
     // hidden its table column, so force-include it in the Action Item form.
     if (mode === 'actionItems') {
-      const isProjectActionItem = !!entity.projectId;
-      let finalCols = cols;
-      if (isProjectActionItem) {
-        finalCols = cols.filter((c) => c.key !== 'opportunityId');
-        if (!finalCols.some((c) => c.key === 'projectId')) {
-          finalCols.push({
-            key: 'projectId',
-            name: 'Associated Project',
-            isStandard: true,
-            isPinned: false,
-            isDisplayed: true,
-            type: 'text',
-          });
-        }
-      } else {
-        finalCols = cols.filter((c) => c.key !== 'projectId');
-        if (!finalCols.some((c) => c.key === 'opportunityId')) {
-          finalCols.push({
-            key: 'opportunityId',
-            name: 'Associated Opportunity',
-            isStandard: true,
-            isPinned: false,
-            isDisplayed: true,
-            type: 'text',
-          });
-        }
+      let finalCols = cols.filter((c) => c.key !== 'owner');
+      if (!finalCols.some((c) => c.key === 'accountId')) {
+        finalCols.push({
+          key: 'accountId',
+          name: 'Target Account',
+          isStandard: true,
+          isPinned: false,
+          isDisplayed: true,
+          type: 'text',
+        });
+      }
+      if (!finalCols.some((c) => c.key === 'opportunityId')) {
+        finalCols.push({
+          key: 'opportunityId',
+          name: 'Associated Opportunity',
+          isStandard: true,
+          isPinned: false,
+          isDisplayed: true,
+          type: 'text',
+        });
+      }
+      if (!finalCols.some((c) => c.key === 'projectId')) {
+        finalCols.push({
+          key: 'projectId',
+          name: 'Associated Project',
+          isStandard: true,
+          isPinned: false,
+          isDisplayed: true,
+          type: 'text',
+        });
+      }
+      if (!finalCols.some((c) => c.key === 'ownerStakeholderId')) {
+        finalCols.push({
+          key: 'ownerStakeholderId',
+          name: 'Task Owner',
+          isStandard: true,
+          isPinned: false,
+          isDisplayed: true,
+          type: 'text',
+        });
       }
       const risksCol: ColumnConfig = {
         key: 'risksAndDependencies', name: 'Risks & Dependencies', isStandard: true, isPinned: false, isDisplayed: true, type: 'text',
@@ -170,8 +184,8 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
         finalCols = [...finalCols, risksCol];
       }
 
-      // Enforce order: title -> accountId -> (projectId | opportunityId) -> ownerStakeholderId -> others
-      const orderKeys = ['title', 'accountId', isProjectActionItem ? 'projectId' : 'opportunityId', 'ownerStakeholderId'];
+      // Enforce order: title -> accountId -> opportunityId -> projectId -> ownerStakeholderId -> others
+      const orderKeys = ['title', 'accountId', 'opportunityId', 'projectId', 'ownerStakeholderId'];
       finalCols.sort((a, b) => {
         const idxA = orderKeys.indexOf(a.key);
         const idxB = orderKeys.indexOf(b.key);
@@ -260,7 +274,25 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
           />
         );
 
-      case 'owner': {
+      case 'owner':
+      case 'ownerStakeholderId': {
+        if (mode === 'actionItems') {
+          return (
+            <ActionItemOwnerField
+              accountId={entity.accountId ?? ''}
+              stakeholders={stakeholders}
+              value={entity.ownerStakeholderId ?? ''}
+              onChange={(ownerStakeholderId) => {
+                const stk = stakeholders.find((s) => s.id === ownerStakeholderId);
+                onChange({
+                  ownerStakeholderId,
+                  owner: stk?.name || entity.owner || '',
+                  ownerName: stk?.name || entity.ownerName || '',
+                });
+              }}
+            />
+          );
+        }
         const ownerNameStr = val || entity.ownerName || '—';
         return (
           <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg">
@@ -345,7 +377,31 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
         );
 
       case 'accountId': {
-        // The account association is part of the relationship — read-only when editing.
+        if (mode === 'actionItems') {
+          return (
+            <select
+              value={val ?? ''}
+              onChange={(e) => {
+                const newAccId = e.target.value;
+                const acc = accounts.find((a) => a.id === newAccId);
+                onChange({
+                  accountId: newAccId,
+                  accountName: acc?.name || '',
+                  opportunityId: newAccId && entity.opportunityId && opportunities.find((o) => o.id === entity.opportunityId)?.accountId !== newAccId ? '' : entity.opportunityId,
+                  projectId: newAccId && entity.projectId && projects.find((p) => p.id === entity.projectId)?.accountId !== newAccId ? '' : entity.projectId,
+                });
+              }}
+              className={`${inputCls} bg-white`}
+            >
+              <option value="" disabled>Select account…</option>
+              {accounts.map((acc) => (
+                <option key={acc.id} value={acc.id}>
+                  {acc.name}
+                </option>
+              ))}
+            </select>
+          );
+        }
         const accountName =
           accounts.find((a) => a.id === val)?.name ?? entity.accountName ?? '—';
         return (
@@ -415,12 +471,24 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
         return (
           <select
             value={val ?? ''}
-            onChange={(e) => onChange({ opportunityId: e.target.value })}
+            onChange={(e) => {
+              const newOppId = e.target.value;
+              const opp = opportunities.find((o) => o.id === newOppId);
+              const patch: Record<string, any> = {
+                opportunityId: newOppId || undefined,
+                opportunityName: opp?.name || undefined,
+              };
+              if (opp && (!entity.accountId || entity.accountId !== opp.accountId)) {
+                patch.accountId = opp.accountId;
+                patch.accountName = opp.accountName || accounts.find((a) => a.id === opp.accountId)?.name || '';
+              }
+              onChange(patch);
+            }}
             className={`${inputCls} bg-white`}
           >
             <option value="">None / General Task</option>
-            {opportunities
-              .filter((o) => o.accountId === entity.accountId)
+            {(entity.accountId ? opportunities.filter((o) => o.accountId === entity.accountId) : opportunities)
+              .filter((o) => o.stage !== 'Won' || o.id === val)
               .map((o) => (
                 <option key={o.id} value={o.id}>{o.name}</option>
               ))}
@@ -428,6 +496,29 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
         );
 
       case 'projectId': {
+        if (mode === 'actionItems') {
+          return (
+            <select
+              value={val ?? ''}
+              onChange={(e) => {
+                const newProjId = e.target.value;
+                const proj = projects.find((p) => p.id === newProjId);
+                const patch: Record<string, any> = { projectId: newProjId || undefined };
+                if (proj && (!entity.accountId || entity.accountId !== proj.accountId)) {
+                  patch.accountId = proj.accountId;
+                  patch.accountName = accounts.find((a) => a.id === proj.accountId)?.name || '';
+                }
+                onChange(patch);
+              }}
+              className={`${inputCls} bg-white`}
+            >
+              <option value="">None / Not Applicable</option>
+              {(entity.accountId ? projects.filter((p) => p.accountId === entity.accountId) : projects).map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
+              ))}
+            </select>
+          );
+        }
         const projectName =
           projects.find((p) => p.id === val)?.name ?? entity.projectName ?? '—';
         return (
@@ -852,8 +943,8 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
 
           <FormSection title="Additional Details">
             <FormGrid>
-              <FormField label="Detailed Scope" wide>
-                {renderInput(editCol('description', 'Detailed Scope'))}
+              <FormField label="Description" wide>
+                {renderInput(editCol('description', 'Description'))}
               </FormField>
               <FormField label="Risks & Dependencies" wide>
                 {renderInput(editCol('risksAndDependencies', 'Risks & Dependencies'))}

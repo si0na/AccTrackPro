@@ -7,7 +7,7 @@ import React, { useEffect, useState } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
 import { Project, User } from '@/types';
 import { usersApi, projectsApi } from '@/api/crm.api';
-import { Eye, Trash2, FolderKanban, Plus } from 'lucide-react';
+import { Eye, Trash2, FolderKanban, Plus, Pencil } from 'lucide-react';
 import { compareForSort, matchesGlobalAccount, serviceProviderOptionLabel, SortDirection } from '@/utils';
 import {
   Button,
@@ -138,6 +138,31 @@ export const ProjectsListView: React.FC = () => {
       alert(err?.response?.data?.message || err?.message || 'Failed to create project.');
     } finally {
       setIsSubmittingCreate(false);
+    }
+  };
+
+  // Edit Project Modal State
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingProjectDraft, setEditingProjectDraft] = useState<Project | null>(null);
+  const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
+
+  const handleOpenEditModal = (project: Project) => {
+    setEditingProjectDraft({ ...project });
+    setIsEditModalOpen(true);
+  };
+
+  const handleSaveEditProject = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingProjectDraft || !editingProjectDraft.name.trim()) return;
+    setIsSubmittingEdit(true);
+    try {
+      await updateProject(editingProjectDraft);
+      setIsEditModalOpen(false);
+      setEditingProjectDraft(null);
+    } catch (err: any) {
+      alert(err?.response?.data?.message || err?.message || 'Failed to update project.');
+    } finally {
+      setIsSubmittingEdit(false);
     }
   };
 
@@ -412,6 +437,14 @@ export const ProjectsListView: React.FC = () => {
                             icon={<Eye className="w-3.5 h-3.5" />}
                             onClick={() => handleRowClick(p.id)}
                           />
+                          {canUpdateProject && (
+                            <RowActionButton
+                              intent="edit"
+                              label={`Edit project ${p.name}`}
+                              icon={<Pencil className="w-3.5 h-3.5" />}
+                              onClick={() => handleOpenEditModal(p)}
+                            />
+                          )}
                           {canDeleteProject && (
                             <RowActionButton
                               intent="delete"
@@ -511,6 +544,20 @@ export const ProjectsListView: React.FC = () => {
           isSubmitting={isSubmittingCreate}
           value={newProjectDraft}
           onChange={(patch) => setNewProjectDraft((prev) => ({ ...prev, ...patch }))}
+          users={[]}
+          stakeholders={[]}
+        />
+      )}
+
+      {isEditModalOpen && editingProjectDraft && (
+        <ProjectFormModal
+          isOpen={isEditModalOpen}
+          mode="edit"
+          onClose={() => { setIsEditModalOpen(false); setEditingProjectDraft(null); }}
+          onSubmit={handleSaveEditProject}
+          isSubmitting={isSubmittingEdit}
+          value={editingProjectDraft}
+          onChange={(patch) => setEditingProjectDraft((prev) => (prev ? { ...prev, ...patch } : null))}
           users={[]}
           stakeholders={[]}
         />

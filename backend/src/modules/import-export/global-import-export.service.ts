@@ -425,25 +425,19 @@ export class GlobalImportExportService {
   private async loadParentIndex(userId: string): Promise<ParentIndex> {
     const index = new ParentIndex();
     const accRes = await this.db.query(
-      `SELECT id, name FROM accounts WHERE is_deleted = FALSE
-       AND ($1::TEXT IS NULL OR owner_id = $1)`,
-      [userId ?? null],
+      `SELECT id, name FROM accounts WHERE is_deleted = FALSE`,
     );
     for (const r of accRes.rows) index.seedAccount(r.id, r.name);
 
     const oppRes = await this.db.query(
-      `SELECT id, name, account_id FROM opportunities WHERE is_deleted = FALSE
-       AND ($1::TEXT IS NULL OR owner_id = $1)`,
-      [userId ?? null],
+      `SELECT id, name, account_id FROM opportunities WHERE is_deleted = FALSE`,
     );
     for (const r of oppRes.rows) index.seedOpportunity(r.id, r.name, r.account_id);
 
     const stkRes = await this.db.query(
       `SELECT s.id, s.name, s.account_id FROM stakeholders s
        INNER JOIN accounts a ON s.account_id = a.id
-       WHERE s.is_deleted = FALSE AND a.is_deleted = FALSE
-       AND ($1::TEXT IS NULL OR a.owner_id = $1)`,
-      [userId ?? null],
+       WHERE s.is_deleted = FALSE AND a.is_deleted = FALSE`,
     );
     for (const r of stkRes.rows) index.seedStakeholder(r.id, r.name, r.account_id);
 

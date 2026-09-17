@@ -118,17 +118,30 @@ export const MultiStakeholderPicker: React.FC<MultiStakeholderPickerProps> = ({
     if (open && menuPos) searchRef.current?.focus();
   }, [open, menuPos]);
 
-  const options = mode === 'client'
-    ? stakeholders
-        .filter((s) => s.stakeholderType === 'CLIENT')
-        .map((s) => ({
-          id: s.id,
-          name: `${s.name}${s.designation ? ` (${s.designation})` : ''}`,
-        }))
-    : serviceProviders.map((sp) => ({
-        id: sp.id,
-        name: serviceProviderOptionLabel(sp),
-      }));
+  const options = React.useMemo(() => {
+    const raw =
+      mode === 'client'
+        ? stakeholders
+            .filter((s) => s.stakeholderType === 'CLIENT')
+            .map((s) => ({
+              id: s.id,
+              name: `${s.name}${s.designation ? ` (${s.designation})` : ''}`,
+            }))
+        : serviceProviders.map((sp) => ({
+            id: sp.id,
+            name: serviceProviderOptionLabel(sp),
+          }));
+
+    const result: Array<{ id: string; name: string }> = [];
+    const seenIds = new Set<string>();
+    for (const item of raw) {
+      if (item.id && !seenIds.has(item.id)) {
+        seenIds.add(item.id);
+        result.push(item);
+      }
+    }
+    return result;
+  }, [mode, stakeholders, serviceProviders]);
 
   const query = searchTerm.trim().toLowerCase();
   const filteredOptions = query

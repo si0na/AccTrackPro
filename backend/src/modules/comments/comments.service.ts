@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
 import { NotificationEventBus } from '../../common/events/notification-event-bus.service';
 import { Comment } from '../../types';
@@ -29,34 +29,22 @@ export class CommentsService {
    * is provided (legacy / admin path) all comments are returned.
    */
   async findAll(userId?: string): Promise<Comment[]> {
-    if (!userId) {
-      const { rows } = await this.db.query(
-        `SELECT c.*, u.name AS user_display_name
-         FROM comments c
-         LEFT JOIN users u ON c.user_id = u.id
-         ORDER BY c.created_at DESC`,
-      );
-      return rows.map(rowToComment);
-    }
-
-    // Only return comments on records the requesting user owns.
     const { rows } = await this.db.query(
       `SELECT c.*, u.name AS user_display_name
        FROM comments c
        LEFT JOIN users u ON c.user_id = u.id
        WHERE (
          (c.target_type = 'account' AND EXISTS (
-           SELECT 1 FROM accounts WHERE id = c.target_id AND owner_id = $1 AND is_deleted = FALSE
+           SELECT 1 FROM accounts WHERE id = c.target_id AND is_deleted = FALSE
          )) OR
          (c.target_type = 'opportunity' AND EXISTS (
-           SELECT 1 FROM opportunities WHERE id = c.target_id AND owner_id = $1 AND is_deleted = FALSE
+           SELECT 1 FROM opportunities WHERE id = c.target_id AND is_deleted = FALSE
          )) OR
          (c.target_type = 'actionItem' AND EXISTS (
-           SELECT 1 FROM action_items WHERE id = c.target_id AND owner_id = $1 AND is_deleted = FALSE
+           SELECT 1 FROM action_items WHERE id = c.target_id AND is_deleted = FALSE
          ))
        )
        ORDER BY c.created_at DESC`,
-      [userId],
     );
     return rows.map(rowToComment);
   }
@@ -71,32 +59,31 @@ export class CommentsService {
       displayName = uRows[0]?.name || displayName;
     }
 
-    // Relational rule: the comment target must exist AND belong to the requesting
-    // user before the insert — prevents cross-user comment creation.
+    // Relational rule: the comment target must exist and be active before insert.
     let targetName = data.targetId;
     let accountId: string | undefined;
     if (data.targetType === 'account') {
       const { rows: r } = await this.db.query(
-        `SELECT name FROM accounts WHERE id = $1
-         AND ($2::TEXT IS NULL OR owner_id = $2)`,
-        [data.targetId, data.userId ?? null],
+        `SELECT name FROM accounts WHERE id = $1 AND is_deleted = FALSE`,
+        [data.targetId],
       );
       if (!r.length) throw new BadRequestException('The record being commented on does not exist');
       targetName = r[0].name;
       accountId = data.targetId;
     } else if (data.targetType === 'opportunity') {
       const { rows: r } = await this.db.query(
-        `SELECT name, account_id FROM opportunities WHERE id = $1
-         AND ($2::TEXT IS NULL OR owner_id = $2)`,
-        [data.targetId, data.userId ?? null],
+        `SELECT name, account_id, stage FROM opportunities WHERE id = $1 AND is_deleted = FALSE`,
+        [data.targetId],
       );
       if (!r.length) throw new BadRequestException('The record being commented on does not exist');
+      if (r[0].stage === 'Won') {
+        throw new ConflictException('This opportunity has been converted to a project and is now read-only. No further actions can be performed.');
+      }
       targetName = r[0].name; accountId = r[0].account_id;
     } else if (data.targetType === 'actionItem') {
       const { rows: r } = await this.db.query(
-        `SELECT title, account_id FROM action_items WHERE id = $1
-         AND ($2::TEXT IS NULL OR owner_id = $2)`,
-        [data.targetId, data.userId ?? null],
+        `SELECT title, account_id FROM action_items WHERE id = $1 AND is_deleted = FALSE`,
+        [data.targetId],
       );
       if (!r.length) throw new BadRequestException('The record being commented on does not exist');
       targetName = r[0].title; accountId = r[0].account_id;

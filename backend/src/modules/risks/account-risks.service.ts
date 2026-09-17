@@ -76,6 +76,10 @@ export class AccountRisksService implements OnModuleInit {
         ALTER TABLE account_risks ADD COLUMN IF NOT EXISTS contingency_plan TEXT;
         ALTER TABLE account_risks ADD COLUMN IF NOT EXISTS risk_open_date DATE;
         ALTER TABLE account_risks ADD COLUMN IF NOT EXISTS classification TEXT;
+        ALTER TABLE account_risks DROP CONSTRAINT IF EXISTS account_risks_risk_type_check;
+        ALTER TABLE account_risks ADD CONSTRAINT account_risks_risk_type_check CHECK (risk_type IN ('Risk', 'Dependency', 'Issue'));
+        ALTER TABLE account_risks DROP CONSTRAINT IF EXISTS account_risks_status_check;
+        ALTER TABLE account_risks ADD CONSTRAINT account_risks_status_check CHECK (status IN ('Open', 'Mitigated', 'Closed', 'Accepted', 'In Progress', 'Resolved'));
       `);
       this.schemaEnsured = true;
     } catch {
@@ -193,21 +197,21 @@ export class AccountRisksService implements OnModuleInit {
          updated_at = NOW()
        WHERE id = $16 AND is_deleted = FALSE`,
       [
-        dto.riskType ?? null,
-        dto.description ?? null,
-        dto.priority ?? null,
-        dto.rag !== undefined ? dto.rag : (existing.rag ?? null),
-        impact ?? null,
-        likelihood ?? null,
+        dto.riskType || null,
+        dto.description || null,
+        dto.priority || null,
+        dto.rag !== undefined ? (dto.rag || null) : (existing.rag ?? null),
+        impact || null,
+        likelihood || null,
         computedSeverity,
-        dto.ownerId !== undefined ? dto.ownerId : (existing.ownerId ?? null),
+        dto.ownerId !== undefined ? (dto.ownerId || null) : (existing.ownerId ?? null),
         dto.mitigationPlan ?? null,
-        dto.status ?? null,
-        dto.targetResolutionDate !== undefined ? dto.targetResolutionDate : (existing.targetResolutionDate ?? null),
-        dto.impactDescription !== undefined ? dto.impactDescription : (existing.impactDescription ?? null),
-        dto.contingencyPlan !== undefined ? dto.contingencyPlan : (existing.contingencyPlan ?? null),
-        dto.riskOpenDate !== undefined ? dto.riskOpenDate : (existing.riskOpenDate ?? null),
-        dto.classification !== undefined ? dto.classification : (existing.classification ?? null),
+        dto.status || null,
+        dto.targetResolutionDate !== undefined ? (dto.targetResolutionDate || null) : (existing.targetResolutionDate ?? null),
+        dto.impactDescription !== undefined ? (dto.impactDescription || null) : (existing.impactDescription ?? null),
+        dto.contingencyPlan !== undefined ? (dto.contingencyPlan || null) : (existing.contingencyPlan ?? null),
+        dto.riskOpenDate !== undefined ? (dto.riskOpenDate || null) : (existing.riskOpenDate ?? null),
+        dto.classification !== undefined ? (dto.classification || null) : (existing.classification ?? null),
         id,
       ],
     );

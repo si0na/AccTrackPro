@@ -44,7 +44,7 @@ function rowToOpportunity(row: any, derive: (date: string) => { financialYear: s
     account_id, account_name, allocation_start_date, allocation_end_date, deal_start_date, deal_close_date, crm_value, next_step,
     risks_and_dependencies,
     close_reason, blocked_reason, delayed_reason, closed_at,
-    owner_id,
+    owner_id, owner_name,
     client_stakeholder_id, client_stakeholder_name, client_stakeholder_designation,
     service_provider_stakeholder_id, service_provider_stakeholder_name, service_provider_stakeholder_designation,
     service_provider_pm_id, service_provider_pm_name,
@@ -62,6 +62,7 @@ function rowToOpportunity(row: any, derive: (date: string) => { financialYear: s
     projectId: project_id ?? null,
     accountName: account_name ?? undefined,
     ownerId: owner_id ?? undefined,
+    ownerName: owner_name ?? undefined,
     allocationStartDate: allocation_start_date,
     allocationEndDate: allocation_end_date,
     dealStartDate: deal_start_date ?? undefined,
@@ -81,7 +82,7 @@ function rowToOpportunity(row: any, derive: (date: string) => { financialYear: s
     clientStakeholderName: client_stakeholder_name ?? undefined,
     clientStakeholderDesignation: client_stakeholder_designation ?? undefined,
     serviceProviderStakeholderId: service_provider_stakeholder_id ?? undefined,
-    serviceProviderStakeholderName: service_provider_stakeholder_name ?? undefined,
+    serviceProviderStakeholderName: service_provider_stakeholder_name ?? owner_name ?? undefined,
     serviceProviderStakeholderDesignation: service_provider_stakeholder_designation ?? undefined,
     serviceProviderPmId: service_provider_pm_id ?? undefined,
     serviceProviderPmName: service_provider_pm_name ?? undefined,
@@ -133,6 +134,7 @@ const OPP_SELECT = `
   SELECT o.*, a.name AS account_name,
          cs.name AS client_stakeholder_name, cs.designation AS client_stakeholder_designation,
          sps.name AS service_provider_stakeholder_name, sps.designation AS service_provider_stakeholder_designation,
+         u.name AS owner_name,
          pm.name AS service_provider_pm_name,
          proj.id AS project_id,
 ${OPP_FORECAST_SELECT}
@@ -140,6 +142,7 @@ ${OPP_FORECAST_SELECT}
   LEFT JOIN accounts a ON o.account_id = a.id
   LEFT JOIN stakeholders cs  ON o.client_stakeholder_id           = cs.id
   LEFT JOIN stakeholders sps ON o.service_provider_stakeholder_id = sps.id
+  LEFT JOIN users u ON o.owner_id = u.id
   LEFT JOIN users pm ON o.service_provider_pm_id = pm.id
   LEFT JOIN projects proj ON proj.opportunity_id = o.id AND proj.is_deleted = FALSE${OPP_FORECAST_JOIN}
 `;
@@ -286,9 +289,8 @@ export class OpportunitiesService {
     const { rows } = await this.db.query(
       `SELECT id FROM opportunities
        WHERE LOWER(TRIM(name)) = LOWER($1) AND account_id = $2 AND is_deleted = FALSE
-         AND ($3::TEXT IS NULL OR owner_id = $3)
        LIMIT 1`,
-      [n, accountId, ownerId ?? null],
+      [n, accountId],
     );
     return rows[0]?.id ?? null;
   }
@@ -322,6 +324,7 @@ export class OpportunitiesService {
       `SELECT o.*, a.name AS account_name,
               cs.name AS client_stakeholder_name, cs.designation AS client_stakeholder_designation,
               sps.name AS service_provider_stakeholder_name, sps.designation AS service_provider_stakeholder_designation,
+              u.name AS owner_name,
               pm.name AS service_provider_pm_name,
               proj.id AS project_id,
 ${OPP_FORECAST_SELECT}${totalCol}
@@ -329,6 +332,7 @@ ${OPP_FORECAST_SELECT}${totalCol}
        INNER JOIN accounts a ON o.account_id = a.id AND a.is_deleted = FALSE
        LEFT  JOIN stakeholders cs  ON o.client_stakeholder_id           = cs.id
        LEFT  JOIN stakeholders sps ON o.service_provider_stakeholder_id = sps.id
+       LEFT  JOIN users u ON o.owner_id = u.id
        LEFT  JOIN users pm ON o.service_provider_pm_id = pm.id
        LEFT  JOIN projects proj ON proj.opportunity_id = o.id AND proj.is_deleted = FALSE${OPP_FORECAST_JOIN}
        WHERE ${where}
@@ -442,14 +446,15 @@ ${OPP_FORECAST_SELECT}${totalCol}
     // update that first moves the deal INTO Won still passes; only a second
     // edit attempt on an already-Won opportunity is blocked.
     if (existing.stage === 'Won') {
-      throw new ConflictException('Won opportunities are read-only. Manage ongoing work through the linked Project instead.');
+      throw new ConflictException('This opportunity has been converted to a project and is now read-only. No further actions can be performed.');
     }
+    const targetAccountId = data.accountId || existing.accountId;
     if (data.accountId && data.accountId !== existing.accountId) {
       await this.assertAccountExists(data.accountId, requestingUserId);
     }
     assertDateOrder(data.allocationStartDate, data.allocationEndDate, data.dealStartDate, data.dealCloseDate);
-    await this.assertStakeholderAssignment(data.clientStakeholderId, data.accountId, 'CLIENT', 'client stakeholder');
-    await this.assertStakeholderAssignment(data.serviceProviderStakeholderId, data.accountId, 'SERVICE_PROVIDER', 'service provider stakeholder');
+    await this.assertStakeholderAssignment(data.clientStakeholderId, targetAccountId, 'CLIENT', 'client stakeholder');
+    await this.assertStakeholderAssignment(data.serviceProviderStakeholderId, targetAccountId, 'SERVICE_PROVIDER', 'service provider stakeholder');
     const pmId = 'serviceProviderPmId' in data ? (data.serviceProviderPmId ?? null) : (existing.serviceProviderPmId ?? null);
     const pmName = 'serviceProviderPmName' in data ? (data.serviceProviderPmName ?? null) : (existing.serviceProviderPmName ?? null);
     if ('serviceProviderPmId' in data && data.serviceProviderPmId) {
@@ -620,6 +625,9 @@ ${OPP_FORECAST_SELECT}${totalCol}
 
   async remove(id: string, userId?: string): Promise<{ success: boolean }> {
     const opp = await this.findOne(id, userId);
+    if (opp.stage === 'Won') {
+      throw new ConflictException('This opportunity has been converted to a project and is now read-only. No further actions can be performed.');
+    }
     await this.db.query(`UPDATE opportunities SET is_deleted=TRUE, updated_at=NOW() WHERE id=$1`, [id]);
     await this.log(`Deactivated Opportunity '${opp.name}'`, opp.accountId, opp.id);
 
@@ -713,6 +721,23 @@ ${OPP_FORECAST_SELECT}${totalCol}
     label: string,
   ): Promise<void> {
     if (!id) return;
+    if (expectedType === 'CLIENT') {
+      const { rows } = await this.db.query(
+        `SELECT id, account_id FROM stakeholders
+         WHERE id = $1 AND stakeholder_type = 'CLIENT' AND is_deleted = FALSE`,
+        [id],
+      );
+      if (!rows.length) throw new BadRequestException(`The selected ${label} is invalid or does not exist`);
+      const stk = rows[0];
+      if (stk.account_id !== accountId) {
+        await this.db.query(
+          `UPDATE stakeholders SET account_id = $1, updated_at = NOW() WHERE id = $2 AND stakeholder_type = 'CLIENT'`,
+          [accountId, id],
+        );
+        this.logger.log(`Associated client stakeholder [id=${id}] with account [accountId=${accountId}]`);
+      }
+      return;
+    }
     const { rows } = await this.db.query(
       `SELECT id FROM stakeholders
        WHERE id = $1 AND account_id = $2 AND stakeholder_type = $3 AND is_deleted = FALSE`,

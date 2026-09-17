@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { ConflictException, Injectable, Logger } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
 import { OpportunitiesService } from '../opportunities/opportunities.service';
 import { NotificationEventBus } from '../../common/events/notification-event-bus.service';
@@ -86,6 +86,9 @@ export class OpportunityForecastService {
   ): Promise<OpportunityForecastResult> {
     // Ownership check (also yields accountId for the denormalised FK).
     const opportunity = await this.opportunities.findOne(opportunityId, user.sub);
+    if (opportunity.stage === 'Won') {
+      throw new ConflictException('This opportunity has been converted to a project and is now read-only. No further actions can be performed.');
+    }
 
     const existing = await this.loadForecast(opportunityId);
 

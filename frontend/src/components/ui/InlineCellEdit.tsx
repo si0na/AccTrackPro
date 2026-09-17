@@ -153,7 +153,9 @@ export const InlineSelectEditCell: React.FC<{
         onChange={handleChange}
         className={`text-xs font-semibold border border-slate-200 rounded-md py-1 px-1.5 bg-white cursor-pointer hover:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-500/30 transition-colors ${className}`}
       >
-        {placeholder && <option value="" disabled>{placeholder}</option>}
+        {placeholder && !formattedOptions.some((o) => o.value === '') && (
+          <option value="">{placeholder}</option>
+        )}
         {formattedOptions.map((opt) => (
           <option key={opt.value} value={opt.value}>
             {opt.label}
