@@ -1,7 +1,4 @@
-import {
-  Controller, Get, Post, Put, Patch, Delete,
-  Body, Param, Query, Req, HttpCode, HttpStatus,
-} from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, Req, HttpCode, HttpStatus } from '@nestjs/common';
 import { SqaService } from './sqa.service';
 import { CreateSqaRecordDto, SetSqaWeekHealthDto, UpdateSqaRecordDto } from './dto/sqa.dto';
 import { AuthUser, JwtPayload } from '../auth/auth-user.decorator';
@@ -115,7 +112,7 @@ export class SqaController {
     return this.sqaService.create(fullData, authUser.sub, SqaService.normalizeWeeks(weeks));
   }
 
-  @Put(':id')
+  @Post(':id/update')
   @RequirePermission('sqa', 'update')
   update(
     @Param('id') id: string,
@@ -134,7 +131,7 @@ export class SqaController {
    * trail (SQA keeps no health store of its own), so this needs the Projects
    * module's update permission as well as SQA's.
    */
-  @Put(':id/week-health')
+  @Post(':id/week-health')
   @RequirePermission('projects', 'update')
   setWeekHealth(
     @Param('id') id: string,
@@ -145,14 +142,14 @@ export class SqaController {
     return this.sqaService.setWeekHealth(id, body, authUser.sub, SqaService.normalizeWeeks(weeks));
   }
 
-  @Patch(':id/restore')
+  @Post(':id/restore')
   @RequirePermission('sqa', 'update')
   @HttpCode(HttpStatus.OK)
   restore(@Param('id') id: string, @AuthUser() authUser: JwtPayload) {
     return this.sqaService.restore(id, authUser.sub);
   }
 
-  @Delete(':id')
+  @Post(':id/delete')
   @RequirePermission('sqa', 'delete')
   @HttpCode(HttpStatus.OK)
   remove(@Param('id') id: string, @AuthUser() authUser: JwtPayload) {

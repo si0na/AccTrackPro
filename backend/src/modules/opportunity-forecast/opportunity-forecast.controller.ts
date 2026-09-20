@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Put } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { OpportunityForecastService, OpportunityForecastResult } from './opportunity-forecast.service';
 import { UpsertOpportunityForecastDto } from './dto/opportunity-forecast.dto';
 import { AuthUser, JwtPayload } from '../auth/auth-user.decorator';
@@ -19,7 +19,7 @@ export class OpportunityForecastController {
   }
 
   /** PUT /api/opportunity-forecast/:opportunityId — upsert the forecast card. */
-  @Put(':opportunityId')
+  @Post(':opportunityId/update')
   @RequirePermission('forecast', 'update')
   upsert(
     @Param('opportunityId') opportunityId: string,

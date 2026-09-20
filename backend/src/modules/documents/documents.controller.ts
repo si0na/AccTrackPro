@@ -1,8 +1,4 @@
-import {
-  Controller, Get, Post, Delete, Query, Param, Body,
-  UploadedFile, UseInterceptors, HttpCode, HttpStatus,
-  Res, StreamableFile,
-} from '@nestjs/common';
+import { Controller, Get, Post, Query, Param, Body, UploadedFile, UseInterceptors, HttpCode, HttpStatus, Res, StreamableFile } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { DocumentsService } from './documents.service';
 import { AuthUser, JwtPayload } from '../auth/auth-user.decorator';
@@ -57,7 +53,7 @@ export class DocumentsController {
     return new StreamableFile(createReadStream(filePath));
   }
 
-  @Delete(':id')
+  @Post(':id/delete')
   @HttpCode(HttpStatus.OK)
   remove(@Param('id') id: string, @AuthUser() authUser: JwtPayload) {
     return this.service.remove(id, authUser.sub);

@@ -1,7 +1,4 @@
-import {
-  Controller, Get, Post, Put, Delete,
-  Param, Body, HttpCode, HttpStatus,
-} from '@nestjs/common';
+import { Controller, Get, Post, Param, Body, HttpCode, HttpStatus } from '@nestjs/common';
 import { EmployeeMasterService } from './employee-master.service';
 import { CreateEmployeeMasterDto, UpdateEmployeeMasterDto } from './dto/employee-master.dto';
 import { RequirePermission } from '../rbac/require-permission.decorator';
@@ -22,13 +19,13 @@ export class EmployeeMasterController {
     return this.service.create(dto);
   }
 
-  @Put(':id')
+  @Post(':id/update')
   @RequirePermission('administration', 'manage')
   update(@Param('id') id: string, @Body() dto: UpdateEmployeeMasterDto) {
     return this.service.update(id, dto);
   }
 
-  @Delete(':id')
+  @Post(':id/delete')
   @HttpCode(HttpStatus.OK)
   @RequirePermission('administration', 'manage')
   async delete(@Param('id') id: string) {

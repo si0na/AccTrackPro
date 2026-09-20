@@ -1,7 +1,4 @@
-import {
-  Controller, Get, Post, Put, Patch, Delete,
-  Body, Param, Query, Req, HttpCode, HttpStatus,
-} from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, Req, HttpCode, HttpStatus } from '@nestjs/common';
 import { OpportunitiesService } from './opportunities.service';
 import { CreateOpportunityDto, UpdateOpportunityDto } from './dto/opportunity.dto';
 import { CreateProjectDto } from '../projects/dto/project.dto';
@@ -71,7 +68,7 @@ export class OpportunitiesController {
     return this.opportunitiesService.createProject(id, fullData, authUser.sub);
   }
 
-  @Put(':id')
+  @Post(':id/update')
   @RequirePermission('opportunities', 'update')
   update(
     @Param('id') id: string,
@@ -85,14 +82,14 @@ export class OpportunitiesController {
     return this.opportunitiesService.update(id, fullData, authUser.sub);
   }
 
-  @Patch(':id/restore')
+  @Post(':id/restore')
   @RequirePermission('opportunities', 'update')
   @HttpCode(HttpStatus.OK)
   restore(@Param('id') id: string, @AuthUser() authUser: JwtPayload) {
     return this.opportunitiesService.restore(id, authUser.sub);
   }
 
-  @Delete(':id')
+  @Post(':id/delete')
   @RequirePermission('opportunities', 'delete')
   @HttpCode(HttpStatus.OK)
   remove(@Param('id') id: string, @AuthUser() authUser: JwtPayload) {

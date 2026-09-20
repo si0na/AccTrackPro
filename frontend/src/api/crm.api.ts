@@ -133,18 +133,18 @@ export const accountsApi = {
   getDeactivated: (f?: OwnerFilter) => apiClient.get<Account[]>('/accounts/deactivated', { params: f }).then((r) => r.data),
   getById: (id: string) => apiClient.get<Account>(`/accounts/${id}`).then((r) => r.data),
   create: (data: Omit<Account, 'id'>) => apiClient.post<Account>('/accounts', data).then((r) => r.data),
-  update: (id: string, data: Account) => apiClient.put<Account>(`/accounts/${id}`, data).then((r) => r.data),
-  restore: (id: string) => apiClient.patch<Account>(`/accounts/${id}/restore`).then((r) => r.data),
-  delete: (id: string) => apiClient.delete<{ success: boolean }>(`/accounts/${id}`).then((r) => r.data),
+  update: (id: string, data: Account) => apiClient.post<Account>(`/accounts/${id}/update`, data).then((r) => r.data),
+  restore: (id: string) => apiClient.post<Account>(`/accounts/${id}/restore`).then((r) => r.data),
+  delete: (id: string) => apiClient.post<{ success: boolean }>(`/accounts/${id}/delete`).then((r) => r.data),
 };
 
 export const opportunitiesApi = {
   getAll: (f?: OwnerFilter) => apiClient.get<Opportunity[]>('/opportunities', { params: f }).then((r) => r.data),
   getDeactivated: (f?: OwnerFilter) => apiClient.get<Opportunity[]>('/opportunities/deactivated', { params: f }).then((r) => r.data),
   create: (data: Omit<Opportunity, 'id'>) => apiClient.post<Opportunity>('/opportunities', data).then((r) => r.data),
-  update: (id: string, data: Opportunity) => apiClient.put<Opportunity>(`/opportunities/${id}`, data).then((r) => r.data),
-  restore: (id: string) => apiClient.patch<Opportunity>(`/opportunities/${id}/restore`).then((r) => r.data),
-  delete: (id: string) => apiClient.delete<{ success: boolean }>(`/opportunities/${id}`).then((r) => r.data),
+  update: (id: string, data: Opportunity) => apiClient.post<Opportunity>(`/opportunities/${id}/update`, data).then((r) => r.data),
+  restore: (id: string) => apiClient.post<Opportunity>(`/opportunities/${id}/restore`).then((r) => r.data),
+  delete: (id: string) => apiClient.post<{ success: boolean }>(`/opportunities/${id}/delete`).then((r) => r.data),
   /**
    * Manually create a Project from a Won opportunity (user-initiated — projects
    * are no longer auto-created on the Won transition). `data` carries the
@@ -161,15 +161,15 @@ export const opportunityForecastApi = {
     apiClient.get<OpportunityForecastResult>(`/opportunity-forecast/${opportunityId}`).then((r) => r.data),
   /** PUT /api/opportunity-forecast/:id — upsert the forecast card (forecast + actuals). */
   upsert: (opportunityId: string, data: OpportunityForecastPayload) =>
-    apiClient.put<OpportunityForecastResult>(`/opportunity-forecast/${opportunityId}`, data).then((r) => r.data),
+    apiClient.post<OpportunityForecastResult>(`/opportunity-forecast/${opportunityId}/update`, data).then((r) => r.data),
 };
 
 export const actionItemsApi = {
   getAll: (f?: OwnerFilter) => apiClient.get<ActionItem[]>('/action-items', { params: f }).then((r) => r.data),
   getDeactivated: (f?: OwnerFilter) => apiClient.get<ActionItem[]>('/action-items/deactivated', { params: f }).then((r) => r.data),
   create: (data: Omit<ActionItem, 'id'>) => apiClient.post<ActionItem>('/action-items', data).then((r) => r.data),
-  update: (id: string, data: ActionItem) => apiClient.put<ActionItem>(`/action-items/${id}`, data).then((r) => r.data),
-  delete: (id: string) => apiClient.delete<{ success: boolean }>(`/action-items/${id}`).then((r) => r.data),
+  update: (id: string, data: ActionItem) => apiClient.post<ActionItem>(`/action-items/${id}/update`, data).then((r) => r.data),
+  delete: (id: string) => apiClient.post<{ success: boolean }>(`/action-items/${id}/delete`).then((r) => r.data),
 };
 
 export const projectsApi = {
@@ -177,9 +177,9 @@ export const projectsApi = {
   getDeactivated: (f?: OwnerFilter) => apiClient.get<Project[]>('/projects/deactivated', { params: f }).then((r) => r.data),
   getById: (id: string) => apiClient.get<Project>(`/projects/${id}`).then((r) => r.data),
   create: (data: Omit<Project, 'id'>) => apiClient.post<Project>('/projects', data).then((r) => r.data),
-  update: (id: string, data: Project) => apiClient.put<Project>(`/projects/${id}`, data).then((r) => r.data),
-  restore: (id: string) => apiClient.patch<Project>(`/projects/${id}/restore`).then((r) => r.data),
-  delete: (id: string) => apiClient.delete<{ success: boolean }>(`/projects/${id}`).then((r) => r.data),
+  update: (id: string, data: Project) => apiClient.post<Project>(`/projects/${id}/update`, data).then((r) => r.data),
+  restore: (id: string) => apiClient.post<Project>(`/projects/${id}/restore`).then((r) => r.data),
+  delete: (id: string) => apiClient.post<{ success: boolean }>(`/projects/${id}/delete`).then((r) => r.data),
 };
 
 
@@ -234,17 +234,17 @@ export const sqaApi = {
   create: (data: SqaRecordInput, weeks?: number) =>
     apiClient.post<SqaRecord>('/sqa', data, { params: { weeks } }).then((r) => r.data),
   update: (id: string, data: SqaRecordInput, weeks?: number) =>
-    apiClient.put<SqaRecord>(`/sqa/${id}`, data, { params: { weeks } }).then((r) => r.data),
+    apiClient.post<SqaRecord>(`/sqa/${id}/update`, data, { params: { weeks } }).then((r) => r.data),
   setWeekHealth: (
     id: string,
     week: { isoYear: number; weekNumber: number; health: string },
     weeks?: number,
   ) =>
-    apiClient.put<SqaRecord>(`/sqa/${id}/week-health`, week, { params: { weeks } }).then((r) => r.data),
+    apiClient.post<SqaRecord>(`/sqa/${id}/week-health`, week, { params: { weeks } }).then((r) => r.data),
   restore: (id: string) =>
-    apiClient.patch<SqaRecord>(`/sqa/${id}/restore`).then((r) => r.data),
+    apiClient.post<SqaRecord>(`/sqa/${id}/restore`).then((r) => r.data),
   delete: (id: string) =>
-    apiClient.delete<{ success: boolean }>(`/sqa/${id}`).then((r) => r.data),
+    apiClient.post<{ success: boolean }>(`/sqa/${id}/delete`).then((r) => r.data),
   getTrackerHistory: (sqaRecordId?: string, page?: number, pageSize?: number) => {
     const url = sqaRecordId ? `/sqa/${sqaRecordId}/tracker` : '/sqa/tracker';
     return apiClient.get<Paginated<SqaTrackerSnapshot> | SqaTrackerSnapshot[]>(url, { params: { page, pageSize } }).then((r) => r.data);
@@ -263,7 +263,7 @@ export const projectHealthApi = {
   create: (projectId: string, data: ProjectHealthUpdateInput) =>
     apiClient.post<ProjectHealthUpdate>(`/projects/${projectId}/health`, data).then((r) => r.data),
   update: (projectId: string, id: string, data: ProjectHealthUpdateInput) =>
-    apiClient.put<ProjectHealthUpdate>(`/projects/${projectId}/health/${id}`, data).then((r) => r.data),
+    apiClient.post<ProjectHealthUpdate>(`/projects/${projectId}/health/${id}/update`, data).then((r) => r.data),
 };
 
 export type ProjectProgressUpdateInput = Omit<
@@ -277,7 +277,7 @@ export const projectProgressApi = {
   create: (projectId: string, data: ProjectProgressUpdateInput) =>
     apiClient.post<ProjectProgressUpdate>(`/projects/${projectId}/progress`, data).then((r) => r.data),
   update: (projectId: string, id: string, data: ProjectProgressUpdateInput) =>
-    apiClient.put<ProjectProgressUpdate>(`/projects/${projectId}/progress/${id}`, data).then((r) => r.data),
+    apiClient.post<ProjectProgressUpdate>(`/projects/${projectId}/progress/${id}/update`, data).then((r) => r.data),
 };
 
 export const projectTeamApi = {
@@ -286,9 +286,9 @@ export const projectTeamApi = {
   create: (projectId: string, data: Omit<ProjectTeamMember, 'id' | 'projectId'>) =>
     apiClient.post<ProjectTeamMember>(`/projects/${projectId}/team`, data).then((r) => r.data),
   update: (projectId: string, id: string, data: Omit<ProjectTeamMember, 'id' | 'projectId'>) =>
-    apiClient.put<ProjectTeamMember>(`/projects/${projectId}/team/${id}`, data).then((r) => r.data),
+    apiClient.post<ProjectTeamMember>(`/projects/${projectId}/team/${id}/update`, data).then((r) => r.data),
   delete: (projectId: string, id: string) =>
-    apiClient.delete<{ success: boolean }>(`/projects/${projectId}/team/${id}`).then((r) => r.data),
+    apiClient.post<{ success: boolean }>(`/projects/${projectId}/team/${id}/delete`).then((r) => r.data),
 };
 
 export const projectMilestonesApi = {
@@ -299,9 +299,9 @@ export const projectMilestonesApi = {
   // Update*Dto requires `id` in the body (validated but otherwise unused —
   // the service updates the row addressed by the URL param), so it's sent here.
   update: (projectId: string, id: string, data: Omit<ProjectMilestone, 'id' | 'projectId'>) =>
-    apiClient.put<ProjectMilestone>(`/projects/${projectId}/milestones/${id}`, { ...data, id }).then((r) => r.data),
+    apiClient.post<ProjectMilestone>(`/projects/${projectId}/milestones/${id}/update`, { ...data, id }).then((r) => r.data),
   delete: (projectId: string, id: string) =>
-    apiClient.delete<{ success: boolean }>(`/projects/${projectId}/milestones/${id}`).then((r) => r.data),
+    apiClient.post<{ success: boolean }>(`/projects/${projectId}/milestones/${id}/delete`).then((r) => r.data),
 };
 
 export const projectRisksApi = {
@@ -310,9 +310,9 @@ export const projectRisksApi = {
   create: (projectId: string, data: Omit<ProjectRisk, 'id' | 'projectId' | 'ownerName'>) =>
     apiClient.post<ProjectRisk>(`/projects/${projectId}/risks`, data).then((r) => r.data),
   update: (projectId: string, id: string, data: Omit<ProjectRisk, 'id' | 'projectId' | 'ownerName'>) =>
-    apiClient.put<ProjectRisk>(`/projects/${projectId}/risks/${id}`, { ...data, id }).then((r) => r.data),
+    apiClient.post<ProjectRisk>(`/projects/${projectId}/risks/${id}/update`, { ...data, id }).then((r) => r.data),
   delete: (projectId: string, id: string) =>
-    apiClient.delete<{ success: boolean }>(`/projects/${projectId}/risks/${id}`).then((r) => r.data),
+    apiClient.post<{ success: boolean }>(`/projects/${projectId}/risks/${id}/delete`).then((r) => r.data),
 };
 
 export const projectAssumptionsApi = {
@@ -321,9 +321,9 @@ export const projectAssumptionsApi = {
   create: (projectId: string, data: Omit<ProjectAssumption, 'id' | 'projectId' | 'ownerName'>) =>
     apiClient.post<ProjectAssumption>(`/projects/${projectId}/assumptions`, data).then((r) => r.data),
   update: (projectId: string, id: string, data: Omit<ProjectAssumption, 'id' | 'projectId' | 'ownerName'>) =>
-    apiClient.put<ProjectAssumption>(`/projects/${projectId}/assumptions/${id}`, { ...data, id }).then((r) => r.data),
+    apiClient.post<ProjectAssumption>(`/projects/${projectId}/assumptions/${id}/update`, { ...data, id }).then((r) => r.data),
   delete: (projectId: string, id: string) =>
-    apiClient.delete<{ success: boolean }>(`/projects/${projectId}/assumptions/${id}`).then((r) => r.data),
+    apiClient.post<{ success: boolean }>(`/projects/${projectId}/assumptions/${id}/delete`).then((r) => r.data),
 };
 
 export const projectIssuesApi = {
@@ -332,9 +332,9 @@ export const projectIssuesApi = {
   create: (projectId: string, data: Omit<ProjectIssue, 'id' | 'projectId' | 'ownerName'>) =>
     apiClient.post<ProjectIssue>(`/projects/${projectId}/issues`, data).then((r) => r.data),
   update: (projectId: string, id: string, data: Omit<ProjectIssue, 'id' | 'projectId' | 'ownerName'>) =>
-    apiClient.put<ProjectIssue>(`/projects/${projectId}/issues/${id}`, { ...data, id }).then((r) => r.data),
+    apiClient.post<ProjectIssue>(`/projects/${projectId}/issues/${id}/update`, { ...data, id }).then((r) => r.data),
   delete: (projectId: string, id: string) =>
-    apiClient.delete<{ success: boolean }>(`/projects/${projectId}/issues/${id}`).then((r) => r.data),
+    apiClient.post<{ success: boolean }>(`/projects/${projectId}/issues/${id}/delete`).then((r) => r.data),
 };
 
 export const projectDependenciesApi = {
@@ -343,17 +343,17 @@ export const projectDependenciesApi = {
   create: (projectId: string, data: Omit<ProjectDependency, 'id' | 'projectId' | 'ownerName'>) =>
     apiClient.post<ProjectDependency>(`/projects/${projectId}/dependencies`, data).then((r) => r.data),
   update: (projectId: string, id: string, data: Omit<ProjectDependency, 'id' | 'projectId' | 'ownerName'>) =>
-    apiClient.put<ProjectDependency>(`/projects/${projectId}/dependencies/${id}`, { ...data, id }).then((r) => r.data),
+    apiClient.post<ProjectDependency>(`/projects/${projectId}/dependencies/${id}/update`, { ...data, id }).then((r) => r.data),
   delete: (projectId: string, id: string) =>
-    apiClient.delete<{ success: boolean }>(`/projects/${projectId}/dependencies/${id}`).then((r) => r.data),
+    apiClient.post<{ success: boolean }>(`/projects/${projectId}/dependencies/${id}/delete`).then((r) => r.data),
 };
 
 export const stakeholdersApi = {
   getAll: (f?: OwnerFilter) => apiClient.get<Stakeholder[]>('/stakeholders', { params: f }).then((r) => r.data),
   getDeactivated: (f?: OwnerFilter) => apiClient.get<Stakeholder[]>('/stakeholders/deactivated', { params: f }).then((r) => r.data),
   create: (data: Omit<Stakeholder, 'id'>) => apiClient.post<Stakeholder>('/stakeholders', data).then((r) => r.data),
-  update: (id: string, data: Stakeholder) => apiClient.put<Stakeholder>(`/stakeholders/${id}`, data).then((r) => r.data),
-  delete: (id: string) => apiClient.delete<{ success: boolean }>(`/stakeholders/${id}`).then((r) => r.data),
+  update: (id: string, data: Stakeholder) => apiClient.post<Stakeholder>(`/stakeholders/${id}/update`, data).then((r) => r.data),
+  delete: (id: string) => apiClient.post<{ success: boolean }>(`/stakeholders/${id}/delete`).then((r) => r.data),
 };
 
 /**
@@ -389,8 +389,8 @@ export const commentsApi = {
   create: (data: Omit<Comment, 'id' | 'timestamp'>) =>
     apiClient.post<Comment>('/comments', data).then((r) => r.data),
   update: (id: string, text: string) =>
-    apiClient.patch<Comment>(`/comments/${id}`, { text }).then((r) => r.data),
-  delete: (id: string) => apiClient.delete<{ success: boolean }>(`/comments/${id}`).then((r) => r.data),
+    apiClient.post<Comment>(`/comments/${id}/update`, { text }).then((r) => r.data),
+  delete: (id: string) => apiClient.post<{ success: boolean }>(`/comments/${id}/delete`).then((r) => r.data),
 };
 
 export const customColumnsApi = {
@@ -403,17 +403,17 @@ export const customColumnsApi = {
   create: (data: { module: 'accounts' | 'opportunities' | 'actionItems' | 'performanceEvaluation'; name: string; type: 'text' | 'number' | 'date' | 'boolean' }) =>
     apiClient.post<CustomColumn>('/custom-columns', data).then((r) => r.data),
   delete: (module: string, id: string) =>
-    apiClient.delete<{ success: boolean }>(`/custom-columns/${module}/${id}`).then((r) => r.data),
+    apiClient.post<{ success: boolean }>(`/custom-columns/${module}/${id}/delete`).then((r) => r.data),
 };
 
 export const financialYearsApi = {
   getAll: () => apiClient.get<FinancialYear[]>('/financial-years').then((r) => r.data),
   create: (data: { startYear: number }, userId?: string) =>
     apiClient.post<FinancialYear>('/financial-years', data, { params: userId ? { userId } : undefined }).then((r) => r.data),
-  activate:       (id: string) => apiClient.patch<FinancialYear>(`/financial-years/${id}/activate`).then((r) => r.data),
-  deactivate:     (id: string) => apiClient.patch<FinancialYear>(`/financial-years/${id}/deactivate`).then((r) => r.data),
+  activate:       (id: string) => apiClient.post<FinancialYear>(`/financial-years/${id}/activate`).then((r) => r.data),
+  deactivate:     (id: string) => apiClient.post<FinancialYear>(`/financial-years/${id}/deactivate`).then((r) => r.data),
   updateCalendar: (id: string, data: { startMonth: number; quarters: FYQuarterDef[] }) =>
-    apiClient.patch<FinancialYear>(`/financial-years/${id}/calendar`, data).then((r) => r.data),
+    apiClient.post<FinancialYear>(`/financial-years/${id}/calendar`, data).then((r) => r.data),
 };
 
 export const administrationApi = {
@@ -424,17 +424,17 @@ export const administrationApi = {
   getFinancialCalendar:     () =>
     apiClient.get<FinancialCalendar>('/administration/financial-calendar').then((r) => r.data),
   updateFinancialCalendar:  (data: FinancialCalendar) =>
-    apiClient.put<FinancialCalendar>('/administration/financial-calendar', data).then((r) => r.data),
+    apiClient.post<FinancialCalendar>('/administration/financial-calendar/update', data).then((r) => r.data),
   getSettings:              () =>
     apiClient.get<AdminSettings>('/administration/settings').then((r) => r.data),
   updateSettings:           (data: Partial<AdminSettings>) =>
-    apiClient.put<AdminSettings>('/administration/settings', data).then((r) => r.data),
+    apiClient.post<AdminSettings>('/administration/settings/update', data).then((r) => r.data),
   /** Whitelist / add a new authorized user. */
   createUser:               (data: UserRbacAttrs & { email: string; roleIds: string[] }) =>
     apiClient.post<AdminUser>('/administration/users', data).then((r) => r.data),
   /** Assign role, edit department/designation/employeeId, activate/deactivate. */
   updateUser:               (id: string, data: UserRbacAttrs & { roleIds?: string[]; isActive?: boolean }) =>
-    apiClient.put<AdminUser>(`/administration/users/${id}`, data).then((r) => r.data),
+    apiClient.post<AdminUser>(`/administration/users/${id}/update`, data).then((r) => r.data),
 };
 
 // ── Users (lightweight list for assignment pickers; authenticated-only) ──────
@@ -531,7 +531,7 @@ export const serviceProviderApi = {
    * the user record and synced onto the stakeholders).
    */
   updateProfile: (input: UpdateServiceProviderProfileInput) =>
-    apiClient.put<ServiceProviderProfile>('/service-provider-profile/me', input).then((r) => r.data),
+    apiClient.post<ServiceProviderProfile>('/service-provider-profile/me', input).then((r) => r.data),
 };
 
 // ── RBAC (roles & permission matrix) ────────────────────────────────────────
@@ -542,15 +542,15 @@ export const rbacApi = {
   getMatrix: () =>
     apiClient.get<PermissionMatrix>('/rbac/matrix').then((r) => r.data),
   saveMatrix: (changes: Array<{ roleId: string; moduleKey: string; permissionKey: string; isAllowed: boolean }>) =>
-    apiClient.put<{ updated: number }>('/rbac/matrix', { changes }).then((r) => r.data),
+    apiClient.post<{ updated: number }>('/rbac/matrix', { changes }).then((r) => r.data),
   getRoles: () =>
     apiClient.get<Role[]>('/rbac/roles').then((r) => r.data),
   createRole: (data: { name: string; description?: string; accountScopeField?: string | null }) =>
     apiClient.post<{ id: string }>('/rbac/roles', data).then((r) => r.data),
   updateRole: (id: string, data: { name?: string; description?: string; accountScopeField?: string | null }) =>
-    apiClient.put<{ id: string }>(`/rbac/roles/${id}`, data).then((r) => r.data),
+    apiClient.post<{ id: string }>(`/rbac/roles/${id}/update`, data).then((r) => r.data),
   deleteRole: (id: string) =>
-    apiClient.delete<{ success: boolean }>(`/rbac/roles/${id}`).then((r) => r.data),
+    apiClient.post<{ success: boolean }>(`/rbac/roles/${id}/delete`).then((r) => r.data),
 };
 
 export const columnConfigsApi = {
@@ -613,7 +613,7 @@ export const documentsApi = {
       .then((r) => r.data),
 
   delete: (id: string) =>
-    apiClient.delete<{ success: boolean }>(`/documents/${id}`).then((r) => r.data),
+    apiClient.post<{ success: boolean }>(`/documents/${id}/delete`).then((r) => r.data),
 };
 
 // ── Auth API ──────────────────────────────────────────────────────────────────
@@ -638,7 +638,7 @@ export const authApi = {
   logout: () => apiClient.post('/auth/logout').catch(() => { /* best-effort */ }),
 
   updateAvatar: (avatarData: string) =>
-    apiClient.put<User>('/auth/me/avatar', { avatarData }).then((r) => r.data),
+    apiClient.post<User>('/auth/me/avatar', { avatarData }).then((r) => r.data),
 
   changePassword: (currentPassword: string, newPassword: string) =>
     apiClient.post('/auth/change-password', { currentPassword, newPassword }),
@@ -672,16 +672,16 @@ export const notificationsApi = {
     apiClient.get<{ count: number }>('/notifications/unread-count').then((r) => r.data),
 
   markRead: (id: string) =>
-    apiClient.patch<{ success: boolean }>(`/notifications/${id}/read`).then((r) => r.data),
+    apiClient.post<{ success: boolean }>(`/notifications/${id}/read`).then((r) => r.data),
 
   markAllRead: () =>
-    apiClient.patch<{ success: boolean }>('/notifications/read-all', null).then((r) => r.data),
+    apiClient.post<{ success: boolean }>('/notifications/read-all', null).then((r) => r.data),
 
   clearRead: () =>
-    apiClient.delete<{ success: boolean }>('/notifications/clear-read').then((r) => r.data),
+    apiClient.post<{ success: boolean }>('/notifications/clear-read').then((r) => r.data),
 
   delete: (id: string) =>
-    apiClient.delete<{ success: boolean }>(`/notifications/${id}`).then((r) => r.data),
+    apiClient.post<{ success: boolean }>(`/notifications/${id}/delete`).then((r) => r.data),
 };
 
 export const alertsApi = {
@@ -701,9 +701,9 @@ export const employeeMasterApi = {
   create: (email: string, name?: string, attrs?: UserRbacAttrs) =>
     apiClient.post<EmployeeMaster>('/employee-master', { email, name, ...attrs }).then((r) => r.data),
   update: (id: string, email: string, name?: string, attrs?: UserRbacAttrs) =>
-    apiClient.put<EmployeeMaster>(`/employee-master/${id}`, { email, name, ...attrs }).then((r) => r.data),
+    apiClient.post<EmployeeMaster>(`/employee-master/${id}/update`, { email, name, ...attrs }).then((r) => r.data),
   delete: (id: string) =>
-    apiClient.delete<{ success: boolean }>(`/employee-master/${id}`).then((r) => r.data),
+    apiClient.post<{ success: boolean }>(`/employee-master/${id}/delete`).then((r) => r.data),
 };
 
 /** Per-employee aggregates for the Performance Evaluation reporting header. */
@@ -724,9 +724,9 @@ export const performanceEvaluationsApi = {
   create: (data: Omit<PerformanceEvaluation, 'id' | 'createdAt' | 'updatedAt'>) =>
     apiClient.post<PerformanceEvaluation>('/performance-evaluations', data).then((r) => r.data),
   update: (id: string, data: Omit<PerformanceEvaluation, 'id' | 'createdAt' | 'updatedAt'>) =>
-    apiClient.put<PerformanceEvaluation>(`/performance-evaluations/${id}`, data).then((r) => r.data),
+    apiClient.post<PerformanceEvaluation>(`/performance-evaluations/${id}/update`, data).then((r) => r.data),
   delete: (id: string) =>
-    apiClient.delete<{ success: boolean }>(`/performance-evaluations/${id}`).then((r) => r.data),
+    apiClient.post<{ success: boolean }>(`/performance-evaluations/${id}/delete`).then((r) => r.data),
   summary: () =>
     apiClient.get<PerformanceEvaluationSummaryRow[]>('/performance-evaluations/summary').then((r) => r.data),
 };
@@ -739,9 +739,9 @@ export const npsApi = {
   create: (data: Omit<NpsResponse, 'id' | 'createdAt' | 'updatedAt' | 'quarter'>) =>
     apiClient.post<NpsResponse>('/nps', data).then((r) => r.data),
   update: (id: string, data: Partial<NpsResponse>) =>
-    apiClient.put<NpsResponse>(`/nps/${id}`, data).then((r) => r.data),
+    apiClient.post<NpsResponse>(`/nps/${id}/update`, data).then((r) => r.data),
   delete: (id: string) =>
-    apiClient.delete<{ success: boolean }>(`/nps/${id}`).then((r) => r.data),
+    apiClient.post<{ success: boolean }>(`/nps/${id}/delete`).then((r) => r.data),
 };
 
 export const employeeAppreciationApi = {
@@ -752,9 +752,9 @@ export const employeeAppreciationApi = {
   create: (data: Omit<EmployeeAppreciation, 'id' | 'createdAt' | 'updatedAt'>) =>
     apiClient.post<EmployeeAppreciation>('/employee-appreciation', data).then((r) => r.data),
   update: (id: string, data: Partial<EmployeeAppreciation>) =>
-    apiClient.put<EmployeeAppreciation>(`/employee-appreciation/${id}`, data).then((r) => r.data),
+    apiClient.post<EmployeeAppreciation>(`/employee-appreciation/${id}/update`, data).then((r) => r.data),
   delete: (id: string) =>
-    apiClient.delete<{ success: boolean }>(`/employee-appreciation/${id}`).then((r) => r.data),
+    apiClient.post<{ success: boolean }>(`/employee-appreciation/${id}/delete`).then((r) => r.data),
 };
 
 export const employeeRewardsRecognitionApi = {
@@ -765,9 +765,9 @@ export const employeeRewardsRecognitionApi = {
   create: (data: Omit<EmployeeRewardsRecognition, 'id' | 'createdAt' | 'updatedAt'>) =>
     apiClient.post<EmployeeRewardsRecognition>('/employee-rewards-recognition', data).then((r) => r.data),
   update: (id: string, data: Partial<EmployeeRewardsRecognition>) =>
-    apiClient.put<EmployeeRewardsRecognition>(`/employee-rewards-recognition/${id}`, data).then((r) => r.data),
+    apiClient.post<EmployeeRewardsRecognition>(`/employee-rewards-recognition/${id}/update`, data).then((r) => r.data),
   delete: (id: string) =>
-    apiClient.delete<{ success: boolean }>(`/employee-rewards-recognition/${id}`).then((r) => r.data),
+    apiClient.post<{ success: boolean }>(`/employee-rewards-recognition/${id}/delete`).then((r) => r.data),
 };
 
 export const accountRisksApi = {
@@ -778,9 +778,9 @@ export const accountRisksApi = {
   create: (data: Omit<AccountRisk, 'id' | 'createdAt' | 'updatedAt'>) =>
     apiClient.post<AccountRisk>('/account-risks', data).then((r) => r.data),
   update: (id: string, data: Partial<AccountRisk>) =>
-    apiClient.put<AccountRisk>(`/account-risks/${id}`, data).then((r) => r.data),
+    apiClient.post<AccountRisk>(`/account-risks/${id}/update`, data).then((r) => r.data),
   delete: (id: string) =>
-    apiClient.delete<{ success: boolean }>(`/account-risks/${id}`).then((r) => r.data),
+    apiClient.post<{ success: boolean }>(`/account-risks/${id}/delete`).then((r) => r.data),
 };
 
 export const centralRisksApi = {

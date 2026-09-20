@@ -1,6 +1,4 @@
-import {
-  Controller, Get, Post, Put, Body, Param, HttpCode, HttpStatus,
-} from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, HttpCode, HttpStatus } from '@nestjs/common';
 import { ProjectHealthService } from './project-health.service';
 import { CreateProjectHealthDto, UpdateProjectHealthDto } from './dto/project-health.dto';
 import { AuthUser, JwtPayload } from '../auth/auth-user.decorator';
@@ -27,7 +25,7 @@ export class ProjectHealthController {
     return this.healthService.create(projectId, body, authUser.sub);
   }
 
-  @Put(':id')
+  @Post(':projectId/update')
   @RequirePermission('projects', 'update')
   update(
     @Param('projectId') projectId: string,

@@ -1,4 +1,4 @@
-import { Controller, Get, Put, Post, Body, Param, Query } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
 import { AdministrationService } from './administration.service';
 import { UpdateFinancialCalendarDto, UpdateSettingsDto, UpdateUserDto, CreateUserDto } from './dto/administration.dto';
 import { RequirePermission } from '../rbac/require-permission.decorator';
@@ -35,7 +35,7 @@ export class AdministrationController {
     return this.service.createUser(dto, user.sub);
   }
 
-  @Put('users/:id')
+  @Post('users/:id/update')
   @RequirePermission('administration', 'manage')
   updateUser(@Param('id') id: string, @Body() dto: UpdateUserDto, @AuthUser() user: JwtPayload) {
     return this.service.updateUser(id, dto, user.sub);
@@ -47,7 +47,7 @@ export class AdministrationController {
     return this.service.getFinancialCalendar();
   }
 
-  @Put('financial-calendar')
+  @Post('financial-calendar/update')
   @RequirePermission('administration', 'manage')
   updateFinancialCalendar(@Body() dto: UpdateFinancialCalendarDto) {
     return this.service.updateFinancialCalendar(dto);
@@ -59,7 +59,7 @@ export class AdministrationController {
     return this.service.getSettings();
   }
 
-  @Put('settings')
+  @Post('settings/update')
   @RequirePermission('administration', 'manage')
   updateSettings(@Body() dto: UpdateSettingsDto) {
     return this.service.updateSettings(dto);

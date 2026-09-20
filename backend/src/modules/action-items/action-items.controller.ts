@@ -1,7 +1,4 @@
-import {
-  Controller, Get, Post, Put, Delete,
-  Body, Param, Query, Req, HttpCode, HttpStatus,
-} from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, Req, HttpCode, HttpStatus } from '@nestjs/common';
 import { ActionItemsService } from './action-items.service';
 import { CreateActionItemDto, UpdateActionItemDto } from './dto/action-item.dto';
 import { AuthUser, JwtPayload } from '../auth/auth-user.decorator';
@@ -46,7 +43,7 @@ export class ActionItemsController {
     return this.service.create({ ...fullData, ownerId: authUser.sub });
   }
 
-  @Put(':id')
+  @Post(':id/update')
   @RequirePermission('action-items', 'update')
   update(
     @Param('id') id: string,
@@ -60,7 +57,7 @@ export class ActionItemsController {
     return this.service.update(id, fullData, authUser.sub);
   }
 
-  @Delete(':id')
+  @Post(':id/delete')
   @HttpCode(HttpStatus.OK)
   @RequirePermission('action-items', 'delete')
   remove(@Param('id') id: string, @AuthUser() authUser: JwtPayload) {

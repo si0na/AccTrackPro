@@ -1,7 +1,4 @@
-import {
-  Controller, Get, Post, Put, Delete,
-  Body, Param, Query, Req,
-} from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, Req } from '@nestjs/common';
 import { EmployeeRewardsRecognitionService } from './employee-rewards-recognition.service';
 import { CreateEmployeeRewardsRecognitionDto, UpdateEmployeeRewardsRecognitionDto } from './dto/employee-rewards-recognition.dto';
 import { AuthUser, JwtPayload } from '../auth/auth-user.decorator';
@@ -36,13 +33,13 @@ export class EmployeeRewardsRecognitionController {
     return this.service.create(dto, authUser?.sub);
   }
 
-  @Put(':id')
+  @Post(':id/update')
   @RequirePermission('employeeRewardsRecognition', 'update')
   update(@Param('id') id: string, @Body() dto: UpdateEmployeeRewardsRecognitionDto) {
     return this.service.update(id, dto);
   }
 
-  @Delete(':id')
+  @Post(':id/delete')
   @RequirePermission('employeeRewardsRecognition', 'delete')
   remove(@Param('id') id: string) {
     return this.service.remove(id);

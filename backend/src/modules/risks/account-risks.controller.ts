@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, UseGuards } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt.guard';
 import { AccountRisksService } from './account-risks.service';
 import { CreateAccountRiskDto, UpdateAccountRiskDto } from './dto/account-risk.dto';
@@ -28,13 +28,13 @@ export class AccountRisksController {
     return this.service.create(dto, authUser?.sub);
   }
 
-  @Put(':id')
+  @Post(':id/update')
   @RequirePermission('risks', 'update')
   async update(@Param('id') id: string, @Body() dto: UpdateAccountRiskDto, @AuthUser() authUser?: JwtPayload) {
     return this.service.update(id, dto, authUser?.sub);
   }
 
-  @Delete(':id')
+  @Post(':id/delete')
   @RequirePermission('risks', 'delete')
   async remove(@Param('id') id: string, @AuthUser() authUser?: JwtPayload) {
     return this.service.remove(id, authUser?.sub);
