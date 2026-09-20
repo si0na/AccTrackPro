@@ -27,12 +27,12 @@ export function useProjectHealth(projectId: string) {
   /** Users with 'projects:update' can add health updates. */
   const canUpdate = can('projects', 'update');
 
-  const loadHistory = useCallback(() => {
-    setLoading(true);
+  const loadHistory = useCallback((silent = false) => {
+    if (!silent) setLoading(true);
     projectHealthApi.getAllForProject(projectId)
       .then(setHistory)
       .catch(() => setHistory([]))
-      .finally(() => setLoading(false));
+      .finally(() => { if (!silent) setLoading(false); });
   }, [projectId]);
 
   useEffect(() => { loadHistory(); }, [loadHistory]);
@@ -82,7 +82,7 @@ export function useProjectHealth(projectId: string) {
       }
       setIsModalOpen(false);
       setEditingId(null);
-      loadHistory();
+      loadHistory(true);
       // The backend also moves projects.health (on edit, only when the newest
       // entry changed), so pull the project back in to keep the detail header
       // badge and the Projects list in step.

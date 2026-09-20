@@ -61,15 +61,22 @@ export class PerformanceEvaluationsService {
     private readonly permissions: PermissionsService,
   ) {}
 
-  /** Only employees in the Employee Master can be evaluated. */
-  private async resolveEmployee(employeeId: string): Promise<EmployeeMaster> {
-    const employee = await this.employeeMaster.findById(employeeId);
-    if (!employee) {
-      throw new BadRequestException(
-        'The selected employee is not in the Employee Master. Please pick a valid employee.',
-      );
+  /** Look up employee in Employee Master, System Users, or fallback to provided name */
+  private async resolveEmployee(employeeId: string, providedName?: string): Promise<{ id: string; name: string }> {
+    if (employeeId) {
+      const employee = await this.employeeMaster.findById(employeeId);
+      if (employee) {
+        return { id: employee.id, name: employee.name || employee.email };
+      }
+      const { rows: uRows } = await this.db.query(`SELECT id, name, email FROM users WHERE id = $1`, [employeeId]);
+      if (uRows.length) {
+        return { id: uRows[0].id, name: uRows[0].name || uRows[0].email };
+      }
     }
-    return employee;
+    if (providedName && providedName.trim()) {
+      return { id: employeeId || providedName.trim(), name: providedName.trim() };
+    }
+    throw new BadRequestException('Please select a valid employee.');
   }
 
   /** Integrity rule: one evaluation per employee per month. */
@@ -122,9 +129,9 @@ export class PerformanceEvaluationsService {
   }
 
   async create(data: any, userId: string): Promise<any> {
-    const employee = await this.resolveEmployee(data.employeeId);
+    const employee = await this.resolveEmployee(data.employeeId, data.employeeName);
     await this.assertNoDuplicatePeriod(employee.id, data.month);
-    const employeeName = employee.name || employee.email;
+    const employeeName = employee.name;
 
     let accountName = data.account ?? '';
     let projectName = data.project ?? '';
@@ -173,9 +180,9 @@ export class PerformanceEvaluationsService {
 
   async update(id: string, data: any, userId?: string): Promise<any> {
     await this.findOne(id, userId);
-    const employee = await this.resolveEmployee(data.employeeId);
+    const employee = await this.resolveEmployee(data.employeeId, data.employeeName);
     await this.assertNoDuplicatePeriod(employee.id, data.month, id);
-    const employeeName = employee.name || employee.email;
+    const employeeName = employee.name;
 
     let accountName = data.account ?? '';
     let projectName = data.project ?? '';

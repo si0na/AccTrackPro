@@ -45,6 +45,13 @@ export class CreateEmployeeRewardsRecognitionDto {
   @IsOptional()
   employeeName?: string;
 
+  @IsString()
+  @IsOptional()
+  teamMembers?: string;
+
+  @IsOptional()
+  teamMemberIds?: string[];
+
   @IsIn(REWARDS_RECOGNITION_STATUSES as unknown as string[], {
     message: 'Status must be one of: Nominated - Not Won, Won, Nomination Rejected',
   })
@@ -89,6 +96,13 @@ export class UpdateEmployeeRewardsRecognitionDto {
   @IsString()
   @IsOptional()
   employeeName?: string;
+
+  @IsString()
+  @IsOptional()
+  teamMembers?: string;
+
+  @IsOptional()
+  teamMemberIds?: string[];
 
   @IsOptional()
   @IsIn(REWARDS_RECOGNITION_STATUSES as unknown as string[])

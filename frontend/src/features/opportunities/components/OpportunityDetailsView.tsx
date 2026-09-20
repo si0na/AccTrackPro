@@ -7,6 +7,8 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
 import { Opportunity, OpportunityStage, PriorityLevel, ActionItem, ActionItemStatus, Stakeholder, StakeholderType, Project, AdminUser } from '@/types';
 import { administrationApi } from '@/api/crm.api';
+import { LoadingState } from '@/components/common/LoadingState';
+import { showToast } from '@/components/common/ToastHost';
 import { ProjectFormModal } from '@/features/projects/components/ProjectFormModal';
 import {
   Briefcase,
@@ -122,6 +124,7 @@ export const OpportunityDetailsView: React.FC = () => {
     deleteStakeholder,
     projects,
     can,
+    loading,
   } = useCRM();
 
   // Find current opportunity
@@ -364,11 +367,40 @@ export const OpportunityDetailsView: React.FC = () => {
     }
   };
 
+  // Stakeholders linked to THIS opportunity, split by type for the two-tab view.
+  const oppClientStks = useMemo(() => {
+    if (!opp) return [];
+    const list = (stakeholders || []).filter(
+      s => s.accountId === opp.accountId && s.stakeholderType === 'CLIENT'
+    );
+    if (opp.clientStakeholderId && !list.some(s => s.id === opp.clientStakeholderId)) {
+      const found = (stakeholders || []).find(s => s.id === opp.clientStakeholderId);
+      if (found) return [found, ...list];
+    }
+    return list;
+  }, [stakeholders, opp?.accountId, opp?.clientStakeholderId]);
+
+  const oppServiceProviderStks = useMemo(() => {
+    if (!opp) return [];
+    const list = (stakeholders || []).filter(
+      s => s.accountId === opp.accountId && s.stakeholderType === 'SERVICE_PROVIDER'
+    );
+    if (opp.serviceProviderStakeholderId && !list.some(s => s.id === opp.serviceProviderStakeholderId)) {
+      const found = (stakeholders || []).find(s => s.id === opp.serviceProviderStakeholderId);
+      if (found) return [found, ...list];
+    }
+    return list;
+  }, [stakeholders, opp?.accountId, opp?.serviceProviderStakeholderId]);
+
+  if (loading) {
+    return <LoadingState label="Loading opportunity details..." />;
+  }
+
   if (!opp || !account) {
     return (
       <Card padding="none">
         <div className="p-8 text-center">
-          <p className="text-slate-400 font-medium">No opportunity selected.</p>
+          <p className="text-slate-400 font-medium">No opportunity selected or opportunity not found.</p>
           <button
             onClick={goBackFromOpportunity}
             className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-semibold cursor-pointer"
@@ -383,32 +415,6 @@ export const OpportunityDetailsView: React.FC = () => {
   // Filter actions & comments
   const oppActions = actionItems.filter(ai => ai.opportunityId === opp.id);
   const oppComments = comments.filter(c => c.targetType === 'opportunity' && c.targetId === opp.id);
-
-  // Stakeholders linked to THIS opportunity, split by type for the two-tab view.
-  // Prefer the full record from state; if it isn't loaded (e.g. deactivated or
-  // Stakeholders linked to THIS opportunity's account.
-  // Displays all client stakeholders registered for this opportunity's account.
-  const oppClientStks = useMemo(() => {
-    const list = (stakeholders || []).filter(
-      s => s.accountId === opp.accountId && s.stakeholderType === 'CLIENT'
-    );
-    if (opp.clientStakeholderId && !list.some(s => s.id === opp.clientStakeholderId)) {
-      const found = (stakeholders || []).find(s => s.id === opp.clientStakeholderId);
-      if (found) return [found, ...list];
-    }
-    return list;
-  }, [stakeholders, opp.accountId, opp.clientStakeholderId]);
-
-  const oppServiceProviderStks = useMemo(() => {
-    const list = (stakeholders || []).filter(
-      s => s.accountId === opp.accountId && s.stakeholderType === 'SERVICE_PROVIDER'
-    );
-    if (opp.serviceProviderStakeholderId && !list.some(s => s.id === opp.serviceProviderStakeholderId)) {
-      const found = (stakeholders || []).find(s => s.id === opp.serviceProviderStakeholderId);
-      if (found) return [found, ...list];
-    }
-    return list;
-  }, [stakeholders, opp.accountId, opp.serviceProviderStakeholderId]);
 
   const stages: OpportunityStage[] = ['Lead', 'Qualified', 'Proposal', 'Negotiation', 'Verbal Agreement', 'Won'];
   const currentStageIdx = stages.indexOf(opp.stage);
@@ -513,7 +519,7 @@ export const OpportunityDetailsView: React.FC = () => {
                   icon={<FolderKanban className="w-3.5 h-3.5" aria-hidden="true" />}
                   onClick={openCreateProject}
                 >
-                  Create Project
+                  Convert to Project
                 </Button>
               )
             ) : (
@@ -537,33 +543,34 @@ export const OpportunityDetailsView: React.FC = () => {
                 >
                   Edit Opportunity
                 </Button>
-                <div className="relative">
-                  <button
-                    onClick={() => setShowOppMenu(v => !v)}
-                    className="p-2.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 cursor-pointer transition-colors"
-                    title="More actions"
-                  >
-                    <MoreVertical className="w-4 h-4" />
-                  </button>
-                  {showOppMenu && (
-                    <>
-                      <div className="fixed inset-0 z-10" onClick={() => setShowOppMenu(false)} />
-                      <div className="absolute right-0 top-full mt-1.5 w-48 bg-white border border-slate-200 rounded-lg shadow-lg z-20 py-1">
-                        <button
-                          onClick={() => {
-                            setShowOppMenu(false);
-                            setDeleteTarget({ type: 'opportunity', id: opp.id, label: opp.name });
-                          }}
-                          className="w-full text-left px-3.5 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 cursor-pointer transition-colors"
-                        >
-                          Deactivate Opportunity
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </div>
               </>
             )}
+
+            <div className="relative">
+              <button
+                onClick={() => setShowOppMenu(v => !v)}
+                className="p-2.5 rounded-lg border border-slate-200 text-slate-500 hover:bg-slate-50 cursor-pointer transition-colors"
+                title="More actions"
+              >
+                <MoreVertical className="w-4 h-4" />
+              </button>
+              {showOppMenu && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setShowOppMenu(false)} />
+                  <div className="absolute right-0 top-full mt-1.5 w-48 bg-white border border-slate-200 rounded-lg shadow-lg z-20 py-1">
+                    <button
+                      onClick={() => {
+                        setShowOppMenu(false);
+                        setDeleteTarget({ type: 'opportunity', id: opp.id, label: opp.name });
+                      }}
+                      className="w-full text-left px-3.5 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 cursor-pointer transition-colors"
+                    >
+                      Deactivate Opportunity
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           </>
         }
         attributes={[
@@ -591,14 +598,13 @@ export const OpportunityDetailsView: React.FC = () => {
         attributesClassName="grid-cols-2 lg:grid-cols-5"
       />
 
-      {/* Won opportunities are permanently read-only — the backend rejects any
-          further edit once a deal reaches Won, so ongoing work lives in the
-          linked Project instead. */}
       {opp.stage === 'Won' && (
-        <div className="flex items-center gap-3 p-4 rounded-xl border bg-blue-50 border-blue-200">
-          <Info className="w-5 h-5 text-blue-600 shrink-0" aria-hidden="true" />
-          <p className="text-xs text-blue-800 font-semibold">
-            This opportunity has been converted to a project and is now read-only. No further actions can be performed.
+        <div className="flex items-center gap-3 p-4 rounded-xl border bg-emerald-50 border-emerald-200">
+          <Info className="w-5 h-5 text-emerald-600 shrink-0" aria-hidden="true" />
+          <p className="text-xs text-emerald-800 font-semibold">
+            {opp.projectId
+              ? 'This deal was Won and converted to a project. You can view details, open the project, or delete the opportunity.'
+              : 'This deal is Won! Click "Convert to Project" above to convert it into an active project.'}
           </p>
         </div>
       )}
@@ -712,10 +718,17 @@ export const OpportunityDetailsView: React.FC = () => {
                     <label className="text-label font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">Update Stage:</label>
                     <select
                       value={opp.stage}
-                      disabled={opp.stage === 'Won'}
-                      title={opp.stage === 'Won' ? 'This opportunity has been converted to a project and is now read-only. No further actions can be performed.' : undefined}
+                      disabled={!!opp.projectId}
+                      title={opp.projectId ? 'This opportunity has been converted to a project and its stage cannot be changed.' : undefined}
                       onChange={(e) => {
                         const stage = e.target.value as OpportunityStage;
+                        if (opp.projectId && stage !== opp.stage) {
+                          showToast({
+                            kind: 'error',
+                            message: 'This opportunity has been converted to a project and its stage cannot be changed.',
+                          });
+                          return;
+                        }
                         if (stage === 'Won' || stage === 'Lost') {
                           // Winning/losing the deal captures a win/loss reason in the close-out dialog.
                           setCloseReasonDraft(opp.closeReason || '');
@@ -977,7 +990,20 @@ export const OpportunityDetailsView: React.FC = () => {
                 lockedType="CLIENT"
                 onClose={() => setShowMainStakeholderCreateModal(false)}
                 onSubmit={async (draft) => {
-                  const created = await addStakeholder(draft);
+                  const normEmail = (draft.email || '').toLowerCase().trim();
+                  const normName = (draft.name || '').toLowerCase().trim();
+                  const existing = (stakeholders || []).find((s) => {
+                    if (draft.accountId && s.accountId && s.accountId !== draft.accountId) return false;
+                    const sameEmail = normEmail && s.email && s.email.toLowerCase().trim() === normEmail;
+                    const sameName = normName && s.name && s.name.toLowerCase().trim() === normName;
+                    return sameEmail || (!normEmail && sameName);
+                  });
+                  let created = existing;
+                  if (existing) {
+                    showToast({ kind: 'success', message: `Stakeholder "${existing.name}" already exists. Selected existing record.` });
+                  } else {
+                    created = await addStakeholder(draft);
+                  }
                   if (created && created.id) {
                     await updateOpportunity({
                       ...opp,

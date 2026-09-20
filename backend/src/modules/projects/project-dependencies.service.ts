@@ -26,7 +26,7 @@ function rowToDependency(row: any): ProjectDependency {
     ...base,
     projectId: project_id,
     ownerId: owner_id ?? undefined,
-    ownerName: owner_name ?? undefined,
+    ownerName: owner_name || owner_id || undefined,
     dependencyType: dependency_type ?? undefined,
     dependentTask: dependent_task ?? undefined,
     externalParty: external_party ?? undefined,

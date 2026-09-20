@@ -84,8 +84,8 @@ export class AccessScopeService {
     const inner = this.buildAccountVisibility('acc_scope', ctx, startIdx);
     const innerWhere = inner.conditions.length ? ` AND ${inner.conditions.join(' AND ')}` : '';
     const exists =
-      `EXISTS (SELECT 1 FROM accounts acc_scope ` +
-      `WHERE acc_scope.id = ${childAlias}.account_id AND acc_scope.is_deleted = FALSE${innerWhere})`;
+      `(${childAlias}.account_id IS NULL OR EXISTS (SELECT 1 FROM accounts acc_scope ` +
+      `WHERE acc_scope.id = ${childAlias}.account_id AND acc_scope.is_deleted = FALSE${innerWhere}))`;
     return { conditions: [exists], params: inner.params, nextIdx: inner.nextIdx };
   }
 

@@ -3,8 +3,9 @@ import { useCRM } from '@/contexts/CRMContext';
 import { PageHeader, Button, SearchBar, EmptyState, ConfirmDialog } from '@/components/ui';
 import { EmployeeAppreciation } from '@/types';
 import { matchesGlobalAccount } from '@/utils';
-import { HeartHandshake, Plus, Filter, Building2, FolderKanban } from 'lucide-react';
+import { HeartHandshake, Plus, Filter, Building2, FolderKanban, LayoutGrid, Table as TableIcon } from 'lucide-react';
 import { EmployeeAppreciationCard } from './EmployeeAppreciationCard';
+import { EmployeeAppreciationTable } from './EmployeeAppreciationTable';
 import { EmployeeAppreciationFormModal } from './EmployeeAppreciationFormModal';
 
 export const EmployeeAppreciationView: React.FC = () => {
@@ -17,6 +18,7 @@ export const EmployeeAppreciationView: React.FC = () => {
     deleteEmployeeAppreciation,
   } = useCRM();
 
+  const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
   const [search, setSearch] = useState('');
   const [selectedAccountId, setSelectedAccountId] = useState<string>('');
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
@@ -156,50 +158,87 @@ export const EmployeeAppreciationView: React.FC = () => {
           </div>
         </div>
 
-        {/* Source Type Filter Chips */}
-        <div className="flex items-center gap-2 pt-1 border-t border-slate-100 flex-wrap text-xs">
-          <span className="text-slate-400 font-semibold flex items-center gap-1">
-            <Filter className="w-3.5 h-3.5" /> Source:
-          </span>
-          <button
-            onClick={() => setSelectedSourceType('ALL')}
-            className={`px-3 py-1 rounded-full font-bold text-xs transition-all cursor-pointer ${
-              selectedSourceType === 'ALL'
-                ? 'bg-slate-900 text-white'
-                : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-            }`}
-          >
-            All Sources ({employeeAppreciations.length})
-          </button>
-          <button
-            onClick={() => setSelectedSourceType('External')}
-            className={`px-3 py-1 rounded-full font-bold text-xs transition-all cursor-pointer ${
-              selectedSourceType === 'External'
-                ? 'bg-blue-600 text-white'
-                : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
-            }`}
-          >
-            External (Client)
-          </button>
-          <button
-            onClick={() => setSelectedSourceType('Internal')}
-            className={`px-3 py-1 rounded-full font-bold text-xs transition-all cursor-pointer ${
-              selectedSourceType === 'Internal'
-                ? 'bg-purple-600 text-white'
-                : 'bg-purple-50 text-purple-700 hover:bg-purple-100'
-            }`}
-          >
-            Internal (Colleague)
-          </button>
+        {/* Source Type Filter Chips + View Mode Switcher */}
+        <div className="flex items-center justify-between flex-wrap gap-2 pt-1 border-t border-slate-100 text-xs">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-slate-400 font-semibold flex items-center gap-1">
+              <Filter className="w-3.5 h-3.5" /> Source:
+            </span>
+            <button
+              onClick={() => setSelectedSourceType('ALL')}
+              className={`px-3 py-1 rounded-full font-bold text-xs transition-all cursor-pointer ${
+                selectedSourceType === 'ALL'
+                  ? 'bg-slate-900 text-white'
+                  : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+              }`}
+            >
+              All Sources ({employeeAppreciations.length})
+            </button>
+            <button
+              onClick={() => setSelectedSourceType('External')}
+              className={`px-3 py-1 rounded-full font-bold text-xs transition-all cursor-pointer ${
+                selectedSourceType === 'External'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+              }`}
+            >
+              External (Client)
+            </button>
+            <button
+              onClick={() => setSelectedSourceType('Internal')}
+              className={`px-3 py-1 rounded-full font-bold text-xs transition-all cursor-pointer ${
+                selectedSourceType === 'Internal'
+                  ? 'bg-purple-600 text-white'
+                  : 'bg-purple-50 text-purple-700 hover:bg-purple-100'
+              }`}
+            >
+              Internal (Colleague)
+            </button>
+          </div>
+
+          {/* View Mode Toggle */}
+          <div className="inline-flex p-1 bg-slate-100 border border-slate-200/80 rounded-lg">
+            <button
+              type="button"
+              onClick={() => setViewMode('table')}
+              className={`flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-md transition-all cursor-pointer ${
+                viewMode === 'table'
+                  ? 'bg-white text-blue-700 shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <TableIcon className="w-3.5 h-3.5" />
+              <span>Table</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('cards')}
+              className={`flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-md transition-all cursor-pointer ${
+                viewMode === 'cards'
+                  ? 'bg-white text-blue-700 shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+              <span>Cards</span>
+            </button>
+          </div>
         </div>
       </div>
 
-      {/* Cards List Grid */}
+      {/* Main List (Table / Cards) */}
       {filteredItems.length === 0 ? (
         <EmptyState
           icon={<HeartHandshake className="w-8 h-8 text-slate-400" />}
           title="No Employee Appreciation Records Found"
           hint="Log positive feedback and client commendations received for team members."
+        />
+      ) : viewMode === 'table' ? (
+        <EmployeeAppreciationTable
+          items={filteredItems}
+          onEdit={canManage ? handleEdit : undefined}
+          onDelete={canManage ? (i) => setDeletingItem(i) : undefined}
+          canManage={canManage}
         />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">

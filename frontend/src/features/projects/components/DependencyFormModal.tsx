@@ -5,8 +5,9 @@
 
 import React from 'react';
 import { Link2 } from 'lucide-react';
-import type { AdminUser, DependencyStatus, PriorityLevel, ProjectDependency } from '@/types';
+import type { AdminUser, DependencyStatus, PriorityLevel, ProjectDependency, ProjectTeamMember } from '@/types';
 import { PROJECT_DEPENDENCY_TYPE_OPTIONS } from '@/constants';
+import { buildOwnerOptions } from '../utils/ownerUtils';
 import {
   FormField,
   FormGrid,
@@ -40,6 +41,7 @@ export interface DependencyFormModalProps {
   value: DependencyDraft;
   onChange: (patch: Partial<DependencyDraft>) => void;
   users: AdminUser[];
+  teamMembers?: ProjectTeamMember[];
 }
 
 /** Add/edit dialog for a Project's Dependencies tab. */
@@ -53,7 +55,11 @@ export const DependencyFormModal: React.FC<DependencyFormModalProps> = ({
   value,
   onChange,
   users,
-}) => (
+  teamMembers,
+}) => {
+  const { teamOptions, systemOptions } = buildOwnerOptions(users, teamMembers);
+
+  return (
   <FormModal
     isOpen={isOpen}
     title={submitVariant === 'warning' ? 'Edit Dependency' : 'Add Dependency'}
@@ -131,9 +137,24 @@ export const DependencyFormModal: React.FC<DependencyFormModalProps> = ({
               className={SELECT_CLS}
             >
               <option value="">Not assigned</option>
-              {users.map((u) => (
-                <option key={u.id} value={u.id}>{u.name}</option>
-              ))}
+              {teamOptions.length > 0 && (
+                <optgroup label="Project Team Members">
+                  {teamOptions.map((opt, idx) => (
+                    <option key={`team-${opt.value}-${idx}`} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              {systemOptions.length > 0 && (
+                <optgroup label={teamOptions.length > 0 ? 'Other System Users' : 'System Users'}>
+                  {systemOptions.map((opt) => (
+                    <option key={`sys-${opt.value}`} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
             </select>
           </FormField>
           <FormField label="External Party">
@@ -169,3 +190,4 @@ export const DependencyFormModal: React.FC<DependencyFormModalProps> = ({
     </div>
   </FormModal>
 );
+};

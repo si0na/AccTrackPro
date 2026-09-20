@@ -29,13 +29,13 @@ export function useProjectProgress(projectId: string) {
 
   const canUpdate = can('projects', 'update');
 
-  const loadHistory = useCallback(() => {
+  const loadHistory = useCallback((silent = false) => {
     if (!projectId) return;
-    setLoading(true);
+    if (!silent) setLoading(true);
     projectProgressApi.getAllForProject(projectId)
       .then(setHistory)
       .catch(() => setHistory([]))
-      .finally(() => setLoading(false));
+      .finally(() => { if (!silent) setLoading(false); });
   }, [projectId]);
 
   useEffect(() => { loadHistory(); }, [loadHistory]);
@@ -100,7 +100,7 @@ export function useProjectProgress(projectId: string) {
       }
       setIsModalOpen(false);
       setEditingId(null);
-      loadHistory();
+      loadHistory(true);
       await refreshProject(projectId).catch(() => undefined);
     } catch (err: any) {
       setErrorMessage(err?.response?.data?.message || err?.message || 'Failed to save progress update');

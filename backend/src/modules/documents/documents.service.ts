@@ -156,9 +156,6 @@ export class DocumentsService {
         [opportunityId],
       );
       if (!opp.length) throw new BadRequestException('The selected opportunity does not exist');
-      if (opp[0].stage === 'Won') {
-        throw new ConflictException('This opportunity has been converted to a project and is now read-only. No further actions can be performed.');
-      }
       accountId = opp[0].account_id;
     } else {
       if (!accountId) throw new BadRequestException('An accountId or opportunityId is required');
@@ -229,15 +226,6 @@ export class DocumentsService {
 
   async remove(id: string, requestingUserId?: string): Promise<{ success: boolean }> {
     const doc = await this.findOne(id, requestingUserId);
-    if (doc.opportunityId) {
-      const { rows: opp } = await this.db.query(
-        `SELECT stage FROM opportunities WHERE id=$1 AND is_deleted=FALSE`,
-        [doc.opportunityId],
-      );
-      if (opp.length && opp[0].stage === 'Won') {
-        throw new ConflictException('This opportunity has been converted to a project and is now read-only. No further actions can be performed.');
-      }
-    }
     await this.db.query(`DELETE FROM documents WHERE id=$1`, [id]);
     try { await fs.promises.unlink(path.join(UPLOAD_DIR, doc.fileName)); } catch (_) {}
 

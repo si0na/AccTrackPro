@@ -84,8 +84,8 @@ export const RisksView: React.FC = () => {
 
   const activeAccountId = globalAccountId !== 'All' ? globalAccountId : localAccountId;
 
-  const loadData = useCallback(async () => {
-    setLoading(true);
+  const loadData = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const data = await centralRisksApi.getAll({
         source: sourceFilter !== 'All' ? sourceFilter : undefined,
@@ -98,7 +98,7 @@ export const RisksView: React.FC = () => {
     } catch {
       setItems([]);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [sourceFilter, activeAccountId, activeTab, ragFilter, priorityFilter, statusFilter]);
 
@@ -191,7 +191,7 @@ export const RisksView: React.FC = () => {
       } else {
         await accountRisksApi.delete(deleteTarget.sourceId);
       }
-      await loadData();
+      await loadData(true);
     } catch {
       // Handled silently
     } finally {
@@ -670,7 +670,7 @@ export const RisksView: React.FC = () => {
           mode={modalMode}
           risk={targetItem}
           onClose={() => setRiskModalOpen(false)}
-          onSuccess={loadData}
+          onSuccess={() => loadData(true)}
         />
       )}
 
@@ -681,7 +681,7 @@ export const RisksView: React.FC = () => {
           mode={modalMode}
           issue={targetItem}
           onClose={() => setIssueModalOpen(false)}
-          onSuccess={loadData}
+          onSuccess={() => loadData(true)}
         />
       )}
 

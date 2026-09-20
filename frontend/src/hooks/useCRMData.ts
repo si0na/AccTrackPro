@@ -4,6 +4,7 @@ import type {
   CustomColumn, ColumnConfig, FinancialYear, FinancialCalendar, AdminSettings, Project,
   EmployeeAppreciation, EmployeeRewardsRecognition, SqaRecord, NormalizedRisk, PerformanceEvaluation,
 } from '@/types';
+import { showToast } from '@/components/common/ToastHost';
 import type { OwnerFilter } from '@/api/crm.api';
 import {
   accountsApi, opportunitiesApi, actionItemsApi, stakeholdersApi,
@@ -414,6 +415,14 @@ export const useCRMData = (
   };
 
   const updateOpportunity = async (updated: Opportunity): Promise<void> => {
+    const existing = opportunities.find((o) => o.id === updated.id);
+    if (existing?.projectId && updated.stage && updated.stage !== existing.stage) {
+      showToast({
+        kind: 'error',
+        message: 'This opportunity has been converted to a project and its stage cannot be changed.',
+      });
+      return;
+    }
     await opportunitiesApi.update(updated.id, updated);
     const f = buildOwnerFilter(currentUserId);
     const fresh = await opportunitiesApi.getAll(f);
@@ -519,7 +528,12 @@ export const useCRMData = (
   };
 
   const updateActionItem = async (updated: ActionItem): Promise<void> => {
-    const res = await actionItemsApi.update(updated.id, updated);
+    const existing = actionItems.find((a) => a.id === updated.id);
+    const payload: ActionItem = {
+      ...updated,
+      ownerStakeholderId: updated.ownerStakeholderId || existing?.ownerStakeholderId || undefined,
+    };
+    const res = await actionItemsApi.update(updated.id, payload);
     setActionItems((prev) => prev.map((a) => (a.id === updated.id ? res : a)));
     const f = buildOwnerFilter(currentUserId);
     activitiesApi.getAll(f).then(setActivities);

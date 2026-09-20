@@ -60,7 +60,7 @@ function rowToRisk(row: any): ProjectRisk {
     ...base,
     projectId: project_id,
     ownerId: owner_id ?? undefined,
-    ownerName: owner_name ?? undefined,
+    ownerName: owner_name || owner_id || undefined,
     mitigationPlan: mitigation_plan,
     targetResolutionDate: target_resolution_date ?? undefined,
     rag: base.rag ?? undefined,

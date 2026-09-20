@@ -5,7 +5,8 @@
 
 import React from 'react';
 import { AlertOctagon } from 'lucide-react';
-import type { AdminUser, IssueStatus, PriorityLevel, ProjectIssue } from '@/types';
+import type { AdminUser, IssueStatus, PriorityLevel, ProjectIssue, ProjectTeamMember } from '@/types';
+import { buildOwnerOptions } from '../utils/ownerUtils';
 import {
   FormField,
   FormGrid,
@@ -39,6 +40,7 @@ export interface IssueFormModalProps {
   value: IssueDraft;
   onChange: (patch: Partial<IssueDraft>) => void;
   users: AdminUser[];
+  teamMembers?: ProjectTeamMember[];
 }
 
 /** Add/edit dialog for a Project's Issues tab. */
@@ -52,7 +54,11 @@ export const IssueFormModal: React.FC<IssueFormModalProps> = ({
   value,
   onChange,
   users,
-}) => (
+  teamMembers,
+}) => {
+  const { teamOptions, systemOptions } = buildOwnerOptions(users, teamMembers);
+
+  return (
   <FormModal
     isOpen={isOpen}
     title={submitVariant === 'warning' ? 'Edit Issue' : 'Add Issue'}
@@ -108,9 +114,24 @@ export const IssueFormModal: React.FC<IssueFormModalProps> = ({
               className={SELECT_CLS}
             >
               <option value="">Not assigned</option>
-              {users.map((u) => (
-                <option key={u.id} value={u.id}>{u.name}</option>
-              ))}
+              {teamOptions.length > 0 && (
+                <optgroup label="Project Team Members">
+                  {teamOptions.map((opt, idx) => (
+                    <option key={`team-${opt.value}-${idx}`} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              {systemOptions.length > 0 && (
+                <optgroup label={teamOptions.length > 0 ? 'Other System Users' : 'System Users'}>
+                  {systemOptions.map((opt) => (
+                    <option key={`sys-${opt.value}`} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
             </select>
           </FormField>
           <FormField label="Impact">
@@ -165,3 +186,4 @@ export const IssueFormModal: React.FC<IssueFormModalProps> = ({
     </div>
   </FormModal>
 );
+};

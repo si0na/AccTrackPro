@@ -15,6 +15,8 @@ function rowToRewardsRecognition(row: any): EmployeeRewardsRecognition {
     teamOrIndividual: row.team_or_individual,
     employeeId: row.employee_id ?? undefined,
     employeeName: row.employee_name ?? '',
+    teamMembers: row.team_members ?? undefined,
+    teamMemberIds: row.team_member_ids ?? undefined,
     status: row.status,
     details: row.details ?? '',
     createdBy: row.created_by ?? undefined,
@@ -39,11 +41,13 @@ export class EmployeeRewardsRecognitionService {
   }): Promise<EmployeeRewardsRecognition[]> {
     let sql = `
       SELECT r.*,
-             u_nom.name AS resolved_nominated_by_name,
-             u_emp.name AS resolved_employee_name
+             COALESCE(u_nom.name, em_nom.name) AS resolved_nominated_by_name,
+             COALESCE(u_emp.name, em_emp.name) AS resolved_employee_name
       FROM employee_rewards_recognition r
       LEFT JOIN users u_nom ON r.nominated_by_id = u_nom.id
+      LEFT JOIN employee_master em_nom ON r.nominated_by_id = em_nom.id
       LEFT JOIN users u_emp ON r.employee_id = u_emp.id
+      LEFT JOIN employee_master em_emp ON r.employee_id = em_emp.id
       WHERE r.is_deleted = FALSE
     `;
     const values: any[] = [];
@@ -95,11 +99,13 @@ export class EmployeeRewardsRecognitionService {
   async findOne(id: string): Promise<EmployeeRewardsRecognition> {
     const { rows } = await this.db.query(
       `SELECT r.*,
-              u_nom.name AS resolved_nominated_by_name,
-              u_emp.name AS resolved_employee_name
+              COALESCE(u_nom.name, em_nom.name) AS resolved_nominated_by_name,
+              COALESCE(u_emp.name, em_emp.name) AS resolved_employee_name
        FROM employee_rewards_recognition r
        LEFT JOIN users u_nom ON r.nominated_by_id = u_nom.id
+       LEFT JOIN employee_master em_nom ON r.nominated_by_id = em_nom.id
        LEFT JOIN users u_emp ON r.employee_id = u_emp.id
+       LEFT JOIN employee_master em_emp ON r.employee_id = em_emp.id
        WHERE r.id = $1 AND r.is_deleted = FALSE`,
       [id],
     );
@@ -120,7 +126,10 @@ export class EmployeeRewardsRecognitionService {
     // Resolve employee name for individual nominations if employeeId provided
     let empName = dto.employeeName ?? '';
     if (dto.teamOrIndividual === 'Individual' && dto.employeeId) {
-      const { rows: empRows } = await this.db.query(`SELECT name FROM users WHERE id = $1`, [dto.employeeId]);
+      const { rows: empRows } = await this.db.query(
+        `SELECT name FROM users WHERE id = $1 UNION ALL SELECT name FROM employee_master WHERE id = $1 LIMIT 1`,
+        [dto.employeeId],
+      );
       if (empRows.length && empRows[0].name) {
         empName = empRows[0].name;
       }
@@ -132,7 +141,10 @@ export class EmployeeRewardsRecognitionService {
     // Resolve nominated by name if nominatedById provided
     let nomName = dto.nominatedByName;
     if (dto.nominatedById) {
-      const { rows: nomRows } = await this.db.query(`SELECT name FROM users WHERE id = $1`, [dto.nominatedById]);
+      const { rows: nomRows } = await this.db.query(
+        `SELECT name FROM users WHERE id = $1 UNION ALL SELECT name FROM employee_master WHERE id = $1 LIMIT 1`,
+        [dto.nominatedById],
+      );
       if (nomRows.length && nomRows[0].name) {
         nomName = nomRows[0].name;
       }
@@ -141,9 +153,9 @@ export class EmployeeRewardsRecognitionService {
     const { rows } = await this.db.query(
       `INSERT INTO employee_rewards_recognition
          (id, month_of_rr, nominated_by_id, nominated_by_name, type, category,
-          team_or_individual, employee_id, employee_name, status, details, created_by)
+          team_or_individual, employee_id, employee_name, team_members, team_member_ids, status, details, created_by)
        VALUES
-         (gen_random_uuid()::TEXT, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+         (gen_random_uuid()::TEXT, $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
        RETURNING *`,
       [
         dto.monthOfRr.trim(),
@@ -154,6 +166,8 @@ export class EmployeeRewardsRecognitionService {
         dto.teamOrIndividual,
         dto.employeeId ?? null,
         empName ? empName.trim() : null,
+        dto.teamMembers ? dto.teamMembers.trim() : null,
+        dto.teamMemberIds && dto.teamMemberIds.length ? dto.teamMemberIds : null,
         dto.status,
         dto.details.trim(),
         userId ?? null,
@@ -181,7 +195,10 @@ export class EmployeeRewardsRecognitionService {
     if (teamOrIndividual === 'Team') {
       employeeId = undefined;
     } else if (employeeId) {
-      const { rows: empRows } = await this.db.query(`SELECT name FROM users WHERE id = $1`, [employeeId]);
+      const { rows: empRows } = await this.db.query(
+        `SELECT name FROM users WHERE id = $1 UNION ALL SELECT name FROM employee_master WHERE id = $1 LIMIT 1`,
+        [employeeId],
+      );
       if (empRows.length && empRows[0].name) {
         employeeName = empRows[0].name;
       }
@@ -190,11 +207,17 @@ export class EmployeeRewardsRecognitionService {
     let nominatedById = dto.nominatedById !== undefined ? dto.nominatedById : existing.nominatedById;
     let nominatedByName = dto.nominatedByName !== undefined ? dto.nominatedByName : existing.nominatedByName;
     if (nominatedById) {
-      const { rows: nomRows } = await this.db.query(`SELECT name FROM users WHERE id = $1`, [nominatedById]);
+      const { rows: nomRows } = await this.db.query(
+        `SELECT name FROM users WHERE id = $1 UNION ALL SELECT name FROM employee_master WHERE id = $1 LIMIT 1`,
+        [nominatedById],
+      );
       if (nomRows.length && nomRows[0].name) {
         nominatedByName = nomRows[0].name;
       }
     }
+
+    const teamMembers = dto.teamMembers !== undefined ? dto.teamMembers : existing.teamMembers;
+    const teamMemberIds = dto.teamMemberIds !== undefined ? dto.teamMemberIds : existing.teamMemberIds;
 
     await this.db.query(
       `UPDATE employee_rewards_recognition
@@ -206,10 +229,12 @@ export class EmployeeRewardsRecognitionService {
            team_or_individual = $6,
            employee_id = $7,
            employee_name = $8,
-           status = $9,
-           details = $10,
+           team_members = $9,
+           team_member_ids = $10,
+           status = $11,
+           details = $12,
            updated_at = NOW()
-       WHERE id = $11 AND is_deleted = FALSE`,
+       WHERE id = $13 AND is_deleted = FALSE`,
       [
         dto.monthOfRr ? dto.monthOfRr.trim() : existing.monthOfRr,
         nominatedById ?? null,
@@ -219,6 +244,8 @@ export class EmployeeRewardsRecognitionService {
         teamOrIndividual,
         employeeId ?? null,
         employeeName ? employeeName.trim() : null,
+        teamMembers ? teamMembers.trim() : null,
+        teamMemberIds && teamMemberIds.length ? teamMemberIds : null,
         dto.status ?? existing.status,
         dto.details !== undefined ? dto.details.trim() : existing.details,
         id,

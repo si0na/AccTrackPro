@@ -11,6 +11,7 @@ import {
 } from '@/types';
 import { NpsTab } from '@/features/nps/components/NpsTab';
 import { EmployeeAppreciationTab } from '@/features/employee-appreciation/components/EmployeeAppreciationTab';
+import { LoadingState } from '@/components/common/LoadingState';
 import {
   AlertOctagon,
   Briefcase,
@@ -161,6 +162,7 @@ export const ProjectDetailsView: React.FC = () => {
     projectDetailsSourceView,
     setProjectDetailsSourceView,
     setAccountDetailsActiveTab,
+    loading,
   } = useCRM();
 
   // Single RBAC gate for every delete surface on this page — the project itself
@@ -580,11 +582,19 @@ export const ProjectDetailsView: React.FC = () => {
     }
   };
 
+  const displayedActionCols = useMemo(() => {
+    return actionItemsColumnConfig.filter((col) => col.isDisplayed && col.key !== 'opportunityId' && col.key !== 'projectId');
+  }, [actionItemsColumnConfig]);
+
+  if (loading) {
+    return <LoadingState label="Loading project details..." />;
+  }
+
   if (!project || !account) {
     return (
       <Card padding="none">
         <div className="p-8 text-center">
-          <p className="text-slate-400 font-medium">No project selected.</p>
+          <p className="text-slate-400 font-medium">No project selected or project not found.</p>
           <button
             onClick={goBack}
             className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-semibold cursor-pointer"
@@ -601,9 +611,6 @@ export const ProjectDetailsView: React.FC = () => {
   const formatCur = (val: number) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(val);
 
-  const displayedActionCols = useMemo(() => {
-    return actionItemsColumnConfig.filter((col) => col.isDisplayed && col.key !== 'opportunityId' && col.key !== 'projectId');
-  }, [actionItemsColumnConfig]);
   const extraActionColCount = displayedActionCols.filter((col) => !col.isStandard).length;
   const filteredActions = projectActions.filter((item) => {
     const q = aiSearch.trim().toLowerCase();
@@ -1559,6 +1566,7 @@ export const ProjectDetailsView: React.FC = () => {
         value={riskDraft}
         onChange={(patch) => setRiskDraft({ ...riskDraft, ...patch })}
         users={users}
+        teamMembers={team}
       />
 
       {/* Add/Edit Assumption Modal */}
@@ -1572,6 +1580,7 @@ export const ProjectDetailsView: React.FC = () => {
         value={assumptionDraft}
         onChange={(patch) => setAssumptionDraft({ ...assumptionDraft, ...patch })}
         users={users}
+        teamMembers={team}
       />
 
       {/* Add/Edit Issue Modal */}
@@ -1585,6 +1594,7 @@ export const ProjectDetailsView: React.FC = () => {
         value={issueDraft}
         onChange={(patch) => setIssueDraft({ ...issueDraft, ...patch })}
         users={users}
+        teamMembers={team}
       />
 
       {/* Add/Edit Dependency Modal */}
@@ -1598,6 +1608,7 @@ export const ProjectDetailsView: React.FC = () => {
         value={dependencyDraft}
         onChange={(patch) => setDependencyDraft({ ...dependencyDraft, ...patch })}
         users={users}
+        teamMembers={team}
       />
 
       {/* Add Action Item Modal — locked to this project + its account */}

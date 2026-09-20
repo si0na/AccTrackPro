@@ -53,6 +53,8 @@ export const SqaTrackerTab: React.FC<SqaTrackerTabProps> = ({ sqaRecordId, stora
           if (!active) return;
           if (Array.isArray(data)) {
             setSnapshots(data);
+          } else if (data && Array.isArray((data as any).data)) {
+            setSnapshots((data as any).data);
           } else if (data && Array.isArray((data as any).items)) {
             setSnapshots((data as any).items);
           } else {

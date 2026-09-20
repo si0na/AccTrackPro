@@ -13,6 +13,8 @@ import { Account, Opportunity, OpportunityStage, ActionItem, Stakeholder, Stakeh
 import { AccountFormModal } from '@/features/accounts/components/AccountFormModal';
 import { InlineEditModal } from '@/components/InlineEditModal';
 import { DocumentsPanel } from '@/components/documents/DocumentsPanel';
+import { LoadingState } from '@/components/common/LoadingState';
+import { showToast } from '@/components/common/ToastHost';
 import { OpportunityActionsCommentsPanel } from '@/features/opportunities/components/OpportunityActionsCommentsPanel';
 import { OpportunityFormModal } from '@/features/opportunities/components/OpportunityFormModal';
 import { CommentCard } from '@/components/CommentCard';
@@ -152,6 +154,7 @@ export const AccountDetailsView: React.FC = () => {
     setView,
     updateProject,
     deleteProject,
+    loading,
   } = useCRM();
 
   // Find current account
@@ -402,11 +405,21 @@ export const AccountDetailsView: React.FC = () => {
   // Document count surfaced by the shared DocumentsPanel (for the tab label).
   const [docCount, setDocCount] = useState(0);
 
+  // Unified delete confirmation state (documents confirm inside DocumentsPanel)
+  type DeleteType = 'opportunity' | 'actionItem' | 'stakeholder' | 'comment' | 'account';
+  const [deleteTarget, setDeleteTarget] = useState<{ type: DeleteType; id: string; label: string } | null>(null);
+  // Selected Action Item for Quick Panel
+  const [selectedActionItemId, setSelectedActionItemId] = useState<string | null>(null);
+
+  if (loading) {
+    return <LoadingState label="Loading account details..." />;
+  }
+
   if (!account) {
     return (
       <Card padding="none">
         <div className="p-8 text-center">
-          <p className="text-slate-400 font-medium">No account selected.</p>
+          <p className="text-slate-400 font-medium">No account selected or account not found.</p>
           <button onClick={() => setView('accounts')} className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-semibold cursor-pointer">
             Back to Accounts
           </button>
@@ -482,11 +495,7 @@ export const AccountDetailsView: React.FC = () => {
     }
   };
 
-  // Unified delete confirmation state (documents confirm inside DocumentsPanel)
-  type DeleteType = 'opportunity' | 'actionItem' | 'stakeholder' | 'comment' | 'account';
-  const [deleteTarget, setDeleteTarget] = useState<{ type: DeleteType; id: string; label: string } | null>(null);
-  // Selected Action Item for Quick Panel
-  const [selectedActionItemId, setSelectedActionItemId] = useState<string | null>(null);
+  // Handlers for deleting items
 
   const handleConfirmDelete = async () => {
     if (!deleteTarget) return;
@@ -1202,8 +1211,7 @@ export const AccountDetailsView: React.FC = () => {
                                   intent="edit"
                                   label={`Edit opportunity ${opp.name}`}
                                   icon={<Pencil className="w-3.5 h-3.5" />}
-                                  disabled={opp.stage === 'Won'}
-                                  title={opp.stage === 'Won' ? "This opportunity has been converted to a project and is now read-only. No further actions can be performed." : `Edit opportunity ${opp.name}`}
+                                  title={`Edit opportunity ${opp.name}`}
                                   onClick={() => handleEditOppClick(opp)}
                                 />
                               )}
@@ -1212,8 +1220,7 @@ export const AccountDetailsView: React.FC = () => {
                                   intent="delete"
                                   label={`Delete opportunity ${opp.name}`}
                                   icon={<Trash2 className="w-3.5 h-3.5" />}
-                                  disabled={opp.stage === 'Won'}
-                                  title={opp.stage === 'Won' ? "This opportunity has been converted to a project and is now read-only. No further actions can be performed." : `Delete opportunity ${opp.name}`}
+                                  title={`Delete opportunity ${opp.name}`}
                                   onClick={() => handleDeleteOpportunity(opp.id, opp.name)}
                                 />
                               )}
@@ -1607,7 +1614,18 @@ export const AccountDetailsView: React.FC = () => {
                   lockedType="CLIENT"
                   onClose={() => setShowInnerCreateModal(false)}
                   onSubmit={async (draft) => {
-                    await addStakeholder(draft);
+                    const normEmail = (draft.email || '').toLowerCase().trim();
+                    const normName = (draft.name || '').toLowerCase().trim();
+                    const existing = (accountStks || []).find((s) => {
+                      const sameEmail = normEmail && s.email && s.email.toLowerCase().trim() === normEmail;
+                      const sameName = normName && s.name && s.name.toLowerCase().trim() === normName;
+                      return sameEmail || (!normEmail && sameName);
+                    });
+                    if (existing) {
+                      showToast({ kind: 'success', message: `Stakeholder "${existing.name}" already exists. Selected existing record.` });
+                    } else {
+                      await addStakeholder(draft);
+                    }
                     setShowInnerCreateModal(false);
                     setShowAddClientStk(false);
                   }}

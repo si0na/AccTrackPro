@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
-import { usersApi } from '@/api/crm.api';
+import { usersApi, serviceProvidersApi, employeeMasterApi } from '@/api/crm.api';
 import { User, EmployeeRewardsRecognition } from '@/types';
-import { Award, Pencil, User as UserIcon, Calendar, Info } from 'lucide-react';
+import { Award, Pencil } from 'lucide-react';
 import {
   FormGrid,
   FormModal,
@@ -12,6 +12,7 @@ import {
   INPUT_CLS_AMBER,
   SELECT_CLS,
 } from '@/components/ui';
+import { MultiEmployeePicker } from '@/components/MultiEmployeePicker';
 import {
   REWARDS_RECOGNITION_TYPE_OPTIONS,
   REWARDS_RECOGNITION_TEAM_OR_INDIVIDUAL_OPTIONS,
@@ -42,13 +43,65 @@ export const EmployeeRewardsRecognitionFormModal: React.FC<EmployeeRewardsRecogn
   onSubmit,
 }) => {
   const isEdit = mode === 'edit';
-  const { currentUser } = useCRM();
+  const { currentUser, serviceProviders: contextServiceProviders } = useCRM();
 
   const [users, setUsers] = useState<User[]>([]);
+  const [fetchedSpUsers, setFetchedSpUsers] = useState<any[]>([]);
+  const [fetchedEmpMaster, setFetchedEmpMaster] = useState<any[]>([]);
+
   useEffect(() => {
     if (!isOpen) return;
     usersApi.getAll().then(setUsers).catch(() => setUsers([]));
+    serviceProvidersApi.getAll().then(setFetchedSpUsers).catch(() => setFetchedSpUsers([]));
+    employeeMasterApi.getAll().then(setFetchedEmpMaster).catch(() => setFetchedEmpMaster([]));
   }, [isOpen]);
+
+  // Connect system employee options to serviceProviders, employeeMaster & users lists
+  const spUsers = useMemo(() => {
+    const list: Array<{ id: string; name: string; email: string; role: string; department: string }> = [];
+    const seenIds = new Set<string>();
+    const seenKeys = new Set<string>();
+
+    const addCandidate = (item: any) => {
+      if (!item) return;
+      const resolvedName = (item.name || item.fullName || item.displayName || item.email || '').trim();
+      if (!resolvedName) return;
+
+      const email = (item.email || '').trim().toLowerCase();
+      const nameKey = resolvedName.toLowerCase();
+      const primaryKey = email || nameKey;
+      const id = item.id || primaryKey;
+
+      if (seenIds.has(id) || seenKeys.has(primaryKey) || seenKeys.has(nameKey)) return;
+
+      seenIds.add(id);
+      if (email) seenKeys.add(email);
+      seenKeys.add(nameKey);
+
+      list.push({
+        id,
+        name: resolvedName,
+        email: item.email || '',
+        role: item.designation || item.role || item.department || '',
+        department: item.department || '',
+      });
+    };
+
+    if (contextServiceProviders && contextServiceProviders.length > 0) {
+      contextServiceProviders.forEach(addCandidate);
+    }
+    if (fetchedSpUsers && fetchedSpUsers.length > 0) {
+      fetchedSpUsers.forEach(addCandidate);
+    }
+    if (fetchedEmpMaster && fetchedEmpMaster.length > 0) {
+      fetchedEmpMaster.forEach(addCandidate);
+    }
+    if (users && users.length > 0) {
+      users.forEach(addCandidate);
+    }
+
+    return list;
+  }, [contextServiceProviders, fetchedSpUsers, fetchedEmpMaster, users]);
 
   const [monthOfRr, setMonthOfRr] = useState<string>(getCurrentMonthYearISO());
   const [nominatedById, setNominatedById] = useState<string>('');
@@ -58,6 +111,8 @@ export const EmployeeRewardsRecognitionFormModal: React.FC<EmployeeRewardsRecogn
   const [teamOrIndividual, setTeamOrIndividual] = useState<string>('Individual');
   const [employeeId, setEmployeeId] = useState<string>('');
   const [employeeName, setEmployeeName] = useState<string>('');
+  const [teamMembers, setTeamMembers] = useState<string>('');
+  const [teamMemberIds, setTeamMemberIds] = useState<string[]>([]);
   const [status, setStatus] = useState<string>('Nominated - Not Won');
   const [details, setDetails] = useState<string>('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -73,12 +128,14 @@ export const EmployeeRewardsRecognitionFormModal: React.FC<EmployeeRewardsRecogn
     if (isEdit && initialData) {
       setMonthOfRr(initialData.monthOfRr || getCurrentMonthYearISO());
       setNominatedById(initialData.nominatedById || '');
-      setNominatedByName(initialData.nominatedByName || '');
+      setNominatedByName(initialData.nominatedByName || currentUser || '');
       setType(initialData.type || 'Continous');
       setCategory(initialData.category || '');
       setTeamOrIndividual(initialData.teamOrIndividual || 'Individual');
       setEmployeeId(initialData.employeeId || '');
       setEmployeeName(initialData.employeeName || '');
+      setTeamMembers(initialData.teamMembers || '');
+      setTeamMemberIds(initialData.teamMemberIds || []);
       setStatus(initialData.status || 'Nominated - Not Won');
       setDetails(initialData.details || '');
     } else {
@@ -90,6 +147,8 @@ export const EmployeeRewardsRecognitionFormModal: React.FC<EmployeeRewardsRecogn
       setTeamOrIndividual('Individual');
       setEmployeeId('');
       setEmployeeName('');
+      setTeamMembers('');
+      setTeamMemberIds([]);
       setStatus('Nominated - Not Won');
       setDetails('');
     }
@@ -112,35 +171,42 @@ export const EmployeeRewardsRecognitionFormModal: React.FC<EmployeeRewardsRecogn
     if (!monthOfRr.trim() || !type || !category || !teamOrIndividual || !status || !details.trim()) {
       return;
     }
-    if (teamOrIndividual === 'Individual' && !employeeName.trim() && !employeeId) {
-      return;
+
+    let resolvedNominatedByName = nominatedByName.trim();
+    if (nominatedById) {
+      const found = spUsers.find(u => u.id === nominatedById);
+      if (found) resolvedNominatedByName = found.name;
+    }
+    if (!resolvedNominatedByName) {
+      resolvedNominatedByName = currentUser || 'Nominator';
+    }
+
+    let resolvedEmployeeName = employeeName.trim();
+    if (teamOrIndividual === 'Individual') {
+      if (employeeId) {
+        const found = spUsers.find(u => u.id === employeeId);
+        if (found) resolvedEmployeeName = found.name;
+      }
+      if (!resolvedEmployeeName) return; // Individual requires employee name
+    } else if (teamOrIndividual === 'Team' && !resolvedEmployeeName) {
+      resolvedEmployeeName = 'Team Nomination';
     }
 
     setIsSubmitting(true);
     try {
-      let resolvedNominatedByName = nominatedByName;
-      if (nominatedById) {
-        const found = users.find(u => u.id === nominatedById);
-        if (found) resolvedNominatedByName = found.name;
-      }
-
-      let resolvedEmployeeName = employeeName;
-      if (teamOrIndividual === 'Individual' && employeeId) {
-        const found = users.find(u => u.id === employeeId);
-        if (found) resolvedEmployeeName = found.name;
-      }
-
       await onSubmit({
         monthOfRr,
         nominatedById: nominatedById || undefined,
-        nominatedByName: resolvedNominatedByName || currentUser,
+        nominatedByName: resolvedNominatedByName,
         type: type as any,
         category,
         teamOrIndividual: teamOrIndividual as any,
         employeeId: teamOrIndividual === 'Individual' ? (employeeId || undefined) : undefined,
-        employeeName: teamOrIndividual === 'Individual' ? resolvedEmployeeName : 'Team',
+        employeeName: resolvedEmployeeName,
+        teamMembers: teamOrIndividual === 'Team' ? (teamMembers.trim() || undefined) : undefined,
+        teamMemberIds: teamOrIndividual === 'Team' ? (teamMemberIds.length ? teamMemberIds : undefined) : undefined,
         status: status as any,
-        details,
+        details: details.trim(),
       });
       onClose();
     } catch {
@@ -188,15 +254,15 @@ export const EmployeeRewardsRecognitionFormModal: React.FC<EmployeeRewardsRecogn
                 onChange={(e) => {
                   const id = e.target.value;
                   setNominatedById(id);
-                  const selUser = users.find(u => u.id === id);
+                  const selUser = spUsers.find(u => u.id === id);
                   if (selUser) setNominatedByName(selUser.name);
                 }}
                 className={selectCls}
               >
                 <option value="">{nominatedByName ? `Current: ${nominatedByName}` : 'Select Nominator...'}</option>
-                {users.map((u) => (
+                {spUsers.map((u) => (
                   <option key={u.id} value={u.id}>
-                    {u.name} ({u.role || u.email})
+                    {u.name} {u.role ? `(${u.role})` : u.email ? `(${u.email})` : ''}
                   </option>
                 ))}
               </select>
@@ -250,9 +316,9 @@ export const EmployeeRewardsRecognitionFormModal: React.FC<EmployeeRewardsRecogn
                 onChange={(e) => {
                   const val = e.target.value;
                   setTeamOrIndividual(val);
-                  if (val === 'Team') {
+                  if (val === 'Team' && (!employeeName || employeeName === 'Individual')) {
                     setEmployeeId('');
-                    setEmployeeName('Team');
+                    setEmployeeName('Team Nomination');
                   }
                 }}
                 className={selectCls}
@@ -273,21 +339,21 @@ export const EmployeeRewardsRecognitionFormModal: React.FC<EmployeeRewardsRecogn
                   onChange={(e) => {
                     const id = e.target.value;
                     setEmployeeId(id);
-                    const found = users.find(u => u.id === id);
+                    const found = spUsers.find(u => u.id === id);
                     if (found) setEmployeeName(found.name);
                   }}
                   className={selectCls}
                 >
                   <option value="">Select Employee...</option>
-                  {users.map((u) => (
+                  {spUsers.map((u) => (
                     <option key={u.id} value={u.id}>
-                      {u.name} ({u.department || u.role || u.email})
+                      {u.name} {u.role ? `(${u.role})` : u.email ? `(${u.email})` : ''}
                     </option>
                   ))}
                 </select>
               </FormField>
             ) : (
-              <FormField label="Target Team">
+              <FormField label="Target Team Name">
                 <input
                   type="text"
                   value={employeeName}
@@ -312,6 +378,22 @@ export const EmployeeRewardsRecognitionFormModal: React.FC<EmployeeRewardsRecogn
                 ))}
               </select>
             </FormField>
+
+            {/* Single Team Members Field connected to employee list */}
+            {teamOrIndividual === 'Team' && (
+              <div className="sm:col-span-full">
+                <FormField label="Team Members" wide>
+                  <MultiEmployeePicker
+                    users={spUsers}
+                    selectedIds={teamMemberIds}
+                    onChangeIds={setTeamMemberIds}
+                    valueText={teamMembers}
+                    onChangeText={setTeamMembers}
+                    placeholder="Search or select employee names to add..."
+                  />
+                </FormField>
+              </div>
+            )}
           </FormGrid>
         </FormSection>
 

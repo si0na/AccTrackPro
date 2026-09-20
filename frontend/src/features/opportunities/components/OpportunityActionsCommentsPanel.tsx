@@ -98,7 +98,7 @@ export const OpportunityActionsCommentsPanel: React.FC<PanelProps> = ({ opportun
 
   // Target opportunity & account
   const opp = opportunities.find(o => o.id === opportunityId);
-  const isWon = opp?.stage === 'Won';
+  const isWon = false;
   const account = opp ? accounts.find(a => a.id === opp.accountId) : null;
   const linkedProject = opp ? projects.find(p => p.opportunityId === opp.id) : null;
 

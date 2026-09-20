@@ -7,6 +7,7 @@ import React from 'react';
 import { TrendingUp } from 'lucide-react';
 import type { Account, ColumnConfig, CustomColumn, Opportunity, OpportunityStage, Stakeholder } from '@/types';
 import { OPPORTUNITY_STAGE_OPTIONS, stageChangePatch, LOCATION_OPTIONS } from '@/constants';
+import { showToast } from '@/components/common/ToastHost';
 import { NumberInput } from '@/components/NumberInput';
 import { AopYearFields } from '@/components/AopYearFields';
 import { StakeholderAssignmentFields } from '@/components/StakeholderAssignmentFields';
@@ -121,8 +122,20 @@ export const OpportunityFormModal: React.FC<OpportunityFormModalProps> = ({
               <select
                 required
                 value={value.stage ?? ''}
-                onChange={(e) => onChange(stageChangePatch(e.target.value as OpportunityStage))}
-                className={SELECT_CLS}
+                disabled={!!value.projectId}
+                title={value.projectId ? 'This opportunity has been converted to a project and its stage cannot be changed.' : undefined}
+                onChange={(e) => {
+                  const newStage = e.target.value as OpportunityStage;
+                  if (value.projectId && newStage !== value.stage) {
+                    showToast({
+                      kind: 'error',
+                      message: 'This opportunity has been converted to a project and its stage cannot be changed.',
+                    });
+                    return;
+                  }
+                  onChange(stageChangePatch(newStage));
+                }}
+                className={`${SELECT_CLS} ${value.projectId ? 'opacity-60 cursor-not-allowed bg-slate-50' : ''}`}
               >
                 <option value="" disabled>— Select —</option>
                 {OPPORTUNITY_STAGE_OPTIONS.map((s) => (

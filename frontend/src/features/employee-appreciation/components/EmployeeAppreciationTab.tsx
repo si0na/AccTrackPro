@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
 import { Button, EmptyState, ConfirmDialog } from '@/components/ui';
 import { EmployeeAppreciation } from '@/types';
-import { HeartHandshake, Plus } from 'lucide-react';
+import { HeartHandshake, Plus, LayoutGrid, Table as TableIcon } from 'lucide-react';
 import { EmployeeAppreciationCard } from './EmployeeAppreciationCard';
+import { EmployeeAppreciationTable } from './EmployeeAppreciationTable';
 import { EmployeeAppreciationFormModal } from './EmployeeAppreciationFormModal';
 
 export interface EmployeeAppreciationTabProps {
@@ -18,6 +19,7 @@ export const EmployeeAppreciationTab: React.FC<EmployeeAppreciationTabProps> = (
 }) => {
   const { employeeAppreciations, can, deleteEmployeeAppreciation } = useCRM();
 
+  const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<EmployeeAppreciation | null>(null);
   const [deletingItem, setDeletingItem] = useState<EmployeeAppreciation | null>(null);
@@ -42,7 +44,7 @@ export const EmployeeAppreciationTab: React.FC<EmployeeAppreciationTabProps> = (
   return (
     <div className="space-y-4">
       {/* Subheader action */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
           <h3 className="font-bold text-slate-800 text-sm flex items-center gap-2">
             <HeartHandshake className="w-4 h-4 text-blue-600" />
@@ -53,28 +55,65 @@ export const EmployeeAppreciationTab: React.FC<EmployeeAppreciationTabProps> = (
           </p>
         </div>
 
-        {canCreate && (
-          <Button
-            variant="primary"
-            size="sm"
-            onClick={() => {
-              setEditingItem(null);
-              setIsModalOpen(true);
-            }}
-            className="gap-1.5"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Log Appreciation</span>
-          </Button>
-        )}
+        <div className="flex items-center gap-3">
+          {/* View Mode Switcher */}
+          <div className="inline-flex p-1 bg-slate-200/70 rounded-lg">
+            <button
+              type="button"
+              onClick={() => setViewMode('table')}
+              className={`flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-md transition-all cursor-pointer ${
+                viewMode === 'table'
+                  ? 'bg-white text-blue-700 shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <TableIcon className="w-3.5 h-3.5" />
+              <span>Table</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('cards')}
+              className={`flex items-center gap-1 px-2.5 py-1 text-xs font-bold rounded-md transition-all cursor-pointer ${
+                viewMode === 'cards'
+                  ? 'bg-white text-blue-700 shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+              <span>Cards</span>
+            </button>
+          </div>
+
+          {canCreate && (
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={() => {
+                setEditingItem(null);
+                setIsModalOpen(true);
+              }}
+              className="gap-1.5"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Log Appreciation</span>
+            </Button>
+          )}
+        </div>
       </div>
 
-      {/* Cards list */}
+      {/* Main Content (Table / Cards) */}
       {items.length === 0 ? (
         <EmptyState
           icon={<HeartHandshake className="w-8 h-8 text-slate-400" />}
           title="No Appreciation Logged"
           hint={`No positive feedback recorded yet for this ${projectId ? 'project' : 'account'}.`}
+        />
+      ) : viewMode === 'table' ? (
+        <EmployeeAppreciationTable
+          items={items}
+          onEdit={canManage ? (i) => { setEditingItem(i); setIsModalOpen(true); } : undefined}
+          onDelete={canManage ? (i) => setDeletingItem(i) : undefined}
+          canManage={canManage}
         />
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

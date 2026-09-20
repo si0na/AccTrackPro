@@ -787,3 +787,4 @@ export const centralRisksApi = {
   getAll: (filters?: { source?: string; accountId?: string; rag?: string; priority?: string; status?: string }) =>
     apiClient.get<NormalizedRisk[]>('/risks/all', { params: filters }).then((r) => r.data),
 };
+

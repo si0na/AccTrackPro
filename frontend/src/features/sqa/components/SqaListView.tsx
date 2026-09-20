@@ -248,39 +248,6 @@ export const SqaListView: React.FC = () => {
 
       {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
 
-      <div className="flex items-center gap-1 border-b border-slate-200">
-        <button
-          onClick={() => setActiveTab('details')}
-          className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold tracking-tight border-b-2 -mb-px transition-colors cursor-pointer ${
-            activeTab === 'details'
-              ? 'border-blue-600 text-blue-700'
-              : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
-          }`}
-        >
-          <BadgeCheck className="w-4 h-4" />
-          <span>SQA Details</span>
-          <span className="ml-1 rounded-full px-2 py-0.5 text-[10px] font-extrabold bg-blue-100 text-blue-700">
-            {records.length}
-          </span>
-        </button>
-        <button
-          onClick={() => setActiveTab('tracker')}
-          className={`flex items-center gap-2 px-4 py-2.5 text-xs font-bold tracking-tight border-b-2 -mb-px transition-colors cursor-pointer ${
-            activeTab === 'tracker'
-              ? 'border-blue-600 text-blue-700'
-              : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'
-          }`}
-        >
-          <History className="w-4 h-4" />
-          <span>SQA Tracker</span>
-        </button>
-      </div>
-
-      {activeTab === 'tracker' ? (
-        <SqaTrackerTab />
-      ) : (
-        <>
-
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
         <SummaryCard
           label="SQA Records"
@@ -513,7 +480,7 @@ export const SqaListView: React.FC = () => {
                               const p = projects.find(proj => proj.id === r.projectId);
                               if (p) {
                                 await updateProject({ ...p, serviceProviderPmId: u.id, serviceProviderPmName: u.name });
-                                await reload();
+                                await reload(true);
                               }
                             }
                           }}
@@ -756,7 +723,7 @@ export const SqaListView: React.FC = () => {
           if (!restoreTarget) return;
           try {
             await restore(restoreTarget.id);
-            await reload();
+            await reload(true);
           } catch (err) {
             setError(sqaErrorMessage(err, 'Failed to restore the SQA record.'));
           } finally {
@@ -765,8 +732,6 @@ export const SqaListView: React.FC = () => {
         }}
         onCancel={() => setRestoreTarget(null)}
       />
-        </>
-      )}
     </div>
   );
 };

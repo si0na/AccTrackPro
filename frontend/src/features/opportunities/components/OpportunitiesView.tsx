@@ -647,16 +647,16 @@ export const OpportunitiesView: React.FC = () => {
                             intent="forecast"
                             label={`Forecast for ${opp.name}`}
                             icon={<LineChart className="w-3.5 h-3.5" />}
-                            disabled={opp.stage === 'Won'}
-                            title={opp.stage === 'Won' ? "This opportunity has been converted to a project and is now read-only. No further actions can be performed." : `Forecast for ${opp.name}`}
+                            title={`Forecast for ${opp.name}`}
                             onClick={() => handleForecastClick(opp.id)}
                           />
-                          {opp.stage === 'Won' ? (
+                          {opp.stage === 'Won' && (
                             opp.projectId ? (
                               <RowActionButton
                                 intent="view"
                                 label={`View project for ${opp.name}`}
                                 icon={<FolderKanban className="w-3.5 h-3.5" />}
+                                title={`View project for ${opp.name}`}
                                 onClick={() => {
                                   setSelectedProjectId(opp.projectId!);
                                   setView('project-details');
@@ -666,12 +666,10 @@ export const OpportunitiesView: React.FC = () => {
                               can('opportunities', 'update') && (
                                 <RowActionButton
                                   intent="edit"
-                                  label={`Create project for ${opp.name}`}
+                                  label={`Convert ${opp.name} to project`}
                                   icon={<FolderKanban className="w-3.5 h-3.5" />}
-                                  disabled={true}
-                                  title="This opportunity has been converted to a project and is now read-only. No further actions can be performed."
+                                  title={`Convert ${opp.name} to project`}
                                   onClick={() => {
-                                    // Open the details view and auto-launch its Create Project modal.
                                     setCreateProjectIntent(true);
                                     setSelectedOpportunityId(opp.id);
                                     setView('opportunity-details');
@@ -679,23 +677,21 @@ export const OpportunitiesView: React.FC = () => {
                                 />
                               )
                             )
-                          ) : (
-                            can('opportunities', 'update') && (
-                              <RowActionButton
-                                intent="edit"
-                                label={`Edit opportunity ${opp.name}`}
-                                icon={<Pencil className="w-3.5 h-3.5" />}
-                                onClick={() => handleEditClick(opp)}
-                              />
-                            )
+                          )}
+                          {can('opportunities', 'update') && (
+                            <RowActionButton
+                              intent="edit"
+                              label={`Edit opportunity ${opp.name}`}
+                              icon={<Pencil className="w-3.5 h-3.5" />}
+                              onClick={() => handleEditClick(opp)}
+                            />
                           )}
                           {can('opportunities', 'delete') && (
                             <RowActionButton
                               intent="delete"
                               label={`Delete opportunity ${opp.name}`}
                               icon={<Trash2 className="w-3.5 h-3.5" />}
-                              disabled={opp.stage === 'Won'}
-                              title={opp.stage === 'Won' ? "This opportunity has been converted to a project and is now read-only. No further actions can be performed." : `Delete opportunity ${opp.name}`}
+                              title={`Delete opportunity ${opp.name}`}
                               onClick={() => setDeleteTarget({ id: opp.id, label: opp.name })}
                             />
                           )}

@@ -27,6 +27,7 @@ import {
   HeartHandshake,
   Award,
   AlertTriangle,
+  Layers,
   LogOut,
   Menu
 } from 'lucide-react';
