@@ -1,7 +1,4 @@
-import {
-  Controller, Get, Post, Put, Delete,
-  Body, Param, Query, Req,
-} from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, Req } from '@nestjs/common';
 import { EmployeeAppreciationService } from './employee-appreciation.service';
 import { CreateEmployeeAppreciationDto, UpdateEmployeeAppreciationDto } from './dto/employee-appreciation.dto';
 import { RequirePermission } from '../rbac/require-permission.decorator';
@@ -34,13 +31,13 @@ export class EmployeeAppreciationController {
     return this.service.create(dto, userId);
   }
 
-  @Put(':id')
+  @Post(':id/update')
   @RequirePermission('employeeAppreciation', 'update')
   update(@Param('id') id: string, @Body() dto: UpdateEmployeeAppreciationDto) {
     return this.service.update(id, dto);
   }
 
-  @Delete(':id')
+  @Post(':id/delete')
   @RequirePermission('employeeAppreciation', 'delete')
   remove(@Param('id') id: string) {
     return this.service.remove(id);

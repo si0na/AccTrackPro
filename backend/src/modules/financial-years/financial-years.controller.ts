@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Body, Param, Req, HttpCode } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Req, HttpCode } from '@nestjs/common';
 import { FinancialYearsService } from './financial-years.service';
 import { CreateFinancialYearDto } from './dto/financial-year.dto';
 import { UpdateFinancialCalendarDto } from '../administration/dto/administration.dto';
@@ -19,17 +19,17 @@ export class FinancialYearsController {
     return this.service.create(body, userId);
   }
 
-  @Patch(':id/activate')
+  @Post(':id/activate')
   activate(@Param('id') id: string) {
     return this.service.activate(id);
   }
 
-  @Patch(':id/deactivate')
+  @Post(':id/deactivate')
   deactivate(@Param('id') id: string) {
     return this.service.deactivate(id);
   }
 
-  @Patch(':id/calendar')
+  @Post(':id/calendar')
   updateCalendar(@Param('id') id: string, @Body() body: UpdateFinancialCalendarDto) {
     return this.service.updateCalendar(id, body);
   }

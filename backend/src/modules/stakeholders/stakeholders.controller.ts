@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, HttpCode, HttpStatus } from '@nestjs/common';
 import { StakeholdersService } from './stakeholders.service';
 import { CreateStakeholderDto, UpdateStakeholderDto } from './dto/stakeholder.dto';
 import { AuthUser, JwtPayload } from '../auth/auth-user.decorator';
@@ -30,7 +30,7 @@ export class StakeholdersController {
     return this.service.create(body, authUser.sub);
   }
 
-  @Put(':id')
+  @Post(':id/update')
   @RequirePermission('stakeholders', 'update')
   update(
     @Param('id') id: string,
@@ -40,7 +40,7 @@ export class StakeholdersController {
     return this.service.update(id, body, authUser.sub);
   }
 
-  @Delete(':id')
+  @Post(':id/delete')
   @RequirePermission('stakeholders', 'delete')
   @HttpCode(HttpStatus.OK)
   remove(@Param('id') id: string, @AuthUser() authUser: JwtPayload) {

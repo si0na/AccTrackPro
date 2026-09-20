@@ -1,6 +1,4 @@
-import {
-  Controller, Get, Post, Put, Body, Param, HttpCode, HttpStatus,
-} from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, HttpCode, HttpStatus } from '@nestjs/common';
 import { ProjectProgressService } from './project-progress.service';
 import { CreateProjectProgressDto, UpdateProjectProgressDto } from './dto/project-progress.dto';
 import { AuthUser, JwtPayload } from '../auth/auth-user.decorator';
@@ -27,7 +25,7 @@ export class ProjectProgressController {
     return this.progressService.create(projectId, body, authUser.sub);
   }
 
-  @Put(':id')
+  @Post(':projectId/update')
   @RequirePermission('projects', 'update')
   update(
     @Param('projectId') projectId: string,

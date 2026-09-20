@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Put, Post } from '@nestjs/common';
+import { Body, Controller, Get, Post } from '@nestjs/common';
 import { ServiceProviderService } from './service-provider.service';
 import { UpdateServiceProviderProfileDto } from './dto/service-provider-profile.dto';
 import { AuthUser, JwtPayload } from '../auth/auth-user.decorator';
@@ -27,7 +27,7 @@ export class ServiceProviderController {
     return this.service.getMine(authUser.sub);
   }
 
-  @Put('service-provider-profile/me')
+  @Post('service-provider-profile/me')
   updateMine(
     @Body() body: UpdateServiceProviderProfileDto,
     @AuthUser() authUser: JwtPayload,

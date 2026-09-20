@@ -1,7 +1,4 @@
-import {
-  Controller, Get, Post, Put, Delete,
-  Body, Param, HttpCode, HttpStatus,
-} from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, HttpCode, HttpStatus } from '@nestjs/common';
 import { ProjectIssuesService } from './project-issues.service';
 import { CreateProjectIssueDto, UpdateProjectIssueDto } from './dto/project-issues.dto';
 import { AuthUser, JwtPayload } from '../auth/auth-user.decorator';
@@ -28,7 +25,7 @@ export class ProjectIssuesController {
     return this.issuesService.create(projectId, body, authUser.sub);
   }
 
-  @Put(':id')
+  @Post(':projectId/update')
   @RequirePermission('projects', 'update')
   update(
     @Param('projectId') projectId: string,
@@ -39,7 +36,7 @@ export class ProjectIssuesController {
     return this.issuesService.update(projectId, id, body, authUser.sub);
   }
 
-  @Delete(':id')
+  @Post(':projectId/delete')
   @RequirePermission('projects', 'delete')
   @HttpCode(HttpStatus.OK)
   remove(

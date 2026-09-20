@@ -1,6 +1,4 @@
-import {
-  Controller, Get, Post, Put, Delete, Body, Param, HttpCode, HttpStatus,
-} from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, HttpCode, HttpStatus } from '@nestjs/common';
 import { PermissionsService } from './permissions.service';
 import { RequirePermission } from './require-permission.decorator';
 import { AuthUser, JwtPayload } from '../auth/auth-user.decorator';
@@ -24,7 +22,7 @@ export class RbacController {
     return this.permissions.getMatrix();
   }
 
-  @Put('matrix')
+  @Post('matrix')
   @RequirePermission('administration', 'manage')
   updateMatrix(@Body() dto: UpdateMatrixDto, @AuthUser() user: JwtPayload) {
     return this.permissions.updateMatrix(dto.changes, user.sub);
@@ -43,13 +41,13 @@ export class RbacController {
     return this.permissions.createRole(dto, user.sub);
   }
 
-  @Put('roles/:id')
+  @Post('roles/:id/update')
   @RequirePermission('administration', 'manage')
   updateRole(@Param('id') id: string, @Body() dto: UpdateRoleDto, @AuthUser() user: JwtPayload) {
     return this.permissions.updateRole(id, dto, user.sub);
   }
 
-  @Delete('roles/:id')
+  @Post('roles/:id/delete')
   @HttpCode(HttpStatus.OK)
   @RequirePermission('administration', 'manage')
   deleteRole(@Param('id') id: string, @AuthUser() user: JwtPayload) {

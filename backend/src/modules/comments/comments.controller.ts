@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Patch, Delete, Body, Param, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, HttpCode, HttpStatus } from '@nestjs/common';
 import { CommentsService } from './comments.service';
 import { CreateCommentDto, UpdateCommentDto } from './dto/comment.dto';
 import { AuthUser, JwtPayload } from '../auth/auth-user.decorator';
@@ -25,13 +25,13 @@ export class CommentsController {
     });
   }
 
-  @Patch(':id')
+  @Post(':id/update')
   @HttpCode(HttpStatus.OK)
   update(@Param('id') id: string, @Body() body: UpdateCommentDto, @AuthUser() authUser: JwtPayload) {
     return this.service.update(id, body.text, authUser.sub);
   }
 
-  @Delete(':id')
+  @Post(':id/delete')
   @HttpCode(HttpStatus.OK)
   remove(@Param('id') id: string, @AuthUser() authUser: JwtPayload) {
     return this.service.remove(id, authUser.sub);

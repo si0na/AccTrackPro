@@ -1,6 +1,4 @@
-import {
-  Controller, Post, Get, Put, Body, Req, Res, HttpCode, HttpStatus,
-} from '@nestjs/common';
+import { Controller, Post, Get, Body, Req, Res, HttpCode, HttpStatus } from '@nestjs/common';
 import { Request as ExpressRequest, Response as ExpressResponse } from 'express';
 import { Throttle, SkipThrottle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
@@ -100,7 +98,7 @@ export class AuthController {
 
   // PUT /api/auth/me/avatar  — protected
   @SkipThrottle()
-  @Put('me/avatar')
+  @Post('me/avatar')
   updateAvatar(@Req() req: any, @Body() body: { avatarData: string }) {
     return this.authService.updateAvatar(req.user.sub, body.avatarData);
   }

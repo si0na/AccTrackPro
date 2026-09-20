@@ -1,7 +1,4 @@
-import {
-  Controller, Get, Post, Put, Delete,
-  Body, Param, HttpCode, HttpStatus,
-} from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, HttpCode, HttpStatus } from '@nestjs/common';
 import { ProjectRisksService } from './project-risks.service';
 import { CreateProjectRiskDto, UpdateProjectRiskDto } from './dto/project-risks.dto';
 import { AuthUser, JwtPayload } from '../auth/auth-user.decorator';
@@ -28,7 +25,7 @@ export class ProjectRisksController {
     return this.risksService.create(projectId, body, authUser.sub);
   }
 
-  @Put(':id')
+  @Post(':projectId/update')
   @RequirePermission('projects', 'update')
   update(
     @Param('projectId') projectId: string,
@@ -39,7 +36,7 @@ export class ProjectRisksController {
     return this.risksService.update(projectId, id, body, authUser.sub);
   }
 
-  @Delete(':id')
+  @Post(':projectId/delete')
   @RequirePermission('projects', 'delete')
   @HttpCode(HttpStatus.OK)
   remove(

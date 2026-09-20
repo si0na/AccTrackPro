@@ -1,7 +1,4 @@
-import {
-  Controller, Get, Post, Put, Delete,
-  Body, Param, Query,
-} from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
 import { NpsService } from './nps.service';
 import { CreateNpsDto, UpdateNpsDto } from './dto/nps.dto';
 import { RequirePermission } from '../rbac/require-permission.decorator';
@@ -31,13 +28,13 @@ export class NpsController {
     return this.npsService.create(dto);
   }
 
-  @Put(':id')
+  @Post(':id/update')
   @RequirePermission('accounts', 'update')
   update(@Param('id') id: string, @Body() dto: UpdateNpsDto) {
     return this.npsService.update(id, dto);
   }
 
-  @Delete(':id')
+  @Post(':id/delete')
   @RequirePermission('accounts', 'delete')
   remove(@Param('id') id: string) {
     return this.npsService.remove(id);

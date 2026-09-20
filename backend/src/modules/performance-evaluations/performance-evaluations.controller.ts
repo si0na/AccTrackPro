@@ -1,7 +1,4 @@
-import {
-  Controller, Get, Post, Put, Delete,
-  Body, Param, Req, HttpCode, HttpStatus,
-} from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Req, HttpCode, HttpStatus } from '@nestjs/common';
 import { PerformanceEvaluationsService } from './performance-evaluations.service';
 import { CreatePerformanceEvaluationDto, UpdatePerformanceEvaluationDto } from './dto/performance-evaluation.dto';
 import { AuthUser, JwtPayload } from '../auth/auth-user.decorator';
@@ -44,7 +41,7 @@ export class PerformanceEvaluationsController {
     return this.service.create(fullData, authUser.sub);
   }
 
-  @Put(':id')
+  @Post(':id/update')
   @RequirePermission('performance', 'update')
   update(
     @Param('id') id: string,
@@ -56,7 +53,7 @@ export class PerformanceEvaluationsController {
     return this.service.update(id, fullData, authUser.sub);
   }
 
-  @Delete(':id')
+  @Post(':id/delete')
   @RequirePermission('performance', 'delete')
   @HttpCode(HttpStatus.OK)
   remove(@Param('id') id: string, @AuthUser() authUser: JwtPayload) {

@@ -1,4 +1,4 @@
-import { Controller, Get, Patch, Delete, Param, Query, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Param, Query, HttpCode, HttpStatus, Post } from '@nestjs/common';
 import { NotificationsService } from './notifications.service';
 import { AuthUser, JwtPayload } from '../auth/auth-user.decorator';
 import { parsePagination } from '../../common/utils/pagination.util';
@@ -31,25 +31,25 @@ export class NotificationsController {
     return { count };
   }
 
-  @Patch(':id/read')
+  @Post(':id/read')
   @HttpCode(HttpStatus.OK)
   markRead(@Param('id') id: string, @AuthUser() authUser: JwtPayload) {
     return this.notificationsService.markRead(id, authUser.sub);
   }
 
-  @Patch('read-all')
+  @Post('read-all')
   @HttpCode(HttpStatus.OK)
   markAllRead(@AuthUser() authUser: JwtPayload) {
     return this.notificationsService.markAllRead(authUser.sub);
   }
 
-  @Delete('clear-read')
+  @Post('clear-read')
   @HttpCode(HttpStatus.OK)
   clearRead(@AuthUser() authUser: JwtPayload) {
     return this.notificationsService.clearRead(authUser.sub);
   }
 
-  @Delete(':id')
+  @Post(':id/delete')
   @HttpCode(HttpStatus.OK)
   remove(@Param('id') id: string, @AuthUser() authUser: JwtPayload) {
     return this.notificationsService.remove(id, authUser.sub);
