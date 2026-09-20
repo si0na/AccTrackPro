@@ -738,6 +738,8 @@ export interface EmployeeRewardsRecognition {
   teamOrIndividual: RewardsRecognitionTeamOrIndividual;
   employeeId?: string;
   employeeName?: string;
+  teamMembers?: string;
+  teamMemberIds?: string[];
   status: RewardsRecognitionStatus;
   details: string;
   createdBy?: string;

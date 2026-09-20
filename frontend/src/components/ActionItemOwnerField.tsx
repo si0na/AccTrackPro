@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Plus, Search, Info, User, X, ChevronDown } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
+import { showToast } from '@/components/common/ToastHost';
 import { StakeholderFormModal } from '@/features/stakeholders/components/StakeholderFormModal';
 import { useCRM } from '@/contexts/CRMContext';
 import type { Stakeholder } from '@/types';
@@ -174,8 +175,25 @@ export const ActionItemOwnerField: React.FC<ActionItemOwnerFieldProps> = ({
   }, [serviceProviderOptions, query]);
 
   const handleCreated = async (draft: Omit<Stakeholder, 'id'>) => {
+    const normEmail = (draft.email || '').toLowerCase().trim();
+    const normName = (draft.name || '').toLowerCase().trim();
+    const existing = (stakeholders || []).find((s) => {
+      if (draft.accountId && s.accountId && s.accountId !== draft.accountId) return false;
+      const sameEmail = normEmail && s.email && s.email.toLowerCase().trim() === normEmail;
+      const sameName = normName && s.name && s.name.toLowerCase().trim() === normName;
+      return sameEmail || (!normEmail && sameName);
+    });
+    if (existing) {
+      showToast({ kind: 'success', message: `Stakeholder "${existing.name}" already exists. Selected existing record.` });
+      onChange(existing.id);
+      setCreating(false);
+      setPickerOpen(false);
+      return;
+    }
     const created = await addStakeholder(draft);
-    onChange(created.id);
+    if (created?.id) {
+      onChange(created.id);
+    }
     setCreating(false);
     setPickerOpen(false);
   };
@@ -241,11 +259,6 @@ export const ActionItemOwnerField: React.FC<ActionItemOwnerFieldProps> = ({
           {selected?.pendingRegistration && (
             <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-extrabold text-amber-700">
               Pending
-            </span>
-          )}
-          {selected?.designation && (
-            <span className="shrink-0 text-[10px] text-slate-400 font-normal hidden sm:inline">
-              · {selected.designation}
             </span>
           )}
         </span>

@@ -40,8 +40,8 @@ export function useSqaRecords(initialWeeks: number = SQA_DEFAULT_HEALTH_WEEKS) {
   /** Weekly RAG values land in the project health trail, which Projects guards. */
   const canEditWeeklyHealth = canUpdate && can('projects', 'update');
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (silent: boolean = false) => {
+    if (!silent) setLoading(true);
     setError(null);
     try {
       // The window is fetched alongside the records so the column headers can
@@ -57,7 +57,7 @@ export function useSqaRecords(initialWeeks: number = SQA_DEFAULT_HEALTH_WEEKS) {
     } catch (err) {
       setError(sqaErrorMessage(err, 'Failed to load SQA records.'));
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [weeks]);
 

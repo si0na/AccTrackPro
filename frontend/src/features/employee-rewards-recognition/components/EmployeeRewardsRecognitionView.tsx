@@ -359,7 +359,14 @@ export const EmployeeRewardsRecognitionView: React.FC = () => {
                   </TableCell>
 
                   <TableCell className="text-slate-800 text-xs font-semibold">
-                    {item.employeeName || '—'}
+                    <div>
+                      <span>{item.employeeName || '—'}</span>
+                      {item.teamOrIndividual === 'Team' && item.teamMembers && (
+                        <span className="block text-[11px] text-slate-500 font-normal truncate max-w-[200px]" title={item.teamMembers}>
+                          Members: {item.teamMembers}
+                        </span>
+                      )}
+                    </div>
                   </TableCell>
 
                   <TableCell onClick={(e) => e.stopPropagation()}>

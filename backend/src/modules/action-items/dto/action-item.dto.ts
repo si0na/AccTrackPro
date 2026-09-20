@@ -18,8 +18,9 @@ export class CreateActionItemDto {
   @IsString() @IsOptional()
   projectId?: string;
 
-  @IsString() @IsNotEmpty({ message: 'Owner is required' })
-  ownerStakeholderId!: string;
+  @EmptyToUndefined()
+  @IsString() @IsOptional()
+  ownerStakeholderId?: string;
 
   @EmptyToUndefined()
   @IsOptional() @Matches(ISO_DATE_RE, { message: `openDate ${ISO_DATE_MSG}` })
@@ -40,6 +41,19 @@ export class CreateActionItemDto {
   completedDate?: string;
 }
 
-export class UpdateActionItemDto extends CreateActionItemDto {
+export class UpdateActionItemDto {
   @IsString() id!: string;
+
+  @IsString() @IsOptional() @MaxLength(200) title?: string;
+  @IsString() @IsOptional() accountId?: string;
+  @EmptyToUndefined() @IsString() @IsOptional() opportunityId?: string;
+  @EmptyToUndefined() @IsString() @IsOptional() projectId?: string;
+  @EmptyToUndefined() @IsString() @IsOptional() ownerStakeholderId?: string;
+  @EmptyToUndefined() @IsOptional() @Matches(ISO_DATE_RE, { message: `openDate ${ISO_DATE_MSG}` }) openDate?: string;
+  @EmptyToUndefined() @IsOptional() @Matches(ISO_DATE_RE, { message: `dueDate ${ISO_DATE_MSG}` }) dueDate?: string;
+  @IsOptional() @IsIn(['High', 'Medium', 'Low']) priority?: string;
+  @IsOptional() @IsIn(['To Do', 'In Progress', 'Blocked', 'Completed', 'Cancelled']) status?: string;
+  @IsString() @IsOptional() @MaxLength(5000) notes?: string;
+  @IsString() @IsOptional() @MaxLength(5000) risksAndDependencies?: string;
+  @EmptyToUndefined() @IsOptional() @Matches(ISO_DATE_RE, { message: `completedDate ${ISO_DATE_MSG}` }) completedDate?: string;
 }

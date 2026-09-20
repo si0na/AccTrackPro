@@ -263,25 +263,40 @@ export class AccountsService {
       this.logger.log(`Associated client stakeholders [ids=${clientIds.join(',')} accountId=${account.id}]`);
     }
 
-    // Create a new client stakeholder
+    // Create a new client stakeholder if not already existing
     if (data.clientStakeholderDraft) {
       const draft = data.clientStakeholderDraft;
-      await this.db.query(
-        `INSERT INTO stakeholders
-           (id, name, account_id, designation, influence, relationship, email, phone, stakeholder_type, department)
-         VALUES (gen_random_uuid()::TEXT, $1, $2, $3, $4, $5, $6, $7, 'CLIENT', $8)`,
-        [
-          draft.name,
-          account.id,
-          draft.designation || '',
-          draft.influence || 'Medium',
-          draft.relationship || 'Neutral',
-          draft.email || '',
-          draft.phone || '',
-          draft.department || '',
-        ],
+      const draftEmail = draft.email?.trim().toLowerCase();
+      const draftName = draft.name?.trim().toLowerCase();
+
+      const { rows: existingStks } = await this.db.query(
+        `SELECT id FROM stakeholders
+         WHERE account_id = $1 AND is_deleted = FALSE
+           AND (($2::TEXT IS NOT NULL AND LOWER(email) = $2) OR ($2::TEXT IS NULL AND LOWER(name) = $3))
+         LIMIT 1`,
+        [account.id, draftEmail || null, draftName || null],
       );
-      this.logger.log(`Created new client stakeholder [name=${draft.name} accountId=${account.id}]`);
+
+      if (!existingStks.length) {
+        await this.db.query(
+          `INSERT INTO stakeholders
+             (id, name, account_id, designation, influence, relationship, email, phone, stakeholder_type, department)
+           VALUES (gen_random_uuid()::TEXT, $1, $2, $3, $4, $5, $6, $7, 'CLIENT', $8)`,
+          [
+            draft.name,
+            account.id,
+            draft.designation || '',
+            draft.influence || 'Medium',
+            draft.relationship || 'Neutral',
+            draft.email || '',
+            draft.phone || '',
+            draft.department || '',
+          ],
+        );
+        this.logger.log(`Created new client stakeholder [name=${draft.name} accountId=${account.id}]`);
+      } else {
+        this.logger.log(`Skipped duplicate client stakeholder draft creation [name=${draft.name} accountId=${account.id}]`);
+      }
     }
 
     // Resolve and associate selected Service Providers from system users

@@ -117,15 +117,13 @@ export const RolePermissionMatrix: React.FC<RolePermissionMatrixProps> = ({ onPe
       setMatrix(m);
       setRoles(r);
       setCellMap(buildCellMap(m));
-      if (r.length > 0 && !selectedRoleId) {
-        setSelectedRoleId(r[0].id);
-      }
+      setSelectedRoleId((prev) => (prev && r.some((role) => role.id === prev) ? prev : r.length > 0 ? r[0].id : ''));
     } catch (err: unknown) {
       setLoadError(extractError(err, 'Failed to load the permission matrix.'));
     } finally {
       setLoading(false);
     }
-  }, [buildCellMap, selectedRoleId]);
+  }, [buildCellMap]);
 
   useEffect(() => {
     loadAll();

@@ -76,9 +76,6 @@ export class CommentsService {
         [data.targetId],
       );
       if (!r.length) throw new BadRequestException('The record being commented on does not exist');
-      if (r[0].stage === 'Won') {
-        throw new ConflictException('This opportunity has been converted to a project and is now read-only. No further actions can be performed.');
-      }
       targetName = r[0].name; accountId = r[0].account_id;
     } else if (data.targetType === 'actionItem') {
       const { rows: r } = await this.db.query(

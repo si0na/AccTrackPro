@@ -11,6 +11,7 @@ import { Account, AccountType, AccountHealth, User } from '@/types';
 import { Building2, Pencil } from 'lucide-react';
 import { StakeholderFormModal } from '@/features/stakeholders/components/StakeholderFormModal';
 import { MultiStakeholderPicker } from '@/components/MultiStakeholderPicker';
+import { showToast } from '@/components/common/ToastHost';
 import { getCustomerSinceYearOptions, serviceProviderOptionLabel } from '@/utils';
 import { ACCOUNT_TYPE_OPTIONS, ACCOUNT_HEALTH_OPTIONS, LOCATION_OPTIONS, TOWER_OPTIONS } from '@/constants';
 import {
@@ -384,6 +385,7 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
               <InlineCreateField
                 label="Client Stakeholders"
                 createLabel="client stakeholder"
+                createDisabledReason={!draft.name?.trim() ? 'Please enter an account name first' : undefined}
                 onCreate={() => setShowAddClientModal(true)}
               >
                 <MultiStakeholderPicker
@@ -399,23 +401,45 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
         </div>
       </FormModal>
 
-      {showAddClientModal &&
-        createPortal(
-          <StakeholderFormModal
-            isOpen={true}
-            mode="create"
-            accounts={[]}
-            lockedAccount={{ id: account?.id ?? '', name: draft.name || 'Account' }}
-            lockedType="CLIENT"
-            onClose={() => setShowAddClientModal(false)}
-            onSubmit={async (stkDraft) => {
-              const created = await addStakeholder({ ...stkDraft, accountId: account?.id ?? '' });
-              setSelectedClientStakeholderIds((ids) => [...ids, created.id]);
-              setShowAddClientModal(false);
-            }}
-          />,
-          document.body,
-        )}
+{showAddClientModal &&
+  createPortal(
+    <StakeholderFormModal
+      isOpen={true}
+      mode="create"
+      accounts={[]}
+      lockedAccount={{ id: account?.id || '', name: draft.name || 'Account' }}
+      lockedType="CLIENT"
+      onClose={() => setShowAddClientModal(false)}
+      onSubmit={async (stkDraft) => {
+        const normEmail = stkDraft.email?.trim().toLowerCase();
+        const normName = stkDraft.name?.trim().toLowerCase();
+
+        const existing = (stakeholders || []).find((s) => {
+          if (s.stakeholderType !== 'CLIENT') return false;
+          if (normEmail && s.email && s.email.trim().toLowerCase() === normEmail) return true;
+          if (!normEmail && normName && s.name.trim().toLowerCase() === normName) return true;
+          return false;
+        });
+
+        if (existing) {
+          if (!selectedClientStakeholderIds.includes(existing.id)) {
+            setSelectedClientStakeholderIds((ids) => [...ids, existing.id]);
+          }
+          showToast({ kind: 'success', message: `Stakeholder "${existing.name}" already exists. Selected existing record.` });
+          setShowAddClientModal(false);
+          return;
+        }
+
+        const created = await addStakeholder({
+          ...stkDraft,
+          accountId: account?.id ?? '',
+        });
+        setSelectedClientStakeholderIds((ids) => [...ids, created.id]);
+        setShowAddClientModal(false);
+      }}
+    />,
+    document.body,
+  )}
     </>
   );
 };

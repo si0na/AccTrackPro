@@ -440,13 +440,8 @@ ${OPP_FORECAST_SELECT}${totalCol}
    */
   async update(id: string, data: any, requestingUserId?: string): Promise<Opportunity> {
     const existing = await this.findOne(id, requestingUserId);
-    // Read-only enforcement: a Won opportunity's sales history is frozen —
-    // ongoing work happens on its linked Project instead. This guard checks
-    // existing.stage (the value BEFORE this update), so the one transition
-    // update that first moves the deal INTO Won still passes; only a second
-    // edit attempt on an already-Won opportunity is blocked.
-    if (existing.stage === 'Won') {
-      throw new ConflictException('This opportunity has been converted to a project and is now read-only. No further actions can be performed.');
+    if (existing.projectId && data.stage && data.stage !== existing.stage) {
+      throw new ConflictException('This opportunity has been converted to a project and its stage cannot be changed.');
     }
     const targetAccountId = data.accountId || existing.accountId;
     if (data.accountId && data.accountId !== existing.accountId) {
@@ -625,9 +620,6 @@ ${OPP_FORECAST_SELECT}${totalCol}
 
   async remove(id: string, userId?: string): Promise<{ success: boolean }> {
     const opp = await this.findOne(id, userId);
-    if (opp.stage === 'Won') {
-      throw new ConflictException('This opportunity has been converted to a project and is now read-only. No further actions can be performed.');
-    }
     await this.db.query(`UPDATE opportunities SET is_deleted=TRUE, updated_at=NOW() WHERE id=$1`, [id]);
     await this.log(`Deactivated Opportunity '${opp.name}'`, opp.accountId, opp.id);
 

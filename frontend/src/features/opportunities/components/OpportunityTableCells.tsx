@@ -7,7 +7,8 @@ import React from 'react';
 import { TrendingUp, FolderKanban } from 'lucide-react';
 import type { ColumnConfig, Opportunity, OpportunityStage, OpportunityHealth, PriorityLevel } from '@/types';
 import { ExpandableTextCell, STAGE_COLORS, StatusBadge, HEALTH_COLORS, InlineTextEditCell, InlineSelectEditCell } from '@/components/ui';
-import { LOCATION_OPTIONS, OPPORTUNITY_TYPE_OPTIONS } from '@/constants';
+import { showToast } from '@/components/common/ToastHost';
+import { LOCATION_OPTIONS, OPPORTUNITY_TYPE_OPTIONS, SERVICE_LINE_OPTIONS, DELIVERY_MODEL_OPTIONS, BILLING_MODEL_OPTIONS, TOWER_OPTIONS } from '@/constants';
 
 const formatCurrency = (val: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(val);
@@ -115,6 +116,14 @@ const InlineStageSelector: React.FC<InlineStageSelectorProps> = ({ opp, onStageC
                   key={stg}
                   type="button"
                   onClick={() => {
+                    if (opp.projectId && stageVal !== opp.stage) {
+                      showToast({
+                        kind: 'error',
+                        message: 'This opportunity has been converted to a project and its stage cannot be changed.',
+                      });
+                      setIsOpen(false);
+                      return;
+                    }
                     onStageChange(opp, stageVal);
                     setIsOpen(false);
                   }}
@@ -147,9 +156,8 @@ export const renderOpportunityCell = (
   onStageChangeRaw?: (opp: Opportunity, newStage: OpportunityStage) => void,
   onUpdateOppRaw?: (opp: Opportunity, patch: Partial<Opportunity>) => void,
 ): React.ReactNode => {
-  const isWon = opp.stage === 'Won';
-  const onStageChange = isWon ? undefined : onStageChangeRaw;
-  const onUpdateOpp = isWon ? undefined : onUpdateOppRaw;
+  const onStageChange = onStageChangeRaw;
+  const onUpdateOpp = onUpdateOppRaw;
   if (col.key === 'name') {
     return (
       <div className="flex items-center gap-2.5 min-w-0" onClick={(e) => onUpdateOpp && e.stopPropagation()}>
@@ -347,6 +355,66 @@ export const renderOpportunityCell = (
       </div>
     ) : (
       <span className="text-slate-600 font-medium">{opp.opportunityType}</span>
+    );
+  }
+
+  if (col.key === 'serviceLine') {
+    return onUpdateOpp ? (
+      <div onClick={(e) => e.stopPropagation()}>
+        <InlineSelectEditCell
+          value={opp.serviceLine || ''}
+          options={SERVICE_LINE_OPTIONS as any}
+          placeholder="Set service line…"
+          onSave={(v) => onUpdateOpp(opp, { serviceLine: (v || undefined) as any })}
+        />
+      </div>
+    ) : (
+      <span className="text-slate-600 font-medium">{opp.serviceLine || '—'}</span>
+    );
+  }
+
+  if (col.key === 'deliveryModel') {
+    return onUpdateOpp ? (
+      <div onClick={(e) => e.stopPropagation()}>
+        <InlineSelectEditCell
+          value={opp.deliveryModel || ''}
+          options={DELIVERY_MODEL_OPTIONS as any}
+          placeholder="Set delivery model…"
+          onSave={(v) => onUpdateOpp(opp, { deliveryModel: (v || undefined) as any })}
+        />
+      </div>
+    ) : (
+      <span className="text-slate-600 font-medium">{opp.deliveryModel || '—'}</span>
+    );
+  }
+
+  if (col.key === 'billingModel') {
+    return onUpdateOpp ? (
+      <div onClick={(e) => e.stopPropagation()}>
+        <InlineSelectEditCell
+          value={opp.billingModel || ''}
+          options={BILLING_MODEL_OPTIONS as any}
+          placeholder="Set billing model…"
+          onSave={(v) => onUpdateOpp(opp, { billingModel: (v || undefined) as any })}
+        />
+      </div>
+    ) : (
+      <span className="text-slate-600 font-medium">{opp.billingModel || '—'}</span>
+    );
+  }
+
+  if (col.key === 'tower') {
+    return onUpdateOpp ? (
+      <div onClick={(e) => e.stopPropagation()}>
+        <InlineSelectEditCell
+          value={opp.tower || ''}
+          options={TOWER_OPTIONS as any}
+          placeholder="Set tower…"
+          onSave={(v) => onUpdateOpp(opp, { tower: (v || undefined) as any })}
+        />
+      </div>
+    ) : (
+      <span className="text-slate-600 font-medium">{opp.tower || '—'}</span>
     );
   }
 

@@ -5,9 +5,10 @@
 
 import React from 'react';
 import { ShieldAlert } from 'lucide-react';
-import type { AdminUser, PriorityLevel, ProjectRisk, RiskStatus } from '@/types';
+import type { AdminUser, PriorityLevel, ProjectRisk, ProjectTeamMember, RiskStatus } from '@/types';
 import { RISK_RAG_OPTIONS, RISK_CLASSIFICATION_OPTIONS, RISK_IMPACT_OPTIONS, RISK_LIKELIHOOD_OPTIONS } from '@/constants';
 import { calculateRiskSeverity } from '@/utils';
+import { buildOwnerOptions } from '../utils/ownerUtils';
 import {
   FormField,
   FormGrid,
@@ -46,6 +47,7 @@ export interface RiskFormModalProps {
   value: RiskDraft;
   onChange: (patch: Partial<RiskDraft>) => void;
   users: AdminUser[];
+  teamMembers?: ProjectTeamMember[];
 }
 
 /** Add/edit dialog for a Project's Risks tab. */
@@ -59,7 +61,11 @@ export const RiskFormModal: React.FC<RiskFormModalProps> = ({
   value,
   onChange,
   users,
-}) => (
+  teamMembers,
+}) => {
+  const { teamOptions, systemOptions } = buildOwnerOptions(users, teamMembers);
+
+  return (
   <FormModal
     isOpen={isOpen}
     title={submitVariant === 'warning' ? 'Edit Risk' : 'Add Risk'}
@@ -139,9 +145,24 @@ export const RiskFormModal: React.FC<RiskFormModalProps> = ({
               className={SELECT_CLS}
             >
               <option value="">Not assigned</option>
-              {users.map((u) => (
-                <option key={u.id} value={u.id}>{u.name}</option>
-              ))}
+              {teamOptions.length > 0 && (
+                <optgroup label="Project Team Members">
+                  {teamOptions.map((opt, idx) => (
+                    <option key={`team-${opt.value}-${idx}`} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              {systemOptions.length > 0 && (
+                <optgroup label={teamOptions.length > 0 ? 'Other System Users' : 'System Users'}>
+                  {systemOptions.map((opt) => (
+                    <option key={`sys-${opt.value}`} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
             </select>
           </FormField>
           <FormField label="Risk Open Date">
@@ -237,3 +258,4 @@ export const RiskFormModal: React.FC<RiskFormModalProps> = ({
     </div>
   </FormModal>
 );
+};

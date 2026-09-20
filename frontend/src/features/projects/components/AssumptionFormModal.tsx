@@ -5,7 +5,8 @@
 
 import React from 'react';
 import { HelpCircle } from 'lucide-react';
-import type { AdminUser, AssumptionValidationStatus, PriorityLevel, ProjectAssumption } from '@/types';
+import type { AdminUser, AssumptionValidationStatus, PriorityLevel, ProjectAssumption, ProjectTeamMember } from '@/types';
+import { buildOwnerOptions } from '../utils/ownerUtils';
 import {
   FormField,
   FormGrid,
@@ -38,6 +39,7 @@ export interface AssumptionFormModalProps {
   value: AssumptionDraft;
   onChange: (patch: Partial<AssumptionDraft>) => void;
   users: AdminUser[];
+  teamMembers?: ProjectTeamMember[];
 }
 
 /** Add/edit dialog for a Project's Assumptions tab. */
@@ -51,7 +53,11 @@ export const AssumptionFormModal: React.FC<AssumptionFormModalProps> = ({
   value,
   onChange,
   users,
-}) => (
+  teamMembers,
+}) => {
+  const { teamOptions, systemOptions } = buildOwnerOptions(users, teamMembers);
+
+  return (
   <FormModal
     isOpen={isOpen}
     title={submitVariant === 'warning' ? 'Edit Assumption' : 'Add Assumption'}
@@ -106,9 +112,24 @@ export const AssumptionFormModal: React.FC<AssumptionFormModalProps> = ({
               className={SELECT_CLS}
             >
               <option value="">Not assigned</option>
-              {users.map((u) => (
-                <option key={u.id} value={u.id}>{u.name}</option>
-              ))}
+              {teamOptions.length > 0 && (
+                <optgroup label="Project Team Members">
+                  {teamOptions.map((opt, idx) => (
+                    <option key={`team-${opt.value}-${idx}`} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
+              {systemOptions.length > 0 && (
+                <optgroup label={teamOptions.length > 0 ? 'Other System Users' : 'System Users'}>
+                  {systemOptions.map((opt) => (
+                    <option key={`sys-${opt.value}`} value={opt.value}>
+                      {opt.label}
+                    </option>
+                  ))}
+                </optgroup>
+              )}
             </select>
           </FormField>
           <FormField label="Impact If False">
@@ -152,3 +173,4 @@ export const AssumptionFormModal: React.FC<AssumptionFormModalProps> = ({
     </div>
   </FormModal>
 );
+};

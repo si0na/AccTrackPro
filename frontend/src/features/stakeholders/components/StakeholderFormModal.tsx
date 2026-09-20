@@ -169,29 +169,30 @@ export const StakeholderFormModal: React.FC<StakeholderFormModalProps> = ({
           }
         : { ...draft };
 
-      // Auto-resolve any system user selection for owner fields if accountId is present
-      if (payload.accountId) {
-        const resolveOwnerId = async (ownerId: string | undefined): Promise<string | undefined> => {
-          if (!ownerId) return undefined;
-          const opt = serviceProviderOptions.find((o) => o.id === ownerId);
-          if (opt?.isSystemUser) {
-            const resolvedStkId = await associateServiceProvider(ownerId, payload.accountId!);
-            return resolvedStkId || ownerId;
+      // Auto-resolve system user selection for owner fields
+      const resolveOwnerId = async (ownerId: string | undefined): Promise<string | undefined> => {
+        if (!ownerId || !ownerId.trim()) return undefined;
+        const opt = serviceProviderOptions.find((o) => o.id === ownerId);
+        if (opt?.isSystemUser) {
+          if (payload.accountId) {
+            const resolvedStkId = await associateServiceProvider(ownerId, payload.accountId);
+            if (resolvedStkId) return resolvedStkId;
           }
-          return ownerId;
-        };
+          return (opt as any).stkId || undefined;
+        }
+        return ownerId;
+      };
 
-        const [pId, sId, tId] = await Promise.all([
-          resolveOwnerId(payload.primaryOwnerId),
-          resolveOwnerId(payload.secondaryOwnerId),
-          resolveOwnerId(payload.tertiaryOwnerId || payload.thirdOwnerId),
-        ]);
+      const [pId, sId, tId] = await Promise.all([
+        resolveOwnerId(payload.primaryOwnerId),
+        resolveOwnerId(payload.secondaryOwnerId),
+        resolveOwnerId(payload.tertiaryOwnerId || payload.thirdOwnerId),
+      ]);
 
-        payload.primaryOwnerId = pId;
-        payload.secondaryOwnerId = sId;
-        payload.tertiaryOwnerId = tId;
-        payload.thirdOwnerId = tId;
-      }
+      payload.primaryOwnerId = pId;
+      payload.secondaryOwnerId = sId;
+      payload.tertiaryOwnerId = tId;
+      payload.thirdOwnerId = tId;
 
       await onSubmit(payload);
       onClose();

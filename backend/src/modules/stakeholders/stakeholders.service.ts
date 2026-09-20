@@ -125,7 +125,7 @@ export class StakeholdersService {
               sp2.name AS secondary_owner_name,
               sp3.name AS tertiary_owner_name
        FROM stakeholders s
-       INNER JOIN accounts a ON s.account_id = a.id AND a.is_deleted = FALSE
+       LEFT JOIN accounts a ON s.account_id = a.id AND a.is_deleted = FALSE
        LEFT JOIN stakeholders sp1 ON s.primary_owner_id = sp1.id
        LEFT JOIN stakeholders sp2 ON s.secondary_owner_id = sp2.id
        LEFT JOIN stakeholders sp3 ON s.tertiary_owner_id = sp3.id
@@ -169,7 +169,7 @@ export class StakeholdersService {
               sp2.name AS secondary_owner_name,
               sp3.name AS tertiary_owner_name
        FROM stakeholders s
-       INNER JOIN accounts a ON s.account_id = a.id
+       LEFT JOIN accounts a ON s.account_id = a.id
        LEFT JOIN stakeholders sp1 ON s.primary_owner_id = sp1.id
        LEFT JOIN stakeholders sp2 ON s.secondary_owner_id = sp2.id
        LEFT JOIN stakeholders sp3 ON s.tertiary_owner_id = sp3.id
@@ -181,13 +181,24 @@ export class StakeholdersService {
   }
 
   async create(data: any, userId?: string): Promise<Stakeholder> {
-    const accountId = data.accountId ? data.accountId : null;
+    const accountId = data.accountId && String(data.accountId).trim() ? data.accountId : null;
     await this.assertAccountExists(accountId, userId);
     await this.assertEmailAvailable(accountId, data.email);
+    if (!data.email || !String(data.email).trim()) {
+      await this.assertNameAvailable(accountId, data.name);
+    }
 
-    const primaryOwnerId = data.primaryOwnerId ?? data.primary_owner_id ?? null;
-    const secondaryOwnerId = data.secondaryOwnerId ?? data.secondary_owner_id ?? null;
-    const tertiaryOwnerId = data.tertiaryOwnerId ?? data.thirdOwnerId ?? data.tertiary_owner_id ?? null;
+    const primaryOwnerId = data.primaryOwnerId && String(data.primaryOwnerId).trim()
+      ? data.primaryOwnerId
+      : (data.primary_owner_id && String(data.primary_owner_id).trim() ? data.primary_owner_id : null);
+    const secondaryOwnerId = data.secondaryOwnerId && String(data.secondaryOwnerId).trim()
+      ? data.secondaryOwnerId
+      : (data.secondary_owner_id && String(data.secondary_owner_id).trim() ? data.secondary_owner_id : null);
+    const tertiaryOwnerId = data.tertiaryOwnerId && String(data.tertiaryOwnerId).trim()
+      ? data.tertiaryOwnerId
+      : (data.thirdOwnerId && String(data.thirdOwnerId).trim()
+        ? data.thirdOwnerId
+        : (data.tertiary_owner_id && String(data.tertiary_owner_id).trim() ? data.tertiary_owner_id : null));
 
     const { rows } = await this.db.query(
       `INSERT INTO stakeholders (id, name, account_id, designation, influence, relationship, email, phone, stakeholder_type, department, linkedin_profile_url, primary_owner_id, secondary_owner_id, tertiary_owner_id)
@@ -224,16 +235,23 @@ export class StakeholdersService {
 
   async update(id: string, data: any, userId?: string): Promise<Stakeholder> {
     const existing = await this.findOne(id, userId);
-    if (data.accountId !== existing.accountId) {
-      await this.assertAccountExists(data.accountId, userId);
+    const accountId = data.accountId && String(data.accountId).trim() ? data.accountId : null;
+    if (accountId !== existing.accountId) {
+      await this.assertAccountExists(accountId, userId);
     }
-    await this.assertEmailAvailable(data.accountId, data.email, id);
+    await this.assertEmailAvailable(accountId, data.email, id);
 
-    const primaryOwnerId = data.primaryOwnerId !== undefined ? (data.primaryOwnerId ?? null) : (existing.primaryOwnerId ?? null);
-    const secondaryOwnerId = data.secondaryOwnerId !== undefined ? (data.secondaryOwnerId ?? null) : (existing.secondaryOwnerId ?? null);
+    const primaryOwnerId = data.primaryOwnerId !== undefined
+      ? (data.primaryOwnerId && String(data.primaryOwnerId).trim() ? data.primaryOwnerId : null)
+      : (existing.primaryOwnerId ?? null);
+    const secondaryOwnerId = data.secondaryOwnerId !== undefined
+      ? (data.secondaryOwnerId && String(data.secondaryOwnerId).trim() ? data.secondaryOwnerId : null)
+      : (existing.secondaryOwnerId ?? null);
     const tertiaryOwnerId = data.tertiaryOwnerId !== undefined
-      ? (data.tertiaryOwnerId ?? null)
-      : (data.thirdOwnerId !== undefined ? (data.thirdOwnerId ?? null) : (existing.tertiaryOwnerId ?? null));
+      ? (data.tertiaryOwnerId && String(data.tertiaryOwnerId).trim() ? data.tertiaryOwnerId : null)
+      : (data.thirdOwnerId !== undefined
+        ? (data.thirdOwnerId && String(data.thirdOwnerId).trim() ? data.thirdOwnerId : null)
+        : (existing.tertiaryOwnerId ?? null));
 
     const { rows } = await this.db.query(
       `UPDATE stakeholders SET
@@ -309,18 +327,38 @@ export class StakeholdersService {
     if (!rows.length) throw new BadRequestException('The selected account does not exist');
   }
 
-  /** Business rule: a stakeholder email is unique within its account (when provided). */
-  private async assertEmailAvailable(accountId?: string, email?: string, excludeId?: string): Promise<void> {
+  /** Business rule: a stakeholder email is unique within its account or globally when unassociated. */
+  private async assertEmailAvailable(accountId?: string | null, email?: string, excludeId?: string): Promise<void> {
     const normalized = email?.trim().toLowerCase();
+    if (!normalized) return;
+    const { rows } = await this.db.query(
+      `SELECT s.id, a.name AS account_name FROM stakeholders s
+       LEFT JOIN accounts a ON s.account_id = a.id
+       WHERE LOWER(s.email) = $1 AND s.is_deleted = FALSE
+         AND ($2::TEXT IS NULL OR s.account_id = $2 OR s.account_id IS NULL)
+         AND ($3::TEXT IS NULL OR s.id <> $3)
+       LIMIT 1`,
+      [normalized, accountId ?? null, excludeId ?? null],
+    );
+    if (rows.length) {
+      const accStr = rows[0].account_name ? ` for account "${rows[0].account_name}"` : '';
+      throw new ConflictException(`A stakeholder with email "${email!.trim()}" already exists${accStr}.`);
+    }
+  }
+
+  /** Business rule: a stakeholder name is unique within its account when email is not provided. */
+  private async assertNameAvailable(accountId?: string | null, name?: string, excludeId?: string): Promise<void> {
+    const normalized = name?.trim().toLowerCase();
     if (!normalized || !accountId) return;
     const { rows } = await this.db.query(
-      `SELECT id FROM stakeholders
-       WHERE account_id = $1 AND LOWER(email) = $2 AND is_deleted = FALSE
-         AND ($3::TEXT IS NULL OR id <> $3)`,
+      `SELECT s.id FROM stakeholders s
+       WHERE s.account_id = $1 AND LOWER(s.name) = $2 AND s.is_deleted = FALSE
+         AND ($3::TEXT IS NULL OR s.id <> $3)
+       LIMIT 1`,
       [accountId, normalized, excludeId ?? null],
     );
     if (rows.length) {
-      throw new ConflictException(`A stakeholder with email "${email!.trim()}" already exists for this account`);
+      throw new ConflictException(`A stakeholder named "${name!.trim()}" already exists for this account.`);
     }
   }
 

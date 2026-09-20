@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { createPortal } from 'react-dom';
 import { InlineCreateField, INPUT_CLS_AMBER, SELECT_CLS } from '@/components/ui';
+import { showToast } from '@/components/common/ToastHost';
 import { StakeholderFormModal } from '@/features/stakeholders/components/StakeholderFormModal';
 import { useCRM } from '@/contexts/CRMContext';
 import type { Stakeholder, StakeholderType } from '@/types';
@@ -63,8 +64,25 @@ export const StakeholderAssignmentFields: React.FC<StakeholderAssignmentFieldsPr
   const createDisabledReason = account ? undefined : NO_ACCOUNT_MSG;
 
   const handleCreated = async (draft: Omit<Stakeholder, 'id'>) => {
+    const normEmail = (draft.email || '').toLowerCase().trim();
+    const normName = (draft.name || '').toLowerCase().trim();
+    const existing = (stakeholders || []).find((s) => {
+      if (draft.accountId && s.accountId && s.accountId !== draft.accountId) return false;
+      const sameEmail = normEmail && s.email && s.email.toLowerCase().trim() === normEmail;
+      const sameName = normName && s.name && s.name.toLowerCase().trim() === normName;
+      return sameEmail || (!normEmail && sameName);
+    });
+    if (existing) {
+      showToast({ kind: 'success', message: `Stakeholder "${existing.name}" already exists. Selected existing record.` });
+      onChange({ clientStakeholderId: existing.id });
+      setCreatingType(null);
+      return;
+    }
     const created = await addStakeholder(draft);
-    onChange({ clientStakeholderId: created.id });
+    if (created?.id) {
+      onChange({ clientStakeholderId: created.id });
+    }
+    setCreatingType(null);
   };
 
   const uniqueServiceProviders = React.useMemo(() => {

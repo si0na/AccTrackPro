@@ -26,7 +26,7 @@ function rowToIssue(row: any): ProjectIssue {
     ...base,
     projectId: project_id,
     ownerId: owner_id ?? undefined,
-    ownerName: owner_name ?? undefined,
+    ownerName: owner_name || owner_id || undefined,
     dateIdentified: date_identified ?? undefined,
     resolutionPlan: resolution_plan,
     targetResolutionDate: target_resolution_date ?? undefined,

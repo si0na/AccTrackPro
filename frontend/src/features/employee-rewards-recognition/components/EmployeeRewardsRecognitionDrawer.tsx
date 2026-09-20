@@ -123,6 +123,19 @@ export const EmployeeRewardsRecognitionDrawer: React.FC<EmployeeRewardsRecogniti
               </div>
             </div>
 
+            {/* Team Members */}
+            {item.teamOrIndividual === 'Team' && item.teamMembers && (
+              <div className="p-4 bg-indigo-50/40 rounded-xl border border-indigo-100/80 space-y-1">
+                <div className="flex items-center space-x-2 text-indigo-700">
+                  <Users className="w-4 h-4 text-indigo-600" />
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-indigo-800">Team Members</h4>
+                </div>
+                <p className="text-xs font-semibold text-slate-700 leading-relaxed">
+                  {item.teamMembers}
+                </p>
+              </div>
+            )}
+
             {/* Details Content */}
             <div className="space-y-2">
               <div className="flex items-center space-x-2 text-slate-700">

@@ -213,7 +213,9 @@ export class ActionItemsService {
     }
 
     await this.assertValidRelations(data.accountId, data.opportunityId, data.projectId, data.ownerId);
-    await this.assertOwnerStakeholder(data.ownerStakeholderId, data.accountId);
+    if (data.ownerStakeholderId) {
+      await this.assertOwnerStakeholder(data.ownerStakeholderId, data.accountId);
+    }
 
     const cd = extractCustomData(data, KNOWN);
 
@@ -224,7 +226,7 @@ export class ActionItemsService {
        RETURNING id`,
       [
         data.title, data.accountId, data.opportunityId ?? null, data.projectId ?? null,
-        data.ownerId ?? null, data.ownerStakeholderId,
+        data.ownerId ?? null, data.ownerStakeholderId ?? null,
         data.openDate || todayIsoDate(), data.dueDate ?? '', data.priority, data.status, data.notes ?? '',
         data.risksAndDependencies ?? '',
         data.completedDate ?? null, JSON.stringify(cd),
@@ -258,11 +260,27 @@ export class ActionItemsService {
    */
   async update(id: string, data: any, requestingUserId?: string): Promise<ActionItem> {
     const existing = await this.findOne(id, requestingUserId);
-    if (data.accountId !== existing.accountId || data.opportunityId !== existing.opportunityId || data.projectId !== existing.projectId) {
-      await this.assertValidRelations(data.accountId, data.opportunityId, data.projectId, requestingUserId);
+
+    const targetTitle = data.title ?? existing.title;
+    const targetAccountId = data.accountId ?? existing.accountId;
+    const targetOpportunityId = 'opportunityId' in data ? (data.opportunityId ?? null) : existing.opportunityId;
+    const targetProjectId = 'projectId' in data ? (data.projectId ?? null) : existing.projectId;
+    const ownerStakeholderId = ('ownerStakeholderId' in data && data.ownerStakeholderId !== undefined)
+      ? (data.ownerStakeholderId || null)
+      : existing.ownerStakeholderId;
+    const openDate = data.openDate || existing.openDate;
+    const dueDate = 'dueDate' in data ? (data.dueDate ?? '') : existing.dueDate;
+    const priority = data.priority ?? existing.priority;
+    const status = data.status ?? existing.status;
+    const notes = 'notes' in data ? (data.notes ?? '') : existing.notes;
+    const risksAndDependencies = 'risksAndDependencies' in data ? (data.risksAndDependencies ?? '') : existing.risksAndDependencies;
+    const completedDate = 'completedDate' in data ? (data.completedDate ?? null) : existing.completedDate;
+
+    if (targetAccountId !== existing.accountId || targetOpportunityId !== existing.opportunityId || targetProjectId !== existing.projectId) {
+      await this.assertValidRelations(targetAccountId, targetOpportunityId, targetProjectId, requestingUserId);
     }
-    if (data.ownerStakeholderId !== existing.ownerStakeholderId || data.accountId !== existing.accountId) {
-      await this.assertOwnerStakeholder(data.ownerStakeholderId, data.accountId);
+    if (ownerStakeholderId && (ownerStakeholderId !== existing.ownerStakeholderId || targetAccountId !== existing.accountId)) {
+      await this.assertOwnerStakeholder(ownerStakeholderId, targetAccountId);
     }
     const cd = extractCustomData(data, KNOWN);
 
@@ -276,11 +294,10 @@ export class ActionItemsService {
          custom_data=$14, updated_at=NOW()
        WHERE id=$15 AND is_deleted=FALSE`,
       [
-        data.title, data.accountId, data.opportunityId ?? null, data.projectId ?? null,
-        effectiveOwnerId, data.ownerStakeholderId,
-        data.openDate || existing.openDate, data.dueDate ?? '', data.priority, data.status, data.notes ?? '',
-        data.risksAndDependencies ?? '',
-        data.completedDate ?? null, JSON.stringify(cd),
+        targetTitle, targetAccountId, targetOpportunityId, targetProjectId,
+        effectiveOwnerId, ownerStakeholderId,
+        openDate, dueDate, priority, status, notes,
+        risksAndDependencies, completedDate, JSON.stringify(cd),
         id,
       ],
     );
@@ -334,15 +351,6 @@ export class ActionItemsService {
 
   async remove(id: string, userId?: string): Promise<{ success: boolean }> {
     const item = await this.findOne(id, userId);
-    if (item.opportunityId) {
-      const { rows: opp } = await this.db.query(
-        `SELECT stage FROM opportunities WHERE id = $1 AND is_deleted = FALSE`,
-        [item.opportunityId],
-      );
-      if (opp.length && opp[0].stage === 'Won') {
-        throw new ConflictException('This opportunity has been converted to a project and is now read-only. No further actions can be performed.');
-      }
-    }
     await this.db.query(`UPDATE action_items SET is_deleted=TRUE, updated_at=NOW() WHERE id=$1`, [id]);
     await this.log(`Deleted Action Item '${item.title}'`, item.accountId);
 
@@ -390,9 +398,6 @@ export class ActionItemsService {
         [opportunityId],
       );
       if (!opp.length) throw new BadRequestException('The linked opportunity does not exist');
-      if (opp[0].stage === 'Won') {
-        throw new ConflictException('This opportunity has been converted to a project and is now read-only. No further actions can be performed.');
-      }
       if (opp[0].account_id !== accountId) {
         throw new BadRequestException('The linked opportunity belongs to a different account');
       }
@@ -411,7 +416,8 @@ export class ActionItemsService {
   }
 
   /** Owner must be an active stakeholder (Client or Service Provider). */
-  private async assertOwnerStakeholder(stakeholderId: string, accountId: string): Promise<void> {
+  private async assertOwnerStakeholder(stakeholderId?: string | null, accountId?: string): Promise<void> {
+    if (!stakeholderId || !stakeholderId.trim()) return;
     const { rows } = await this.db.query(
       `SELECT id FROM stakeholders WHERE id = $1 AND is_deleted = FALSE`,
       [stakeholderId],

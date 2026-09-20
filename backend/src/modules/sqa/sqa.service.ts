@@ -284,6 +284,21 @@ export class SqaService {
              WHERE s.project_id = p.id AND s.is_deleted = FALSE
            )`,
       );
+
+      // Provision initial snapshot for any SQA records that don't have one yet
+      const { rows: unprovisioned } = await this.db.query(
+        `SELECT id FROM sqa_records
+         WHERE is_deleted = FALSE
+           AND NOT EXISTS (
+             SELECT 1 FROM sqa_tracker_snapshots snap WHERE snap.sqa_record_id = sqa_records.id
+           )`,
+      );
+      for (const row of unprovisioned) {
+        try {
+          const rec = await this.findOne(row.id);
+          await this.upsertTrackerSnapshot(rec);
+        } catch {}
+      }
     } catch (err) {
       this.logger.error('Failed to auto-provision SQA records for projects', err);
     }
@@ -339,10 +354,11 @@ export class SqaService {
     userId?: string,
     weeks: number = DEFAULT_HEALTH_WEEKS,
   ): Promise<SqaRecord> {
+    const scope = userId ? await this.sqaScope(userId, 2) : { conditions: [], params: [] };
+    const where = ['s.id = $1', 's.is_deleted = FALSE', ...scope.conditions].join(' AND ');
     const { rows } = await this.db.query(
-      `${SQA_SELECT} WHERE s.id = $1 AND s.is_deleted = FALSE
-       AND ($2::TEXT IS NULL OR s.owner_id = $2)`,
-      [id, userId ?? null],
+      `${SQA_SELECT} WHERE ${where}`,
+      [id, ...scope.params],
     );
     if (!rows.length) throw new NotFoundException(`SQA record "${id}" not found`);
     const record = rowToSqaRecord(rows[0]);
@@ -462,9 +478,8 @@ export class SqaService {
       `SELECT s.id, p.is_deleted AS project_deleted
        FROM sqa_records s
        LEFT JOIN projects p ON s.project_id = p.id
-       WHERE s.id = $1 AND s.is_deleted = TRUE
-       AND ($2::TEXT IS NULL OR s.owner_id = $2)`,
-      [id, userId ?? null],
+       WHERE s.id = $1 AND s.is_deleted = TRUE`,
+      [id],
     );
     if (!existing.length) throw new NotFoundException(`Deactivated SQA record "${id}" not found`);
     // Business rule shared with every other module: no active child under a
@@ -558,26 +573,14 @@ export class SqaService {
     params: FilterParams = {},
     pagination?: Pagination,
   ): Promise<Paginated<SqaTrackerSnapshot> | SqaTrackerSnapshot[]> {
-    let where = `WHERE p.is_deleted = FALSE`;
-    const args: any[] = [];
-
-    if (params.userId) {
-      args.push(params.userId);
-      where += ` AND p.owner_id = $${args.length}`;
-    }
+    const scope = params.userId ? await this.sqaScope(params.userId, 1) : { conditions: [], params: [], nextIdx: 1 };
+    const whereConditions = ['p.is_deleted = FALSE', ...scope.conditions];
+    const args: any[] = [...scope.params];
 
     if (sqaRecordId) {
       args.push(sqaRecordId);
-      where += ` AND s.sqa_record_id = $${args.length}`;
+      whereConditions.push(`s.sqa_record_id = $${args.length}`);
     }
-
-    const countSql = `
-      SELECT COUNT(*)
-      FROM sqa_tracker_snapshots s
-      INNER JOIN projects p ON s.project_id = p.id
-      INNER JOIN accounts a ON s.account_id = a.id
-      ${where}
-    `;
 
     let selectTotal = '';
     let limitSql = '';
@@ -589,13 +592,15 @@ export class SqaService {
       limitSql = ` LIMIT $${args.length - 1} OFFSET $${args.length}`;
     }
 
+    const where = `WHERE ${whereConditions.join(' AND ')}`;
+
     const sql = `
       SELECT s.*, p.name AS project_name, a.name AS account_name${selectTotal}
       FROM sqa_tracker_snapshots s
       INNER JOIN projects p ON s.project_id = p.id
-      INNER JOIN accounts a ON s.account_id = a.id
+      LEFT JOIN accounts  a ON s.account_id = a.id
       ${where}
-      ORDER BY s.iso_year DESC, s.week_number DESC, s.created_at DESC
+      ORDER BY s.created_at DESC, s.iso_year DESC, s.week_number DESC
       ${limitSql}
     `;
 
@@ -608,7 +613,7 @@ export class SqaService {
       projectId: r.project_id,
       projectName: r.project_name,
       accountId: r.account_id,
-      accountName: r.account_name,
+      accountName: r.account_name ?? '',
       snapshotDate: r.snapshot_date ? (typeof r.snapshot_date === 'string' ? r.snapshot_date.slice(0, 10) : r.snapshot_date.toISOString().slice(0, 10)) : '',
       isoYear: Number(r.iso_year),
       weekNumber: Number(r.week_number),

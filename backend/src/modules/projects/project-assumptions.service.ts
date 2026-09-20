@@ -26,7 +26,7 @@ function rowToAssumption(row: any): ProjectAssumption {
     ...base,
     projectId: project_id,
     ownerId: owner_id ?? undefined,
-    ownerName: owner_name ?? undefined,
+    ownerName: owner_name || owner_id || undefined,
     impactIfFalse: impact_if_false ?? undefined,
     validationStatus: validation_status,
     dateIdentified: date_identified ?? undefined,
