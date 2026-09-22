@@ -5,8 +5,8 @@
 
 import React from 'react';
 import { CheckSquare } from 'lucide-react';
-import type { Account, ActionItem, ActionItemStatus, ColumnConfig, CustomColumn, Opportunity, PriorityLevel, Stakeholder } from '@/types';
-import { ACTION_ITEM_STATUS_OPTIONS } from '@/constants';
+import type { Account, ActionItem, ActionItemStatus, ActionItemType, ColumnConfig, CustomColumn, Opportunity, PriorityLevel, Stakeholder } from '@/types';
+import { ACTION_ITEM_STATUS_OPTIONS, ACTION_ITEM_TYPE_OPTIONS } from '@/constants';
 import { CustomColumnFields } from '@/components/CustomColumnFields';
 import { ActionItemOwnerField } from '@/components/ActionItemOwnerField';
 import {
@@ -121,9 +121,11 @@ export const ActionItemFormModal: React.FC<ActionItemFormModalProps> = ({
                   className={SELECT_CLS}
                 >
                   <option value="" disabled>Select an account...</option>
-                  {accounts.map((acc) => (
-                    <option key={acc.id} value={acc.id}>{acc.name}</option>
-                  ))}
+                  {[...accounts]
+                    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+                    .map((acc) => (
+                      <option key={acc.id} value={acc.id}>{acc.name}</option>
+                    ))}
                 </select>
               </FormField>
             )}
@@ -151,6 +153,7 @@ export const ActionItemFormModal: React.FC<ActionItemFormModalProps> = ({
                     <option value="" disabled>Select a project...</option>
                     {(projects || [])
                       .filter((p) => !value.accountId || p.accountId === value.accountId)
+                      .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
                       .map((p) => (
                         <option key={p.id} value={p.id}>{p.name}</option>
                       ))}
@@ -177,6 +180,7 @@ export const ActionItemFormModal: React.FC<ActionItemFormModalProps> = ({
                   <option value="">None / General Task</option>
                   {opportunities
                     .filter((opp) => (!value.accountId || opp.accountId === value.accountId) && opp.stage !== 'Won')
+                    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
                     .map((opp) => (
                       <option key={opp.id} value={opp.id}>{opp.name}</option>
                     ))}
@@ -193,6 +197,20 @@ export const ActionItemFormModal: React.FC<ActionItemFormModalProps> = ({
                 onChange={(ownerStakeholderId) => onChange({ ownerStakeholderId })}
               />
             </FormField>
+
+            {/* 5. Type of Action Item */}
+            <FormField label="Type of Action Item">
+              <select
+                value={value.actionItemType || ''}
+                onChange={(e) => onChange({ actionItemType: (e.target.value || undefined) as ActionItemType })}
+                className={SELECT_CLS}
+              >
+                <option value="">Select type…</option>
+                {ACTION_ITEM_TYPE_OPTIONS.map((t) => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            </FormField>
           </FormGrid>
         </FormSection>
 
@@ -207,8 +225,8 @@ export const ActionItemFormModal: React.FC<ActionItemFormModalProps> = ({
             >
               <option value="" disabled>Select priority…</option>
               <option value="High">High</option>
-              <option value="Medium">Medium</option>
               <option value="Low">Low</option>
+              <option value="Medium">Medium</option>
             </select>
           </FormField>
 

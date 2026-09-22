@@ -5,7 +5,7 @@
 
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
-import { ActionItem, ActionItemStatus, PriorityLevel } from '@/types';
+import { ActionItem, ActionItemStatus, ActionItemType, PriorityLevel } from '@/types';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   AlertTriangle,
@@ -49,8 +49,8 @@ import { InlineEditModal } from '@/components/InlineEditModal';
 import { LoadingState } from '@/components/common/LoadingState';
 import { ActionItemFormModal } from '@/features/action-items/components/ActionItemFormModal';
 import { ActionItemQuickPanel } from '@/features/action-items/components/ActionItemQuickPanel';
-import { ACTION_ITEM_STATUS_OPTIONS } from '@/constants';
-import { compareForSort, getTodayISODate, isDueThisWeek, isOpenActionItemStatus, matchesGlobalAccount, SortDirection } from '@/utils';
+import { ACTION_ITEM_STATUS_OPTIONS, ACTION_ITEM_TYPE_OPTIONS } from '@/constants';
+import { compareForSort, getTodayISODate, isDueThisWeek, isOpenActionItemStatus, matchesGlobalAccount, cleanOwnerName, SortDirection } from '@/utils';
 
 export const ActionItemsView: React.FC = () => {
   const {
@@ -147,6 +147,7 @@ export const ActionItemsView: React.FC = () => {
   const [selectedProjectFilter, setSelectedProjectFilter] = useState<string>('All');
   const [selectedStatus, setSelectedStatus] = useState<string>('All');
   const [selectedPriority, setSelectedPriority] = useState<string>('All');
+  const [selectedType, setSelectedType] = useState<string>('All');
   /** Quick due-date filter: All | Overdue | Due Today | Due This Week */
   const [dueFilter, setDueFilter] = useState<string>('All');
 
@@ -187,7 +188,7 @@ export const ActionItemsView: React.FC = () => {
     if (key === 'accountId') return resolveAccount(item.accountId)?.name || item.accountName || '';
     if (key === 'opportunityId') return opportunities.find(o => o.id === item.opportunityId)?.name || item.opportunityName || '';
     if (key === 'projectId') return projects.find(p => p.id === item.projectId)?.name || '';
-    if (key === 'owner') return item.ownerName || item.owner || '';
+    if (key === 'owner') return cleanOwnerName(item.ownerName || item.owner) || '';
     return (item as any)[key];
   };
 
@@ -236,7 +237,7 @@ export const ActionItemsView: React.FC = () => {
   // Owners actually assigned in the current list — deduped by owner name.
   const ownersList: string[] = useMemo(() => {
     const names = actionItems
-      .map(ai => (ai.ownerName || ai.owner || '').trim())
+      .map(ai => cleanOwnerName(ai.ownerName || ai.owner).trim())
       .filter(Boolean);
     return Array.from(new Set(names)).sort((a, b) => a.localeCompare(b));
   }, [actionItems]);
@@ -266,6 +267,7 @@ export const ActionItemsView: React.FC = () => {
     if (selectedProjectFilter !== 'All' && ai.projectId !== selectedProjectFilter) return false;
     if (selectedStatus !== 'All' && ai.status !== selectedStatus) return false;
     if (selectedPriority !== 'All' && ai.priority !== selectedPriority) return false;
+    if (selectedType !== 'All' && ai.actionItemType !== selectedType) return false;
 
     if (dueFilter === 'Overdue' &&
         (!isOpenActionItemStatus(ai.status) || !ai.dueDate || !/^\d{4}-\d{2}-\d{2}$/.test(ai.dueDate) || ai.dueDate >= todayStr)) return false;
@@ -281,7 +283,7 @@ export const ActionItemsView: React.FC = () => {
     return true;
   }, [
     focusedActionItemId, selectedAccountFilter, searchQuery, selectedOwner,
-    selectedOpportunityFilter, selectedProjectFilter, selectedStatus, selectedPriority,
+    selectedOpportunityFilter, selectedProjectFilter, selectedStatus, selectedPriority, selectedType,
     dueFilter, dueThisWeekFilter, openActionItemsFilter, overdueActionItemsFilter,
     todayStr, projects, resolveAccount
   ]);
@@ -519,8 +521,19 @@ export const ActionItemsView: React.FC = () => {
           options={[
             { value: 'All', label: 'All Priorities' },
             { value: 'High', label: 'High' },
-            { value: 'Medium', label: 'Medium' },
             { value: 'Low', label: 'Low' },
+            { value: 'Medium', label: 'Medium' },
+          ]}
+        />
+
+        <FilterSelect
+          label="Type"
+          hideLabel
+          value={selectedType}
+          onChange={setSelectedType}
+          options={[
+            { value: 'All', label: 'All Types' },
+            ...ACTION_ITEM_TYPE_OPTIONS.map(t => ({ value: t, label: t })),
           ]}
         />
 
@@ -656,6 +669,7 @@ export const ActionItemsView: React.FC = () => {
                               options={accountOptions}
                               disabled={!canEdit}
                               placeholder={acc?.name || item.accountName || 'Select Account...'}
+                              fallbackLabel={acc?.name || item.accountName}
                               onSave={async (id) => {
                                 if (!id) return;
                                 const selectedAcc = accounts.find(a => a.id === id);
@@ -687,6 +701,7 @@ export const ActionItemsView: React.FC = () => {
                               options={oppOptions}
                               disabled={!canEdit}
                               placeholder={opp ? opp.name : (item.opportunityName || '— None —')}
+                              fallbackLabel={opp ? opp.name : item.opportunityName}
                               onSave={async (id) => {
                                 const selectedOpp = opportunities.find(o => o.id === id);
                                 await updateActionItem({
@@ -716,7 +731,8 @@ export const ActionItemsView: React.FC = () => {
                               value={item.projectId ?? ''}
                               options={projOptions}
                               disabled={!canEdit}
-                              placeholder={proj ? proj.name : '— None —'}
+                              placeholder={proj ? proj.name : (item.projectName || '— None —')}
+                              fallbackLabel={proj ? proj.name : item.projectName}
                               onSave={async (id) => {
                                 const selectedProj = projects.find(p => p.id === id);
                                 await updateActionItem({
@@ -739,19 +755,19 @@ export const ActionItemsView: React.FC = () => {
                                 accountId={item.accountId ?? ''}
                                 stakeholders={stakeholders}
                                 value={item.ownerStakeholderId}
-                                fallbackName={item.ownerName || item.owner}
+                                fallbackName={cleanOwnerName(item.ownerName || item.owner)}
                                 onChange={async (stkId) => {
                                   const stk = stakeholders.find(s => s.id === stkId);
                                   await updateActionItem({
                                     ...item,
                                     ownerStakeholderId: stkId || undefined,
-                                    owner: stk?.name || item.owner || '',
-                                    ownerName: stk?.name || item.ownerName || '',
+                                    owner: cleanOwnerName(stk?.name || item.owner || ''),
+                                    ownerName: cleanOwnerName(stk?.name || item.ownerName || ''),
                                   });
                                 }}
                               />
                             ) : (
-                              item.ownerName || item.owner || '—'
+                              cleanOwnerName(item.ownerName || item.owner) || '—'
                             )}
                           </TableCell>
                         );
@@ -779,6 +795,21 @@ export const ActionItemsView: React.FC = () => {
                               disabled={!canEdit}
                               onSave={async (v) => {
                                 await updateActionItem({ ...item, status: v as ActionItemStatus });
+                              }}
+                            />
+                          </TableCell>
+                        );
+                      }
+                      if (col.key === 'actionItemType') {
+                        return (
+                          <TableCell key={col.key} className="text-slate-700 font-semibold text-xs">
+                            <InlineSelectEditCell
+                              value={item.actionItemType ?? ''}
+                              options={['— None —', ...ACTION_ITEM_TYPE_OPTIONS]}
+                              disabled={!canEdit}
+                              placeholder={item.actionItemType || '— None —'}
+                              onSave={async (v) => {
+                                await updateActionItem({ ...item, actionItemType: (v === '— None —' || !v) ? undefined : (v as ActionItemType) });
                               }}
                             />
                           </TableCell>
@@ -931,7 +962,7 @@ export const ActionItemsView: React.FC = () => {
                   >
                     <TableCell className="font-semibold text-slate-600 line-through decoration-slate-300">{item.title}</TableCell>
                     <TableCell className="text-slate-500">{item.accountName || acc?.name || '—'}</TableCell>
-                    <TableCell>{item.ownerName || item.owner || '—'}</TableCell>
+                    <TableCell>{cleanOwnerName(item.ownerName || item.owner) || '—'}</TableCell>
                     <TableCell>
                       <StatusBadge value={item.priority} colorMap={PRIORITY_COLORS} shape="rounded" muted />
                     </TableCell>

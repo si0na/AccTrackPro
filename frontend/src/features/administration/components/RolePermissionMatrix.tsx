@@ -57,6 +57,7 @@ const SUPPORTED_PERMISSIONS: Record<string, string[]> = {
   employeeAppreciation: ['view', 'create', 'update', 'delete'],
   employeeRewardsRecognition: ['view', 'create', 'update', 'delete'],
   risks: ['view', 'view-all', 'create', 'update', 'delete', 'export'],
+  accountGrowth: ['view', 'view-all', 'create', 'update', 'delete', 'export'],
 };
 
 const DISPLAY_PERMISSIONS = [
@@ -540,8 +541,8 @@ export const RolePermissionMatrix: React.FC<RolePermissionMatrixProps> = ({ onPe
               >
                 <option value="">(None - Unscoped/Global)</option>
                 <option value="account_manager_id">account_manager_id (Account Manager)</option>
-                <option value="practice_lead_id">practice_lead_id (Practice Lead)</option>
                 <option value="client_partner_id">client_partner_id (Client Partner)</option>
+                <option value="practice_lead_id">practice_lead_id (Practice Lead)</option>
                 <option value="vertical_head_id">vertical_head_id (Vertical Head)</option>
               </select>
             </FormField>

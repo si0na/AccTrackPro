@@ -90,7 +90,7 @@ export class CreateProjectDto {
   billingModel?: string;
 
   @EmptyToUndefined()
-  @IsOptional() @IsIn(['Tower 1', 'Tower 2'], { message: 'Tower must be one of: Tower 1, Tower 2' })
+  @IsOptional() @IsIn(['Tower 1', 'Tower 2', 'Others'], { message: 'Tower must be one of: Tower 1, Tower 2, Others' })
   tower?: string;
 }
 

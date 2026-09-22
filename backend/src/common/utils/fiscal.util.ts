@@ -108,3 +108,92 @@ export function computeFY(
     quarter:       `Q${Math.floor(monthsSinceStart / 3) + 1}`,
   };
 }
+
+export interface OverlappingPeriodsResult {
+  financialYears: string[];
+  quarters: string[];
+  periods: Array<{
+    financialYear: string;
+    quarter: string;
+  }>;
+}
+
+export interface FiscalYearWithQuarters {
+  label: string;
+  startDate: string;
+  endDate: string;
+  quarters: QuarterRange[];
+}
+
+export function isValidDateStr(s: string | null | undefined): boolean {
+  if (!s) return false;
+  return /^\d{4}-\d{2}-\d{2}/.test(s.trim());
+}
+
+/**
+ * Pure range-overlap check according to the canonical business rule:
+ * - When both dates exist: Start <= PeriodEnd AND End >= PeriodStart
+ * - When Start exists, End missing: Start <= PeriodEnd (open-ended forward)
+ * - When End exists, Start missing: End >= PeriodStart (open-ended backward)
+ * - When neither date exists: false (belongs to no specific date period)
+ */
+export function isRangeOverlapping(
+  rangeA: { startDate?: string | null; endDate?: string | null },
+  rangeB: { startDate: string; endDate: string },
+): boolean {
+  const hasStart = isValidDateStr(rangeA.startDate);
+  const hasEnd   = isValidDateStr(rangeA.endDate);
+
+  if (!hasStart && !hasEnd) return false;
+
+  const sA = hasStart ? rangeA.startDate!.trim().slice(0, 10) : null;
+  const eA = hasEnd   ? rangeA.endDate!.trim().slice(0, 10)   : null;
+  const sB = rangeB.startDate.trim().slice(0, 10);
+  const eB = rangeB.endDate.trim().slice(0, 10);
+
+  if (sA && eA) {
+    return sA <= eB && eA >= sB;
+  }
+  if (sA && !eA) {
+    return sA <= eB;
+  }
+  if (!sA && eA) {
+    return eA >= sB;
+  }
+  return false;
+}
+
+/**
+ * Derives all overlapping configured Financial Years and Quarters for a project date range.
+ */
+export function getOverlappingPeriods(
+  startDate: string | null | undefined,
+  endDate: string | null | undefined,
+  years: FiscalYearWithQuarters[],
+): OverlappingPeriodsResult {
+  const financialYears: string[] = [];
+  const quarters: string[] = [];
+  const periods: Array<{ financialYear: string; quarter: string }> = [];
+
+  const oppRange = { startDate, endDate };
+
+  for (const y of years) {
+    const overlapsYear = isRangeOverlapping(oppRange, { startDate: y.startDate, endDate: y.endDate });
+    if (overlapsYear) {
+      if (!financialYears.includes(y.label)) {
+        financialYears.push(y.label);
+      }
+      for (const q of y.quarters) {
+        if (isRangeOverlapping(oppRange, { startDate: q.startDate, endDate: q.endDate })) {
+          if (!quarters.includes(q.label)) {
+            quarters.push(q.label);
+          }
+          periods.push({ financialYear: y.label, quarter: q.label });
+        }
+      }
+    }
+  }
+
+  return { financialYears, quarters, periods };
+}
+

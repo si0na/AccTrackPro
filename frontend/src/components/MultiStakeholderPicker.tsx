@@ -126,13 +126,15 @@ export const MultiStakeholderPicker: React.FC<MultiStakeholderPickerProps> = ({
             .map((s) => ({
               id: s.id,
               name: `${s.name}${s.designation ? ` (${s.designation})` : ''}`,
+              rawName: s.name,
             }))
         : serviceProviders.map((sp) => ({
             id: sp.id,
             name: serviceProviderOptionLabel(sp),
+            rawName: sp.name || sp.email || '',
           }));
 
-    const result: Array<{ id: string; name: string }> = [];
+    const result: Array<{ id: string; name: string; rawName: string }> = [];
     const seenIds = new Set<string>();
     for (const item of raw) {
       if (item.id && !seenIds.has(item.id)) {
@@ -140,6 +142,7 @@ export const MultiStakeholderPicker: React.FC<MultiStakeholderPickerProps> = ({
         result.push(item);
       }
     }
+    result.sort((a, b) => a.rawName.localeCompare(b.rawName, undefined, { sensitivity: 'base' }));
     return result;
   }, [mode, stakeholders, serviceProviders]);
 

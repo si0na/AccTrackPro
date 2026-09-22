@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Req, HttpCode } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, Req, HttpCode } from '@nestjs/common';
 import { FinancialYearsService } from './financial-years.service';
 import { CreateFinancialYearDto } from './dto/financial-year.dto';
 import { UpdateFinancialCalendarDto } from '../administration/dto/administration.dto';
@@ -8,8 +8,9 @@ export class FinancialYearsController {
   constructor(private readonly service: FinancialYearsService) {}
 
   @Get()
-  findAll() {
-    return this.service.findAll();
+  findAll(@Query('all') all?: string) {
+    const showAll = all === 'true' || all === '1';
+    return this.service.findAll(!showAll);
   }
 
   @Post()

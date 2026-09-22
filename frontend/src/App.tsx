@@ -24,8 +24,15 @@ import { PerformanceEvaluationView } from '@/features/reports/components/Perform
 import { EmployeeAppreciationView } from '@/features/employee-appreciation/components/EmployeeAppreciationView';
 import { EmployeeRewardsRecognitionView } from '@/features/employee-rewards-recognition/components/EmployeeRewardsRecognitionView';
 import { RisksView } from '@/features/risks/components/RisksView';
+import { RiskDetailsView } from '@/features/risks/components/RiskDetailsView';
 import { AlertsAndNotificationsView } from '@/features/notifications/components/AlertsAndNotificationsView';
 import { AdministrationPage } from '@/features/administration/components/AdministrationPage';
+import { AccountGrowthView } from '@/features/account-growth/components/AccountGrowthView';
+import { PartnershipView } from '@/features/growth/components/PartnershipView';
+import { TrackingView } from '@/features/growth/components/TrackingView';
+import { DeliveryReviewView } from '@/features/growth/components/DeliveryReviewView';
+import { TechnicalReviewView } from '@/features/growth/components/TechnicalReviewView';
+import { SqaReviewView } from '@/features/growth/components/SqaReviewView';
 import { ImportExportLauncher } from '@/features/import-export';
 import { LoginPage } from '@/features/auth/components/LoginPage';
 import { SignUpPage } from '@/features/auth/components/SignUpPage';
@@ -43,7 +50,7 @@ const InnerLayout: React.FC = () => {
   const {
     currentView, setView,
     currentUser, isLoggedIn, authLoading, currentUserProfile, logout,
-    selectedAccountId, selectedOpportunityId, selectedProjectId, selectedSqaId,
+    selectedAccountId, selectedOpportunityId, selectedProjectId, selectedSqaId, selectedRiskId,
     updateProfilePicture,
     unreadNotificationCount,
     can, permissionsLoaded,
@@ -85,11 +92,11 @@ const InnerLayout: React.FC = () => {
       }
       return;
     }
-    const path = buildPath(currentView, selectedAccountId, selectedOpportunityId, selectedProjectId, selectedSqaId);
+    const path = buildPath(currentView, selectedAccountId, selectedOpportunityId, selectedProjectId, selectedSqaId, selectedRiskId);
     if (window.location.pathname !== path) {
       navigate(path, { replace: true });
     }
-  }, [currentView, selectedAccountId, selectedOpportunityId, selectedProjectId, selectedSqaId, navigate, isLoggedIn]);
+  }, [currentView, selectedAccountId, selectedOpportunityId, selectedProjectId, selectedSqaId, selectedRiskId, navigate, isLoggedIn]);
 
   if (authLoading) {
     return <FullPageLoading />;
@@ -267,14 +274,14 @@ const InnerLayout: React.FC = () => {
           <>
           {currentView === 'dashboard'              && <DashboardView />}
           {currentView === 'accounts'               && <AccountsListView />}
-          {currentView === 'account-details'        && <AccountDetailsView />}
+          {currentView === 'account-details'        && <AccountDetailsView key={selectedAccountId} />}
           {currentView === 'opportunities'          && <OpportunitiesView />}
-          {currentView === 'opportunity-details'    && <OpportunityDetailsView />}
+          {currentView === 'opportunity-details'    && <OpportunityDetailsView key={selectedOpportunityId} />}
           {currentView === 'opportunity-forecast'   && <OpportunityForecastView mode="opportunity" />}
           {currentView === 'projects'                && <ProjectsListView />}
-          {currentView === 'project-details'         && <ProjectDetailsView />}
+          {currentView === 'project-details'         && <ProjectDetailsView key={selectedProjectId} />}
           {currentView === 'sqa'                     && <SqaListView />}
-          {currentView === 'sqa-details'             && <SqaDetailsView />}
+          {currentView === 'sqa-details'             && <SqaDetailsView key={selectedSqaId} />}
           {currentView === 'actionItems'            && <ActionItemsView />}
           {currentView === 'projectActionItems'     && <ActionItemsView />}
           {currentView === 'stakeholders'           && <StakeholdersView />}
@@ -286,8 +293,15 @@ const InnerLayout: React.FC = () => {
           {currentView === 'employee-appreciation' && <EmployeeAppreciationView />}
           {currentView === 'employee-rewards-recognition' && <EmployeeRewardsRecognitionView />}
           {currentView === 'risks'                 && <RisksView />}
+          {currentView === 'risk-details'          && <RiskDetailsView key={selectedRiskId} />}
           {currentView === 'notifications'          && <AlertsAndNotificationsView />}
           {currentView === 'administration'         && <AdministrationPage />}
+          {currentView === 'account-growth'        && <AccountGrowthView key={selectedAccountId} />}
+          {currentView === 'partnership'            && <PartnershipView />}
+          {currentView === 'tracking'              && <TrackingView />}
+          {currentView === 'delivery-review'       && <DeliveryReviewView />}
+          {currentView === 'technical-review'      && <TechnicalReviewView />}
+          {currentView === 'sqa-review'            && <SqaReviewView />}
           </>
           )}
         </main>

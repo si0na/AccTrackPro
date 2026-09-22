@@ -80,12 +80,14 @@ function provenance(
  * rather than merely true in the schema.
  */
 export const SqaDetailsView: React.FC = () => {
-  const { selectedSqaId, setView, setSelectedProjectId, setSelectedAccountId } = useCRM();
+  const { selectedSqaId, setView, setSelectedProjectId, setSelectedAccountId, can } = useCRM();
   const [users, setUsers] = useState<AdminUser[]>([]);
 
   useEffect(() => {
+    // Only admin users have the administration:view permission; skip for others.
+    if (!can('administration', 'view')) return;
     administrationApi.getUsers().then(setUsers).catch(() => setUsers([]));
-  }, []);
+  }, [can]);
 
   const {
     record, loading, error, reload, update, setWeekHealth, canUpdate, canEditWeeklyHealth,

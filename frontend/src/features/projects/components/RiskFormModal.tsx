@@ -122,8 +122,8 @@ export const RiskFormModal: React.FC<RiskFormModalProps> = ({
               className={SELECT_CLS}
             >
               <option value="High">High</option>
-              <option value="Medium">Medium</option>
               <option value="Low">Low</option>
+              <option value="Medium">Medium</option>
             </select>
           </FormField>
           <FormField label="Status">
@@ -132,10 +132,10 @@ export const RiskFormModal: React.FC<RiskFormModalProps> = ({
               onChange={(e) => onChange({ status: e.target.value as RiskStatus })}
               className={SELECT_CLS}
             >
-              <option value="Open">Open</option>
-              <option value="Mitigated">Mitigated</option>
-              <option value="Closed">Closed</option>
               <option value="Accepted">Accepted</option>
+              <option value="Closed">Closed</option>
+              <option value="Mitigated">Mitigated</option>
+              <option value="Open">Open</option>
             </select>
           </FormField>
           <FormField label="Owner">

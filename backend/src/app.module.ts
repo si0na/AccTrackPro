@@ -31,6 +31,7 @@ import { ServiceProviderModule } from './modules/service-provider/service-provid
 import { EmployeeAppreciationModule } from './modules/employee-appreciation/employee-appreciation.module';
 import { EmployeeRewardsRecognitionModule } from './modules/employee-rewards-recognition/employee-rewards-recognition.module';
 import { RisksModule } from './modules/risks/risks.module';
+import { AccountGrowthModule } from './modules/account-growth/account-growth.module';
 
 @Module({
   imports: [
@@ -56,6 +57,7 @@ import { RisksModule } from './modules/risks/risks.module';
     EmployeeAppreciationModule,
     EmployeeRewardsRecognitionModule,
     RisksModule,
+    AccountGrowthModule,
     ActionItemsModule,
     StakeholdersModule,
     ActivitiesModule,

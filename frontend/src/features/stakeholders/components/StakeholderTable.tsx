@@ -76,8 +76,9 @@ export const StakeholderTable: React.FC<StakeholderTableProps> = ({
   };
 
   const getSortValue = (s: Stakeholder, key: string) => {
+    if (key === 'name') return s.name || s.email || '';
     if (key === 'accountId') return resolveAccount(s.accountId)?.name || s.accountName || '';
-    return (s as any)[key];
+    return (s as any)[key] ?? '';
   };
 
   const q = searchQuery.trim().toLowerCase();

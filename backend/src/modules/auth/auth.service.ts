@@ -160,7 +160,7 @@ export class AuthService {
       userId:               user.id,
       type:                 'System',
       eventType:            'Registered',
-      title:                'Welcome to AccTrack Pro',
+      title:                'Welcome to ReflectOne',
       message:              `Your account has been created successfully. Welcome, ${name}!`,
       severity:             'Success',
       notificationCategory: 'SYSTEM',
@@ -382,15 +382,15 @@ export class AuthService {
     const resetUrl = `${frontendUrl}/reset-password?token=${rawToken}`;
     const sender = process.env.GRAPH_SENDER_EMAIL || 'noreply@reflectionsinfos.com';
 
-    // HTML content for professional AccTrack Pro email
+    // HTML content for professional ReflectOne email
     const htmlContent = `
       <div style="font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 600px; margin: 0 auto; padding: 30px; border: 1px solid #e2e8f0; border-radius: 12px; background-color: #ffffff; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);">
         <div style="text-align: center; margin-bottom: 32px; padding-bottom: 20px; border-bottom: 1px solid #f1f5f9;">
-          <span style="font-size: 24px; font-weight: bold; color: #2563eb; letter-spacing: -0.025em;">AccTrack Pro</span>
+          <span style="font-size: 24px; font-weight: bold; color: #2563eb; letter-spacing: -0.025em;">ReflectOne</span>
         </div>
         <p style="font-size: 16px; color: #1e293b; margin-top: 0; font-weight: 500;">Hello ${user.name || 'User'},</p>
         <p style="font-size: 14px; color: #475569; line-height: 1.6; margin-bottom: 24px;">
-          We received a request to reset your password for your AccTrack Pro account. If you did not make this request, you can safely ignore this email — your password will remain secure.
+          We received a request to reset your password for your ReflectOne account. If you did not make this request, you can safely ignore this email — your password will remain secure.
         </p>
         <div style="text-align: center; margin: 36px 0;">
           <a href="${resetUrl}" style="background-color: #2563eb; color: #ffffff; padding: 14px 28px; font-size: 14px; font-weight: 600; border-radius: 8px; text-decoration: none; display: inline-block; transition: background-color 0.2s;">
@@ -411,7 +411,7 @@ export class AuthService {
     // Send the email using Microsoft Graph API
     await this.graphMailService.sendMail(
       user.email,
-      'AccTrack Pro – Password Reset Request',
+      'ReflectOne – Password Reset Request',
       htmlContent,
     );
   }

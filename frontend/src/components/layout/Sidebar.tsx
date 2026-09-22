@@ -1,11 +1,11 @@
-/**
+﻿/**
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useCRM, ViewType } from '@/contexts/CRMContext';
-import { isOpenActionItemStatus, matchesGlobalAccount } from '@/utils';
+import { matchesGlobalAccount } from '@/utils';
 import { canAccessView } from '@/utils/permissions';
 import {
   LayoutDashboard,
@@ -20,24 +20,53 @@ import {
   Settings,
   ChevronRight,
   ChevronLeft,
+  ChevronDown,
   ShieldCheck,
-  Search,
   ClipboardCheck,
   BadgeCheck,
   HeartHandshake,
   Award,
   AlertTriangle,
-  Layers,
-  LogOut,
-  Menu
+  Sprout,
+  Handshake,
+  ClipboardList,
+  Truck,
+  Settings2,
 } from 'lucide-react';
 
 import { ReflectOneLogo } from '@/components/common/ReflectOneLogo';
 
+// ---------------------------------------------------------------------------
+// Types
+// ---------------------------------------------------------------------------
+
+interface NavSubItem {
+  id: ViewType;
+  label: string;
+  icon: React.ElementType;
+}
+
+interface NavItem {
+  id: ViewType;
+  label: string;
+  icon: React.ElementType;
+  badge: number | null;
+  /** When present, renders this item as an expandable parent with these children. */
+  children?: NavSubItem[];
+}
+
+interface NavSection {
+  label: string;
+  items: NavItem[];
+}
+
+// ---------------------------------------------------------------------------
+// Component
+// ---------------------------------------------------------------------------
+
 export const Sidebar: React.FC = () => {
   const {
-    currentView,
-    setView,
+    currentView, setView,
     accounts: allAccounts,
     opportunities: allOpportunities,
     projects: allProjects,
@@ -57,6 +86,16 @@ export const Sidebar: React.FC = () => {
     setSidebarCollapsed,
     can,
   } = useCRM();
+
+  // Track which parent nav items are expanded (by ViewType id)
+  const TRACKING_VIEWS: ViewType[] = ['tracking', 'delivery-review', 'technical-review', 'sqa-review'];
+  const isTrackingActive = TRACKING_VIEWS.includes(currentView);
+  const [trackingExpanded, setTrackingExpanded] = useState(isTrackingActive);
+
+  // Auto-expand Tracking when navigating to a Tracking sub-page
+  useEffect(() => {
+    if (isTrackingActive) setTrackingExpanded(true);
+  }, [currentView, isTrackingActive]);
 
   // Nav badges reflect the Global Account Selector, same as every other module.
   const accounts = allAccounts.filter(a => matchesGlobalAccount(a.id, globalAccountId));
@@ -80,144 +119,90 @@ export const Sidebar: React.FC = () => {
   const employeeRewardsCount = (allEmployeeRewardsRecognitions ?? []).length;
   const employeeFeedbackCount = (allPerformanceEvaluations ?? []).filter(p => matchesGlobalAccount(p.accountId, globalAccountId)).length;
 
-  const sections = [
+  const sections: NavSection[] = [
     {
-      label: 'Workspace',
+      label: 'Account Management',
       items: [
+        { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, badge: null },
+        { id: 'accounts', label: 'Accounts', icon: Building2, badge: accounts.length },
+        { id: 'opportunities', label: 'Opportunities', icon: TrendingUp, badge: opportunities.length },
+        { id: 'actionItems', label: 'Action Items', icon: CheckSquare, badge: normalActionItemsCount },
+        { id: 'stakeholders', label: 'Stakeholders', icon: Users, badge: totalStakeholdersCount },
+        { id: 'risks', label: 'Risks & Issues', icon: AlertTriangle, badge: risksAndIssuesCount },
+      ],
+    },
+    {
+      label: 'Growth',
+      items: [
+        { id: 'account-growth', label: 'Account Growth', icon: Sprout, badge: null },
+        { id: 'partnership', label: 'Partnership', icon: Handshake, badge: null },
         {
-          id: 'dashboard' as ViewType,
-          label: 'Dashboard',
-          icon: LayoutDashboard,
+          id: 'tracking',
+          label: 'Tracking',
+          icon: ClipboardList,
           badge: null,
-        },
-        {
-          id: 'accounts' as ViewType,
-          label: 'Accounts',
-          icon: Building2,
-          badge: accounts.length,
-        },
-        {
-          id: 'opportunities' as ViewType,
-          label: 'Opportunities',
-          icon: TrendingUp,
-          badge: opportunities.length,
-        },
-        {
-          id: 'actionItems' as ViewType,
-          label: 'Action Items',
-          icon: CheckSquare,
-          badge: normalActionItemsCount,
-        },
-        {
-          id: 'stakeholders' as ViewType,
-          label: 'Stakeholders',
-          icon: Users,
-          badge: totalStakeholdersCount,
-        },
-        {
-          id: 'risks' as ViewType,
-          label: 'Risks & Issues',
-          icon: AlertTriangle,
-          badge: risksAndIssuesCount,
+          children: [
+            { id: 'delivery-review', label: 'Delivery Review', icon: Truck },
+            { id: 'technical-review', label: 'Technical Review', icon: Settings2 },
+            { id: 'sqa-review', label: 'SQA Review', icon: BadgeCheck },
+          ],
         },
       ],
     },
     {
       label: 'Delivery',
       items: [
-        {
-          id: 'projects' as ViewType,
-          label: 'Projects',
-          icon: FolderKanban,
-          badge: projects.length,
-        },
-        {
-          id: 'projectActionItems' as ViewType,
-          label: 'Project Action Items',
-          icon: CheckSquare,
-          badge: projectActionItemsCount,
-        },
-        {
-          id: 'sqa' as ViewType,
-          label: 'SQA',
-          icon: BadgeCheck,
-          badge: sqaCount,
-        },
+        { id: 'projects', label: 'Projects', icon: FolderKanban, badge: projects.length },
+        { id: 'projectActionItems', label: 'Project Action Items', icon: CheckSquare, badge: projectActionItemsCount },
+        { id: 'sqa', label: 'SQA', icon: BadgeCheck, badge: sqaCount },
       ],
     },
     {
       label: 'Insights',
       items: [
-        {
-          id: 'forecast' as ViewType,
-          label: 'Portfolio Forecast',
-          icon: LineChart,
-          badge: null
-        },
-        {
-          id: 'executive' as ViewType,
-          label: 'Reports',
-          icon: BarChart3,
-          badge: null
-        },
+        { id: 'forecast', label: 'Portfolio Forecast', icon: LineChart, badge: null },
+        { id: 'executive', label: 'Reports', icon: BarChart3, badge: null },
       ],
     },
     {
-      label: 'Employee Engagement',
+      label: 'Team and Engagement',
       items: [
-        {
-          id: 'employee-appreciation' as ViewType,
-          label: 'Employee Appreciation',
-          icon: HeartHandshake,
-          badge: employeeAppreciationCount,
-        },
-        {
-          id: 'employee-rewards-recognition' as ViewType,
-          label: 'Employee R&R',
-          icon: Award,
-          badge: employeeRewardsCount,
-        },
-        {
-          id: 'performance-evaluation' as ViewType,
-          label: 'Employee Feedback',
-          icon: ClipboardCheck,
-          badge: employeeFeedbackCount,
-        },
+        { id: 'employee-appreciation', label: 'Appreciation', icon: HeartHandshake, badge: employeeAppreciationCount },
+        { id: 'employee-rewards-recognition', label: 'Reward and Recognition', icon: Award, badge: employeeRewardsCount },
+        { id: 'performance-evaluation', label: 'Feedback', icon: ClipboardCheck, badge: employeeFeedbackCount },
       ],
     },
     {
       label: 'System',
       items: [
-        {
-          id: 'notifications' as ViewType,
-          label: 'Alerts & Notifications',
-          icon: Bell,
-          badge: unreadNotificationCount,
-        },
-        {
-          id: 'audit-log' as ViewType,
-          label: 'Audit Logs',
-          icon: ShieldCheck,
-          badge: null
-        },
-        {
-          id: 'administration' as ViewType,
-          label: 'Administration',
-          icon: Settings,
-          badge: null
-        },
+        { id: 'notifications', label: 'Alerts & Notifications', icon: Bell, badge: unreadNotificationCount },
+        { id: 'audit-log', label: 'Audit Logs', icon: ShieldCheck, badge: null },
+        { id: 'administration', label: 'Administration', icon: Settings, badge: null },
       ],
     },
   ];
 
-  // Permission-gate the nav: keep only items the user can access, and drop any
-  // section left with zero visible items (no empty section headers).
+  // Permission-gate: keep only items the user can access; drop empty sections.
   const visibleSections = sections
     .map(section => ({
       ...section,
       items: section.items.filter(item => canAccessView(item.id, can)),
     }))
     .filter(section => section.items.length > 0);
+
+  // Is the given item ID the active view (including detail-view aliases)?
+  const isItemActive = (id: ViewType): boolean =>
+    currentView === id ||
+    (id === 'accounts' && currentView === 'account-details') ||
+    (id === 'opportunities' && currentView === 'opportunity-details') ||
+    (id === 'projects' && currentView === 'project-details') ||
+    (id === 'sqa' && currentView === 'sqa-details');
+
+  const handleNavClick = (id: ViewType) => {
+    setCameFromDashboard(false);
+    if (id === 'opportunities') setSelectedStage('All');
+    setView(id);
+  };
 
   return (
     <aside className={`bg-slate-900 flex flex-col h-screen shrink-0 border-r border-slate-800 transition-all duration-300 ease-in-out ${
@@ -235,11 +220,11 @@ export const Sidebar: React.FC = () => {
             </span>
           )}
         </div>
-        
+
         <button
           onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-          className={`p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white cursor-pointer transition-colors shrink-0`}
-          title={sidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+          className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white cursor-pointer transition-colors shrink-0"
+          title={sidebarCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar'}
         >
           {sidebarCollapsed ? (
             <ChevronRight className="w-4 h-4" />
@@ -260,25 +245,94 @@ export const Sidebar: React.FC = () => {
                 {section.label}
               </div>
             )}
-            <div className="space-y-1">
+            <div className="space-y-0.5">
               {section.items.map(item => {
-                const isActive = currentView === item.id ||
-                  (item.id === 'accounts' && currentView === 'account-details') ||
-                  (item.id === 'opportunities' && currentView === 'opportunity-details') ||
-                  (item.id === 'projects' && currentView === 'project-details') ||
-                  (item.id === 'sqa' && currentView === 'sqa-details');
+                const isActive = isItemActive(item.id);
                 const Icon = item.icon;
+                const hasChildren = !!(item.children && item.children.length > 0);
 
+                // ── Parent item with sub-items (Tracking) ──────────────────
+                if (hasChildren && item.children) {
+                  const isParentActive = isActive || isTrackingActive;
+                  const isExpanded = !sidebarCollapsed && trackingExpanded;
+
+                  return (
+                    <div key={item.id}>
+                      <button
+                        onClick={() => {
+                          if (sidebarCollapsed) {
+                            handleNavClick(item.id);
+                          } else {
+                            const willExpand = !trackingExpanded;
+                            setTrackingExpanded(willExpand);
+                            if (willExpand) handleNavClick(item.id);
+                          }
+                        }}
+                        title={item.label}
+                        className={`flex items-center rounded-lg text-sm font-medium transition-all duration-150 group cursor-pointer ${
+                          sidebarCollapsed
+                            ? 'justify-center w-10 h-10 mx-auto px-0'
+                            : 'w-full justify-between gap-2 px-2.5 py-2'
+                        } ${
+                          isParentActive
+                            ? 'bg-slate-800 text-white font-semibold'
+                            : 'text-slate-400 hover:bg-slate-800/50 hover:text-white'
+                        }`}
+                      >
+                        <div className={`flex items-center min-w-0 flex-1 ${sidebarCollapsed ? 'justify-center space-x-0' : 'space-x-2'}`}>
+                          <Icon
+                            className={`w-4 h-4 transition-colors shrink-0 ${
+                              isParentActive ? 'text-white' : 'text-slate-500 group-hover:text-slate-300'
+                            }`}
+                          />
+                          {!sidebarCollapsed && (
+                            <span className="whitespace-nowrap text-xs sm:text-[13px] font-medium truncate">
+                              {item.label}
+                            </span>
+                          )}
+                        </div>
+                        {!sidebarCollapsed && (
+                          <ChevronDown
+                            className={`w-3.5 h-3.5 shrink-0 transition-transform duration-200 ${
+                              isExpanded ? 'rotate-0' : '-rotate-90'
+                            } ${isParentActive ? 'text-slate-300' : 'text-slate-600'}`}
+                          />
+                        )}
+                      </button>
+
+                      {/* Sub-items */}
+                      {isExpanded && (
+                        <div className="mt-0.5 ml-3 pl-3 border-l border-slate-700/60 space-y-0.5">
+                          {item.children.map(child => {
+                            const isChildActive = currentView === child.id;
+                            const ChildIcon = child.icon;
+                            return (
+                              <button
+                                key={child.id}
+                                onClick={() => handleNavClick(child.id)}
+                                title={child.label}
+                                className={`flex items-center gap-2 w-full px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 cursor-pointer ${
+                                  isChildActive
+                                    ? 'bg-slate-700 text-white font-semibold'
+                                    : 'text-slate-500 hover:bg-slate-800/60 hover:text-slate-200'
+                                }`}
+                              >
+                                <ChildIcon className={`w-3.5 h-3.5 shrink-0 ${isChildActive ? 'text-white' : 'text-slate-600'}`} />
+                                <span className="whitespace-nowrap truncate">{child.label}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+
+                // ── Regular flat nav item ──────────────────────────────────
                 return (
                   <button
                     key={item.id}
-                    onClick={() => {
-                      setCameFromDashboard(false);
-                      if (item.id === 'opportunities') {
-                        setSelectedStage('All');
-                      }
-                      setView(item.id);
-                    }}
+                    onClick={() => handleNavClick(item.id)}
                     title={item.label}
                     className={`flex items-center rounded-lg text-sm font-medium transition-all duration-150 group cursor-pointer ${
                       sidebarCollapsed

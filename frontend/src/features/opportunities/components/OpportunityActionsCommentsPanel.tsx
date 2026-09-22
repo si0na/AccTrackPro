@@ -17,9 +17,10 @@ import {
   Comment,
   PriorityLevel,
   ActionItemStatus,
+  ActionItemType,
 } from '@/types';
-import { ACTION_ITEM_STATUS_OPTIONS } from '@/constants';
-import { getTodayISODate } from '@/utils';
+import { ACTION_ITEM_STATUS_OPTIONS, ACTION_ITEM_TYPE_OPTIONS } from '@/constants';
+import { getTodayISODate, cleanOwnerName } from '@/utils';
 import {
   AlertTriangle,
   CheckSquare,
@@ -473,8 +474,8 @@ export const OpportunityActionsCommentsPanel: React.FC<PanelProps> = ({ opportun
                       className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white"
                     >
                       <option value="High">High</option>
-                      <option value="Medium">Medium</option>
                       <option value="Low">Low</option>
+                      <option value="Medium">Medium</option>
                     </select>
                   </div>
                   <div className="space-y-1">
@@ -486,6 +487,19 @@ export const OpportunityActionsCommentsPanel: React.FC<PanelProps> = ({ opportun
                     >
                       {ACTION_ITEM_STATUS_OPTIONS.map(s => (
                         <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase">Type</label>
+                    <select
+                      value={newAction.actionItemType || ''}
+                      onChange={(e) => setNewAction({ ...newAction, actionItemType: (e.target.value || undefined) as ActionItemType })}
+                      className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white"
+                    >
+                      <option value="">— None —</option>
+                      {ACTION_ITEM_TYPE_OPTIONS.map(t => (
+                        <option key={t} value={t}>{t}</option>
                       ))}
                     </select>
                   </div>
@@ -597,7 +611,7 @@ export const OpportunityActionsCommentsPanel: React.FC<PanelProps> = ({ opportun
                               accountId={opp?.accountId || ''}
                               stakeholders={stakeholders}
                               value={action.ownerStakeholderId}
-                              fallbackName={action.ownerName || action.owner}
+                              fallbackName={cleanOwnerName(action.ownerName || action.owner)}
                               disabled={isWon}
                               title={isWon ? "This opportunity has been converted to a project and is now read-only. No further actions can be performed." : undefined}
                               onChange={(ownerStakeholderId) => {
@@ -606,8 +620,8 @@ export const OpportunityActionsCommentsPanel: React.FC<PanelProps> = ({ opportun
                                 updateActionItem({
                                   ...action,
                                   ownerStakeholderId,
-                                  ownerName: sh?.name || action.ownerName,
-                                  owner: sh?.name || action.owner,
+                                  ownerName: cleanOwnerName(sh?.name || action.ownerName),
+                                  owner: cleanOwnerName(sh?.name || action.owner),
                                 });
                               }}
                             />

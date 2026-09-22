@@ -29,6 +29,11 @@ export function serviceProviderOptionLabel(sp: ServiceProviderUser): string {
   return `${base}${suffix}`;
 }
 
+export function isRawIdStr(s: string): boolean {
+  if (!s) return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(s) || /^(usr|user|acc|opp|proj|stk|ai)-/i.test(s);
+}
+
 /**
  * Deal outcome, derived purely from pipeline stage: 'Won'/'Lost' stages are
  * closed, everything else is still open. There is no separate status field —
@@ -45,6 +50,26 @@ export function deriveOppStatus(stage: OpportunityStage | string): 'Open' | 'Won
  */
 export function matchesGlobalAccount(accountId: string | undefined, globalAccountId: string): boolean {
   return globalAccountId === 'All' || accountId === globalAccountId;
+}
+
+/**
+ * Strips designation, department, or extra metadata attached to an owner name
+ * string (e.g. "John Doe (Senior Manager)" -> "John Doe", "Jane Doe - Engineering" -> "Jane Doe").
+ */
+export function cleanOwnerName(name?: string | null): string {
+  if (!name) return '';
+  let str = name.trim();
+  // 1. Remove anything in parentheses (e.g. "John Doe (Senior VP)")
+  str = str.replace(/\s*\([^)]*\)/g, '');
+  // 2. If there is a hyphen/dash separating name and designation/dept (e.g. "John Doe - Manager")
+  if (/\s+[-—]\s+/.test(str)) {
+    str = str.split(/\s+[-—]\s+/)[0];
+  }
+  // 3. If there is a comma separating name and designation (e.g. "John Doe, Director of Sales")
+  if (/,/.test(str)) {
+    str = str.split(',')[0];
+  }
+  return str.trim();
 }
 
 /** Today's date as "YYYY-MM-DD" (local time) — the default Open Date for new action items. */
@@ -182,4 +207,126 @@ export function calculateRiskSeverity(impact?: string, likelihood?: string): str
 export function formatCur(value: number | undefined | null): string {
   if (value == null) return '$0.00';
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value);
+}
+
+/** Known sentinel option values for special/synthetic options */
+const SPECIAL_OPTION_SENTINELS = new Set([
+  '',
+  'all',
+  'all accounts',
+  'all projects',
+  'all opportunities',
+  'all stakeholders',
+  'none',
+  'n/a',
+  'na',
+  'select',
+  'not_assigned',
+  'not assigned',
+  '—',
+  '__none__',
+]);
+
+/**
+ * Checks whether an item/option represents a special/system/synthetic option
+ * (e.g. "Select...", "All...", "None", "N/A", "Not assigned").
+ * Does NOT use label-prefix matching so that legitimate data (e.g. "Allison", "Selecta")
+ * is treated as normal data.
+ */
+export function isSpecialOption(item: any): boolean {
+  if (item == null) return true;
+
+  if (typeof item === 'object') {
+    // 1. Explicit semantic flags
+    if (
+      item.isSpecial === true ||
+      item.isPlaceholder === true ||
+      item.isDefault === true ||
+      item.isSystem === true ||
+      item.isSynthetic === true
+    ) {
+      return true;
+    }
+
+    // 2. Known option `value` sentinel
+    const val = item.value;
+    if (val === '' || val === null || val === undefined) return true;
+    if (typeof val === 'string') {
+      const lowerVal = val.trim().toLowerCase();
+      if (SPECIAL_OPTION_SENTINELS.has(lowerVal)) return true;
+    }
+
+    return false;
+  }
+
+  // 3. Primitive option value
+  if (typeof item === 'string') {
+    const lowerItem = item.trim().toLowerCase();
+    if (SPECIAL_OPTION_SENTINELS.has(lowerItem)) return true;
+  }
+
+  return false;
+}
+
+/**
+ * Generic helper to sort any collection of options/entities in ascending
+ * alphabetical order by display label or name. Case-insensitive, numeric-aware.
+ * Special/system options retain their exact original array slot positions.
+ */
+export function sortOptionsAlphabetically<T>(
+  items: readonly T[],
+  getLabel: (item: T) => string = (item: any) => {
+    if (typeof item === 'string') return item;
+    if (item && typeof item === 'object') {
+      if (item.label) return String(item.label);
+      if (item.name) return String(item.name);
+      if (item.displayName) return String(item.displayName);
+      if (item.rawName) return String(item.rawName);
+      if (item.title) return String(item.title);
+      if (item.email) return String(item.email);
+      if (item.isActive !== undefined || item.isPending !== undefined) {
+        return serviceProviderOptionLabel(item);
+      }
+      return String(item.id || item.value || item);
+    }
+    return String(item ?? '');
+  },
+  preserveOrder: boolean = false,
+): T[] {
+  if (!items || items.length <= 1 || preserveOrder) {
+    return Array.from(items || []);
+  }
+
+  const specialIndices: number[] = [];
+  const regularIndices: number[] = [];
+  const regularItems: T[] = [];
+
+  const result: T[] = new Array(items.length);
+
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    if (isSpecialOption(item)) {
+      specialIndices.push(i);
+      result[i] = item;
+    } else {
+      regularIndices.push(i);
+      regularItems.push(item);
+    }
+  }
+
+  if (regularItems.length <= 1) {
+    return Array.from(items);
+  }
+
+  regularItems.sort((a, b) => {
+    const labelA = String(getLabel(a) ?? '');
+    const labelB = String(getLabel(b) ?? '');
+    return labelA.localeCompare(labelB, undefined, { sensitivity: 'base', numeric: true });
+  });
+
+  for (let k = 0; k < regularIndices.length; k++) {
+    result[regularIndices[k]] = regularItems[k];
+  }
+
+  return result;
 }

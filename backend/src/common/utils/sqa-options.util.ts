@@ -22,8 +22,8 @@ export const SQA_BILLING_MODEL_OPTIONS = [
   'T&E', 'Fixed Bid', 'Fixed Capacity', 'Managed Services',
 ] as const;
 
-/** Tower options — Tower 1 and Tower 2. */
-export const SQA_TOWER_OPTIONS = ['Tower 1', 'Tower 2'] as const;
+/** Tower options — Tower 1, Tower 2, Others. */
+export const SQA_TOWER_OPTIONS = ['Others', 'Tower 1', 'Tower 2'] as const;
 
 /** SQA/project importance — same High/Medium/Low scale the app uses for priority. */
 export const SQA_IMPORTANCE_OPTIONS = ['High', 'Medium', 'Low'] as const;

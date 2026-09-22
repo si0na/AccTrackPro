@@ -211,8 +211,8 @@ export const SqaTrackerTab: React.FC<SqaTrackerTabProps> = ({ sqaRecordId, stora
             className="text-xs border border-slate-200 rounded-md py-1.5 px-2 bg-white text-slate-700 font-semibold cursor-pointer"
           >
             <option value="All">All Health</option>
-            <option value="Green">Green</option>
             <option value="Amber">Amber</option>
+            <option value="Green">Green</option>
             <option value="Red">Red</option>
           </select>
         </div>

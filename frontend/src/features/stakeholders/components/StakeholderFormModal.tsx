@@ -78,7 +78,7 @@ export const StakeholderFormModal: React.FC<StakeholderFormModalProps> = ({
 
   const { stakeholders: allContextStakeholders, serviceProviders, associateServiceProvider } = useCRM();
   const { serviceProviderOptions, stkIdToOptionIdMap } = useMemo(() => {
-    const list: Array<{ id: string; name: string; isSystemUser?: boolean }> = [];
+    const list: Array<{ id: string; name: string; rawName?: string; isSystemUser?: boolean }> = [];
     const seenKeys = new Set<string>();
     const idMap = new Map<string, string>();
 
@@ -94,7 +94,7 @@ export const StakeholderFormModal: React.FC<StakeholderFormModalProps> = ({
         if (nameKey) seenKeys.add(nameKey);
 
         const label = serviceProviderOptionLabel(spUser);
-        list.push({ id: spUser.id, name: label, isSystemUser: true });
+        list.push({ id: spUser.id, name: label, rawName: spUser.name || spUser.email || '', isSystemUser: true });
       }
     }
 
@@ -118,12 +118,12 @@ export const StakeholderFormModal: React.FC<StakeholderFormModalProps> = ({
           seenKeys.add(sp.id);
           if (nameKey) seenKeys.add(nameKey);
           const label = sp.designation ? `${sp.name} (${sp.designation})` : (sp.name || sp.email || 'Service Provider');
-          list.push({ id: sp.id, name: label });
+          list.push({ id: sp.id, name: label, rawName: sp.name || sp.email || '' });
         }
       }
     }
 
-    list.sort((a, b) => a.name.localeCompare(b.name));
+    list.sort((a, b) => ((a as any).rawName || a.name).localeCompare(((b as any).rawName || b.name), undefined, { sensitivity: 'base' }));
     return { serviceProviderOptions: list, stkIdToOptionIdMap: idMap };
   }, [allContextStakeholders, serviceProviders]);
 
@@ -250,11 +250,13 @@ export const StakeholderFormModal: React.FC<StakeholderFormModalProps> = ({
                   className={selectCls}
                 >
                   <option value="" disabled>Select account…</option>
-                  {accounts.map((acc) => (
-                    <option key={acc.id} value={acc.id}>
-                      {acc.name}
-                    </option>
-                  ))}
+                  {[...accounts]
+                    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+                    .map((acc) => (
+                      <option key={acc.id} value={acc.id}>
+                        {acc.name}
+                      </option>
+                    ))}
                 </select>
               )}
             </FormField>
@@ -334,8 +336,8 @@ export const StakeholderFormModal: React.FC<StakeholderFormModalProps> = ({
                     className={selectCls}
                   >
                     <option value="" disabled>Select relationship…</option>
-                    <option value="Strong">Strong</option>
                     <option value="Neutral">Neutral</option>
+                    <option value="Strong">Strong</option>
                     <option value="Weak">Weak</option>
                   </select>
                 </FormField>

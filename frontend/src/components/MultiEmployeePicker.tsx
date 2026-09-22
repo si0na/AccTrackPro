@@ -72,7 +72,7 @@ export const MultiEmployeePicker: React.FC<MultiEmployeePickerProps> = ({
     const q = query.trim().toLowerCase();
     const seen = new Set<string>();
 
-    return users.filter((u) => {
+    const list = users.filter((u) => {
       const displayName = (u.name || (u as any).fullName || (u as any).displayName || u.email || '').trim();
       if (!displayName) return false;
 
@@ -96,6 +96,12 @@ export const MultiEmployeePicker: React.FC<MultiEmployeePickerProps> = ({
         roleOrDesig.includes(q) ||
         deptStr.includes(q)
       );
+    });
+
+    return list.sort((a, b) => {
+      const nameA = (a.name || (a as any).fullName || (a as any).displayName || a.email || '').trim();
+      const nameB = (b.name || (b as any).fullName || (b as any).displayName || b.email || '').trim();
+      return nameA.localeCompare(nameB, undefined, { sensitivity: 'base' });
     });
   }, [users, query]);
 

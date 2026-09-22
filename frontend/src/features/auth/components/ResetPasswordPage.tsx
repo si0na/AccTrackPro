@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { authApi } from '@/api/crm.api';
 import { Lock, CheckCircle2, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import { Card, Button, ErrorBanner, FormField, INPUT_CLS } from '@/components/ui';
+import { ReflectOneLogo } from '@/components/common/ReflectOneLogo';
 
 interface ResetPasswordPageProps {
   onBack: () => void;
@@ -103,9 +104,7 @@ export const ResetPasswordPage: React.FC<ResetPasswordPageProps> = ({ onBack, on
       <Card padding="none" className="w-full max-w-md">
         <div className="p-8 sm:p-9 space-y-6">
           <div className="flex flex-col items-center text-center space-y-3">
-            <div className="w-11 h-11 rounded-xl bg-blue-600 flex items-center justify-center font-bold text-white shadow-md shadow-blue-600/20 ring-4 ring-blue-600/10">
-              AT
-            </div>
+            <ReflectOneLogo className="w-10 h-10" />
             <div>
               <h1 className="text-xl font-bold text-slate-800 tracking-tight">Set new password</h1>
               <p className="text-xs text-slate-500 mt-1.5">Choose a secure new password for your account.</p>

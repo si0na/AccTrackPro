@@ -31,6 +31,14 @@ export const VIEW_MODULE: Record<ViewType, string | null> = {
   'employee-appreciation':  'employeeAppreciation',
   'employee-rewards-recognition': 'employeeRewardsRecognition',
   risks:                    'risks',
+  'risk-details':           'risks',
+  'account-growth':         'accountGrowth',
+  // ── Growth section placeholders ──────────────────────────────────────────
+  partnership:              'accountGrowth',
+  tracking:                 'accountGrowth',
+  'delivery-review':        'accountGrowth',
+  'technical-review':       'accountGrowth',
+  'sqa-review':             'accountGrowth',
 };
 
 /** The RBAC module key backing a view, or null when the view is ungated. */

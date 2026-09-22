@@ -225,9 +225,9 @@ export const NpsTab: React.FC<NpsTabProps> = ({ accountId, accountName = '', pro
             className="text-xs p-2 border border-slate-200 rounded-lg bg-slate-50 font-medium text-slate-700"
           >
             <option value="ALL">All Classifications</option>
-            <option value="PROMOTER">Promoters (9-10)</option>
-            <option value="PASSIVE">Passives (7-8)</option>
             <option value="DETRACTOR">Detractors (0-6)</option>
+            <option value="PASSIVE">Passives (7-8)</option>
+            <option value="PROMOTER">Promoters (9-10)</option>
           </select>
 
           {availableQuarters.length > 0 && (

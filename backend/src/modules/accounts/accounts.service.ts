@@ -71,21 +71,22 @@ function rowToAccount(row: any): Account {
 
 const ACCOUNT_SELECT = `
   SELECT a.*,
-         u.name  AS owner_name,
+         COALESCE(NULLIF(u.name, ''), NULLIF(em_u.name, ''), u.email, em_u.email) AS owner_name,
          COALESCE(NULLIF(am.name, ''), NULLIF(em_am.name, ''), am.email, em_am.email) AS account_manager_name,
          COALESCE(NULLIF(pl.name, ''), NULLIF(em_pl.name, ''), pl.email, em_pl.email) AS practice_lead_name,
          COALESCE(NULLIF(cp.name, ''), NULLIF(em_cp.name, ''), cp.email, em_cp.email) AS client_partner_name,
          COALESCE(NULLIF(vh.name, ''), NULLIF(em_vh.name, ''), vh.email, em_vh.email) AS vertical_head_name
   FROM accounts a
-  LEFT JOIN users u  ON a.owner_id           = u.id
-  LEFT JOIN users am ON a.account_manager_id = am.id
-  LEFT JOIN employee_master em_am ON a.account_manager_id = em_am.id
-  LEFT JOIN users pl ON a.practice_lead_id   = pl.id
-  LEFT JOIN employee_master em_pl ON a.practice_lead_id   = em_pl.id
-  LEFT JOIN users cp ON a.client_partner_id  = cp.id
-  LEFT JOIN employee_master em_cp ON a.client_partner_id  = em_cp.id
-  LEFT JOIN users vh ON a.vertical_head_id   = vh.id
-  LEFT JOIN employee_master em_vh ON a.vertical_head_id   = em_vh.id
+  LEFT JOIN users u  ON a.owner_id           = u.id OR LOWER(a.owner_id) = LOWER(u.email)
+  LEFT JOIN employee_master em_u ON a.owner_id = em_u.id OR (u.email IS NOT NULL AND LOWER(em_u.email) = LOWER(u.email))
+  LEFT JOIN users am ON a.account_manager_id = am.id OR LOWER(a.account_manager_id) = LOWER(am.email)
+  LEFT JOIN employee_master em_am ON a.account_manager_id = em_am.id OR (am.email IS NOT NULL AND LOWER(em_am.email) = LOWER(am.email))
+  LEFT JOIN users pl ON a.practice_lead_id   = pl.id OR LOWER(a.practice_lead_id) = LOWER(pl.email)
+  LEFT JOIN employee_master em_pl ON a.practice_lead_id   = em_pl.id OR (pl.email IS NOT NULL AND LOWER(em_pl.email) = LOWER(pl.email))
+  LEFT JOIN users cp ON a.client_partner_id  = cp.id OR LOWER(a.client_partner_id) = LOWER(cp.email)
+  LEFT JOIN employee_master em_cp ON a.client_partner_id  = em_cp.id OR (cp.email IS NOT NULL AND LOWER(em_cp.email) = LOWER(cp.email))
+  LEFT JOIN users vh ON a.vertical_head_id   = vh.id OR LOWER(a.vertical_head_id) = LOWER(vh.email)
+  LEFT JOIN employee_master em_vh ON a.vertical_head_id   = em_vh.id OR (vh.email IS NOT NULL AND LOWER(em_vh.email) = LOWER(vh.email))
 `;
 
 @Injectable()

@@ -10,20 +10,41 @@ import type { ImportFieldDef } from '../../common/utils/bulk-validate.util';
 import { AOP_YEAR_OPTIONS, SERVICE_LINE_OPTIONS } from '../../common/utils/dto-transforms.util';
 
 // Enum option sets — kept in step with the Create DTO `@IsIn(...)` lists.
-const ACCOUNT_TYPE = ['Strategic', 'Non Strategic', 'New'] as const;
+const ACCOUNT_TYPE = ['Internal', 'New', 'Non Strategic', 'Strategic'] as const;
 const ACCOUNT_HEALTH = ['Green', 'Amber', 'Red'] as const;
 const OPPORTUNITY_STAGE = ['Lead', 'Qualified', 'Proposal', 'Negotiation', 'Verbal Agreement', 'Won', 'Blocked', 'Delayed', 'Hold', 'Lost'] as const;
 const OPPORTUNITY_TYPE = ['Growth', 'Pursuit', 'Whitespace', 'New', 'Extension'] as const;
 const SERVICE_LINE = SERVICE_LINE_OPTIONS;
 const OPPORTUNITY_HEALTH = ['Green', 'Amber', 'Red'] as const;
 const ACTION_ITEM_STATUS = ['To Do', 'In Progress', 'Blocked', 'Completed', 'Cancelled'] as const;
+const ACTION_ITEM_TYPE = ['Account mining', 'Proposals', 'Stakeholder connect'] as const;
 const PRIORITY = ['High', 'Medium', 'Low'] as const;
 const INFLUENCE = ['High', 'Medium', 'Low'] as const;
 const RELATIONSHIP = ['Strong', 'Neutral', 'Weak'] as const;
 const STAKEHOLDER_TYPE = ['CLIENT', 'SERVICE_PROVIDER'] as const;
-const TOWER = ['Tower 1', 'Tower 2'] as const;
+const TOWER = ['Others', 'Tower 1', 'Tower 2'] as const;
 const DELIVERY_MODEL = ['Staff Aug', 'Fixed Bid', 'Managed', 'Fixed Capacity', 'Others'] as const;
 const BILLING_MODEL = ['T&M', 'Milestone Based', 'Monthly Fixed', 'Others'] as const;
+const INDUSTRY = [
+  'Accounting, Audit & Tax',
+  'Automotive',
+  'BFSI',
+  'Construction & Engineering',
+  'Energy & Utilities',
+  'FinTech',
+  'Healthcare',
+  'Manufacturing',
+  'Media & Entertainment',
+  'Nonprofit & Associations',
+  'Oil & Gas',
+  'Others',
+  'Professional Services',
+  'Retail',
+  'Technology & Software',
+  'Telecommunications',
+  'Transportation & Logistics',
+  'Wearhouse management',
+] as const;
 
 export type IEModuleKey = 'accounts' | 'opportunities' | 'stakeholders' | 'actionItems';
 
@@ -32,7 +53,7 @@ export const ACCOUNT_FIELDS: ImportFieldDef[] = [
   { key: 'type', header: 'Account Type', type: 'enum', options: ACCOUNT_TYPE, required: true },
   { key: 'health', header: 'Health', type: 'enum', options: ACCOUNT_HEALTH, required: true },
   { key: 'healthReason', header: 'Reason for Health', type: 'string' },
-  { key: 'industry', header: 'Industry', type: 'string', default: '' },
+  { key: 'industry', header: 'Industry', type: 'enum', options: INDUSTRY, default: 'Others' },
   { key: 'revenue', header: 'Revenue', type: 'number', default: 0 },
   { key: 'location', header: 'Location', type: 'string' },
   { key: 'since', header: 'Customer Since', type: 'string' },
@@ -109,6 +130,7 @@ export const ACTION_ITEM_FIELDS: ImportFieldDef[] = [
   { key: 'ownerStakeholderId', header: 'Owner', headerAliases: ['Task Owner', 'Owner Stakeholder'], type: 'reference', reference: 'stakeholder', required: true },
   { key: 'priority', header: 'Priority', type: 'enum', options: PRIORITY, required: true },
   { key: 'status', header: 'Status', type: 'enum', options: ACTION_ITEM_STATUS, required: true },
+  { key: 'actionItemType', header: 'Type', headerAliases: ['Action Item Type', 'Type of Action Item'], type: 'enum', options: ACTION_ITEM_TYPE },
   { key: 'projectId', header: 'Project', headerAliases: ['Project Name'], type: 'reference', reference: 'project' },
   { key: 'opportunityId', header: 'Opportunity', headerAliases: ['Opportunity Name'], type: 'reference', reference: 'opportunity' },
   { key: 'openDate', header: 'Open Date', type: 'date' },

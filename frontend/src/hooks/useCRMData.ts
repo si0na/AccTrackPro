@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import type {
   Account, Opportunity, ActionItem, Stakeholder, Activity, Comment,
   CustomColumn, ColumnConfig, FinancialYear, FinancialCalendar, AdminSettings, Project,
@@ -63,6 +63,7 @@ const DEFAULT_ACTION_ITEMS_COLUMNS: ColumnConfig[] = [
   { key: 'owner',         name: 'Owner',             isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
   { key: 'priority',      name: 'Priority',          isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
   { key: 'status',        name: 'Status',            isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
+  { key: 'actionItemType', name: 'Type',             isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
   { key: 'openDate',      name: 'Open Date',         isStandard: true, isPinned: false, isDisplayed: true, type: 'date' },
   { key: 'dueDate',       name: 'Due Date',          isStandard: true, isPinned: false, isDisplayed: true, type: 'date' },
   { key: 'notes',         name: 'Description',       isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
@@ -197,22 +198,31 @@ export const useCRMData = (
   const [unreadNotificationCount, setUnreadNotificationCount] = useState<number>(0);
   const [loading, setLoading] = useState(true);
 
-  // Loads FY list, financial calendar, and admin settings.
-  // Call on startup, after auth changes, and after administration changes only.
-  const loadConfig = async () => {
+  // Loads FY list for all authenticated users.
+  // Financial years are accessible to all authenticated users (no RBAC gate).
+  const loadConfig = useCallback(async () => {
     try {
-      const [fyData, calendarData, settingsData] = await Promise.all([
-        financialYearsApi.getAll(),
-        administrationApi.getFinancialCalendar(),
-        administrationApi.getSettings(),
-      ]);
-      setFinancialYears(fyData ?? []);
-      setFinancialCalendar(calendarData ?? null);
-      setAdminSettings(settingsData ?? null);
+      const fyData = await financialYearsApi.getAll();
+      setFinancialYears([...(fyData ?? [])].sort((a, b) => a.fyLabel.localeCompare(b.fyLabel, undefined, { sensitivity: 'base' })));
     } catch (err) {
       console.error('[useCRMData] Failed to load configuration:', err);
     }
-  };
+  }, []);
+
+  // Loads financial calendar and admin settings — called only when Administration pages are accessed.
+  const loadAdminConfig = useCallback(async () => {
+    try {
+      const [calendarData, settingsData] = await Promise.all([
+        administrationApi.getFinancialCalendar(),
+        administrationApi.getSettings(),
+      ]);
+      setFinancialCalendar(calendarData ?? null);
+      setAdminSettings(settingsData ?? null);
+    } catch (err) {
+      console.error('[useCRMData] Failed to load administration configuration:', err);
+    }
+  }, []);
+
 
   // Loads operational entity data. Operational modules are never filtered by
   // the Global Period Selector — only reporting (analytics) endpoints are.
@@ -251,16 +261,16 @@ export const useCRMData = (
         performanceEvaluationsApi.getAll(owner).catch(() => []),
       ]);
 
-      setAccounts(accountsData);
-      setDeactivatedAccounts(deactivatedData);
-      setOpportunities(oppsData);
-      setDeactivatedOpportunities(deactivatedOppsData);
-      setProjects(projectsData);
-      setDeactivatedProjects(deactivatedProjectsData);
+      setAccounts([...accountsData].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })));
+      setDeactivatedAccounts([...deactivatedData].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })));
+      setOpportunities([...oppsData].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })));
+      setDeactivatedOpportunities([...deactivatedOppsData].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })));
+      setProjects([...projectsData].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })));
+      setDeactivatedProjects([...deactivatedProjectsData].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })));
       setActionItems(aiData);
       setDeactivatedActionItems(deactivatedAiData);
-      setStakeholders(stkData);
-      setDeactivatedStakeholders(deactivatedStkData);
+      setStakeholders([...stkData].sort((a, b) => (a.name || a.email || '').localeCompare(b.name || b.email || '', undefined, { sensitivity: 'base' })));
+      setDeactivatedStakeholders([...deactivatedStkData].sort((a, b) => (a.name || a.email || '').localeCompare(b.name || b.email || '', undefined, { sensitivity: 'base' })));
       setActivities(actvData);
       setComments(commentsData);
       setEmployeeAppreciations(apprData ?? []);
@@ -729,10 +739,11 @@ export const useCRMData = (
     accountsColumnConfig, opportunitiesColumnConfig, actionItemsColumnConfig, performanceEvaluationColumnConfig,
     loading,
     unreadNotificationCount,
-    refreshUnreadCount: () => {
+    refreshUnreadCount: useCallback(() => {
       notificationsApi.getUnreadCount().then(({ count }) => setUnreadNotificationCount(count)).catch((err) => console.error('[useCRMData] Failed to fetch unread count:', err));
-    },
+    }, []),
     loadConfig,
+    loadAdminConfig,
     refreshData,
     addAccount, updateAccount, deleteAccount, restoreAccount,
     addOpportunity, updateOpportunity, deleteOpportunity, restoreOpportunity,

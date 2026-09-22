@@ -90,8 +90,8 @@ export const AssumptionFormModal: React.FC<AssumptionFormModalProps> = ({
               className={SELECT_CLS}
             >
               <option value="High">High</option>
-              <option value="Medium">Medium</option>
               <option value="Low">Low</option>
+              <option value="Medium">Medium</option>
             </select>
           </FormField>
           <FormField label="Validation Status">
@@ -100,9 +100,9 @@ export const AssumptionFormModal: React.FC<AssumptionFormModalProps> = ({
               onChange={(e) => onChange({ validationStatus: e.target.value as AssumptionValidationStatus })}
               className={SELECT_CLS}
             >
+              <option value="Invalidated">Invalidated</option>
               <option value="Unvalidated">Unvalidated</option>
               <option value="Validated">Validated</option>
-              <option value="Invalidated">Invalidated</option>
             </select>
           </FormField>
           <FormField label="Owner">

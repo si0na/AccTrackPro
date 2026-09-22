@@ -54,6 +54,7 @@ export const HEALTH_COLORS: Record<AccountHealth, string> = {
 };
 
 export const ACCOUNT_TYPE_COLORS: Record<AccountType, string> = {
+  Internal: 'bg-teal-100 text-teal-700',
   New: 'bg-blue-100 text-blue-700',
   Strategic: 'bg-purple-100 text-purple-700',
   'Non Strategic': 'bg-emerald-100 text-emerald-700',

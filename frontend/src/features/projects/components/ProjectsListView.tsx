@@ -3,12 +3,12 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
 import { Project, User } from '@/types';
 import { usersApi, projectsApi } from '@/api/crm.api';
 import { Eye, Trash2, FolderKanban, Plus, Pencil } from 'lucide-react';
-import { compareForSort, matchesGlobalAccount, serviceProviderOptionLabel, SortDirection } from '@/utils';
+import { compareForSort, matchesGlobalAccount, serviceProviderOptionLabel, isRawIdStr, SortDirection } from '@/utils';
 import {
   Button,
   Card,
@@ -37,8 +37,8 @@ import { LoadingState } from '@/components/common/LoadingState';
 import { ProjectFormModal } from './ProjectFormModal';
 
 const METHODOLOGY_OPTIONS = ['Agile', 'Waterfall'] as const;
-const STATUS_OPTIONS = ['Active', 'On Hold', 'Completed', 'Cancelled'] as const;
-const HEALTH_OPTIONS = ['Green', 'Amber', 'Red'] as const;
+const STATUS_OPTIONS = ['Active', 'Cancelled', 'Completed', 'On Hold'] as const;
+const HEALTH_OPTIONS = ['Amber', 'Green', 'Red'] as const;
 
 /**
  * Projects list — modeled on OpportunitiesView.tsx. Unlike every other list
@@ -61,9 +61,6 @@ export const ProjectsListView: React.FC = () => {
     refreshData,
     loading,
     can,
-    projectManagers,
-    practiceLeads,
-    clientPartners,
   } = useCRM();
 
   const canDeleteProject = can('projects', 'delete');
@@ -171,9 +168,31 @@ export const ProjectsListView: React.FC = () => {
     usersApi.getAll().then(setUsers).catch(() => setUsers([]));
   }, []);
 
-  const pmOptions = React.useMemo(() => projectManagers || [], [projectManagers]);
-  const practiceLeadOptions = React.useMemo(() => practiceLeads || [], [practiceLeads]);
-  const clientPartnerOptions = React.useMemo(() => clientPartners || [], [clientPartners]);
+  const { projectManagers, practiceLeads, clientPartners, serviceProviders } = useCRM();
+
+  const buildUserList = useCallback((roleUsers: any[]) => {
+    return (roleUsers || [])
+      .map((u) => u)
+      .sort((a, b) => (a.name || a.email || '').localeCompare(b.name || b.email || '', undefined, { sensitivity: 'base', numeric: true }));
+  }, []);
+
+  const pmOptions = React.useMemo(() => buildUserList(projectManagers), [projectManagers, buildUserList]);
+  const practiceLeadOptions = React.useMemo(() => buildUserList(practiceLeads), [practiceLeads, buildUserList]);
+  const clientPartnerOptions = React.useMemo(() => buildUserList(clientPartners), [clientPartners, buildUserList]);
+
+  const resolveProjectUserLabel = useCallback(
+    (name?: string | null, id?: string | null, roleList?: any[]) => {
+      if (name && name.trim() && !isRawIdStr(name)) return name;
+      if (id) {
+        const match =
+          serviceProviders.find((u) => u.id === id || (u as any).userId === id) ||
+          (roleList || []).find((u) => u.id === id || (u as any).userId === id);
+        if (match) return serviceProviderOptionLabel(match);
+      }
+      return '—';
+    },
+    [serviceProviders],
+  );
 
   const [editingCell, setEditingCell] = useState<{ id: string; key: string; value: any } | null>(null);
 
@@ -371,27 +390,27 @@ export const ProjectsListView: React.FC = () => {
                       </TableCell>
                       <TableCell className="text-slate-600" onDoubleClick={(e) => { e.stopPropagation(); if (canUpdateProject) setEditingCell({ id: p.id, key: 'clientPartnerId', value: p.clientPartnerId || '' }); }}>
                         {editingCell?.id === p.id && editingCell?.key === 'clientPartnerId' ? (
-                          <select autoFocus value={editingCell.value} onChange={e => { const u = clientPartnerOptions.find(x => x.id === e.target.value); saveInlineCell(p.id, 'clientPartnerId', e.target.value, { clientPartnerName: u?.name || '' }); }} onBlur={() => setEditingCell(null)} className="text-xs p-1 border border-indigo-500 rounded bg-white">
+                          <select autoFocus value={editingCell.value} onChange={e => { const u = clientPartnerOptions.find((x: any) => x.id === e.target.value); saveInlineCell(p.id, 'clientPartnerId', e.target.value, { clientPartnerName: u?.name || '' }); }} onBlur={() => setEditingCell(null)} className="text-xs p-1 border border-indigo-500 rounded bg-white">
                             <option value="">Select Client Partner…</option>
-                            {clientPartnerOptions.map(u => <option key={u.id} value={u.id}>{serviceProviderOptionLabel(u)}</option>)}
+                            {clientPartnerOptions.map((u: any) => <option key={u.id} value={u.id}>{serviceProviderOptionLabel(u)}</option>)}
                           </select>
-                        ) : (p.clientPartnerName || '—')}
+                        ) : (resolveProjectUserLabel(p.clientPartnerName, p.clientPartnerId, clientPartnerOptions))}
                       </TableCell>
                       <TableCell className="text-slate-600" onDoubleClick={(e) => { e.stopPropagation(); if (canUpdateProject) setEditingCell({ id: p.id, key: 'serviceProviderPmId', value: p.serviceProviderPmId || '' }); }}>
                         {editingCell?.id === p.id && editingCell?.key === 'serviceProviderPmId' ? (
-                          <select autoFocus value={editingCell.value} onChange={e => { const u = pmOptions.find(x => x.id === e.target.value); saveInlineCell(p.id, 'serviceProviderPmId', e.target.value, { serviceProviderPmName: u?.name || '' }); }} onBlur={() => setEditingCell(null)} className="text-xs p-1 border border-indigo-500 rounded bg-white">
+                          <select autoFocus value={editingCell.value} onChange={e => { const u = pmOptions.find((x: any) => x.id === e.target.value); saveInlineCell(p.id, 'serviceProviderPmId', e.target.value, { serviceProviderPmName: u?.name || '' }); }} onBlur={() => setEditingCell(null)} className="text-xs p-1 border border-indigo-500 rounded bg-white">
                             <option value="">Select Project Manager…</option>
-                            {pmOptions.map(u => <option key={u.id} value={u.id}>{serviceProviderOptionLabel(u)}</option>)}
+                            {pmOptions.map((u: any) => <option key={u.id} value={u.id}>{serviceProviderOptionLabel(u)}</option>)}
                           </select>
-                        ) : (p.serviceProviderPmName || '—')}
+                        ) : (resolveProjectUserLabel(p.serviceProviderPmName, p.serviceProviderPmId, pmOptions))}
                       </TableCell>
                       <TableCell className="text-slate-600" onDoubleClick={(e) => { e.stopPropagation(); if (canUpdateProject) setEditingCell({ id: p.id, key: 'practiceLeadId', value: p.practiceLeadId || '' }); }}>
                         {editingCell?.id === p.id && editingCell?.key === 'practiceLeadId' ? (
-                          <select autoFocus value={editingCell.value} onChange={e => { const u = practiceLeadOptions.find(x => x.id === e.target.value); saveInlineCell(p.id, 'practiceLeadId', e.target.value, { practiceLeadName: u?.name || '' }); }} onBlur={() => setEditingCell(null)} className="text-xs p-1 border border-indigo-500 rounded bg-white">
+                          <select autoFocus value={editingCell.value} onChange={e => { const u = practiceLeadOptions.find((x: any) => x.id === e.target.value); saveInlineCell(p.id, 'practiceLeadId', e.target.value, { practiceLeadName: u?.name || '' }); }} onBlur={() => setEditingCell(null)} className="text-xs p-1 border border-indigo-500 rounded bg-white">
                             <option value="">Select Practice Lead…</option>
-                            {practiceLeadOptions.map(u => <option key={u.id} value={u.id}>{serviceProviderOptionLabel(u)}</option>)}
+                            {practiceLeadOptions.map((u: any) => <option key={u.id} value={u.id}>{serviceProviderOptionLabel(u)}</option>)}
                           </select>
-                        ) : (p.practiceLeadName || '—')}
+                        ) : (resolveProjectUserLabel(p.practiceLeadName, p.practiceLeadId, practiceLeadOptions))}
                       </TableCell>
                       <TableCell className="text-slate-600" onDoubleClick={(e) => { e.stopPropagation(); if (canUpdateProject) setEditingCell({ id: p.id, key: 'methodology', value: p.methodology }); }}>
                         {editingCell?.id === p.id && editingCell?.key === 'methodology' ? (

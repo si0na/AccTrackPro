@@ -284,10 +284,12 @@ const SystemUserServiceProviderTable: React.FC<SystemUserServiceProviderTablePro
   );
 
   const sorted = useMemo(() => {
-    // The Status column sorts on the resolved label so the three states
-    // (Active / Inactive / Pending Registration) group together.
     const value = (u: ServiceProviderUser) =>
-      sortField === 'isActive' ? serviceProviderStatus(u) : ((u as any)[sortField] ?? '');
+      sortField === 'name'
+        ? (u.name || u.email || '')
+        : sortField === 'isActive'
+        ? serviceProviderStatus(u)
+        : ((u as any)[sortField] ?? '');
     return [...filtered].sort((a, b) => compareForSort(value(a), value(b), sortDirection));
   }, [filtered, sortField, sortDirection]);
 

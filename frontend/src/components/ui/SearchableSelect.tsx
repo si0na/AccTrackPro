@@ -9,6 +9,8 @@ import React, {
 import { createPortal } from 'react-dom';
 import { Check, ChevronsUpDown, X } from 'lucide-react';
 
+import { isRawIdStr, serviceProviderOptionLabel, sortOptionsAlphabetically } from '@/utils';
+
 const TONE_CLS = {
   blue: 'focus:ring-blue-500/20 focus:border-blue-500',
   amber: 'focus:ring-amber-500/20 focus:border-amber-500',
@@ -30,16 +32,66 @@ interface MenuPosition {
   maxHeight: number;
 }
 
-/** A plain string is its own value and label; `{ value, label }` backs id-based pickers (e.g. selecting an employee by id while displaying their name). */
-export type SearchableSelectOption = string | { value: string; label: string };
+export interface SearchableSelectOptionObject {
+  value?: string;
+  id?: string;
+  userId?: string;
+  stakeholderId?: string;
+  serviceProviderUserId?: string;
+  key?: string;
+  label?: string;
+  name?: string;
+  displayName?: string;
+  email?: string;
+  isActive?: boolean;
+  isPending?: boolean;
+  isSpecial?: boolean;
+  [key: string]: any;
+}
+
+/** A plain string is its own value and label; objects with value/id and label/name back id-based pickers. */
+export type SearchableSelectOption = string | SearchableSelectOptionObject;
 
 interface NormalizedOption {
   value: string;
   label: string;
+  isSpecial?: boolean;
 }
 
-function normalizeOptions(options: readonly SearchableSelectOption[]): NormalizedOption[] {
-  return options.map((o) => (typeof o === 'string' ? { value: o, label: o } : o));
+export function normalizeOption(o: SearchableSelectOption): NormalizedOption {
+  if (typeof o === 'string') {
+    return { value: o, label: o };
+  }
+  if (o && typeof o === 'object') {
+    const rawVal = o.value ?? o.id ?? o.userId ?? o.stakeholderId ?? o.serviceProviderUserId ?? o.key;
+    let rawLbl =
+      o.label ??
+      o.name ??
+      o.displayName ??
+      o.email ??
+      (o.isActive !== undefined || o.isPending !== undefined ? serviceProviderOptionLabel(o as any) : undefined);
+    const value = rawVal !== undefined && rawVal !== null ? String(rawVal) : '';
+    let label = rawLbl !== undefined && rawLbl !== null ? String(rawLbl) : '';
+    if (!label || isRawIdStr(label)) {
+      if (o.email) {
+        label = serviceProviderOptionLabel(o as any);
+      } else if (value && !isRawIdStr(value)) {
+        label = value;
+      } else {
+        label = value || '';
+      }
+    }
+    return { value, label, isSpecial: o.isSpecial };
+  }
+  return { value: String(o ?? ''), label: String(o ?? '') };
+}
+
+function normalizeOptions(
+  options: readonly SearchableSelectOption[],
+  preserveOrder: boolean = false,
+): NormalizedOption[] {
+  const mapped = (options || []).map(normalizeOption);
+  return sortOptionsAlphabetically(mapped, (o) => o.label, preserveOrder);
 }
 
 export interface SearchableSelectProps {
@@ -49,6 +101,8 @@ export interface SearchableSelectProps {
   placeholder?: string;
   required?: boolean;
   disabled?: boolean;
+  /** Human-readable display name fallback if selected value is absent from options. */
+  fallbackLabel?: string;
   /** Amber focus styling for edit dialogs, blue for create forms. */
   tone?: keyof typeof TONE_CLS;
   className?: string;
@@ -56,6 +110,8 @@ export interface SearchableSelectProps {
   'aria-label'?: string;
   /** Hides the chevron affordance for compact fields where it's just visual noise. Default true. */
   showChevron?: boolean;
+  /** Preserve the original option array order (e.g. for business-defined priority orderings). */
+  preserveOrder?: boolean;
 }
 
 /**
@@ -75,11 +131,13 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
   placeholder = 'Search…',
   required = false,
   disabled = false,
+  fallbackLabel,
   tone = 'blue',
   className = '',
   id,
   'aria-label': ariaLabel,
   showChevron = true,
+  preserveOrder = false,
 }) => {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -90,9 +148,23 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
   const listRef = useRef<HTMLUListElement>(null);
   const listId = useId();
 
-  const normalizedOptions = normalizeOptions(options);
+  const rawNormalized = normalizeOptions(options, preserveOrder);
+  const hasValueMatch = !!value && rawNormalized.some((o) => o.value === value);
+
+  const normalizedOptions = React.useMemo(() => {
+    if (value && !hasValueMatch && fallbackLabel && fallbackLabel !== value && !isRawIdStr(fallbackLabel)) {
+      const injected = { value, label: fallbackLabel };
+      const merged = [...rawNormalized, injected];
+      if (preserveOrder) return merged;
+      return normalizeOptions(merged, false);
+    }
+    return rawNormalized;
+  }, [rawNormalized, value, hasValueMatch, fallbackLabel, preserveOrder]);
+
   const selectedOption = normalizedOptions.find((o) => o.value === value);
-  const displayValue = selectedOption?.label ?? value;
+  const displayValue =
+    (selectedOption?.label && !isRawIdStr(selectedOption.label) ? selectedOption.label : '') ||
+    (fallbackLabel && fallbackLabel !== value && !isRawIdStr(fallbackLabel) ? fallbackLabel : selectedOption?.label || '');
 
   const filtered = query.trim()
     ? normalizedOptions.filter((o) => o.label.toLowerCase().includes(query.trim().toLowerCase()))
@@ -254,7 +326,7 @@ export const SearchableSelect: React.FC<SearchableSelectProps> = ({
               bottom: menuPos.bottom,
               maxHeight: menuPos.maxHeight,
             }}
-            className="z-[300] overflow-auto rounded-lg border border-slate-200 bg-white shadow-lg text-xs py-0.5"
+            className="z-[300] overflow-y-auto custom-scrollbar rounded-lg border border-slate-200 bg-white shadow-lg text-xs py-0.5"
           >
             {filtered.length === 0 ? (
               <li className="px-3 py-1.5 text-slate-400">No matches</li>

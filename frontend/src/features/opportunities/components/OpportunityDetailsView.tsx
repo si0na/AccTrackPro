@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
-import { Opportunity, OpportunityStage, PriorityLevel, ActionItem, ActionItemStatus, Stakeholder, StakeholderType, Project, AdminUser } from '@/types';
+import { Opportunity, OpportunityStage, PriorityLevel, ActionItem, ActionItemStatus, ActionItemType, Stakeholder, StakeholderType, Project, AdminUser } from '@/types';
 import { administrationApi } from '@/api/crm.api';
 import { LoadingState } from '@/components/common/LoadingState';
 import { showToast } from '@/components/common/ToastHost';
@@ -42,7 +42,7 @@ import { StakeholderTabs } from '@/features/stakeholders/components/StakeholderT
 import { StakeholderFormModal } from '@/features/stakeholders/components/StakeholderFormModal';
 import { OpportunityClientStakeholderSelector } from './OpportunityClientStakeholderSelector';
 import { ActionItemFormModal } from '@/features/action-items/components/ActionItemFormModal';
-import { ACTION_ITEM_STATUS_OPTIONS, OPPORTUNITY_STAGE_OPTIONS, stageChangePatch } from '@/constants';
+import { ACTION_ITEM_STATUS_OPTIONS, ACTION_ITEM_TYPE_OPTIONS, OPPORTUNITY_STAGE_OPTIONS, stageChangePatch } from '@/constants';
 import {
   ACTION_STATUS_COLORS,
   BackButton,
@@ -77,7 +77,7 @@ import {
   InlineSelectEditCell,
   InlineTextEditCell,
 } from '@/components/ui';
-import { compareForSort, getTodayISODate, isOpenActionItemStatus, serviceProviderOptionLabel, SortDirection } from '@/utils';
+import { compareForSort, getTodayISODate, isOpenActionItemStatus, serviceProviderOptionLabel, cleanOwnerName, SortDirection } from '@/utils';
 
 type OppTab = 'overview' | 'action-items' | 'stakeholders' | 'comments' | 'documents';
 
@@ -112,7 +112,7 @@ export const OpportunityDetailsView: React.FC = () => {
     deleteActionItem,
     oppDetailsSourceView,
     setOppDetailsSourceView,
-    setAccountDetailsActiveTab,
+
     cameFromDashboard,
     navSource,
     dashboardStageHighlight,
@@ -239,8 +239,11 @@ export const OpportunityDetailsView: React.FC = () => {
   // when ready. `users` backs the Service Provider PM / Practice Lead selects.
   const [users, setUsers] = useState<AdminUser[]>([]);
   useEffect(() => {
+    // Only admin users have the administration:view permission; non-admin users
+    // would receive a 403, so skip the request entirely for them.
+    if (!can('administration', 'view')) return;
     administrationApi.getUsers().then(setUsers).catch(() => setUsers([]));
-  }, []);
+  }, [can]);
 
 
 
@@ -359,7 +362,6 @@ export const OpportunityDetailsView: React.FC = () => {
   // navigation — both leave this view the same way the back button would.
   const goBackFromOpportunity = () => {
     if (oppDetailsSourceView === 'account-details') {
-      setAccountDetailsActiveTab('opportunities');
       setView('account-details');
       setOppDetailsSourceView(null);
     } else {
@@ -1264,19 +1266,19 @@ export const OpportunityDetailsView: React.FC = () => {
                                             accountId={opp.accountId}
                                             stakeholders={stakeholders}
                                             value={item.ownerStakeholderId}
-                                            fallbackName={item.ownerName || item.owner}
+                                            fallbackName={cleanOwnerName(item.ownerName || item.owner)}
                                             onChange={async (stkId) => {
                                               const stk = stakeholders.find(s => s.id === stkId);
                                               await updateActionItem({
                                                 ...item,
                                                 ownerStakeholderId: stkId || undefined,
-                                                owner: stk?.name || item.owner || '',
-                                                ownerName: stk?.name || item.ownerName || '',
+                                                owner: cleanOwnerName(stk?.name || item.owner || ''),
+                                                ownerName: cleanOwnerName(stk?.name || item.ownerName || ''),
                                               });
                                             }}
                                           />
                                         ) : (
-                                          item.ownerName || item.owner || '—'
+                                          cleanOwnerName(item.ownerName || item.owner) || '—'
                                         )}
                                       </TableCell>
                                     );
@@ -1304,6 +1306,21 @@ export const OpportunityDetailsView: React.FC = () => {
                                           disabled={!can('actionItems', 'update')}
                                           onSave={async (v) => {
                                             await updateActionItem({ ...item, status: v as ActionItemStatus });
+                                          }}
+                                        />
+                                      </TableCell>
+                                    );
+                                  }
+                                  if (col.key === 'actionItemType') {
+                                    return (
+                                      <TableCell key={col.key} className="text-slate-700 font-semibold text-xs">
+                                        <InlineSelectEditCell
+                                          value={item.actionItemType ?? ''}
+                                          options={['— None —', ...ACTION_ITEM_TYPE_OPTIONS]}
+                                          disabled={!can('actionItems', 'update')}
+                                          placeholder={item.actionItemType || '— None —'}
+                                          onSave={async (v) => {
+                                            await updateActionItem({ ...item, actionItemType: (v === '— None —' || !v) ? undefined : (v as ActionItemType) });
                                           }}
                                         />
                                       </TableCell>

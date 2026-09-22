@@ -22,6 +22,7 @@ export interface ProjectFormModalProps {
   onClose: () => void;
   onSubmit: (e: React.FormEvent) => void;
   isSubmitting?: boolean;
+  submitLabel?: string;
   value: Project;
   onChange: (patch: Partial<Project>) => void;
   /** Users list (Administration) — backs the Service Provider PM / Practice Lead selects (both FK users). */
@@ -52,42 +53,50 @@ export interface ProjectFormModalProps {
  * (from a Won opportunity's "Create Project" action — projects are no longer
  * derived automatically, so a user reviews the pre-filled fields before saving).
  */
+import { isRawIdStr, serviceProviderOptionLabel } from '@/utils';
 import { useCRM } from '@/contexts/CRMContext';
-import { serviceProviderOptionLabel } from '@/utils';
 
 export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
   isOpen,
   onClose,
   onSubmit,
   isSubmitting = false,
+  submitLabel = 'Create Project',
   value,
   onChange,
-  users,
-  stakeholders,
-  mode = 'edit',
+  stakeholders = [],
+  mode = 'create',
 }) => {
-  const { projectManagers, practiceLeads, clientPartners, accounts, stakeholders: crmStakeholders } = useCRM();
+  const isEdit = mode === 'edit';
+  const { projectManagers, practiceLeads, clientPartners, accounts, serviceProviders, stakeholders: crmStakeholders } = useCRM();
 
-  const projectManagerOptions = React.useMemo(() => {
-    return (projectManagers || []).map((pm) => ({
-      value: pm.id,
-      label: serviceProviderOptionLabel(pm),
-    }));
-  }, [projectManagers]);
+  const resolveUserFallback = React.useCallback(
+    (id?: string | null, name?: string | null, roleList?: any[]) => {
+      if (name && name.trim() && !isRawIdStr(name)) return name;
+      if (id) {
+        const match =
+          serviceProviders.find((u) => u.id === id || (u as any).userId === id) ||
+          (roleList || []).find((u) => u.id === id || (u as any).userId === id);
+        if (match) return serviceProviderOptionLabel(match);
+      }
+      return undefined;
+    },
+    [serviceProviders],
+  );
 
-  const practiceLeadOptions = React.useMemo(() => {
-    return (practiceLeads || []).map((pl) => ({
-      value: pl.id,
-      label: serviceProviderOptionLabel(pl),
-    }));
-  }, [practiceLeads]);
+  const buildUserOptions = React.useCallback((roleUsers: any[]) => {
+    return (roleUsers || [])
+      .map((u) => ({
+        value: u.id,
+        label: serviceProviderOptionLabel(u),
+        rawName: u.name || u.email || '',
+      }))
+      .sort((a, b) => a.rawName.localeCompare(b.rawName, undefined, { sensitivity: 'base', numeric: true }));
+  }, []);
 
-  const clientPartnerOptions = React.useMemo(() => {
-    return (clientPartners || []).map((cp) => ({
-      value: cp.id,
-      label: serviceProviderOptionLabel(cp),
-    }));
-  }, [clientPartners]);
+  const projectManagerOptions = React.useMemo(() => buildUserOptions(projectManagers), [projectManagers, buildUserOptions]);
+  const practiceLeadOptions = React.useMemo(() => buildUserOptions(practiceLeads), [practiceLeads, buildUserOptions]);
+  const clientPartnerOptions = React.useMemo(() => buildUserOptions(clientPartners), [clientPartners, buildUserOptions]);
 
   const clientPmOptions = React.useMemo(() => {
     const source = (stakeholders && stakeholders.length > 0) ? stakeholders : (crmStakeholders || []);
@@ -99,10 +108,13 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
     const options = accountStks.map((s) => ({
       value: s.name,
       label: s.designation ? `${s.name} (${s.designation})` : s.name,
+      rawName: s.name || s.email || '',
     }));
 
+    options.sort((a, b) => a.rawName.localeCompare(b.rawName, undefined, { sensitivity: 'base' }));
+
     if (value.clientPmName && !options.some((o) => o.value === value.clientPmName)) {
-      options.unshift({ value: value.clientPmName, label: value.clientPmName });
+      options.unshift({ value: value.clientPmName, label: value.clientPmName, rawName: value.clientPmName });
     }
 
     return options;
@@ -279,6 +291,7 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
                 value={value.serviceProviderPmId ?? ''}
                 onChange={(id) => onChange({ serviceProviderPmId: id || undefined })}
                 options={projectManagerOptions}
+                fallbackLabel={resolveUserFallback(value.serviceProviderPmId, value.serviceProviderPmName, projectManagers)}
                 placeholder="Search employees…"
                 aria-label="Service Provider Project Manager"
                 tone="amber"
@@ -334,9 +347,9 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
                 className={SELECT_CLS}
               >
                 <option value="Active">Active</option>
-                <option value="On Hold">On Hold</option>
-                <option value="Completed">Completed</option>
                 <option value="Cancelled">Cancelled</option>
+                <option value="Completed">Completed</option>
+                <option value="On Hold">On Hold</option>
               </select>
             </FormField>
             <FormField label="Project Health">

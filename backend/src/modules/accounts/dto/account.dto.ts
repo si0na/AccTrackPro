@@ -14,7 +14,7 @@ export class CreateAccountDto {
   @Matches(/\S/, { message: 'Account name cannot be blank' })
   name!: string;
 
-  @IsIn(['Strategic', 'Non Strategic', 'New']) type!: string;
+  @IsIn(['Strategic', 'Non Strategic', 'New', 'Internal']) type!: string;
   @IsIn(['Green', 'Amber', 'Red']) health!: string;
   @IsString() @IsOptional() @MaxLength(1000) healthReason?: string;
 
@@ -29,9 +29,10 @@ export class CreateAccountDto {
   @EmptyToUndefined() @IsString() @IsOptional() clientPartnerId?: string;
   @EmptyToUndefined() @IsString() @IsOptional() verticalHeadId?: string;
 
+  @IsOptional()
   @IsNumber() @Min(0, { message: 'Revenue cannot be negative' })
   @Max(9999999999999, { message: 'Revenue exceeds the maximum supported amount' })
-  revenue!: number;
+  revenue?: number;
 
   @IsString() @MaxLength(200) industry!: string;
 
@@ -55,7 +56,7 @@ export class CreateAccountDto {
   @IsString() @IsOptional() @MaxLength(1000) location?: string;
   @IsString() @IsOptional() @MaxLength(5000) description?: string;
   @IsNotEmpty({ message: 'Tower is required' })
-  @IsIn(['Tower 1', 'Tower 2'], { message: 'Tower must be one of: Tower 1, Tower 2' })
+  @IsIn(['Tower 1', 'Tower 2', 'Others'], { message: 'Tower must be one of: Tower 1, Tower 2, Others' })
   tower!: string;
 
   @IsArray() @IsOptional() clientStakeholderIds?: string[];

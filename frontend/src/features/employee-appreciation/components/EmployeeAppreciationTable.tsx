@@ -16,7 +16,7 @@ import {
   EmptyRow,
   RowActionButton,
 } from '@/components/ui';
-import { Building2, FolderKanban, Tag, User, Pencil, Trash2, Calendar } from 'lucide-react';
+import { Building2, FolderKanban, Tag, User, Pencil, Trash2, Calendar, ChevronDown, ChevronUp } from 'lucide-react';
 import { compareForSort, SortDirection } from '@/utils';
 
 export interface EmployeeAppreciationTableProps {
@@ -26,6 +26,8 @@ export interface EmployeeAppreciationTableProps {
   canManage?: boolean;
 }
 
+const FEEDBACK_CLAMP_CHARS = 160;
+
 export const EmployeeAppreciationTable: React.FC<EmployeeAppreciationTableProps> = ({
   items,
   onEdit,
@@ -34,6 +36,14 @@ export const EmployeeAppreciationTable: React.FC<EmployeeAppreciationTableProps>
 }) => {
   const [sortField, setSortField] = useState<string>('receivedDate');
   const [sortDir, setSortDir] = useState<SortDirection>('desc');
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+
+  const toggleFeedback = (id: string) =>
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
 
   const handleSort = (field: string) => {
     if (sortField === field) {
@@ -181,11 +191,35 @@ export const EmployeeAppreciationTable: React.FC<EmployeeAppreciationTableProps>
                     </div>
                   </TableCell>
 
-                  {/* Feedback Quote */}
-                  <TableCell className="max-w-[280px]">
-                    <div className="text-xs text-slate-700 italic line-clamp-2 bg-slate-50/80 p-2 rounded-lg border border-slate-200/60 leading-relaxed font-medium">
-                      "{item.feedback}"
-                    </div>
+                  {/* Feedback Quote — expandable for long messages */}
+                  <TableCell className="max-w-[320px]">
+                    {(() => {
+                      const isExpanded = expandedIds.has(item.id);
+                      const isLong = item.feedback.length > FEEDBACK_CLAMP_CHARS;
+                      const displayText = isLong && !isExpanded
+                        ? item.feedback.slice(0, FEEDBACK_CLAMP_CHARS).trimEnd() + '…'
+                        : item.feedback;
+                      return (
+                        <div className="bg-slate-50/80 p-2 rounded-lg border border-slate-200/60">
+                          <p className="text-xs text-slate-700 italic leading-relaxed font-medium whitespace-pre-wrap break-words">
+                            &ldquo;{displayText}&rdquo;
+                          </p>
+                          {isLong && (
+                            <button
+                              type="button"
+                              onClick={() => toggleFeedback(item.id)}
+                              className="mt-1.5 flex items-center gap-0.5 text-[10px] font-semibold text-indigo-600 hover:text-indigo-800 transition-colors"
+                            >
+                              {isExpanded ? (
+                                <><ChevronUp className="w-3 h-3" />Show less</>
+                              ) : (
+                                <><ChevronDown className="w-3 h-3" />Read more</>
+                              )}
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </TableCell>
 
                   {/* Actions */}

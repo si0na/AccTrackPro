@@ -100,7 +100,7 @@ export const EmployeeRewardsRecognitionFormModal: React.FC<EmployeeRewardsRecogn
       users.forEach(addCandidate);
     }
 
-    return list;
+    return list.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
   }, [contextServiceProviders, fetchedSpUsers, fetchedEmpMaster, users]);
 
   const [monthOfRr, setMonthOfRr] = useState<string>(getCurrentMonthYearISO());

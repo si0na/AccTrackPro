@@ -66,9 +66,10 @@ export class FinancialYearsService {
     return { startMonth: rows[0].start_month, quarters: rows[0].quarters as FYQuarterDef[] };
   }
 
-  async findAll(): Promise<FinancialYear[]> {
+  async findAll(activeOnly = true): Promise<FinancialYear[]> {
+    const whereClause = activeOnly ? 'WHERE is_active = TRUE' : '';
     const { rows } = await this.db.query(
-      `SELECT ${SELECT_COLS} FROM financial_years ORDER BY start_year ASC`,
+      `SELECT ${SELECT_COLS} FROM financial_years ${whereClause} ORDER BY start_year ASC`,
     );
     return rows.map(rowToFY);
   }

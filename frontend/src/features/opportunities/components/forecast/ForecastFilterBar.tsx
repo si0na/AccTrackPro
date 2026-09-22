@@ -37,7 +37,7 @@ export const FORECAST_FILTERS_DEFAULT: ForecastFilterState = {
   status: 'All', stage: 'All', health: 'All', serviceLine: 'All',
 };
 
-const STATUS_OPTIONS = ['All', 'Open', 'Won', 'Lost'] as const;
+const STATUS_OPTIONS = ['All', 'Lost', 'Open', 'Won'] as const;
 
 const toOpts = (values: readonly string[], allLabel: string) => [
   { value: 'All', label: allLabel },
@@ -122,16 +122,17 @@ export const ForecastFilterBar: React.FC<ForecastFilterBarProps> = ({
     return top.sort((a, b) => a.startYear - b.startYear);
   }, [financialYears, adminSettings, selectedYear]);
 
+  // Stale-FY guard: if the persisted selection no longer exists or became
+  // inactive, fall back to 'All'. 'All' itself is always valid — never replaced.
   useEffect(() => {
-    if (!financialYears.length) return;
-    const activeFYs = financialYears.filter((f) => f.isActive);
-    const mostRecent = [...activeFYs].sort((a, b) => b.startYear - a.startYear)[0];
-    if (selectedYear === 'All') {
-      if (localStorage.getItem('crm_selected_year') === null && mostRecent) setSelectedYear(mostRecent.fyLabel);
-      return;
-    }
+    if (!financialYears.length || selectedYear === 'All') return;
     const fy = financialYears.find((f) => f.fyLabel === selectedYear);
-    if (!fy || !fy.isActive) setSelectedYear(mostRecent ? mostRecent.fyLabel : 'All');
+    if (!fy || !fy.isActive) {
+      const mostRecent = [...financialYears.filter((f) => f.isActive)].sort(
+        (a, b) => b.startYear - a.startYear,
+      )[0];
+      setSelectedYear(mostRecent ? mostRecent.fyLabel : 'All');
+    }
   }, [financialYears, selectedYear, setSelectedYear]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const selectedFYForQuarters = financialYears.find((f) => f.fyLabel === selectedYear);

@@ -41,7 +41,7 @@ export class EmployeeMasterService {
 
   async findAll(): Promise<EmployeeMaster[]> {
     const { rows } = await this.db.query(
-      `SELECT ${SELECT_COLS} FROM employee_master ORDER BY email ASC`,
+      `SELECT ${SELECT_COLS} FROM employee_master ORDER BY LOWER(COALESCE(NULLIF(name, ''), email)) ASC`,
     );
     return rows.map(this.mapRow);
   }

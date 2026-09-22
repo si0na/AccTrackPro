@@ -10,6 +10,7 @@ import {
   FormGrid,
   FormModal,
   FormSection,
+  AutoResizeTextarea,
   INPUT_CLS,
   INPUT_CLS_AMBER,
   SELECT_CLS,
@@ -266,11 +267,13 @@ export const IssueFormModal: React.FC<IssueFormModalProps> = ({
                   className={`${selectCls} ${(isEdit || !!fixedAccountId) ? 'bg-slate-100 cursor-not-allowed' : ''}`}
                 >
                   <option value="">— Select Account —</option>
-                  {accounts.map((acc) => (
-                    <option key={acc.id} value={acc.id}>
-                      {acc.name}
-                    </option>
-                  ))}
+                  {[...accounts]
+                    .sort((a, b) => a.name.localeCompare(b.name))
+                    .map((acc) => (
+                      <option key={acc.id} value={acc.id}>
+                        {acc.name}
+                      </option>
+                    ))}
                 </select>
               </FormField>
 
@@ -283,11 +286,13 @@ export const IssueFormModal: React.FC<IssueFormModalProps> = ({
                     className={`${selectCls} ${(isEdit || !!fixedProjectId) ? 'bg-slate-100 cursor-not-allowed' : ''}`}
                   >
                     <option value="">— Select Project —</option>
-                    {accountProjects.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
+                    {[...accountProjects]
+                      .sort((a, b) => a.name.localeCompare(b.name))
+                      .map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
                   </select>
                 </FormField>
               )}
@@ -299,13 +304,13 @@ export const IssueFormModal: React.FC<IssueFormModalProps> = ({
         <FormSection title="Issue Details">
           <div className="space-y-4">
             <FormField label="Description*" required wide>
-              <textarea
+              <AutoResizeTextarea
                 required
-                rows={2}
+                minRows={2}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder="Describe the issue..."
-                className={`${inputCls} resize-none`}
+                className={inputCls}
               />
             </FormField>
 
@@ -343,11 +348,13 @@ export const IssueFormModal: React.FC<IssueFormModalProps> = ({
                   className={selectCls}
                 >
                   <option value="">Not assigned</option>
-                  {serviceProviders.map((user) => (
-                    <option key={user.id} value={user.id}>
-                      {serviceProviderOptionLabel(user)}
-                    </option>
-                  ))}
+                  {[...serviceProviders]
+                    .sort((a, b) => (a.name || a.email || '').localeCompare(b.name || b.email || '', undefined, { sensitivity: 'base' }))
+                    .map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {serviceProviderOptionLabel(user)}
+                      </option>
+                    ))}
                 </select>
               </FormField>
 
@@ -391,22 +398,22 @@ export const IssueFormModal: React.FC<IssueFormModalProps> = ({
         <FormSection title="Resolution">
           <div className="space-y-3">
             <FormField label="Resolution Plan" wide>
-              <textarea
-                rows={2}
+              <AutoResizeTextarea
+                minRows={2}
                 value={resolutionPlan}
                 onChange={(e) => setResolutionPlan(e.target.value)}
                 placeholder="How will this issue be resolved..."
-                className={`${inputCls} resize-none`}
+                className={inputCls}
               />
             </FormField>
 
             <FormField label="Remarks" wide>
-              <textarea
-                rows={2}
+              <AutoResizeTextarea
+                minRows={2}
                 value={remarks}
                 onChange={(e) => setRemarks(e.target.value)}
                 placeholder="Remarks..."
-                className={`${inputCls} resize-none`}
+                className={inputCls}
               />
             </FormField>
           </div>

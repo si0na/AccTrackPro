@@ -84,9 +84,9 @@ export const EmployeeRewardsRecognitionView: React.FC = () => {
   // Available Categories for category filter based on selected type
   const availableFilterCategories = useMemo(() => {
     if (typeFilter === 'All') {
-      return Object.values(REWARDS_RECOGNITION_CATEGORIES_BY_TYPE).flat();
+      return Array.from(new Set(Object.values(REWARDS_RECOGNITION_CATEGORIES_BY_TYPE).flat())).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
     }
-    return REWARDS_RECOGNITION_CATEGORIES_BY_TYPE[typeFilter] || [];
+    return [...(REWARDS_RECOGNITION_CATEGORIES_BY_TYPE[typeFilter] || [])].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
   }, [typeFilter]);
 
   // Filtered dataset

@@ -6,7 +6,7 @@ import { showToast } from '@/components/common/ToastHost';
 import { StakeholderFormModal } from '@/features/stakeholders/components/StakeholderFormModal';
 import { useCRM } from '@/contexts/CRMContext';
 import type { Stakeholder } from '@/types';
-import { serviceProviderStatus, type ServiceProviderStatus } from '@/utils';
+import { serviceProviderStatus, cleanOwnerName, type ServiceProviderStatus } from '@/utils';
 
 export interface ActionItemOwnerFieldProps {
   accountId: string;
@@ -97,13 +97,14 @@ export const ActionItemOwnerField: React.FC<ActionItemOwnerFieldProps> = ({
   // Client column: existing CLIENT rows, deduplicated by name (keep first).
   const globalClients = React.useMemo(() => {
     const seen = new Set<string>();
-    return stakeholders.filter((s) => {
+    const list = stakeholders.filter((s) => {
       if (s.stakeholderType !== 'CLIENT') return false;
       const key = s.name.toLowerCase().trim();
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
     });
+    return list.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
   }, [stakeholders]);
 
   const filteredClients = React.useMemo(() => {
@@ -160,7 +161,7 @@ export const ActionItemOwnerField: React.FC<ActionItemOwnerFieldProps> = ({
       });
     }
 
-    return [...fromDirectory, ...unlinked];
+    return [...fromDirectory, ...unlinked].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
   }, [serviceProviders, stakeholders, accountId]);
 
   const filteredServiceProviders = React.useMemo(() => {
@@ -254,7 +255,7 @@ export const ActionItemOwnerField: React.FC<ActionItemOwnerFieldProps> = ({
         <span className="flex items-center gap-2 min-w-0">
           <User className="w-3.5 h-3.5 shrink-0 text-slate-400" aria-hidden="true" />
           <span className={`truncate ${selected || fallbackName ? 'text-slate-800 font-semibold' : 'text-slate-400 font-medium'}`}>
-            {selected ? (selected.name || selected.email) : (fallbackName || 'Select task owner…')}
+            {selected ? cleanOwnerName(selected.name || selected.email) : (cleanOwnerName(fallbackName) || 'Select task owner…')}
           </span>
           {selected?.pendingRegistration && (
             <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-extrabold text-amber-700">

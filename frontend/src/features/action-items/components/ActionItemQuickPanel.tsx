@@ -5,8 +5,8 @@
 
 import React, { useState, useMemo } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
-import { ActionItem, PriorityLevel, ActionItemStatus } from '@/types';
-import { ACTION_ITEM_STATUS_OPTIONS } from '@/constants';
+import { ActionItem, PriorityLevel, ActionItemStatus, ActionItemType } from '@/types';
+import { ACTION_ITEM_STATUS_OPTIONS, ACTION_ITEM_TYPE_OPTIONS } from '@/constants';
 import { ActionItemOwnerField } from '@/components/ActionItemOwnerField';
 import {
   X,
@@ -29,7 +29,9 @@ import {
   PRIORITY_COLORS,
   ACTION_STATUS_COLORS,
   StatusBadge,
+  AutoResizeTextarea,
 } from '@/components/ui';
+import { cleanOwnerName } from '@/utils';
 
 interface ActionItemQuickPanelProps {
   actionItemId: string;
@@ -59,7 +61,7 @@ export const ActionItemQuickPanel: React.FC<ActionItemQuickPanelProps> = ({
   const opp = item?.opportunityId ? opportunities.find(o => o.id === item.opportunityId) : null;
   const proj = item?.projectId ? projects.find(p => p.id === item.projectId) : null;
   const ownerName = item
-    ? stakeholders.find(s => s.id === item.ownerStakeholderId)?.name || item.ownerName || item.owner || 'Unassigned'
+    ? cleanOwnerName(stakeholders.find(s => s.id === item.ownerStakeholderId)?.name || item.ownerName || item.owner) || 'Unassigned'
     : 'Unassigned';
 
   // Details Edit State
@@ -132,7 +134,7 @@ export const ActionItemQuickPanel: React.FC<ActionItemQuickPanelProps> = ({
       seen.add(key);
       list.push(s);
     }
-    return list.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    return list.sort((a, b) => (a.name || a.email || '').localeCompare(b.name || b.email || '', undefined, { sensitivity: 'base' }));
   }, [stakeholders, editForm.ownerStakeholderId, item?.ownerStakeholderId]);
 
   return (
@@ -194,6 +196,7 @@ export const ActionItemQuickPanel: React.FC<ActionItemQuickPanelProps> = ({
                     ownerStakeholderId: item.ownerStakeholderId,
                     priority: item.priority,
                     status: item.status,
+                    actionItemType: item.actionItemType,
                     openDate: item.openDate,
                     dueDate: item.dueDate,
                     notes: item.notes,
@@ -239,9 +242,11 @@ export const ActionItemQuickPanel: React.FC<ActionItemQuickPanelProps> = ({
                   className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white font-semibold text-slate-800"
                 >
                   <option value="">Select Account...</option>
-                  {accounts.map((a) => (
-                    <option key={a.id} value={a.id}>{a.name}</option>
-                  ))}
+                  {[...accounts]
+                    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+                    .map((a) => (
+                      <option key={a.id} value={a.id}>{a.name}</option>
+                    ))}
                 </select>
               </div>
 
@@ -257,6 +262,7 @@ export const ActionItemQuickPanel: React.FC<ActionItemQuickPanelProps> = ({
                     <option value="">Select Project...</option>
                     {projects
                       .filter((p) => !editForm.accountId || p.accountId === editForm.accountId)
+                      .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
                       .map((p) => (
                         <option key={p.id} value={p.id}>{p.name}</option>
                       ))}
@@ -273,6 +279,7 @@ export const ActionItemQuickPanel: React.FC<ActionItemQuickPanelProps> = ({
                     <option value="">— None / General —</option>
                     {opportunities
                       .filter((o) => (!editForm.accountId || o.accountId === editForm.accountId) && (o.stage !== 'Won' || o.id === editForm.opportunityId))
+                      .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
                       .map((o) => (
                         <option key={o.id} value={o.id}>{o.name}</option>
                       ))}
@@ -304,8 +311,8 @@ export const ActionItemQuickPanel: React.FC<ActionItemQuickPanelProps> = ({
                   className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white font-semibold text-slate-800"
                 >
                   <option value="High">High</option>
-                  <option value="Medium">Medium</option>
                   <option value="Low">Low</option>
+                  <option value="Medium">Medium</option>
                 </select>
               </div>
 
@@ -319,6 +326,21 @@ export const ActionItemQuickPanel: React.FC<ActionItemQuickPanelProps> = ({
                 >
                   {ACTION_ITEM_STATUS_OPTIONS.map(s => (
                     <option key={s} value={s}>{s}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Type of Action Item */}
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-500 uppercase">Type of Action Item</label>
+                <select
+                  value={editForm.actionItemType ?? (item.actionItemType || '')}
+                  onChange={(e) => setEditForm({ ...editForm, actionItemType: (e.target.value || undefined) as ActionItemType })}
+                  className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white font-semibold text-slate-800"
+                >
+                  <option value="">— None —</option>
+                  {ACTION_ITEM_TYPE_OPTIONS.map(t => (
+                    <option key={t} value={t}>{t}</option>
                   ))}
                 </select>
               </div>
@@ -368,6 +390,11 @@ export const ActionItemQuickPanel: React.FC<ActionItemQuickPanelProps> = ({
               <div className="flex items-center gap-2 flex-wrap">
                 <StatusBadge value={item.status} colorMap={ACTION_STATUS_COLORS} shape="rounded" />
                 <StatusBadge value={item.priority} colorMap={PRIORITY_COLORS} shape="rounded" />
+                {item.actionItemType && (
+                  <span className="text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-200/80 px-2.5 py-0.5 rounded-md">
+                    {item.actionItemType}
+                  </span>
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-3 bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-2xs text-xs">
@@ -406,14 +433,14 @@ export const ActionItemQuickPanel: React.FC<ActionItemQuickPanelProps> = ({
                     accountId={item.accountId || ''}
                     stakeholders={stakeholders}
                     value={item.ownerStakeholderId}
-                    fallbackName={item.ownerName || item.owner}
+                    fallbackName={cleanOwnerName(item.ownerName || item.owner)}
                     onChange={(ownerStakeholderId) => {
                       const sh = stakeholders.find((s) => s.id === ownerStakeholderId);
                       updateActionItem({
                         ...item,
                         ownerStakeholderId,
-                        ownerName: sh?.name || item.ownerName,
-                        owner: sh?.name || item.owner,
+                        ownerName: cleanOwnerName(sh?.name || item.ownerName),
+                        owner: cleanOwnerName(sh?.name || item.owner),
                       });
                     }}
                   />
@@ -519,11 +546,17 @@ export const ActionItemQuickPanel: React.FC<ActionItemQuickPanelProps> = ({
                   </div>
                   {editingCommentId === comment.id ? (
                     <div className="pl-8 space-y-2 pt-1">
-                      <textarea
-                        rows={2}
+                      <AutoResizeTextarea
+                        minRows={2}
                         value={editingCommentText}
                         onChange={(e) => setEditingCommentText(e.target.value)}
-                        className="w-full text-xs p-2 border border-blue-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 resize-none font-medium text-slate-700"
+                        onKeyDown={(e) => {
+                          if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                            e.preventDefault();
+                            handleUpdateComment(comment.id);
+                          }
+                        }}
+                        className="w-full text-xs p-2 border border-blue-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-medium text-slate-700"
                         placeholder="Edit comment..."
                       />
                       <div className="flex items-center justify-end space-x-1.5">
@@ -547,7 +580,7 @@ export const ActionItemQuickPanel: React.FC<ActionItemQuickPanelProps> = ({
                       </div>
                     </div>
                   ) : (
-                    <p className="text-xs text-slate-700 font-medium leading-relaxed pl-8">
+                    <p className="text-xs text-slate-700 font-medium leading-relaxed pl-8 whitespace-pre-wrap">
                       {comment.text}
                     </p>
                   )}
@@ -559,12 +592,18 @@ export const ActionItemQuickPanel: React.FC<ActionItemQuickPanelProps> = ({
           {/* Add Comment Form */}
           <form onSubmit={handlePostComment} className="pt-2">
             <div className="flex items-end space-x-2">
-              <textarea
-                rows={2}
+              <AutoResizeTextarea
+                minRows={2}
                 value={commentText}
                 onChange={(e) => setCommentText(e.target.value)}
+                onKeyDown={(e) => {
+                  if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                    e.preventDefault();
+                    handlePostComment(e);
+                  }
+                }}
                 placeholder="Write a comment..."
-                className="w-full text-xs p-3 border border-slate-200 rounded-xl bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none resize-none shadow-xs"
+                className="w-full text-xs p-3 border border-slate-200 rounded-xl bg-white focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none shadow-xs"
               />
               <button
                 type="submit"

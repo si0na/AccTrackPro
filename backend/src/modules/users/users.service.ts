@@ -78,7 +78,7 @@ export class UsersService {
          WHERE x.employee_id = em.id
        ) er ON TRUE
        WHERE COALESCE(u.is_active, TRUE) = TRUE
-       ORDER BY COALESCE(u.name, em.name) ASC`,
+       ORDER BY LOWER(COALESCE(NULLIF(u.name, ''), NULLIF(em.name, ''), u.email, em.email)) ASC`,
     );
     return rows.map(rowToUser);
   }
@@ -93,7 +93,7 @@ export class UsersService {
       `SELECT u.id, u.name, u.email, u.department, u.designation, u.is_active,
               (u.name IS NULL OR u.name = '') AS is_pending
        FROM users u
-       ORDER BY u.name ASC NULLS LAST, u.email ASC`,
+       ORDER BY LOWER(COALESCE(NULLIF(u.name, ''), u.email)) ASC`,
     );
     return rows.map((r) => ({
       id:          r.id,
@@ -114,31 +114,34 @@ export class UsersService {
    */
   async findByRole(roleKey: string): Promise<any[]> {
     const { rows } = await this.db.query(
-      `SELECT DISTINCT
-         COALESCE(u.id, em.id) AS id,
-         COALESCE(NULLIF(u.name, ''), NULLIF(em.name, ''), u.email, em.email) AS name,
-         COALESCE(u.email, em.email) AS email,
-         COALESCE(u.department, em.department) AS department,
-         COALESCE(u.designation, em.designation) AS designation,
-         COALESCE(u.is_active, TRUE) AS is_active,
-         (u.id IS NULL OR u.name IS NULL OR u.name = '') AS is_pending
-       FROM employee_master em
-       FULL OUTER JOIN users u ON LOWER(u.email) = LOWER(em.email)
-       LEFT JOIN roles r ON r.id = COALESCE(u.role_id, em.role_id)
-       LEFT JOIN user_roles ur ON ur.user_id = u.id
-       LEFT JOIN roles ur_r ON ur_r.id = ur.role_id
-       LEFT JOIN employee_roles er ON er.employee_id = em.id
-       LEFT JOIN roles er_r ON er_r.id = er.role_id
-       WHERE COALESCE(u.is_active, TRUE) = TRUE
-         AND (
-           r.key = $1 OR ur_r.key = $1 OR er_r.key = $1
-           OR ($1 = 'project-manager' AND (LOWER(COALESCE(u.designation, em.designation, '')) LIKE '%project manager%' OR LOWER(COALESCE(u.role, r.name, '')) LIKE '%project manager%'))
-           OR ($1 = 'practice-lead' AND (LOWER(COALESCE(u.designation, em.designation, '')) LIKE '%practice lead%' OR LOWER(COALESCE(u.role, r.name, '')) LIKE '%practice lead%'))
-           OR ($1 = 'client-partner' AND (LOWER(COALESCE(u.designation, em.designation, '')) LIKE '%client partner%' OR LOWER(COALESCE(u.role, r.name, '')) LIKE '%client partner%'))
-           OR ($1 = 'vertical-head' AND (LOWER(COALESCE(u.designation, em.designation, '')) LIKE '%vertical head%' OR LOWER(COALESCE(u.role, r.name, '')) LIKE '%vertical head%'))
-           OR ($1 = 'account-manager' AND (LOWER(COALESCE(u.designation, em.designation, '')) LIKE '%account manager%' OR LOWER(COALESCE(u.role, r.name, '')) LIKE '%account manager%'))
-         )
-       ORDER BY COALESCE(NULLIF(u.name, ''), NULLIF(em.name, ''), u.email, em.email) ASC NULLS LAST`,
+      `SELECT * FROM (
+         SELECT DISTINCT
+           COALESCE(u.id, em.id) AS id,
+           COALESCE(NULLIF(u.name, ''), NULLIF(em.name, ''), u.email, em.email) AS name,
+           COALESCE(u.email, em.email) AS email,
+           COALESCE(u.department, em.department) AS department,
+           COALESCE(u.designation, em.designation) AS designation,
+           COALESCE(u.is_active, TRUE) AS is_active,
+           (u.id IS NULL OR u.name IS NULL OR u.name = '') AS is_pending
+         FROM employee_master em
+         FULL OUTER JOIN users u ON LOWER(u.email) = LOWER(em.email)
+         LEFT JOIN roles r ON r.id = COALESCE(u.role_id, em.role_id)
+         LEFT JOIN user_roles ur ON ur.user_id = u.id
+         LEFT JOIN roles ur_r ON ur_r.id = ur.role_id
+         LEFT JOIN employee_roles er ON er.employee_id = em.id
+         LEFT JOIN roles er_r ON er_r.id = er.role_id
+         WHERE COALESCE(u.is_active, TRUE) = TRUE
+           AND (
+             r.key = $1 OR ur_r.key = $1 OR er_r.key = $1
+             OR REPLACE(r.key, '_', '-') = $1 OR REPLACE(ur_r.key, '_', '-') = $1 OR REPLACE(er_r.key, '_', '-') = $1
+             OR ($1 = 'project-manager' AND (LOWER(COALESCE(u.designation, em.designation, '')) LIKE '%project manager%' OR LOWER(COALESCE(u.role, r.name, '')) LIKE '%project manager%'))
+             OR ($1 = 'practice-lead' AND (LOWER(COALESCE(u.designation, em.designation, '')) LIKE '%practice lead%' OR LOWER(COALESCE(u.designation, em.designation, '')) LIKE '%practice head%' OR LOWER(COALESCE(u.role, r.name, '')) LIKE '%practice lead%' OR LOWER(COALESCE(u.role, r.name, '')) LIKE '%practice head%'))
+             OR ($1 = 'client-partner' AND (LOWER(COALESCE(u.designation, em.designation, '')) LIKE '%client partner%' OR LOWER(COALESCE(u.role, r.name, '')) LIKE '%client partner%'))
+             OR ($1 = 'vertical-head' AND (LOWER(COALESCE(u.designation, em.designation, '')) LIKE '%vertical head%' OR LOWER(COALESCE(u.role, r.name, '')) LIKE '%vertical head%'))
+             OR ($1 = 'account-manager' AND (LOWER(COALESCE(u.designation, em.designation, '')) LIKE '%account manager%' OR LOWER(COALESCE(u.role, r.name, '')) LIKE '%account manager%'))
+           )
+       ) as t
+       ORDER BY LOWER(t.name) ASC`,
       [roleKey],
     );
     return rows.map((r) => ({

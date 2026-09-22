@@ -188,11 +188,13 @@ export const NpsFormModal: React.FC<NpsFormModalProps> = ({
                 className={INPUT_CLS_AMBER}
               >
                 <option value="">All Account Projects</option>
-                {projects.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.name}
-                  </option>
-                ))}
+                {[...projects]
+                  .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+                  .map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name}
+                    </option>
+                  ))}
               </select>
             </FormField>
           </FormGrid>
@@ -214,11 +216,13 @@ export const NpsFormModal: React.FC<NpsFormModalProps> = ({
                 className={INPUT_CLS_AMBER}
               >
                 <option value="">Select Stakeholder...</option>
-                {stakeholders.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name} {s.designation ? `(${s.designation})` : ''}
-                  </option>
-                ))}
+                {[...stakeholders]
+                  .sort((a, b) => (a.name || a.email || '').localeCompare(b.name || b.email || '', undefined, { sensitivity: 'base' }))
+                  .map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} {s.designation ? `(${s.designation})` : ''}
+                    </option>
+                  ))}
               </select>
             </FormField>
 

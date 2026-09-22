@@ -1,7 +1,7 @@
 import { IsString, IsIn, IsOptional, IsNotEmpty, MaxLength } from 'class-validator';
 
 export class CreateCommentDto {
-  @IsIn(['account', 'opportunity', 'actionItem']) targetType!: string;
+  @IsIn(['account', 'opportunity', 'actionItem', 'risk', 'issue']) targetType!: string;
 
   @IsString() @IsNotEmpty({ message: 'targetId is required' })
   targetId!: string;

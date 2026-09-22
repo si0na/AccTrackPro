@@ -6,9 +6,12 @@
 import React, { useState, useRef, useEffect, useId } from 'react';
 import { ChevronDown, Search, X, Check } from 'lucide-react';
 
+import { isRawIdStr, serviceProviderOptionLabel, sortOptionsAlphabetically } from '@/utils';
+
 export interface MultiSelectFilterOption {
   value: string;
   label: string;
+  isSpecial?: boolean;
 }
 
 export interface MultiSelectFilterProps {
@@ -28,6 +31,8 @@ export interface MultiSelectFilterProps {
   className?: string;
   /** Whether to show a search input inside the popover. Defaults to true if options > 5. */
   searchable?: boolean;
+  /** Preserve original option order (e.g. for business-defined priority orderings). */
+  preserveOrder?: boolean;
 }
 
 export const MultiSelectFilter: React.FC<MultiSelectFilterProps> = ({
@@ -39,6 +44,7 @@ export const MultiSelectFilter: React.FC<MultiSelectFilterProps> = ({
   hideLabel = false,
   className = '',
   searchable,
+  preserveOrder = false,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -46,9 +52,37 @@ export const MultiSelectFilter: React.FC<MultiSelectFilterProps> = ({
   const searchInputRef = useRef<HTMLInputElement>(null);
   const searchId = useId();
 
-  // Normalize options into standard { value, label } structure
-  const normalizedOptions: MultiSelectFilterOption[] = options.map((opt) =>
-    typeof opt === 'string' ? { value: opt, label: opt } : opt
+  // Normalize options into standard { value, label } structure and sort alphabetically
+  const mappedOptions: MultiSelectFilterOption[] = (options || []).map((opt: any) => {
+    if (typeof opt === 'string') return { value: opt, label: opt };
+    if (opt && typeof opt === 'object') {
+      const rawVal = opt.value ?? opt.id ?? opt.userId ?? opt.stakeholderId ?? opt.serviceProviderUserId ?? opt.key;
+      let rawLbl =
+        opt.label ??
+        opt.name ??
+        opt.displayName ??
+        opt.email ??
+        (opt.isActive !== undefined || opt.isPending !== undefined ? serviceProviderOptionLabel(opt) : undefined);
+      const valStr = rawVal !== undefined && rawVal !== null ? String(rawVal) : '';
+      let lblStr = rawLbl !== undefined && rawLbl !== null ? String(rawLbl) : '';
+      if (!lblStr || isRawIdStr(lblStr)) {
+        if (opt.email) {
+          lblStr = serviceProviderOptionLabel(opt);
+        } else if (valStr && !isRawIdStr(valStr)) {
+          lblStr = valStr;
+        } else {
+          lblStr = valStr || '';
+        }
+      }
+      return { value: valStr, label: lblStr };
+    }
+    return { value: String(opt ?? ''), label: String(opt ?? '') };
+  });
+
+  const normalizedOptions: MultiSelectFilterOption[] = sortOptionsAlphabetically(
+    mappedOptions,
+    (opt) => opt.label,
+    preserveOrder,
   );
 
   const defaultAllLabel = allLabel || `All ${label}s`;

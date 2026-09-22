@@ -26,6 +26,14 @@ export const VIEW_PATHS: Record<ViewType, string> = {
   'employee-appreciation': '/employee-appreciation',
   'employee-rewards-recognition': '/employee-rewards-recognition',
   risks: '/risks',
+  'risk-details': '/risks/:id',
+  'account-growth': '/account-growth',
+  // ── Growth section ────────────────────────────────────────────────────────
+  partnership:        '/growth/partnership',
+  tracking:           '/growth/tracking',
+  'delivery-review':  '/growth/tracking/delivery-review',
+  'technical-review': '/growth/tracking/technical-review',
+  'sqa-review':       '/growth/tracking/sqa-review',
 };
 
 /** Resolves the ViewType path, substituting real IDs where needed */
@@ -35,20 +43,22 @@ export function resolveViewPath(
   opportunityId?: string | null,
   projectId?: string | null,
   sqaId?: string | null,
+  riskId?: string | null,
 ): string {
   if (view === 'account-details' && accountId) return `/accounts/${accountId}`;
   if (view === 'opportunity-details' && opportunityId) return `/opportunities/${opportunityId}`;
   if (view === 'opportunity-forecast' && opportunityId) return `/opportunities/${opportunityId}/forecast`;
   if (view === 'project-details' && projectId) return `/projects/${projectId}`;
   if (view === 'sqa-details' && sqaId) return `/sqa/${sqaId}`;
+  if (view === 'risk-details' && riskId) return `/risks/${riskId}`;
   return VIEW_PATHS[view] ?? '/';
 }
 
 export const PRESET_USER_NAMES = ['John Smith', 'Sarah Johnson', 'Mike Brown', 'Lisa Davis'] as const;
 
-export const ACCOUNT_TYPE_OPTIONS = ['Strategic', 'Non Strategic', 'New'] as const;
-export const ACCOUNT_HEALTH_OPTIONS = ['Green', 'Amber', 'Red'] as const;
-export const PROJECT_HEALTH_OPTIONS = ['Green', 'Amber', 'Red'] as const;
+export const ACCOUNT_TYPE_OPTIONS = ['Internal', 'New', 'Non Strategic', 'Strategic'] as const;
+export const ACCOUNT_HEALTH_OPTIONS = ['Amber', 'Green', 'Red'] as const;
+export const PROJECT_HEALTH_OPTIONS = ['Amber', 'Green', 'Red'] as const;
 /**
  * RAG choices for every Project Health picker — Create/Edit Project and the
  * Health Tracker's update form. The label is the RAG status alone: no
@@ -56,15 +66,15 @@ export const PROJECT_HEALTH_OPTIONS = ['Green', 'Amber', 'Red'] as const;
  * the badge shown on the Overview.
  */
 export const PROJECT_HEALTH_CHOICES = [
-  { value: 'Green', label: '🟢 Green' },
   { value: 'Amber', label: '🟠 Amber' },
+  { value: 'Green', label: '🟢 Green' },
   { value: 'Red',   label: '🔴 Red' },
 ] as const;
 export const OPPORTUNITY_STAGE_OPTIONS = [
-  'Lead', 'Qualified', 'Proposal', 'Negotiation', 'Verbal Agreement', 'Won', 'Blocked', 'Delayed', 'Hold', 'Lost',
+  'Blocked', 'Delayed', 'Hold', 'Lead', 'Lost', 'Negotiation', 'Proposal', 'Qualified', 'Verbal Agreement', 'Won',
 ] as const;
 /** Deal outcome derived from stage (Won/Lost stages are closed; everything else is Open). */
-export const OPPORTUNITY_OUTCOME_OPTIONS = ['Open', 'Won', 'Lost'] as const;
+export const OPPORTUNITY_OUTCOME_OPTIONS = ['Lost', 'Open', 'Won'] as const;
 
 /**
  * Canonical per-stage colour tokens for the Opportunity Pipeline — the single
@@ -127,8 +137,9 @@ export function stageChangePatch(
   const probability = STAGE_DEFAULT_PROBABILITY[stage];
   return probability === undefined ? { stage } : { stage, probability };
 }
-export const ACTION_ITEM_STATUS_OPTIONS = ['To Do', 'In Progress', 'Blocked', 'Completed', 'Cancelled'] as const;
-export const OPPORTUNITY_TYPE_OPTIONS = ['Growth', 'Pursuit', 'Whitespace', 'New', 'Extension'] as const;
+export const ACTION_ITEM_STATUS_OPTIONS = ['Blocked', 'Cancelled', 'Completed', 'In Progress', 'To Do'] as const;
+export const ACTION_ITEM_TYPE_OPTIONS = ['Account mining', 'Proposals', 'Stakeholder connect'] as const;
+export const OPPORTUNITY_TYPE_OPTIONS = ['Extension', 'Growth', 'New', 'Pursuit', 'Whitespace'] as const;
 
 /** First selectable AOP (Annual Operating Plan) fiscal year — "2026-2027". */
 export const AOP_YEAR_START = 2026;
@@ -159,15 +170,37 @@ export const AOP_YEAR_OPTIONS = generateAopYearOptions();
 
 /** Default AOP Year for newly created opportunities. */
 export const DEFAULT_AOP_YEAR = AOP_YEAR_OPTIONS[0];
-export const SERVICE_LINE_OPTIONS = [
-  'Data', 'AI', 'Cloud', 'Application Development', 'Application Support',
-  'Infrastructure', 'Cyber Security', 'SharePoint',
-  'Consulting', 'UI/UX', 'Digital', 'Database', 'Testing',
-  'Project Management', 'Architecture', 'Packaged Applications',
+
+export const INDUSTRY_OPTIONS = [
+  'Accounting, Audit & Tax',
+  'Automotive',
+  'BFSI',
+  'Construction & Engineering',
+  'Energy & Utilities',
+  'FinTech',
+  'Healthcare',
+  'Manufacturing',
+  'Media & Entertainment',
+  'Nonprofit & Associations',
+  'Oil & Gas',
+  'Others',
+  'Professional Services',
+  'Retail',
+  'Technology & Software',
+  'Telecommunications',
+  'Transportation & Logistics',
+  'Wearhouse management',
 ] as const;
 
-export const OPPORTUNITY_HEALTH_OPTIONS = ['Green', 'Amber', 'Red'] as const;
-export const OPPORTUNITY_PRIORITY_OPTIONS = ['High', 'Medium', 'Low'] as const;
+export const SERVICE_LINE_OPTIONS = [
+  'AI', 'Application Development', 'Application Support', 'Architecture',
+  'Cloud', 'Consulting', 'Cyber Security', 'Data', 'Database', 'Digital',
+  'Infrastructure', 'Packaged Applications', 'Project Management', 'SharePoint',
+  'Testing', 'UI/UX',
+] as const;
+
+export const OPPORTUNITY_HEALTH_OPTIONS = ['Amber', 'Green', 'Red'] as const;
+export const OPPORTUNITY_PRIORITY_OPTIONS = ['High', 'Low', 'Medium'] as const;
 
 /**
  * Predefined countries for the Account "Location" field, already alphabetical.
@@ -230,28 +263,27 @@ export const LOCATION_ALIASES: Record<string, string> = {
 // are the same domains as an opportunity's Revenue Model and Service Line, so
 // they alias those existing lists rather than restating them.
 
-export const SQA_IMPORTANCE_OPTIONS = ['High', 'Medium', 'Low'] as const;
+export const SQA_IMPORTANCE_OPTIONS = ['High', 'Low', 'Medium'] as const;
 
 /** No existing field in the application carries this, so SQA owns it. */
 export const SQA_DELIVERY_MODEL_OPTIONS = [
-  'Onsite', 'Offshore', 'Onsite-Offshore', 'Nearshore', 'Hybrid',
+  'Hybrid', 'Nearshore', 'Offshore', 'Onsite', 'Onsite-Offshore',
 ] as const;
 
 /** SQA Billing Model options. */
-export const SQA_BILLING_MODEL_OPTIONS = ['T&E', 'Fixed Bid', 'Fixed Capacity', 'Managed Services'] as const;
+export const SQA_BILLING_MODEL_OPTIONS = ['Fixed Bid', 'Fixed Capacity', 'Managed Services', 'T&E'] as const;
 
-export const TOWER_OPTIONS = ['Tower 1', 'Tower 2'] as const;
+export const TOWER_OPTIONS = ['Others', 'Tower 1', 'Tower 2'] as const;
 
 /** Aliases the Tower master list. */
 export const SQA_TOWER_OPTIONS = TOWER_OPTIONS;
 
 export const SQA_RESOURCING_STATUS_OPTIONS = [
-  'Fully Staffed', 'Partially Staffed', 'Open Positions', 'Attrition Risk', 'Ramp Down',
+  'Attrition Risk', 'Fully Staffed', 'Open Positions', 'Partially Staffed', 'Ramp Down',
 ] as const;
 
 export const SQA_SDLC_PHASE_OPTIONS = [
-  'Requirements', 'Design', 'Development', 'Testing', 'UAT',
-  'Deployment', 'Hypercare', 'Maintenance', 'Closure',
+  'Closure', 'Deployment', 'Design', 'Development', 'Hypercare', 'Maintenance', 'Requirements', 'Testing', 'UAT',
 ] as const;
 
 /** Weekly health picker; the RAG scale is the Project Health one, reused as-is. */
@@ -264,27 +296,27 @@ export const SQA_DEFAULT_HEALTH_WEEKS = 3;
 export const SQA_HEALTH_WEEK_CHOICES = [3, 6, 12] as const;
 
 // ─── Business Fields Options ──────────────────────────────────────────────────
-export const DELIVERY_MODEL_OPTIONS = ['Staff Aug', 'Fixed Bid', 'Managed', 'Fixed Capacity', 'Others'] as const;
-export const BILLING_MODEL_OPTIONS = ['T&M', 'Milestone Based', 'Monthly Fixed', 'Others'] as const;
-export const PRIORITY_OPTIONS = ['High', 'Medium', 'Low'] as const;
-export const RISK_RAG_OPTIONS = ['Red', 'Amber', 'Green'] as const;
-export const RISK_CLASSIFICATION_OPTIONS = ['Cost', 'Resource', 'Schedule', 'Operational', 'Technical', 'Environment', 'Quality', 'Scope', 'Others'] as const;
-export const RISK_IMPACT_OPTIONS = ['Low', 'Medium', 'High'] as const;
-export const RISK_LIKELIHOOD_OPTIONS = ['Low', 'Medium', 'High'] as const;
+export const DELIVERY_MODEL_OPTIONS = ['Fixed Bid', 'Fixed Capacity', 'Managed', 'Others', 'Staff Aug'] as const;
+export const BILLING_MODEL_OPTIONS = ['Milestone Based', 'Monthly Fixed', 'Others', 'T&M'] as const;
+export const PRIORITY_OPTIONS = ['High', 'Low', 'Medium'] as const;
+export const RISK_RAG_OPTIONS = ['Amber', 'Green', 'Red'] as const;
+export const RISK_CLASSIFICATION_OPTIONS = ['Cost', 'Environment', 'Operational', 'Others', 'Quality', 'Resource', 'Schedule', 'Scope', 'Technical'] as const;
+export const RISK_IMPACT_OPTIONS = ['High', 'Low', 'Medium'] as const;
+export const RISK_LIKELIHOOD_OPTIONS = ['High', 'Low', 'Medium'] as const;
 
 export const PROJECT_DEPENDENCY_TYPE_OPTIONS = [
-  'Client Dependency',
-  'Technical Dependency',
-  'Resource Dependency',
   'Access Dependency',
+  'Approval / Decision Dependency',
+  'Client Dependency',
+  'Commercial / Procurement Dependency',
+  'Compliance / Security Dependency',
+  'Cross-Team Dependency',
   'Data Dependency',
   'Environment Dependency',
-  'Vendor / Third-Party Dependency',
-  'Approval / Decision Dependency',
-  'Cross-Team Dependency',
-  'Schedule / Milestone Dependency',
-  'Compliance / Security Dependency',
-  'Commercial / Procurement Dependency',
   'Others',
+  'Resource Dependency',
+  'Schedule / Milestone Dependency',
+  'Technical Dependency',
+  'Vendor / Third-Party Dependency',
 ] as const;
 

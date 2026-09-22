@@ -42,7 +42,15 @@ export type ViewType =
   | 'performance-evaluation'
   | 'employee-appreciation'
   | 'employee-rewards-recognition'
-  | 'risks';
+  | 'risks'
+  | 'risk-details'
+  | 'account-growth'
+  // ── Growth section ────────────────────────────────────────────────────────
+  | 'partnership'
+  | 'tracking'
+  | 'delivery-review'
+  | 'technical-review'
+  | 'sqa-review';
 
 /**
  * The page that triggered deep-link navigation so target views can render a
@@ -131,6 +139,8 @@ interface CRMContextProps {
   setSelectedProjectId: (id: string | null) => void;
   selectedSqaId: string | null;
   setSelectedSqaId: (id: string | null) => void;
+  selectedRiskId: string | null;
+  setSelectedRiskId: (id: string | null) => void;
   /** When true, the Opportunity Details view auto-opens its Create Project modal on mount (set by the list "Create Project" action, then cleared). */
   createProjectIntent: boolean;
   setCreateProjectIntent: (val: boolean) => void;
@@ -138,8 +148,7 @@ interface CRMContextProps {
   setOppDetailsSourceView: (view: ViewType | null) => void;
   projectDetailsSourceView: ViewType | null;
   setProjectDetailsSourceView: (view: ViewType | null) => void;
-  accountDetailsActiveTab: string;
-  setAccountDetailsActiveTab: (tab: string) => void;
+
   cameFromDashboard: boolean;
   setCameFromDashboard: (val: boolean) => void;
   /** Page that triggered the current deep-link navigation (null when navigating normally). */
@@ -203,6 +212,7 @@ interface CRMContextProps {
 
   // CRUD
   loadConfig: () => Promise<void>;
+  loadAdminConfig: () => Promise<void>;
   refreshData: () => Promise<void>;
   deactivatedAccounts: Account[];
   addAccount: (account: Omit<Account, 'id'>) => Promise<Account>;
@@ -416,7 +426,8 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (path === '/sqa') return 'sqa';
     if (path === '/action-items') return 'actionItems';
     if (path === '/stakeholders') return 'stakeholders';
-    if (path === '/forecast') return 'forecast';
+    if (path.startsWith('/risks/')) return 'risk-details';
+    if (path === '/risks') return 'risks';
     if (path === '/reports') return 'reports';
     if (path === '/notifications') return 'notifications';
     if (path === '/administration') return 'administration';
@@ -440,10 +451,11 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [selectedOpportunityId, setSelectedOpportunityId] = useState<string | null>(() => getInitialId('/opportunities/'));
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(() => getInitialId('/projects/'));
   const [selectedSqaId, setSelectedSqaId] = useState<string | null>(() => getInitialId('/sqa/'));
+  const [selectedRiskId, setSelectedRiskId] = useState<string | null>(() => getInitialId('/risks/'));
   const [createProjectIntent, setCreateProjectIntent] = useState<boolean>(false);
   const [oppDetailsSourceView, setOppDetailsSourceView] = useState<ViewType | null>(null);
   const [projectDetailsSourceView, setProjectDetailsSourceView] = useState<ViewType | null>(null);
-  const [accountDetailsActiveTab, setAccountDetailsActiveTab] = useState<string>('overview');
+
   const [cameFromDashboard, setCameFromDashboard] = useState<boolean>(false);
   const [navSource, setNavSource] = useState<NavSource | null>(null);
   const [selectedStageState, setSelectedStageState] = useState<string[]>([]);
@@ -476,10 +488,15 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Service Providers — all system users regardless of active status
   const [serviceProviders, setServiceProviders] = useState<ServiceProviderUser[]>([]);
 
+  const sortUsersAsc = (users: ServiceProviderUser[]) =>
+    [...(users ?? [])].sort((a, b) =>
+      (a.name || a.email || '').localeCompare(b.name || b.email || '', undefined, { sensitivity: 'base' })
+    );
+
   useEffect(() => {
     if (!isLoggedIn) return;
     serviceProvidersApi.getAll()
-      .then(setServiceProviders)
+      .then((data) => setServiceProviders(sortUsersAsc(data)))
       .catch(() => {}); // non-blocking
   }, [isLoggedIn]);
 
@@ -508,11 +525,11 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   useEffect(() => {
     if (!isLoggedIn) return;
-    projectManagersApi.getAll().then(setProjectManagers).catch(() => {});
-    practiceLeadsApi.getAll().then(setPracticeLeads).catch(() => {});
-    clientPartnersApi.getAll().then(setClientPartners).catch(() => {});
-    verticalHeadsApi.getAll().then(setVerticalHeads).catch(() => {});
-    accountManagersApi.getAll().then(setAccountManagers).catch(() => {});
+    projectManagersApi.getAll().then((d) => setProjectManagers(sortUsersAsc(d))).catch(() => {});
+    practiceLeadsApi.getAll().then((d) => setPracticeLeads(d)).catch(() => {});
+    clientPartnersApi.getAll().then((d) => setClientPartners(d)).catch(() => {});
+    verticalHeadsApi.getAll().then((d) => setVerticalHeads(d)).catch(() => {});
+    accountManagersApi.getAll().then((d) => setAccountManagers(d)).catch(() => {});
   }, [isLoggedIn]);
 
   const setSelectedYear = (year: string) => {
@@ -552,10 +569,12 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       view === 'opportunity-details' ||
       view === 'project-details' ||
       view === 'sqa-details' ||
+      view === 'risk-details' ||
       (view === 'accounts' && currentView === 'account-details') ||
       (view === 'opportunities' && currentView === 'opportunity-details') ||
       (view === 'projects' && currentView === 'project-details') ||
-      (view === 'sqa' && currentView === 'sqa-details');
+      (view === 'sqa' && currentView === 'sqa-details') ||
+      (view === 'risks' && currentView === 'risk-details');
 
     if (opts?.fromDashboard) {
       // Navigation originating from a dashboard card/funnel keeps its drill-down
@@ -617,14 +636,15 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setSelectedProjectId,
         selectedSqaId,
         setSelectedSqaId,
+        selectedRiskId,
+        setSelectedRiskId,
         createProjectIntent,
         setCreateProjectIntent,
         oppDetailsSourceView,
         setOppDetailsSourceView,
         projectDetailsSourceView,
         setProjectDetailsSourceView,
-        accountDetailsActiveTab,
-        setAccountDetailsActiveTab,
+
         cameFromDashboard,
         setCameFromDashboard,
         navSource,

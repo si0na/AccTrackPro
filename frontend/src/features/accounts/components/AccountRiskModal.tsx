@@ -114,8 +114,8 @@ export const AccountRiskModal: React.FC<AccountRiskModalProps> = ({
                 onChange={(e) => setDraft({ ...draft, riskType: e.target.value as 'Risk' | 'Dependency' })}
                 className={selectCls}
               >
-                <option value="Risk">Risk</option>
                 <option value="Dependency">Dependency</option>
+                <option value="Risk">Risk</option>
               </select>
             </FormField>
 
@@ -127,8 +127,8 @@ export const AccountRiskModal: React.FC<AccountRiskModalProps> = ({
                 className={selectCls}
               >
                 <option value="High">High</option>
-                <option value="Medium">Medium</option>
                 <option value="Low">Low</option>
+                <option value="Medium">Medium</option>
               </select>
             </FormField>
 
@@ -138,9 +138,9 @@ export const AccountRiskModal: React.FC<AccountRiskModalProps> = ({
                 onChange={(e) => setDraft({ ...draft, rag: e.target.value as 'Red' | 'Amber' | 'Green' })}
                 className={selectCls}
               >
-                <option value="Red">Red</option>
                 <option value="Amber">Amber</option>
                 <option value="Green">Green</option>
+                <option value="Red">Red</option>
               </select>
             </FormField>
           </FormGrid>
@@ -169,8 +169,8 @@ export const AccountRiskModal: React.FC<AccountRiskModalProps> = ({
                   className={selectCls}
                 >
                   <option value="High">High</option>
-                  <option value="Medium">Medium</option>
                   <option value="Low">Low</option>
+                  <option value="Medium">Medium</option>
                 </select>
               </FormField>
 
@@ -181,8 +181,8 @@ export const AccountRiskModal: React.FC<AccountRiskModalProps> = ({
                   className={selectCls}
                 >
                   <option value="High">High</option>
-                  <option value="Medium">Medium</option>
                   <option value="Low">Low</option>
+                  <option value="Medium">Medium</option>
                 </select>
               </FormField>
 
@@ -208,11 +208,13 @@ export const AccountRiskModal: React.FC<AccountRiskModalProps> = ({
                   className={selectCls}
                 >
                   <option value="">— Unassigned —</option>
-                  {serviceProviders.map((user) => (
-                    <option key={user.id} value={user.id}>
-                      {serviceProviderOptionLabel(user)}
-                    </option>
-                  ))}
+                  {[...serviceProviders]
+                    .sort((a, b) => (a.name || a.email || '').localeCompare(b.name || b.email || '', undefined, { sensitivity: 'base' }))
+                    .map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {serviceProviderOptionLabel(user)}
+                      </option>
+                    ))}
                 </select>
               </FormField>
 
@@ -223,10 +225,10 @@ export const AccountRiskModal: React.FC<AccountRiskModalProps> = ({
                   onChange={(e) => setDraft({ ...draft, status: e.target.value as RiskStatus })}
                   className={selectCls}
                 >
-                  <option value="Open">Open</option>
-                  <option value="Mitigated">Mitigated</option>
-                  <option value="Closed">Closed</option>
                   <option value="Accepted">Accepted</option>
+                  <option value="Closed">Closed</option>
+                  <option value="Mitigated">Mitigated</option>
+                  <option value="Open">Open</option>
                 </select>
               </FormField>
 

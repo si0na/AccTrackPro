@@ -37,27 +37,26 @@ export const PeriodSelector: React.FC = () => {
       const selected = activeFYs.find((f) => f.fyLabel === selectedYear);
       if (selected) top.push(selected);
     }
-    return top.sort((a, b) => a.startYear - b.startYear);
+    const result = top.sort((a, b) => a.startYear - b.startYear);
+    // DIAGNOSTIC — remove after confirming fix
+    if (import.meta.env.DEV) {
+      console.log('[PeriodSelector] financialYears raw:', JSON.parse(JSON.stringify(financialYears)));
+      console.log('[PeriodSelector] adminSettings?.fySelectorCount:', adminSettings?.fySelectorCount, '→ count:', count);
+      console.log('[PeriodSelector] activeFYs:', JSON.parse(JSON.stringify(activeFYs)));
+      console.log('[PeriodSelector] selectorFYs:', JSON.parse(JSON.stringify(result)));
+    }
+    return result;
   }, [financialYears, adminSettings, selectedYear]);
 
-  // Auto-select the most recent active FY from the database on first visit.
-  // Also falls back if the stored selection becomes inactive or no longer exists.
+  // Stale-FY guard: if the persisted selection no longer exists or became
+  // inactive, fall back to 'All'. 'All' itself is always valid — never replaced.
   useEffect(() => {
-    if (!financialYears.length) return;
-    const activeFYs = financialYears.filter((f) => f.isActive);
-    const mostRecent = [...activeFYs].sort((a, b) => b.startYear - a.startYear)[0];
-
-    if (selectedYear === 'All') {
-      // First visit (nothing stored): auto-select the most recent active FY from DB.
-      if (localStorage.getItem('crm_selected_year') === null && mostRecent) {
-        setSelectedYear(mostRecent.fyLabel);
-      }
-      return;
-    }
-
-    // If the selected FY no longer exists or became inactive, fall back.
+    if (!financialYears.length || selectedYear === 'All') return;
     const fy = financialYears.find((f) => f.fyLabel === selectedYear);
     if (!fy || !fy.isActive) {
+      const mostRecent = [...financialYears.filter((f) => f.isActive)].sort(
+        (a, b) => b.startYear - a.startYear,
+      )[0];
       setSelectedYear(mostRecent ? mostRecent.fyLabel : 'All');
     }
   }, [financialYears, selectedYear, setSelectedYear]); // eslint-disable-line react-hooks/exhaustive-deps

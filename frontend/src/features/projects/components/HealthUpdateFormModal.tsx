@@ -154,9 +154,11 @@ export const HealthUpdateFormModal: React.FC<HealthUpdateFormModalProps> = ({
                   onChange={(e) => setDraft((d) => ({ ...d, reviewedById: e.target.value }))}
                 >
                   <option value="">-- Unassigned --</option>
-                  {users.map(u => (
-                    <option key={u.id} value={u.id}>{u.name}</option>
-                  ))}
+                  {[...users]
+                    .sort((a, b) => (a.name || a.email || '').localeCompare(b.name || b.email || '', undefined, { sensitivity: 'base' }))
+                    .map(u => (
+                      <option key={u.id} value={u.id}>{u.name}</option>
+                    ))}
                 </select>
               </FormField>
            </FormGrid>
