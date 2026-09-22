@@ -1,6 +1,6 @@
 import type { SERVICE_LINE_OPTIONS } from '@/constants';
 
-export type AccountType = 'Strategic' | 'Non Strategic' | 'New';
+export type AccountType = 'Strategic' | 'Non Strategic' | 'New' | 'Internal';
 export type AccountHealth = 'Green' | 'Amber' | 'Red';
 export type OpportunityStage =
   | 'Lead' | 'Qualified' | 'Proposal' | 'Negotiation' | 'Verbal Agreement' | 'Won'
@@ -10,6 +10,7 @@ export type ServiceLine = (typeof SERVICE_LINE_OPTIONS)[number];
 export type OpportunityHealth = 'Green' | 'Amber' | 'Red';
 export type PriorityLevel = 'High' | 'Medium' | 'Low';
 export type ActionItemStatus = 'To Do' | 'In Progress' | 'Blocked' | 'Completed' | 'Cancelled';
+export type ActionItemType = 'Account mining' | 'Proposals' | 'Stakeholder connect';
 export type InfluenceLevel = 'High' | 'Medium' | 'Low';
 export type RelationshipStatus = 'Strong' | 'Neutral' | 'Weak';
 export type StakeholderType = 'CLIENT' | 'SERVICE_PROVIDER';
@@ -109,7 +110,7 @@ export interface Opportunity {
   ownerId?: string;
   description: string;
   allocationStartDate: string;
-  allocationEndDate: string;
+  allocationEndDate?: string | null;
   dealStartDate?: string;
   dealCloseDate?: string;
   crmValue: number;
@@ -126,10 +127,16 @@ export interface Opportunity {
   closedAt?: string;
   tags: string[];
   team: string[];
-  /** Read-only, derived by backend from allocationEndDate via the configured Financial Calendar. Never sent on create/update. */
+  /** Read-only, derived by backend from project timeline via the configured Financial Calendar. Never sent on create/update. */
   financialYear?: string;
-  /** Read-only, derived by backend from allocationEndDate via the configured Financial Calendar. Never sent on create/update. */
+  /** Read-only, derived by backend from project timeline via the configured Financial Calendar. Never sent on create/update. */
   quarter?: string;
+  /** All financial years overlapping the project timeline. */
+  applicableFinancialYears?: string[];
+  /** All quarters overlapping the project timeline. */
+  applicableQuarters?: string[];
+  /** All (financialYear, quarter) pairs overlapping the project timeline. */
+  applicablePeriods?: Array<{ financialYear: string; quarter: string }>;
   clientStakeholderId?: string;
   /** Joined display fields (server-side). */
   clientStakeholderName?: string;
@@ -691,6 +698,7 @@ export interface ActionItem {
   dueDate: string;
   priority: PriorityLevel;
   status: ActionItemStatus;
+  actionItemType?: ActionItemType;
   notes: string;
   /** Known risks or blocking dependencies for this action item. */
   risksAndDependencies: string;
@@ -788,7 +796,7 @@ export interface Activity {
 
 export interface Comment {
   id: string;
-  targetType: 'account' | 'opportunity' | 'actionItem';
+  targetType: 'account' | 'opportunity' | 'actionItem' | 'risk' | 'issue';
   targetId: string;
   user: string;
   userId?: string;
@@ -1078,3 +1086,135 @@ export interface Alert {
   dueDate?: string;
   createdAt: string;
 }
+
+// ─── Account Growth Interfaces ────────────────────────────────────────────────
+
+export interface AccountGrowthClientPriority {
+  id: string;
+  accountId: string;
+  financialYearId: string;
+  digitalTechPriorities: string;
+  potentialServicesInvolved?: string;
+  customerMaturity?: 'High' | 'Medium' | 'Low';
+  ourPresence?: 'Yes' | 'No';
+  competitorPresence?: string;
+  estimatedClientSpend?: number;
+  revenuePotential?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface AccountGrowthIndustryTrend {
+  id: string;
+  accountId: string;
+  financialYearId: string;
+  industryTrend: string;
+  clientImpact?: 'High' | 'Medium' | 'Low';
+  customerMaturity?: 'High' | 'Medium' | 'Low';
+  ourCapabilityToAddress?: string;
+  estimatedClientSpend?: number;
+  revenuePotential?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface AccountGrowthBudgetPositioning {
+  id?: string;
+  accountId: string;
+  financialYearId: string;
+  clientRevenue?: number;
+  itBudgetTam?: number;
+  inhouseSpendSam?: number;
+  outsourcingSpend?: number;
+  reflectionsWalletSharePrevFyPct?: number;
+  walletSharePlanCurrentFyPct?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface AccountGrowthWalletSharePlan {
+  id: string;
+  accountId: string;
+  financialYearId: string;
+  initiativeTitle: string;
+  strategyDetails?: string;
+  targetRevenueImpact?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface AccountGrowthSuccessParameter {
+  id: string;
+  accountId: string;
+  financialYearId: string;
+  parameterKey: string;
+  parameterName: string;
+  clientPerception: 'Expert' | 'Good' | 'Average' | 'Weak';
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface AccountGrowthOutsourcingSplit {
+  id: string;
+  accountId: string;
+  financialYearId: string;
+  businessDivision: string;
+  outsourcingSpendPct?: number;
+  presence?: 'Y' | 'N';
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface AccountGrowthSwot {
+  id: string;
+  accountId: string;
+  financialYearId: string;
+  category: 'Strength' | 'Weakness' | 'Opportunity' | 'Threat';
+  details: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface AccountGrowthCompetitor {
+  id: string;
+  accountId: string;
+  financialYearId: string;
+  competitorName: string;
+  areasInvolved?: string;
+  resCount?: number;
+  relationshipStatus?: string;
+  sponsorFromClient?: string;
+  majorSkillsProvided?: string;
+  reasonConsideringCompetitor?: string;
+  reflectionsPresence?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface AccountGrowthActionPlan {
+  id: string;
+  accountId: string;
+  financialYearId: string;
+  category: string;
+  actionPlanned: string;
+  ourApproach?: string;
+  timeline?: string;
+  expectedOutcome?: string;
+  targetDate?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface AccountGrowthWorkspace {
+  clientPriorities: AccountGrowthClientPriority[];
+  industryTrends: AccountGrowthIndustryTrend[];
+  budgetPositioning: AccountGrowthBudgetPositioning | null;
+  walletSharePlans: AccountGrowthWalletSharePlan[];
+  successParameters: AccountGrowthSuccessParameter[];
+  outsourcingSplits: AccountGrowthOutsourcingSplit[];
+  swot: AccountGrowthSwot[];
+  competitors: AccountGrowthCompetitor[];
+  actionPlans: AccountGrowthActionPlan[];
+}
+
+

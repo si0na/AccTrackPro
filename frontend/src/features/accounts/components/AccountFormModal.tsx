@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useCRM } from '@/contexts/CRMContext';
 import { usersApi } from '@/api/crm.api';
@@ -12,85 +12,99 @@ import { Building2, Pencil } from 'lucide-react';
 import { StakeholderFormModal } from '@/features/stakeholders/components/StakeholderFormModal';
 import { MultiStakeholderPicker } from '@/components/MultiStakeholderPicker';
 import { showToast } from '@/components/common/ToastHost';
-import { getCustomerSinceYearOptions, serviceProviderOptionLabel } from '@/utils';
-import { ACCOUNT_TYPE_OPTIONS, ACCOUNT_HEALTH_OPTIONS, LOCATION_OPTIONS, TOWER_OPTIONS } from '@/constants';
+import { getCustomerSinceYearOptions, serviceProviderOptionLabel, isRawIdStr } from '@/utils';
+import { ACCOUNT_TYPE_OPTIONS, ACCOUNT_HEALTH_OPTIONS, LOCATION_OPTIONS, TOWER_OPTIONS, INDUSTRY_OPTIONS } from '@/constants';
 import {
   FormGrid,
   FormModal,
   FormSection,
   FormField,
   InlineCreateField,
+  SearchableSelect,
   INPUT_CLS,
   INPUT_CLS_AMBER,
-  SearchableSelect,
 } from '@/components/ui';
 
 export interface AccountFormModalProps {
   isOpen: boolean;
-  mode: 'create' | 'edit';
-  /** The account record being edited; ignored in create mode. */
-  account?: Account | null;
   onClose: () => void;
-  /** Awaited before closing — throw to keep the dialog open on error. */
-  onSubmit: (draft: Omit<Account, 'id'> | Account) => Promise<void> | void;
+  onSubmit: (draft: Omit<Account, 'id'> | Account) => Promise<void>;
+  account?: Account | null;
+  mode?: 'create' | 'edit';
 }
 
 const EMPTY_ACCOUNT: Omit<Account, 'id'> = {
   name: '',
   type: '' as AccountType,
-  health: '' as AccountHealth,
-  owner: '',
-  revenue: 0,
+  health: 'Green',
+  healthReason: '',
   industry: '',
   since: '',
+  location: '',
   website: '',
   phone: '',
   email: '',
   address: '',
-  location: '',
   description: '',
   tower: '',
-  accountManagerId: '',
   practiceLeadId: '',
   clientPartnerId: '',
   verticalHeadId: '',
+  accountManagerId: '',
+  clientStakeholderIds: [],
+  serviceProviderUserIds: [],
 };
 
 export const AccountFormModal: React.FC<AccountFormModalProps> = ({
   isOpen,
-  mode,
-  account,
   onClose,
   onSubmit,
+  account,
+  mode = 'create',
 }) => {
   const isEdit = mode === 'edit';
-  const { stakeholders, serviceProviders, addStakeholder } = useCRM();
+  const { stakeholders, addStakeholder } = useCRM();
 
-  // Users list backing role-filtered option dropdowns
+  // Users list — backs the four role-filtered "owner" dropdowns on the create
+  // form (loaded once on mount, same pattern as ProjectDetailsView).
   const [users, setUsers] = useState<User[]>([]);
   useEffect(() => {
     if (!isOpen) return;
     usersApi.getAll().then(setUsers).catch(() => setUsers([]));
   }, [isOpen]);
 
-  const { practiceLeads, clientPartners, verticalHeads, accountManagers } = useCRM();
+  const { practiceLeads, clientPartners, verticalHeads, accountManagers, serviceProviders } = useCRM();
+
+  const buildUserOptions = useCallback((roleUsers: any[]) => {
+    return (roleUsers || [])
+      .map((u) => ({
+        value: u.id,
+        label: serviceProviderOptionLabel(u),
+      }))
+      .sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }));
+  }, []);
 
   // Role-filtered option lists ({ value: id, label: name })
-  const accountManagerOptions = useMemo(
-    () => (accountManagers || []).map(u => ({ value: u.id, label: serviceProviderOptionLabel(u) })),
-    [accountManagers],
-  );
-  const practiceLeadOptions = useMemo(
-    () => (practiceLeads || []).map(u => ({ value: u.id, label: serviceProviderOptionLabel(u) })),
-    [practiceLeads],
-  );
-  const clientPartnerOptions = useMemo(
-    () => (clientPartners || []).map(u => ({ value: u.id, label: serviceProviderOptionLabel(u) })),
-    [clientPartners],
-  );
-  const verticalHeadOptions = useMemo(
-    () => (verticalHeads || []).map(u => ({ value: u.id, label: serviceProviderOptionLabel(u) })),
-    [verticalHeads],
+  const accountManagerOptions = useMemo(() => buildUserOptions(accountManagers), [accountManagers, buildUserOptions]);
+  const practiceLeadOptions = useMemo(() => buildUserOptions(practiceLeads), [practiceLeads, buildUserOptions]);
+  const clientPartnerOptions = useMemo(() => buildUserOptions(clientPartners), [clientPartners, buildUserOptions]);
+  const verticalHeadOptions = useMemo(() => buildUserOptions(verticalHeads), [verticalHeads, buildUserOptions]);
+
+  const resolveUserFallback = useCallback(
+    (id?: string | null, name?: string | null) => {
+      if (name && name.trim() && !isRawIdStr(name)) return name;
+      if (id) {
+        const sp =
+          serviceProviders.find((u) => u.id === id || (u as any).userId === id) ||
+          accountManagers.find((u) => u.id === id || (u as any).userId === id) ||
+          practiceLeads.find((u) => u.id === id || (u as any).userId === id) ||
+          clientPartners.find((u) => u.id === id || (u as any).userId === id) ||
+          verticalHeads.find((u) => u.id === id || (u as any).userId === id);
+        if (sp) return serviceProviderOptionLabel(sp);
+      }
+      return undefined;
+    },
+    [serviceProviders, accountManagers, practiceLeads, clientPartners, verticalHeads],
   );
 
   const [draft, setDraft] = useState<Omit<Account, 'id'> | Account>(EMPTY_ACCOUNT);
@@ -241,12 +255,12 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
               </FormField>
 
               <FormField label="Industry (Optional)">
-                <input
-                  type="text"
+                <SearchableSelect
                   value={draft.industry ?? ''}
-                  onChange={(e) => setDraft({ ...draft, industry: e.target.value })}
-                  placeholder="e.g., Technology"
-                  className={inputCls}
+                  onChange={(industry) => setDraft({ ...draft, industry })}
+                  options={[...INDUSTRY_OPTIONS]}
+                  placeholder="Select industry…"
+                  aria-label="Industry"
                 />
               </FormField>
 
@@ -332,8 +346,10 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
                   value={draft.accountManagerId || ''}
                   onChange={(accountManagerId) => setDraft({ ...draft, accountManagerId })}
                   options={accountManagerOptions}
+                  fallbackLabel={resolveUserFallback(draft.accountManagerId, (account as any)?.accountManagerName)}
                   placeholder="Select account manager…"
                   aria-label="Account manager"
+                  preserveOrder={true}
                 />
               </FormField>
 
@@ -342,8 +358,10 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
                   value={draft.practiceLeadId || ''}
                   onChange={(practiceLeadId) => setDraft({ ...draft, practiceLeadId })}
                   options={practiceLeadOptions}
+                  fallbackLabel={resolveUserFallback(draft.practiceLeadId, (account as any)?.practiceLeadName)}
                   placeholder="Select practice lead…"
                   aria-label="Practice lead"
+                  preserveOrder={true}
                 />
               </FormField>
 
@@ -352,8 +370,10 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
                   value={draft.clientPartnerId || ''}
                   onChange={(clientPartnerId) => setDraft({ ...draft, clientPartnerId })}
                   options={clientPartnerOptions}
+                  fallbackLabel={resolveUserFallback(draft.clientPartnerId, (account as any)?.clientPartnerName)}
                   placeholder="Select client partner…"
                   aria-label="Client partner"
+                  preserveOrder={true}
                 />
               </FormField>
 
@@ -362,8 +382,10 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
                   value={draft.verticalHeadId || ''}
                   onChange={(verticalHeadId) => setDraft({ ...draft, verticalHeadId })}
                   options={verticalHeadOptions}
+                  fallbackLabel={resolveUserFallback(draft.verticalHeadId, (account as any)?.verticalHeadName)}
                   placeholder="Select vertical head…"
                   aria-label="Vertical head"
+                  preserveOrder={true}
                 />
               </FormField>
             </FormGrid>

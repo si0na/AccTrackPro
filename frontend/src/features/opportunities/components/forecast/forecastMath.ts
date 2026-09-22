@@ -15,8 +15,9 @@
  * top of the existing calculation.
  */
 
-import type { Opportunity } from '@/types';
+import type { FinancialCalendar, FinancialYear, Opportunity } from '@/types';
 import { deriveOppStatus } from '@/utils';
+import { getOpportunityPeriods, isValidDateStr } from '@/utils/fiscal';
 import { OPPORTUNITY_STAGE_STYLE } from '@/constants';
 import type { CardTone } from '@/components/ui';
 
@@ -187,13 +188,21 @@ const monthLabelFromKey = (key: string): string => {
   return `${MONTHS[(m || 1) - 1]} ${y}`;
 };
 
+export const getApplicableMonthKeys = (_startDate?: string | null, endDate?: string | null): string[] => {
+  if (!isValidDateStr(endDate)) return [];
+  return [endDate!.trim().slice(0, 7)];
+};
+
 /**
  * Buckets a set of opportunities into periods by the selected granularity,
- * aligned on each deal's expected close (allocationEndDate). Forecast is the
- * derived weighted value; actual is realised revenue for deals closing in that
- * period — so per-row variance stays meaningful.
+ * aligned on each deal's Expected Project End Date (allocationEndDate).
  */
-export const bucketByPeriod = (opps: Opportunity[], granularity: Granularity): PeriodDatum[] => {
+export const bucketByPeriod = (
+  opps: Opportunity[],
+  granularity: Granularity,
+  financialYears: FinancialYear[] = [],
+  financialCalendar?: FinancialCalendar | null,
+): PeriodDatum[] => {
   const map = new Map<string, PeriodDatum>();
   const ensure = (key: string, label: string, sortKey: string) => {
     if (!map.has(key)) map.set(key, { key: sortKey, label, forecast: 0, actual: 0, hasActual: false, count: 0 });
@@ -201,36 +210,66 @@ export const bucketByPeriod = (opps: Opportunity[], granularity: Granularity): P
   };
 
   for (const opp of opps) {
-    let key: string; let label: string; let sortKey: string;
+    const forecastVal = computeForecastRevenue(opp);
+    const hasActual = hasActualOf(opp);
+    const actualVal = hasActual ? actualRevenueOf(opp) : 0;
+
     if (granularity === 'month') {
-      const mk = monthKey(opp.allocationEndDate);
-      if (!mk) continue;
-      key = mk; label = monthLabelFromKey(mk); sortKey = mk;
+      const monthKeys = getApplicableMonthKeys(undefined, opp.allocationEndDate);
+      if (!monthKeys.length) continue;
+      for (const mk of monthKeys) {
+        const bucket = ensure(mk, monthLabelFromKey(mk), mk);
+        bucket.forecast += forecastVal;
+        if (hasActual) {
+          bucket.actual += actualVal;
+          bucket.hasActual = true;
+        }
+        bucket.count += 1;
+      }
     } else if (granularity === 'quarter') {
-      const fy = opp.financialYear ?? '';
-      const q = opp.quarter ?? '';
-      if (!fy && !q) continue;
-      key = `${fy}|${q}`;
-      label = q && fy ? `${q} · FY${fy}` : (q || `FY${fy}`);
-      sortKey = `${fy}|${q}`;
+      let periods = opp.applicablePeriods;
+      if (!periods || periods.length === 0) {
+        periods = getOpportunityPeriods(opp, financialYears, financialCalendar).periods;
+      }
+      for (const p of periods) {
+        if (!p.quarter && !p.financialYear) continue;
+        const key = `${p.financialYear}|${p.quarter}`;
+        const label = p.quarter && p.financialYear ? `${p.quarter} · FY${p.financialYear}` : (p.quarter || `FY${p.financialYear}`);
+        const sortKey = `${p.financialYear}|${p.quarter}`;
+        const bucket = ensure(key, label, sortKey);
+        bucket.forecast += forecastVal;
+        if (hasActual) {
+          bucket.actual += actualVal;
+          bucket.hasActual = true;
+        }
+        bucket.count += 1;
+      }
     } else {
-      const fy = opp.financialYear ?? '';
-      if (!fy) continue;
-      key = fy; label = `FY${fy}`; sortKey = fy;
+      let fys = opp.applicableFinancialYears;
+      if (!fys || fys.length === 0) {
+        fys = getOpportunityPeriods(opp, financialYears, financialCalendar).financialYears;
+      }
+      for (const fy of fys) {
+        if (!fy) continue;
+        const key = fy;
+        const label = `FY${fy}`;
+        const sortKey = fy;
+        const bucket = ensure(key, label, sortKey);
+        bucket.forecast += forecastVal;
+        if (hasActual) {
+          bucket.actual += actualVal;
+          bucket.hasActual = true;
+        }
+        bucket.count += 1;
+      }
     }
-    const bucket = ensure(key, label, sortKey);
-    bucket.forecast += computeForecastRevenue(opp);
-    if (hasActualOf(opp)) { bucket.actual += actualRevenueOf(opp); bucket.hasActual = true; }
-    bucket.count += 1;
   }
 
   return Array.from(map.values()).sort((a, b) => a.key.localeCompare(b.key));
 };
 
 /**
- * A single opportunity has no natural multi-period series, so we scaffold one so
- * the distribution charts read as a real timeline: the deal's forecast/actual is
- * placed in its close period and every other period in the scaffold shows $0.
+ * A single opportunity series across its timeline for the selected granularity.
  */
 export const scaffoldSingleOpp = (
   opp: Opportunity,
@@ -241,42 +280,64 @@ export const scaffoldSingleOpp = (
 ): PeriodDatum[] => {
   const forecast = computeForecastRevenue(opp);
   const actualVal = actual ?? 0;
-  const closeMonth = monthKey(opp.allocationEndDate);
+  const actualMonth = monthKey(actualDate);
 
   if (granularity === 'month') {
-    const year = opp.allocationEndDate ? Number(opp.allocationEndDate.slice(0, 4)) : new Date().getFullYear();
-    const actualMonth = monthKey(actualDate);
+    const activeDate = isValidDateStr(opp.allocationEndDate) ? opp.allocationEndDate! : null;
+    const year = activeDate ? Number(activeDate.slice(0, 4)) : new Date().getFullYear();
+    const applicableMonths = getApplicableMonthKeys(undefined, opp.allocationEndDate);
     return MONTHS.map((m, i) => {
       const key = `${year}-${String(i + 1).padStart(2, '0')}`;
-      const isClose = key === closeMonth;
+      const isApplicable = applicableMonths.includes(key);
       const isActual = key === actualMonth;
       return {
         key, label: `${m} ${year}`,
-        forecast: isClose ? forecast : 0,
+        forecast: isApplicable ? forecast : 0,
         actual: isActual ? actualVal : 0,
         hasActual: isActual && actual !== null,
-        count: isClose ? 1 : 0,
+        count: isApplicable ? 1 : 0,
       };
     });
   }
 
   if (granularity === 'quarter') {
     const labels = quarterLabels.length ? quarterLabels : ['Q1', 'Q2', 'Q3', 'Q4'];
+    const oppQuarters = opp.applicableQuarters && opp.applicableQuarters.length > 0
+      ? opp.applicableQuarters
+      : [];
+
+    const fy = opp.applicableFinancialYears?.[0] ?? '';
+
     return labels.map((q) => {
-      const isClose = q === opp.quarter;
+      const isApplicable = oppQuarters.includes(q);
       return {
-        key: q, label: opp.financialYear ? `${q} · FY${opp.financialYear}` : q,
-        forecast: isClose ? forecast : 0,
-        actual: isClose ? actualVal : 0,
-        hasActual: isClose && actual !== null,
-        count: isClose ? 1 : 0,
+        key: q, label: fy ? `${q} · FY${fy}` : q,
+        forecast: isApplicable ? forecast : 0,
+        actual: isApplicable ? actualVal : 0,
+        hasActual: isApplicable && actual !== null,
+        count: isApplicable ? 1 : 0,
       };
     });
   }
 
-  const fy = opp.financialYear ?? (opp.allocationEndDate ? opp.allocationEndDate.slice(0, 4) : '');
+  const fys = opp.applicableFinancialYears && opp.applicableFinancialYears.length > 0
+    ? opp.applicableFinancialYears
+    : [];
+
+  if (fys.length > 0) {
+    return fys.map((fy) => ({
+      key: fy,
+      label: `FY${fy}`,
+      forecast,
+      actual: actualVal,
+      hasActual: actual !== null,
+      count: 1,
+    }));
+  }
+
+  const fallbackFy = isValidDateStr(opp.allocationEndDate) ? opp.allocationEndDate!.slice(0, 4) : '—';
   return [{
-    key: fy, label: fy ? `FY${fy}` : '—',
+    key: fallbackFy, label: fallbackFy !== '—' ? `FY${fallbackFy}` : '—',
     forecast, actual: actualVal, hasActual: actual !== null, count: 1,
   }];
 };

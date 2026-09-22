@@ -96,20 +96,15 @@ export const ReportsFilterBar: React.FC<ReportsFilterBarProps> = ({
     return top.sort((a, b) => a.startYear - b.startYear);
   }, [financialYears, adminSettings, selectedYear]);
 
-  // Auto-select the most recent active FY on first visit / fall back if the
-  // stored selection became inactive — identical behavior to PeriodSelector.
+  // Stale-FY guard: if the persisted selection no longer exists or became
+  // inactive, fall back to 'All'. 'All' itself is always valid — never replaced.
   useEffect(() => {
-    if (!financialYears.length) return;
-    const activeFYs = financialYears.filter((f) => f.isActive);
-    const mostRecent = [...activeFYs].sort((a, b) => b.startYear - a.startYear)[0];
-    if (selectedYear === 'All') {
-      if (localStorage.getItem('crm_selected_year') === null && mostRecent) {
-        setSelectedYear(mostRecent.fyLabel);
-      }
-      return;
-    }
+    if (!financialYears.length || selectedYear === 'All') return;
     const fy = financialYears.find((f) => f.fyLabel === selectedYear);
     if (!fy || !fy.isActive) {
+      const mostRecent = [...financialYears.filter((f) => f.isActive)].sort(
+        (a, b) => b.startYear - a.startYear,
+      )[0];
       setSelectedYear(mostRecent ? mostRecent.fyLabel : 'All');
     }
   }, [financialYears, selectedYear, setSelectedYear]); // eslint-disable-line react-hooks/exhaustive-deps

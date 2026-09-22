@@ -37,6 +37,14 @@ export const VIEW_TO_PATH: Record<ViewType, string> = {
   'employee-appreciation': '/employee-appreciation',
   'employee-rewards-recognition': '/employee-rewards-recognition',
   risks:                   '/risks',
+  'risk-details':          '/risks/:id',
+  'account-growth':        '/account-growth',
+  // ── Growth section ────────────────────────────────────────────────────────
+  partnership:              '/growth/partnership',
+  tracking:                 '/growth/tracking',
+  'delivery-review':        '/growth/tracking/delivery-review',
+  'technical-review':       '/growth/tracking/technical-review',
+  'sqa-review':             '/growth/tracking/sqa-review',
 };
 
 /** Build the actual browser URL for a given view, substituting real entity IDs */
@@ -46,11 +54,13 @@ export function buildPath(
   opportunityId?: string | null,
   projectId?: string | null,
   sqaId?: string | null,
+  riskId?: string | null,
 ): string {
   if (view === 'account-details' && accountId)     return `/accounts/${accountId}`;
   if (view === 'opportunity-details' && opportunityId) return `/opportunities/${opportunityId}`;
   if (view === 'opportunity-forecast' && opportunityId) return `/opportunities/${opportunityId}/forecast`;
   if (view === 'project-details' && projectId)     return `/projects/${projectId}`;
   if (view === 'sqa-details' && sqaId)             return `/sqa/${sqaId}`;
+  if (view === 'risk-details' && riskId)           return `/risks/${riskId}`;
   return VIEW_TO_PATH[view] ?? '/';
 }

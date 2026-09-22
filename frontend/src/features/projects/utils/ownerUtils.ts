@@ -36,7 +36,8 @@ export const buildOwnerOptions = (
       teamOptions.push({
         value: val,
         label: `${member.employeeName}${roleSuffix}`,
-      });
+        rawName: member.employeeName,
+      } as OwnerOption & { rawName: string });
     });
   }
 
@@ -49,6 +50,9 @@ export const buildOwnerOptions = (
       });
     }
   });
+
+  teamOptions.sort((a, b) => ((a as any).rawName || a.label).localeCompare(((b as any).rawName || b.label), undefined, { sensitivity: 'base' }));
+  systemOptions.sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }));
 
   return { teamOptions, systemOptions };
 };

@@ -1,13 +1,13 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useCallback } from 'react';
 import { Pencil } from 'lucide-react';
 import { FormField, FormGrid, FormModal, FormSection, INPUT_CLS_AMBER, PhoneInput, SearchableSelect } from '@/components/ui';
 import { NumberInput } from '@/components/NumberInput';
 import { AopYearFields } from '@/components/AopYearFields';
 import { StakeholderAssignmentFields } from '@/components/StakeholderAssignmentFields';
 import { ActionItemOwnerField } from '@/components/ActionItemOwnerField';
-import { getCustomerSinceYearOptions, serviceProviderOptionLabel } from '@/utils';
+import { getCustomerSinceYearOptions, serviceProviderOptionLabel, isRawIdStr, cleanOwnerName } from '@/utils';
 import { useCRM } from '@/contexts/CRMContext';
-import { ACTION_ITEM_STATUS_OPTIONS, OPPORTUNITY_STAGE_OPTIONS, OPPORTUNITY_TYPE_OPTIONS, SERVICE_LINE_OPTIONS, ACCOUNT_TYPE_OPTIONS, ACCOUNT_HEALTH_OPTIONS, LOCATION_OPTIONS, OPPORTUNITY_HEALTH_OPTIONS, OPPORTUNITY_PRIORITY_OPTIONS, TOWER_OPTIONS, DELIVERY_MODEL_OPTIONS, BILLING_MODEL_OPTIONS, stageChangePatch } from '@/constants';
+import { ACTION_ITEM_STATUS_OPTIONS, ACTION_ITEM_TYPE_OPTIONS, OPPORTUNITY_STAGE_OPTIONS, OPPORTUNITY_TYPE_OPTIONS, SERVICE_LINE_OPTIONS, ACCOUNT_TYPE_OPTIONS, ACCOUNT_HEALTH_OPTIONS, LOCATION_OPTIONS, OPPORTUNITY_HEALTH_OPTIONS, OPPORTUNITY_PRIORITY_OPTIONS, TOWER_OPTIONS, DELIVERY_MODEL_OPTIONS, BILLING_MODEL_OPTIONS, INDUSTRY_OPTIONS, stageChangePatch } from '@/constants';
 import type {
   Account,
   Opportunity,
@@ -96,18 +96,45 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
   const { title, primaryKey } = MODE_META[mode];
   const inputCls = INPUT_CLS_AMBER;
 
-  const { practiceLeads, clientPartners, verticalHeads, accountManagers } = useCRM();
+  const { practiceLeads, clientPartners, verticalHeads, accountManagers, serviceProviders } = useCRM();
+
+  const resolveUserFallback = useCallback(
+    (id?: string | null, name?: string | null) => {
+      if (name && name.trim() && !isRawIdStr(name)) return name;
+      if (id) {
+        const sp =
+          serviceProviders.find((u) => u.id === id || (u as any).userId === id) ||
+          accountManagers.find((u) => u.id === id || (u as any).userId === id) ||
+          practiceLeads.find((u) => u.id === id || (u as any).userId === id) ||
+          clientPartners.find((u) => u.id === id || (u as any).userId === id) ||
+          verticalHeads.find((u) => u.id === id || (u as any).userId === id);
+        if (sp) return serviceProviderOptionLabel(sp);
+      }
+      return undefined;
+    },
+    [serviceProviders, accountManagers, practiceLeads, clientPartners, verticalHeads],
+  );
+
+  const buildUserOptions = useCallback((roleUsers: any[]) => {
+    return (roleUsers || [])
+      .map((u) => ({
+        value: u.id,
+        label: serviceProviderOptionLabel(u),
+        rawName: u.name || u.email || '',
+      }))
+      .sort((a, b) => a.rawName.localeCompare(b.rawName, undefined, { sensitivity: 'base', numeric: true }));
+  }, []);
 
   // Role-filtered option lists ({ value: id, label: name }) backing the four
   // account "owner" dropdowns — one per role. Only rendered for accounts mode.
   const ownerRoleFields = useMemo(
     () => [
-      { key: 'accountManagerId', label: 'Account Manager', options: (accountManagers || []).map((u) => ({ value: u.id, label: serviceProviderOptionLabel(u) })) },
-      { key: 'practiceLeadId', label: 'Practice Lead', options: (practiceLeads || []).map((u) => ({ value: u.id, label: serviceProviderOptionLabel(u) })) },
-      { key: 'clientPartnerId', label: 'Client Partner', options: (clientPartners || []).map((u) => ({ value: u.id, label: serviceProviderOptionLabel(u) })) },
-      { key: 'verticalHeadId', label: 'Vertical Head', options: (verticalHeads || []).map((u) => ({ value: u.id, label: serviceProviderOptionLabel(u) })) },
+      { key: 'accountManagerId', nameKey: 'accountManagerName', label: 'Account Manager', options: buildUserOptions(accountManagers) },
+      { key: 'practiceLeadId', nameKey: 'practiceLeadName', label: 'Practice Lead', options: buildUserOptions(practiceLeads) },
+      { key: 'clientPartnerId', nameKey: 'clientPartnerName', label: 'Client Partner', options: buildUserOptions(clientPartners) },
+      { key: 'verticalHeadId', nameKey: 'verticalHeadName', label: 'Vertical Head', options: buildUserOptions(verticalHeads) },
     ],
-    [accountManagers, practiceLeads, clientPartners, verticalHeads],
+    [accountManagers, practiceLeads, clientPartners, verticalHeads, buildUserOptions],
   );
 
   // Always include the primary identifier field even if hidden in the table,
@@ -250,6 +277,18 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
           </select>
         );
 
+      case 'industry':
+        return (
+          <SearchableSelect
+            value={val ?? ''}
+            onChange={(industry) => onChange({ industry })}
+            options={[...INDUSTRY_OPTIONS]}
+            placeholder="Select industry…"
+            tone="amber"
+            aria-label="Industry"
+          />
+        );
+
       case 'location':
         return (
           <SearchableSelect
@@ -282,12 +321,13 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
               accountId={entity.accountId ?? ''}
               stakeholders={stakeholders}
               value={entity.ownerStakeholderId ?? ''}
+              fallbackName={cleanOwnerName(entity.ownerName || entity.owner)}
               onChange={(ownerStakeholderId) => {
                 const stk = stakeholders.find((s) => s.id === ownerStakeholderId);
                 onChange({
                   ownerStakeholderId,
-                  owner: stk?.name || entity.owner || '',
-                  ownerName: stk?.name || entity.ownerName || '',
+                  owner: cleanOwnerName(stk?.name || entity.owner || ''),
+                  ownerName: cleanOwnerName(stk?.name || entity.ownerName || ''),
                 });
               }}
             />
@@ -394,11 +434,13 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
               className={`${inputCls} bg-white`}
             >
               <option value="" disabled>Select account…</option>
-              {accounts.map((acc) => (
-                <option key={acc.id} value={acc.id}>
-                  {acc.name}
-                </option>
-              ))}
+              {[...accounts]
+                .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+                .map((acc) => (
+                  <option key={acc.id} value={acc.id}>
+                    {acc.name}
+                  </option>
+                ))}
             </select>
           );
         }
@@ -489,6 +531,7 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
             <option value="">None / General Task</option>
             {(entity.accountId ? opportunities.filter((o) => o.accountId === entity.accountId) : opportunities)
               .filter((o) => o.stage !== 'Won' || o.id === val)
+              .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
               .map((o) => (
                 <option key={o.id} value={o.id}>{o.name}</option>
               ))}
@@ -513,9 +556,11 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
               className={`${inputCls} bg-white`}
             >
               <option value="">None / Not Applicable</option>
-              {(entity.accountId ? projects.filter((p) => p.accountId === entity.accountId) : projects).map((p) => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
+              {(entity.accountId ? projects.filter((p) => p.accountId === entity.accountId) : projects)
+                .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+                .map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
             </select>
           );
         }
@@ -552,8 +597,8 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
             className={`${inputCls} bg-white`}
           >
             <option value="High">High</option>
-            <option value="Medium">Medium</option>
             <option value="Low">Low</option>
+            <option value="Medium">Medium</option>
           </select>
         );
 
@@ -574,6 +619,20 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
           >
             {ACTION_ITEM_STATUS_OPTIONS.map((s) => (
               <option key={s} value={s}>{s}</option>
+            ))}
+          </select>
+        );
+ 
+      case 'actionItemType':
+        return (
+          <select
+            value={val ?? ''}
+            onChange={(e) => onChange({ actionItemType: e.target.value || undefined })}
+            className={`${inputCls} bg-white`}
+          >
+            <option value="">— None —</option>
+            {ACTION_ITEM_TYPE_OPTIONS.map((t) => (
+              <option key={t} value={t}>{t}</option>
             ))}
           </select>
         );
@@ -991,6 +1050,7 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
                   value={entity[f.key] ?? ''}
                   onChange={(v) => onChange({ [f.key]: v || null })}
                   options={f.options}
+                  fallbackLabel={resolveUserFallback(entity[f.key], entity[f.nameKey])}
                   placeholder={`Select ${f.label.toLowerCase()}…`}
                   tone="amber"
                   aria-label={f.label}

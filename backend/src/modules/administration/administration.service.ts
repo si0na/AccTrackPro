@@ -178,7 +178,7 @@ export class AdministrationService {
         WHERE x.employee_id = em.id
       ) er ON TRUE
       ${whereClause}
-      ORDER BY COALESCE(u.name, em.name) ASC`;
+      ORDER BY LOWER(COALESCE(NULLIF(u.name, ''), NULLIF(em.name, ''), u.email, em.email)) ASC`;
 
     if (!pg) {
       const { rows } = await this.db.query(`

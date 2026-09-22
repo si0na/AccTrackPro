@@ -26,7 +26,10 @@ export const GlobalAccountSelector: React.FC = () => {
     [accounts],
   );
   const options = useMemo(
-    () => [ALL_ACCOUNTS_LABEL, ...sortedAccounts.map(a => a.name)],
+    () => [
+      { value: ALL_ACCOUNTS_LABEL, label: ALL_ACCOUNTS_LABEL, isSpecial: true },
+      ...sortedAccounts.map((a) => ({ value: a.name, label: a.name })),
+    ],
     [sortedAccounts],
   );
 

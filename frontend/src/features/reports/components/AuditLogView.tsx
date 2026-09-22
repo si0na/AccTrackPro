@@ -42,7 +42,7 @@ const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 export const AuditLogView: React.FC = () => {
   const {
     accounts, opportunities,
-    setView, setSelectedAccountId, setSelectedOpportunityId, setAccountDetailsActiveTab,
+    setView, setSelectedAccountId, setSelectedOpportunityId,
   } = useCRM();
   const [filterType, setFilterType] = useState<string>('All');
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -112,11 +112,7 @@ export const AuditLogView: React.FC = () => {
       setView('opportunity-details', { source: 'audit-log' });
     } else if (act.accountId && accounts.some(a => a.id === act.accountId)) {
       setSelectedAccountId(act.accountId);
-      if (act.type === 'actionItem') {
-        setAccountDetailsActiveTab('action-items');
-      } else if (act.type === 'stakeholder') {
-        setAccountDetailsActiveTab('stakeholders');
-      }
+
       setView('account-details', { source: 'audit-log' });
     }
   };

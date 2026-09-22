@@ -42,6 +42,11 @@ export class CommentsService {
          )) OR
          (c.target_type = 'actionItem' AND EXISTS (
            SELECT 1 FROM action_items WHERE id = c.target_id AND is_deleted = FALSE
+         )) OR
+         (c.target_type IN ('risk', 'issue') AND (
+           EXISTS (SELECT 1 FROM account_risks WHERE id = c.target_id OR id = REPLACE(c.target_id, 'acc-', '')) OR
+           EXISTS (SELECT 1 FROM project_risks WHERE id = c.target_id OR id = REPLACE(c.target_id, 'proj-', '')) OR
+           EXISTS (SELECT 1 FROM project_issues WHERE id = c.target_id OR id = REPLACE(c.target_id, 'proj-issue-', ''))
          ))
        )
        ORDER BY c.created_at DESC`,
@@ -84,6 +89,42 @@ export class CommentsService {
       );
       if (!r.length) throw new BadRequestException('The record being commented on does not exist');
       targetName = r[0].title; accountId = r[0].account_id;
+    } else if (data.targetType === 'risk' || data.targetType === 'issue') {
+      const rawTargetId = data.targetId.replace(/^acc-/, '').replace(/^proj-issue-/, '').replace(/^proj-/, '');
+      const { rows: rAccRisk } = await this.db.query(
+        `SELECT description, account_id FROM account_risks WHERE id = $1 OR id = $2`,
+        [data.targetId, rawTargetId],
+      );
+      if (rAccRisk.length) {
+        targetName = rAccRisk[0].description;
+        accountId = rAccRisk[0].account_id;
+      } else {
+        const { rows: rProjRisk } = await this.db.query(
+          `SELECT description, project_id FROM project_risks WHERE id = $1 OR id = $2`,
+          [data.targetId, rawTargetId],
+        );
+        if (rProjRisk.length) {
+          targetName = rProjRisk[0].description;
+          const { rows: rProj } = await this.db.query(
+            `SELECT account_id FROM projects WHERE id = $1`,
+            [rProjRisk[0].project_id],
+          );
+          accountId = rProj[0]?.account_id;
+        } else {
+          const { rows: rProjIssue } = await this.db.query(
+            `SELECT description, project_id FROM project_issues WHERE id = $1 OR id = $2`,
+            [data.targetId, rawTargetId],
+          );
+          if (rProjIssue.length) {
+            targetName = rProjIssue[0].description;
+            const { rows: rProj } = await this.db.query(
+              `SELECT account_id FROM projects WHERE id = $1`,
+              [rProjIssue[0].project_id],
+            );
+            accountId = rProj[0]?.account_id;
+          }
+        }
+      }
     }
 
     const { rows } = await this.db.query(

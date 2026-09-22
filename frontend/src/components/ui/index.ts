@@ -111,3 +111,7 @@ export { InlineCreateField } from './InlineCreateField';
 export type { InlineCreateFieldProps } from './InlineCreateField';
 
 export { InlineTextEditCell, InlineSelectEditCell, InlineTextareaEditCell } from './InlineCellEdit';
+
+export { AutoResizeTextarea } from './AutoResizeTextarea';
+export type { AutoResizeTextareaProps } from './AutoResizeTextarea';
+

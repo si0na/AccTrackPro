@@ -1,0 +1,1 @@
+const { Client } = require('pg'); const c = new Client({connectionString: 'postgresql://postgres:1234@localhost:5432/crm_db'}); c.connect().then(()=>c.query('SELECT * FROM stakeholders WHERE stakeholder_type = \'SERVICE_PROVIDER\' LIMIT 5')).then(r => console.log(r.rows)).catch(console.error).finally(()=>c.end())

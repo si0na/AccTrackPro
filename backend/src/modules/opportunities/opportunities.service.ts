@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
-import { FilterContextService, FilterParams, FiscalContext } from '../../common/services/filter-context.service';
+import { FilterContextService, FilterParams, FiscalContext, DerivedOpportunityPeriods } from '../../common/services/filter-context.service';
 import { AccessScopeService } from '../rbac/access-scope.service';
 import { PermissionsService } from '../rbac/permissions.service';
 import { NotificationEventBus } from '../../common/events/notification-event-bus.service';
@@ -15,7 +15,7 @@ import { BulkModuleAdapter } from '../import-export/bulk-adapter';
 
 // 'financialYear'/'quarter' remain listed so payloads from older clients are
 // stripped instead of leaking into custom_data — fiscal periods are derived
-// from allocationEndDate and never stored.
+// from project timeline and never stored.
 const KNOWN = new Set([
   'id', 'name', 'accountId', 'accountName', 'stage', 'value', 'probability', 'ownerId',
   'allocationStartDate', 'allocationEndDate', 'dealStartDate', 'dealCloseDate', 'crmValue', 'description', 'nextStep',
@@ -38,7 +38,10 @@ const KNOWN = new Set([
 /** Deal outcome is now tracked solely via pipeline stage — no separate status field. */
 const CLOSED_STAGES = new Set(['Won', 'Lost']);
 
-function rowToOpportunity(row: any, derive: (date: string) => { financialYear: string; quarter: string }): Opportunity {
+function rowToOpportunity(
+  row: any,
+  derive: (startDate: string | null | undefined, endDate: string | null | undefined) => DerivedOpportunityPeriods,
+): Opportunity {
   const {
     custom_data, is_deleted, created_at, updated_at,
     account_id, account_name, allocation_start_date, allocation_end_date, deal_start_date, deal_close_date, crm_value, next_step,
@@ -106,8 +109,8 @@ function rowToOpportunity(row: any, derive: (date: string) => { financialYear: s
     actualValue: actual_value !== null && actual_value !== undefined ? Number(actual_value) : undefined,
     forecastRemarks: forecast_remarks ?? undefined,
     forecastUpdatedAt: forecast_updated_at ? new Date(forecast_updated_at).toISOString() : undefined,
-    // Read-only reporting labels derived from the business date (allocation end date).
-    ...derive(allocation_end_date),
+    // Read-only reporting labels and applicable periods derived from project timeline.
+    ...derive(allocation_start_date, allocation_end_date),
     ...(custom_data || {}),
   } as Opportunity;
 }
@@ -132,10 +135,10 @@ const OPP_FORECAST_JOIN = `
 
 const OPP_SELECT = `
   SELECT o.*, a.name AS account_name,
-         cs.name AS client_stakeholder_name, cs.designation AS client_stakeholder_designation,
-         sps.name AS service_provider_stakeholder_name, sps.designation AS service_provider_stakeholder_designation,
-         u.name AS owner_name,
-         pm.name AS service_provider_pm_name,
+         COALESCE(NULLIF(cs.name, ''), cs.email) AS client_stakeholder_name, cs.designation AS client_stakeholder_designation,
+         COALESCE(NULLIF(sps.name, ''), sps.email) AS service_provider_stakeholder_name, sps.designation AS service_provider_stakeholder_designation,
+         COALESCE(NULLIF(u.name, ''), NULLIF(em_u.name, ''), u.email, em_u.email) AS owner_name,
+         COALESCE(NULLIF(pm.name, ''), NULLIF(em_pm.name, ''), pm.email, em_pm.email) AS service_provider_pm_name,
          proj.id AS project_id,
 ${OPP_FORECAST_SELECT}
   FROM opportunities o
@@ -143,7 +146,9 @@ ${OPP_FORECAST_SELECT}
   LEFT JOIN stakeholders cs  ON o.client_stakeholder_id           = cs.id
   LEFT JOIN stakeholders sps ON o.service_provider_stakeholder_id = sps.id
   LEFT JOIN users u ON o.owner_id = u.id
+  LEFT JOIN employee_master em_u ON o.owner_id = em_u.id
   LEFT JOIN users pm ON o.service_provider_pm_id = pm.id
+  LEFT JOIN employee_master em_pm ON o.service_provider_pm_id = em_pm.id
   LEFT JOIN projects proj ON proj.opportunity_id = o.id AND proj.is_deleted = FALSE${OPP_FORECAST_JOIN}
 `;
 
@@ -249,6 +254,72 @@ export class OpportunitiesService {
     return;
   }
 
+  private async resolveServiceProviderStakeholder(userId: string, accountId: string): Promise<string> {
+    // 1. Check if the user already has a SERVICE_PROVIDER stakeholder for this account.
+    const { rows } = await this.db.query(
+      `SELECT id FROM stakeholders WHERE (user_id = $1 OR employee_id = $1) AND account_id = $2 AND stakeholder_type = 'SERVICE_PROVIDER' AND is_deleted = FALSE LIMIT 1`,
+      [userId, accountId]
+    );
+    if (rows.length > 0) return rows[0].id;
+
+    // 2. Not found: fetch user details and create a new stakeholder record.
+    const { rows: uRows } = await this.db.query(
+      `SELECT
+         u.id AS user_id,
+         em.id AS employee_id,
+         COALESCE(NULLIF(u.name, ''), NULLIF(em.name, ''), u.email, em.email) AS name,
+         COALESCE(u.email, em.email) AS email,
+         COALESCE(u.department, em.department) AS department,
+         COALESCE(u.designation, em.designation) AS designation
+       FROM employee_master em
+       FULL OUTER JOIN users u ON LOWER(u.email) = LOWER(em.email)
+       WHERE u.id = $1 OR em.id = $1
+       LIMIT 1`,
+      [userId]
+    );
+    if (!uRows.length) throw new BadRequestException('The selected service provider user does not exist.');
+    const u = uRows[0];
+
+    // Use ON CONFLICT DO NOTHING to handle a race condition where a concurrent
+    // request already created the stakeholder between our SELECT and INSERT.
+    // The unique index uq_stk_account_user (account_id, user_id WHERE
+    // stakeholder_type = 'SERVICE_PROVIDER' AND is_deleted = FALSE) would
+    // otherwise throw a raw PostgreSQL unique_violation → unhandled 500.
+    const { rows: insertRows } = await this.db.query(
+      `INSERT INTO stakeholders (
+         id, account_id, stakeholder_type, user_id, employee_id,
+         name, email, department, designation,
+         influence, relationship, is_deleted
+       ) VALUES (
+         gen_random_uuid()::TEXT, $1, 'SERVICE_PROVIDER', $2, $3,
+         $4, $5, $6, $7,
+         'High', 'Strong', FALSE
+       )
+       ON CONFLICT DO NOTHING
+       RETURNING id`,
+      [accountId, u.user_id, u.employee_id ?? null, u.name ?? '', u.email ?? '', u.department ?? null, u.designation ?? '']
+    );
+
+    if (insertRows.length > 0) {
+      this.logger.log(`Created new SERVICE_PROVIDER stakeholder [id=${insertRows[0].id}, userId=${userId}, accountId=${accountId}]`);
+      return insertRows[0].id;
+    }
+
+    // Conflict: a concurrent request created the row between our SELECT and INSERT.
+    // Re-read the now-existing record.
+    const { rows: refetch } = await this.db.query(
+      `SELECT id FROM stakeholders WHERE (user_id = $1 OR employee_id = $1) AND account_id = $2 AND stakeholder_type = 'SERVICE_PROVIDER' AND is_deleted = FALSE LIMIT 1`,
+      [userId, accountId]
+    );
+    if (refetch.length > 0) {
+      this.logger.log(`Reused existing SERVICE_PROVIDER stakeholder after conflict [id=${refetch[0].id}, userId=${userId}, accountId=${accountId}]`);
+      return refetch[0].id;
+    }
+
+    throw new BadRequestException('Failed to resolve service provider stakeholder — please try again.');
+  }
+
+
 
   private async childScope(userId: string | null, startIdx: number) {
     if (!userId) return { conditions: [], params: [], nextIdx: startIdx };
@@ -295,10 +366,10 @@ export class OpportunitiesService {
     return rows[0]?.id ?? null;
   }
 
-  /** Row mapper that derives financialYear/quarter labels from allocation_end_date. */
+  /** Row mapper that derives applicable financial years/quarters from project timeline (allocation start -> end date). */
   private async mapper(ctx?: FiscalContext): Promise<(row: any) => Opportunity> {
     const fiscal = ctx ?? await this.filter.getFiscalContext();
-    return (row) => rowToOpportunity(row, (d) => this.filter.derivePeriod(d, fiscal));
+    return (row) => rowToOpportunity(row, (s, e) => this.filter.deriveOpportunityPeriods(s, e, fiscal));
   }
 
   /**
@@ -369,6 +440,11 @@ ${OPP_FORECAST_SELECT}${totalCol}
     assertDateOrder(data.allocationStartDate, data.allocationEndDate, data.dealStartDate, data.dealCloseDate);
     await this.assertStakeholderAssignment(data.clientStakeholderId, data.accountId, 'CLIENT', 'client stakeholder');
     await this.validatePm(data.serviceProviderPmId);
+    
+    if (data.serviceProviderUserId) {
+      data.serviceProviderStakeholderId = await this.resolveServiceProviderStakeholder(data.serviceProviderUserId, data.accountId);
+    }
+    
     await this.assertStakeholderAssignment(data.serviceProviderStakeholderId, data.accountId, 'SERVICE_PROVIDER', 'service provider stakeholder');
 
     const stage = data.stage || 'Lead';
@@ -395,7 +471,7 @@ ${OPP_FORECAST_SELECT}${totalCol}
         data.name, data.accountId, stage,
         data.value ?? 0, data.probability ?? 0,
         data.ownerId ?? null,
-        data.allocationStartDate || null, data.allocationEndDate ?? '', data.dealStartDate ?? null, data.dealCloseDate ?? null,
+        data.allocationStartDate || null, data.allocationEndDate ?? null, data.dealStartDate ?? null, data.dealCloseDate ?? null,
         data.crmValue ?? 0, data.description ?? '', data.nextStep ?? '',
         data.risksAndDependencies ?? '',
         closeReason, blockedReason, delayedReason, closedAt,
@@ -449,6 +525,11 @@ ${OPP_FORECAST_SELECT}${totalCol}
     }
     assertDateOrder(data.allocationStartDate, data.allocationEndDate, data.dealStartDate, data.dealCloseDate);
     await this.assertStakeholderAssignment(data.clientStakeholderId, targetAccountId, 'CLIENT', 'client stakeholder');
+    
+    if (data.serviceProviderUserId) {
+      data.serviceProviderStakeholderId = await this.resolveServiceProviderStakeholder(data.serviceProviderUserId, targetAccountId);
+    }
+    
     await this.assertStakeholderAssignment(data.serviceProviderStakeholderId, targetAccountId, 'SERVICE_PROVIDER', 'service provider stakeholder');
     const pmId = 'serviceProviderPmId' in data ? (data.serviceProviderPmId ?? null) : (existing.serviceProviderPmId ?? null);
     const pmName = 'serviceProviderPmName' in data ? (data.serviceProviderPmName ?? null) : (existing.serviceProviderPmName ?? null);
@@ -514,7 +595,7 @@ ${OPP_FORECAST_SELECT}${totalCol}
         data.name, data.accountId, stage,
         data.value ?? existing.value ?? 0, data.probability ?? existing.probability ?? 0,
         effectiveOwnerId,
-        data.allocationStartDate || null, data.allocationEndDate ?? '', data.dealStartDate ?? null, data.dealCloseDate ?? null,
+        data.allocationStartDate || null, data.allocationEndDate ?? null, data.dealStartDate ?? null, data.dealCloseDate ?? null,
         data.crmValue ?? 0, data.description ?? '', data.nextStep ?? '',
         data.risksAndDependencies ?? '',
         closeReason, blockedReason, delayedReason, closedAt,

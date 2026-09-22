@@ -7,7 +7,22 @@ import {
   buildQuarterRanges,
   computeFY,
   fyDateRange,
+  fyLabelFor,
+  getOverlappingPeriods,
+  isValidDateStr,
+  OverlappingPeriodsResult,
 } from '../utils/fiscal.util';
+
+export interface DerivedOpportunityPeriods {
+  applicableFinancialYears: string[];
+  applicableQuarters: string[];
+  applicablePeriods: Array<{
+    financialYear: string;
+    quarter: string;
+  }>;
+  financialYear: string;
+  quarter: string;
+}
 
 /**
  * Query parameters sent by the frontend on filterable GET endpoints.
@@ -278,5 +293,82 @@ export class FilterContextService {
     // Equal 3-month windows from the global calendar start month.
     const sm = Math.trunc(ctx.startMonth); // integer from DB — safe to inline
     return `('Q' || (((CAST(SUBSTRING(${dateExpr} FROM 6 FOR 2) AS INT) - ${sm} + 12) % 12) / 3 + 1))`;
+  }
+
+  /**
+   * Derives Financial Year and Quarter for an opportunity based ONLY on Expected Project End Date (allocation_end_date).
+   */
+  deriveOpportunityPeriods(
+    _startDate: string | null | undefined,
+    endDate: string | null | undefined,
+    ctx: FiscalContext,
+  ): DerivedOpportunityPeriods {
+    if (!isValidDateStr(endDate)) {
+      return {
+        applicableFinancialYears: [],
+        applicableQuarters: [],
+        applicablePeriods: [],
+        financialYear: '',
+        quarter: '',
+      };
+    }
+
+    const cleanEnd = endDate!.trim().slice(0, 10);
+    let years = ctx.years;
+    if (!years || !years.length) {
+      const currentYear = new Date().getFullYear();
+      years = [-2, -1, 0, 1, 2, 3].map((offset) => {
+        const y = currentYear + offset;
+        const { startDate: s, endDate: e } = fyDateRange(y, ctx.startMonth);
+        return {
+          label: fyLabelFor(y, ctx.startMonth),
+          startDate: s,
+          endDate: e,
+          startMonth: ctx.startMonth,
+          quarters: buildQuarterRanges(y, ctx.startMonth, ctx.quarterDefs),
+        };
+      });
+    }
+
+    for (const y of years) {
+      if (cleanEnd >= y.startDate && cleanEnd <= y.endDate) {
+        const matchingQ = y.quarters.find((q) => cleanEnd >= q.startDate && cleanEnd <= q.endDate);
+        const qLabel = matchingQ ? matchingQ.label : '';
+        return {
+          applicableFinancialYears: [y.label],
+          applicableQuarters: qLabel ? [qLabel] : [],
+          applicablePeriods: qLabel ? [{ financialYear: y.label, quarter: qLabel }] : [],
+          financialYear: y.label,
+          quarter: qLabel,
+        };
+      }
+    }
+
+    const computed = computeFY(cleanEnd, ctx.startMonth);
+    return {
+      applicableFinancialYears: computed.financialYear ? [computed.financialYear] : [],
+      applicableQuarters: computed.quarter ? [computed.quarter] : [],
+      applicablePeriods: computed.financialYear && computed.quarter ? [{ financialYear: computed.financialYear, quarter: computed.quarter }] : [],
+      financialYear: computed.financialYear,
+      quarter: computed.quarter,
+    };
+  }
+
+  /**
+   * Fiscal-period SQL conditions for an opportunity based ONLY on Expected Project End Date (allocation_end_date).
+   */
+  buildOpportunityPeriodConditions(
+    arg1: string,
+    arg2: any,
+    arg3?: any,
+    arg4?: any,
+    arg5?: any,
+  ): { conditions: string[]; params: any[]; nextIdx: number } {
+    const endDateExpr = typeof arg2 === 'string' ? arg2 : arg1;
+    const filter: NormalizedFilter = typeof arg2 === 'string' ? arg3 : arg2;
+    const ctx: FiscalContext = typeof arg2 === 'string' ? arg4 : arg3;
+    const startIdx: number = typeof arg2 === 'string' ? arg5 : arg4;
+
+    return this.buildPeriodConditions(endDateExpr, filter, ctx, startIdx);
   }
 }

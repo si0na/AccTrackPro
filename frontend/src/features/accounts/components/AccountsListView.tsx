@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useCRM } from '@/contexts/CRMContext';
 import { usersApi } from '@/api/crm.api';
@@ -13,8 +13,8 @@ import { CustomizeColumnsSidebar } from '@/components/table/CustomizeColumnsSide
 import { InlineEditModal } from '@/components/InlineEditModal';
 import { LoadingState } from '@/components/common/LoadingState';
 import { AccountFormModal } from '@/features/accounts/components/AccountFormModal';
-import { compareForSort, getCustomerSinceYearOptions, mapLocationToOption, matchesGlobalAccount, serviceProviderOptionLabel, SortDirection } from '@/utils';
-import { ACCOUNT_TYPE_OPTIONS, ACCOUNT_HEALTH_OPTIONS, LOCATION_OPTIONS, TOWER_OPTIONS } from '@/constants';
+import { compareForSort, getCustomerSinceYearOptions, isRawIdStr, mapLocationToOption, matchesGlobalAccount, serviceProviderOptionLabel, SortDirection } from '@/utils';
+import { ACCOUNT_TYPE_OPTIONS, ACCOUNT_HEALTH_OPTIONS, LOCATION_OPTIONS, TOWER_OPTIONS, INDUSTRY_OPTIONS } from '@/constants';
 import {
   ACCOUNT_TYPE_COLORS,
   InlineTextEditCell,
@@ -77,7 +77,6 @@ export const AccountsListView: React.FC = () => {
     loading,
     can,
     refreshData,
-    serviceProviders,
   } = useCRM();
 
   // Users list — backs the four role-filtered "owner" dropdowns on the create
@@ -87,24 +86,39 @@ export const AccountsListView: React.FC = () => {
     usersApi.getAll().then(setUsers).catch(() => setUsers([]));
   }, []);
 
-  const { practiceLeads, clientPartners, verticalHeads, accountManagers } = useCRM();
+  const { practiceLeads, clientPartners, verticalHeads, accountManagers, serviceProviders } = useCRM();
+
+  const buildUserOptions = useCallback((roleUsers: any[]) => {
+    return (roleUsers || [])
+      .map((u) => ({
+        value: u.id,
+        label: serviceProviderOptionLabel(u),
+        rawName: u.name || u.email || '',
+      }))
+      .sort((a, b) => a.rawName.localeCompare(b.rawName, undefined, { sensitivity: 'base', numeric: true }));
+  }, []);
 
   // Role-filtered option lists ({ value: id, label: name }) for each FK field.
-  const accountManagerOptions = useMemo(
-    () => (accountManagers || []).map(u => ({ value: u.id, label: serviceProviderOptionLabel(u) })),
-    [accountManagers],
-  );
-  const practiceLeadOptions = useMemo(
-    () => (practiceLeads || []).map(u => ({ value: u.id, label: serviceProviderOptionLabel(u) })),
-    [practiceLeads],
-  );
-  const clientPartnerOptions = useMemo(
-    () => (clientPartners || []).map(u => ({ value: u.id, label: serviceProviderOptionLabel(u) })),
-    [clientPartners],
-  );
-  const verticalHeadOptions = useMemo(
-    () => (verticalHeads || []).map(u => ({ value: u.id, label: serviceProviderOptionLabel(u) })),
-    [verticalHeads],
+  const accountManagerOptions = useMemo(() => buildUserOptions(accountManagers), [accountManagers, buildUserOptions]);
+  const practiceLeadOptions = useMemo(() => buildUserOptions(practiceLeads), [practiceLeads, buildUserOptions]);
+  const clientPartnerOptions = useMemo(() => buildUserOptions(clientPartners), [clientPartners, buildUserOptions]);
+  const verticalHeadOptions = useMemo(() => buildUserOptions(verticalHeads), [verticalHeads, buildUserOptions]);
+
+  const resolveUserFallback = useCallback(
+    (id?: string | null, name?: string | null) => {
+      if (name && name.trim() && !isRawIdStr(name)) return name;
+      if (id) {
+        const sp =
+          serviceProviders.find((u) => u.id === id || (u as any).userId === id) ||
+          accountManagers.find((u) => u.id === id || (u as any).userId === id) ||
+          practiceLeads.find((u) => u.id === id || (u as any).userId === id) ||
+          clientPartners.find((u) => u.id === id || (u as any).userId === id) ||
+          verticalHeads.find((u) => u.id === id || (u as any).userId === id);
+        if (sp) return serviceProviderOptionLabel(sp);
+      }
+      return undefined;
+    },
+    [serviceProviders, accountManagers, practiceLeads, clientPartners, verticalHeads],
   );
 
   // Restore failure message (network/server errors must not fail silently)
@@ -137,7 +151,9 @@ export const AccountsListView: React.FC = () => {
   const accountManagerFilterOptions = useMemo(
     () => [
       { value: 'All', label: 'All Account Managers' },
-      ...(accountManagers || []).map((u) => ({ value: u.id, label: serviceProviderOptionLabel(u) })),
+      ...((accountManagers || [])
+        .map((u) => ({ value: u.id, label: serviceProviderOptionLabel(u), rawName: u.name || u.email || '' }))
+        .sort((a, b) => a.rawName.localeCompare(b.rawName, undefined, { sensitivity: 'base' }))),
     ],
     [accountManagers],
   );
@@ -145,7 +161,7 @@ export const AccountsListView: React.FC = () => {
   const ownerFilterOptions = useMemo(
     () => [
       { value: 'All', label: 'All Owners' },
-      ...(users || []).map((u) => ({ value: u.id, label: u.name || u.email || '(Unnamed)' })),
+      ...((users || []).map((u) => ({ value: u.id, label: u.name || u.email || '(Unnamed)' })).sort((a, b) => a.label.localeCompare(b.label))),
     ],
     [users],
   );
@@ -210,7 +226,7 @@ export const AccountsListView: React.FC = () => {
   const [showAddClientModal, setShowAddClientModal] = useState<boolean>(false);
 
   // Dropdown options derived from live data (deduped, sorted).
-  const industryOptions = Array.from(new Set(accounts.map(a => a.industry?.trim()).filter(Boolean))).sort();
+  const industryOptions = Array.from(new Set([...INDUSTRY_OPTIONS, ...accounts.map(a => a.industry?.trim()).filter(Boolean)])).sort((a, b) => a.localeCompare(b));
   const locationOptions = Array.from(new Set(accounts.map(a => a.location?.trim()).filter(Boolean))).sort();
 
   // Accounts are never fiscal-period-filtered — the list always shows every
@@ -361,16 +377,19 @@ export const AccountsListView: React.FC = () => {
           className="sm:col-span-2 md:col-span-2 lg:col-span-2 w-full"
         />
 
-        <FilterSelect
-          label="Industry"
-          hideLabel
-          value={selectedIndustry}
-          onChange={setSelectedIndustry}
-          options={[
-            { value: 'All', label: 'All Industries' },
-            ...industryOptions.map(ind => ({ value: ind as string, label: ind as string })),
-          ]}
-        />
+        <div className="w-full">
+          <SearchableSelect
+            value={selectedIndustry}
+            onChange={setSelectedIndustry}
+            options={[
+              { value: 'All', label: 'All Industries' },
+              ...industryOptions.map(ind => ({ value: ind as string, label: ind as string })),
+            ]}
+            placeholder="All Industries"
+            aria-label="Industry"
+            className="w-full"
+          />
+        </div>
 
         <FilterSelect
           label="Health"
@@ -523,6 +542,7 @@ export const AccountsListView: React.FC = () => {
                               <InlineSelectEditCell
                                 value={acc.accountManagerId || ''}
                                 options={accountManagerOptions}
+                                fallbackLabel={resolveUserFallback(acc.accountManagerId, acc.accountManagerName)}
                                 disabled={!canUpdate}
                                 placeholder="Select Account Manager…"
                                 onSave={async (val) => { await updateAccount({ ...acc, accountManagerId: val || null }); }}
@@ -536,6 +556,7 @@ export const AccountsListView: React.FC = () => {
                               <InlineSelectEditCell
                                 value={acc.practiceLeadId || ''}
                                 options={practiceLeadOptions}
+                                fallbackLabel={resolveUserFallback(acc.practiceLeadId, acc.practiceLeadName)}
                                 disabled={!canUpdate}
                                 placeholder="Select Practice Lead…"
                                 onSave={async (val) => { await updateAccount({ ...acc, practiceLeadId: val || null }); }}
@@ -549,6 +570,7 @@ export const AccountsListView: React.FC = () => {
                               <InlineSelectEditCell
                                 value={acc.clientPartnerId || ''}
                                 options={clientPartnerOptions}
+                                fallbackLabel={resolveUserFallback(acc.clientPartnerId, acc.clientPartnerName)}
                                 disabled={!canUpdate}
                                 placeholder="Select Client Partner…"
                                 onSave={async (val) => { await updateAccount({ ...acc, clientPartnerId: val || null }); }}
@@ -562,6 +584,7 @@ export const AccountsListView: React.FC = () => {
                               <InlineSelectEditCell
                                 value={acc.verticalHeadId || ''}
                                 options={verticalHeadOptions}
+                                fallbackLabel={resolveUserFallback(acc.verticalHeadId, acc.verticalHeadName)}
                                 disabled={!canUpdate}
                                 placeholder="Select Vertical Head…"
                                 onSave={async (val) => { await updateAccount({ ...acc, verticalHeadId: val || null }); }}
@@ -584,11 +607,16 @@ export const AccountsListView: React.FC = () => {
                         if (col.key === 'industry') {
                           return (
                             <TableCell key={col.key} onClick={(e) => e.stopPropagation()}>
-                              <InlineTextEditCell
-                                value={acc.industry ?? ''}
-                                disabled={!canUpdate}
-                                onSave={async (val) => { await updateAccount({ ...acc, industry: val }); }}
-                              />
+                              <div className="min-w-[150px]">
+                                <SearchableSelect
+                                  value={acc.industry ?? ''}
+                                  options={INDUSTRY_OPTIONS}
+                                  disabled={!canUpdate}
+                                  placeholder="Select industry…"
+                                  onChange={async (val) => { await updateAccount({ ...acc, industry: val }); }}
+                                  tone="blue"
+                                />
+                              </div>
                             </TableCell>
                           );
                         }

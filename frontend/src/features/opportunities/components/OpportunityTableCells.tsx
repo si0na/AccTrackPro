@@ -10,6 +10,9 @@ import { ExpandableTextCell, STAGE_COLORS, StatusBadge, HEALTH_COLORS, InlineTex
 import { showToast } from '@/components/common/ToastHost';
 import { LOCATION_OPTIONS, OPPORTUNITY_TYPE_OPTIONS, SERVICE_LINE_OPTIONS, DELIVERY_MODEL_OPTIONS, BILLING_MODEL_OPTIONS, TOWER_OPTIONS } from '@/constants';
 
+import { isRawIdStr, serviceProviderOptionLabel } from '@/utils';
+import type { ServiceProviderUser } from '@/types';
+
 const formatCurrency = (val: number) =>
   new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(val);
 
@@ -51,79 +54,56 @@ const InlineStageSelector: React.FC<InlineStageSelectorProps> = ({ opp, onStageC
     }
   }, [isOpen]);
 
-  const handleToggle = (e: React.MouseEvent) => {
+  const toggleDropdown = (e: React.MouseEvent<HTMLButtonElement>) => {
     e.stopPropagation();
-    if (!isOpen && dropdownRef.current) {
-      const rect = dropdownRef.current.getBoundingClientRect();
-      const spaceBelow = window.innerHeight - rect.bottom;
-      const spaceAbove = rect.top;
-      const dropdownHeight = 242;
+    if (!isOpen) {
+      const buttonRect = e.currentTarget.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - buttonRect.bottom;
+      const spaceAbove = buttonRect.top;
+      const dropdownHeight = 220; // Estimated max height of stage dropdown
 
-      let isUp = false;
-      if (spaceBelow < dropdownHeight && spaceAbove > spaceBelow) {
-        isUp = true;
-      }
-      setOpenUp(isUp);
-
-      let targetTop = 0;
-      if (isUp) {
-        targetTop = rect.top - 4 - dropdownHeight;
-        if (targetTop < 10) {
-          targetTop = 10;
-        }
-      } else {
-        targetTop = rect.bottom + 4;
-        if (targetTop + dropdownHeight > window.innerHeight - 10) {
-          targetTop = window.innerHeight - 10 - dropdownHeight;
-        }
-      }
+      // Open upward if not enough space below AND more space above
+      const shouldOpenUp = spaceBelow < dropdownHeight && spaceAbove > spaceBelow;
+      setOpenUp(shouldOpenUp);
 
       setCoords({
-        top: targetTop,
-        left: rect.left,
+        top: shouldOpenUp ? buttonRect.top : buttonRect.bottom,
+        left: buttonRect.left,
       });
     }
     setIsOpen(!isOpen);
   };
 
-  const colorClass = STAGE_COLORS[opp.stage] || 'bg-slate-100 text-slate-700';
-
   return (
-    <div className="relative inline-block text-left" ref={dropdownRef} onClick={(e) => e.stopPropagation()}>
+    <div className="relative inline-block text-left" ref={dropdownRef}>
       <button
         type="button"
-        onClick={handleToggle}
-        className={`cursor-pointer px-1 py-0.5 w-[75px] whitespace-normal break-words leading-tight text-center rounded-full text-[10px] font-semibold border border-transparent hover:brightness-95 transition-all outline-none ${colorClass}`}
+        onClick={toggleDropdown}
+        className="focus:outline-none transition-transform active:scale-95 cursor-pointer"
+        title="Click to change opportunity stage"
       >
-        {opp.stage}
+        <StatusBadge value={opp.stage} colorMap={STAGE_COLORS} />
       </button>
 
       {isOpen && (
         <div
-          style={{
-            position: 'fixed',
-            top: `${coords.top}px`,
-            left: `${coords.left}px`,
-          }}
-          className="w-44 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 divide-y divide-slate-100 focus:outline-none z-[100]"
+          className={`fixed z-50 w-44 rounded-lg shadow-xl bg-white border border-slate-200 py-1 focus:outline-none ${
+            openUp ? '-translate-y-full mb-1' : 'mt-1'
+          }`}
+          style={{ top: `${coords.top}px`, left: `${coords.left}px` }}
+          onClick={(e) => e.stopPropagation()}
         >
-          <div className="py-1 max-h-[240px] overflow-y-auto">
-            {Object.keys(STAGE_COLORS).map((stg) => {
-              const stageVal = stg as OpportunityStage;
+          <div className="px-2 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
+            Change Stage
+          </div>
+          <div className="max-h-48 overflow-y-auto py-1">
+            {(Object.keys(STAGE_COLORS) as OpportunityStage[]).map((stageVal) => {
               const isSelected = opp.stage === stageVal;
               return (
                 <button
-                  key={stg}
+                  key={stageVal}
                   type="button"
                   onClick={() => {
-                    if (opp.projectId && stageVal !== opp.stage) {
-                      showToast({
-                        kind: 'error',
-                        message: 'This opportunity has been converted to a project and its stage cannot be changed.',
-                      });
-                      setIsOpen(false);
-                      return;
-                    }
                     onStageChange(opp, stageVal);
                     setIsOpen(false);
                   }}
@@ -155,6 +135,7 @@ export const renderOpportunityCell = (
   accountName: string,
   onStageChangeRaw?: (opp: Opportunity, newStage: OpportunityStage) => void,
   onUpdateOppRaw?: (opp: Opportunity, patch: Partial<Opportunity>) => void,
+  serviceProviders?: ServiceProviderUser[],
 ): React.ReactNode => {
   const onStageChange = onStageChangeRaw;
   const onUpdateOpp = onUpdateOppRaw;
@@ -310,8 +291,16 @@ export const renderOpportunityCell = (
   }
 
   if (col.key === 'serviceProviderStakeholderId' || col.key === 'owner' || col.key === 'ownerId' || col.key === 'serviceProviderUserId') {
-    const ownerName = opp.serviceProviderStakeholderName || opp.ownerName || (opp as any).owner || '—';
-    return <span className="text-slate-600 font-semibold">{ownerName}</span>;
+    const rawName = opp.serviceProviderStakeholderName || opp.ownerName || (opp as any).owner;
+    let ownerName = rawName && !isRawIdStr(rawName) ? rawName : '';
+    if (!ownerName) {
+      const ownerId = opp.serviceProviderUserId || opp.serviceProviderStakeholderId || (opp as any).ownerId;
+      if (ownerId && serviceProviders) {
+        const sp = serviceProviders.find((u) => u.id === ownerId || (u as any).userId === ownerId);
+        if (sp) ownerName = serviceProviderOptionLabel(sp);
+      }
+    }
+    return <span className="text-slate-600 font-semibold">{ownerName || '—'}</span>;
   }
 
   if (col.key === 'dealStartDate') {

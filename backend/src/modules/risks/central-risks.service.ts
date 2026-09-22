@@ -33,10 +33,11 @@ export class CentralRisksService {
     if (!source || source === 'All' || source === 'Accounts' || source === 'Account') {
       const params: any[] = [];
       let sql = `
-        SELECT r.*, a.name AS account_name, u.name AS owner_name
+        SELECT r.*, a.name AS account_name, COALESCE(NULLIF(u.name, ''), NULLIF(em.name, ''), u.email, em.email) AS owner_name
         FROM account_risks r
         JOIN accounts a ON r.account_id = a.id
         LEFT JOIN users u ON r.owner_id = u.id
+        LEFT JOIN employee_master em ON r.owner_id = em.id
         WHERE r.is_deleted = FALSE AND a.is_deleted = FALSE
       `;
       if (accountId && accountId !== 'All') {
@@ -83,11 +84,12 @@ export class CentralRisksService {
     if (!source || source === 'All' || source === 'Projects' || source === 'Project') {
       const params: any[] = [];
       let sql = `
-        SELECT r.*, p.name AS project_name, p.account_id, a.name AS account_name, u.name AS owner_name
+        SELECT r.*, p.name AS project_name, p.account_id, a.name AS account_name, COALESCE(NULLIF(u.name, ''), NULLIF(em.name, ''), u.email, em.email) AS owner_name
         FROM project_risks r
         JOIN projects p ON r.project_id = p.id
         JOIN accounts a ON p.account_id = a.id
         LEFT JOIN users u ON r.owner_id = u.id
+        LEFT JOIN employee_master em ON r.owner_id = em.id
         WHERE p.is_deleted = FALSE AND a.is_deleted = FALSE
       `;
       if (accountId && accountId !== 'All') {
@@ -133,11 +135,12 @@ export class CentralRisksService {
     if (!source || source === 'All' || source === 'Projects' || source === 'Project') {
       const params: any[] = [];
       let sql = `
-        SELECT i.*, p.name AS project_name, p.account_id, a.name AS account_name, u.name AS owner_name
+        SELECT i.*, p.name AS project_name, p.account_id, a.name AS account_name, COALESCE(NULLIF(u.name, ''), NULLIF(em.name, ''), u.email, em.email) AS owner_name
         FROM project_issues i
         JOIN projects p ON i.project_id = p.id
         JOIN accounts a ON p.account_id = a.id
         LEFT JOIN users u ON i.owner_id = u.id
+        LEFT JOIN employee_master em ON i.owner_id = em.id
         WHERE p.is_deleted = FALSE AND a.is_deleted = FALSE
       `;
       if (accountId && accountId !== 'All') {

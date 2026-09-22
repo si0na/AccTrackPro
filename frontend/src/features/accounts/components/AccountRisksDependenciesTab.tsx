@@ -13,6 +13,7 @@ import {
   ChevronDown,
   ChevronRight,
 } from 'lucide-react';
+import { compareForSort, SortDirection } from '@/utils';
 import {
   Button,
   Card,
@@ -23,6 +24,7 @@ import {
   Pagination,
   PRIORITY_COLORS,
   SearchBar,
+  SortableHeader,
   StatusBadge,
   Table,
   TableActions,
@@ -49,7 +51,7 @@ export interface AccountRisksDependenciesTabProps {
 }
 
 export const AccountRisksDependenciesTab: React.FC<AccountRisksDependenciesTabProps> = ({ accountId }) => {
-  const { can } = useCRM();
+  const { can, setView, setSelectedRiskId } = useCRM();
 
   // Active Sub-Tab: 'Risks' | 'Issues'
   const [activeTab, setActiveTab] = useState<'Risks' | 'Issues'>('Risks');
@@ -114,9 +116,70 @@ export const AccountRisksDependenciesTab: React.FC<AccountRisksDependenciesTabPr
     });
   }, [currentList, levelFilter, search]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  // Column sort state — default to description ascending
+  const [sortField, setSortField] = useState<string>('description');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
+  const getSortValue = (item: NormalizedRisk, field: string): string | number => {
+    switch (field) {
+      case 'scope':
+        return item.sourceType || '';
+      case 'description':
+        return item.description || '';
+      case 'rag':
+        return item.rag || '';
+      case 'classification':
+        return item.classification || '';
+      case 'priority':
+        return item.priority || '';
+      case 'status':
+        return item.status || '';
+      case 'owner':
+        return item.ownerName || '';
+      case 'openDate':
+      case 'dateIdentified':
+        return item.riskOpenDate || '';
+      case 'targetDate':
+        return item.targetResolutionDate || '';
+      case 'impact':
+        return item.impact || '';
+      case 'likelihood':
+        return item.likelihood || '';
+      case 'severity':
+        return item.severity || '';
+      case 'impactDesc':
+        return item.impactDescription || '';
+      case 'mitigation':
+        return item.mitigationPlan || '';
+      case 'contingency':
+        return item.contingencyPlan || '';
+      case 'resolutionPlan':
+        return item.mitigationPlan || '';
+      case 'remarks':
+        return item.contingencyPlan || '';
+      default:
+        return (item as any)[field] ?? '';
+    }
+  };
+
+  const sorted = useMemo(() => {
+    return [...filtered].sort((a, b) =>
+      compareForSort(getSortValue(a, sortField), getSortValue(b, sortField), sortDirection)
+    );
+  }, [filtered, sortField, sortDirection]);
+
+  const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
   const currentPage = Math.min(page, totalPages);
-  const paged = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const paged = sorted.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
   const accountCount = useMemo(() => currentList.filter((i) => i.sourceType === 'Account').length, [currentList]);
   const projectCount = useMemo(() => currentList.filter((i) => i.sourceType === 'Project').length, [currentList]);
@@ -260,33 +323,81 @@ export const AccountRisksDependenciesTab: React.FC<AccountRisksDependenciesTabPr
       {/* Table — Displaying all fields as separate columns */}
       <Card padding="none" clip>
         <div className="overflow-x-auto">
-          <Table>
+          <Table resizable storageKey={activeTab === 'Risks' ? 'account-risks:table' : 'account-issues:table'}>
             <TableHead>
-              <TableHeadCell>Scope / Level</TableHeadCell>
-              <TableHeadCell>Description</TableHeadCell>
-              {activeTab === 'Risks' && <TableHeadCell align="center">RAG</TableHeadCell>}
-              {activeTab === 'Risks' && <TableHeadCell>Classification</TableHeadCell>}
-              <TableHeadCell align="center">Priority</TableHeadCell>
-              <TableHeadCell align="center">Status</TableHeadCell>
-              <TableHeadCell>Owner</TableHeadCell>
-              <TableHeadCell>{activeTab === 'Risks' ? 'Risk Open Date' : 'Date Identified'}</TableHeadCell>
-              <TableHeadCell>Target Resolution Date</TableHeadCell>
-              <TableHeadCell>Impact</TableHeadCell>
-              {activeTab === 'Risks' && <TableHeadCell>Likelihood</TableHeadCell>}
-              {activeTab === 'Risks' && <TableHeadCell>Severity (Calculated)</TableHeadCell>}
+              <TableHeadCell columnId="scope">
+                <SortableHeader label="Scope / Level" field="scope" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+              </TableHeadCell>
+              <TableHeadCell columnId="description">
+                <SortableHeader label="Description" field="description" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+              </TableHeadCell>
+              {activeTab === 'Risks' && (
+                <TableHeadCell columnId="rag" align="center">
+                  <SortableHeader label="RAG" field="rag" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+                </TableHeadCell>
+              )}
+              {activeTab === 'Risks' && (
+                <TableHeadCell columnId="classification">
+                  <SortableHeader label="Classification" field="classification" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+                </TableHeadCell>
+              )}
+              <TableHeadCell columnId="priority" align="center">
+                <SortableHeader label="Priority" field="priority" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+              </TableHeadCell>
+              <TableHeadCell columnId="status" align="center">
+                <SortableHeader label="Status" field="status" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+              </TableHeadCell>
+              <TableHeadCell columnId="owner">
+                <SortableHeader label="Owner" field="owner" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+              </TableHeadCell>
+              <TableHeadCell columnId={activeTab === 'Risks' ? 'openDate' : 'dateIdentified'}>
+                <SortableHeader
+                  label={activeTab === 'Risks' ? 'Risk Open Date' : 'Date Identified'}
+                  field={activeTab === 'Risks' ? 'openDate' : 'dateIdentified'}
+                  sortField={sortField}
+                  sortDirection={sortDirection}
+                  onSort={handleSort}
+                />
+              </TableHeadCell>
+              <TableHeadCell columnId="targetDate">
+                <SortableHeader label="Target Resolution Date" field="targetDate" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+              </TableHeadCell>
+              <TableHeadCell columnId="impact">
+                <SortableHeader label="Impact" field="impact" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+              </TableHeadCell>
+              {activeTab === 'Risks' && (
+                <TableHeadCell columnId="likelihood">
+                  <SortableHeader label="Likelihood" field="likelihood" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+                </TableHeadCell>
+              )}
+              {activeTab === 'Risks' && (
+                <TableHeadCell columnId="severity">
+                  <SortableHeader label="Severity (Calculated)" field="severity" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+                </TableHeadCell>
+              )}
               {activeTab === 'Risks' ? (
                 <>
-                  <TableHeadCell>Impact Description</TableHeadCell>
-                  <TableHeadCell>Mitigation Plan</TableHeadCell>
-                  <TableHeadCell>Contingency Plan</TableHeadCell>
+                  <TableHeadCell columnId="impactDesc">
+                    <SortableHeader label="Impact Description" field="impactDesc" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+                  </TableHeadCell>
+                  <TableHeadCell columnId="mitigation">
+                    <SortableHeader label="Mitigation Plan" field="mitigation" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+                  </TableHeadCell>
+                  <TableHeadCell columnId="contingency">
+                    <SortableHeader label="Contingency Plan" field="contingency" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+                  </TableHeadCell>
                 </>
               ) : (
                 <>
-                  <TableHeadCell>Resolution Plan</TableHeadCell>
-                  <TableHeadCell>Remarks</TableHeadCell>
+                  <TableHeadCell columnId="resolutionPlan">
+                    <SortableHeader label="Resolution Plan" field="resolutionPlan" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+                  </TableHeadCell>
+                  <TableHeadCell columnId="remarks">
+                    <SortableHeader label="Remarks" field="remarks" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
+                  </TableHeadCell>
                 </>
               )}
-              <TableHeadCell align="center" sticky="right">Actions</TableHeadCell>
+              <TableHeadCell columnId="actions" align="center" sticky="right">Actions</TableHeadCell>
             </TableHead>
             <tbody>
               {loading ? (
@@ -298,9 +409,17 @@ export const AccountRisksDependenciesTab: React.FC<AccountRisksDependenciesTabPr
                 />
               ) : (
                 paged.map((item) => (
-                  <TableRow key={item.id} className="hover:bg-slate-50/50">
+                  <TableRow
+                    key={item.id}
+                    clickable
+                    onClick={() => {
+                      setSelectedRiskId(item.id);
+                      setView('risk-details');
+                    }}
+                    className="hover:bg-slate-50/50 cursor-pointer"
+                  >
                     {/* Scope Badge */}
-                    <TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
                       {item.sourceType === 'Project' ? (
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-100 text-indigo-800 border border-indigo-200">
                           <FolderGit2 className="w-3 h-3 text-indigo-600 shrink-0" />
@@ -316,7 +435,18 @@ export const AccountRisksDependenciesTab: React.FC<AccountRisksDependenciesTabPr
 
                     {/* Description */}
                     <TableCell className="font-semibold text-slate-900 min-w-[200px] max-w-[300px]">
-                      <span className="line-clamp-2" title={item.description}>{item.description}</span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedRiskId(item.id);
+                          setView('risk-details');
+                        }}
+                        className="text-left font-semibold text-slate-900 hover:text-blue-600 hover:underline transition-colors line-clamp-2 cursor-pointer"
+                        title={item.description}
+                      >
+                        {item.description}
+                      </button>
                     </TableCell>
 
                     {/* RAG (Risks only) */}
@@ -423,6 +553,10 @@ export const AccountRisksDependenciesTab: React.FC<AccountRisksDependenciesTabPr
                     <TableCell align="center" sticky="right">
                       <TableActions
                         entityLabel={`${item.riskType} "${item.description.slice(0, 20)}..."`}
+                        onView={() => {
+                          setSelectedRiskId(item.id);
+                          setView('risk-details');
+                        }}
                         onEdit={canCreate ? () => handleOpenEdit(item) : undefined}
                         onDelete={canCreate ? () => setDeleteTarget(item) : undefined}
                       />

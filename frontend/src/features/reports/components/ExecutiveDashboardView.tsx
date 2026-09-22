@@ -35,9 +35,12 @@ import {
 } from './executive';
 import { LocationRevenueReport, ServiceRevenueReport, StageRevenueReport } from './revenue';
 
+import { isOpportunityInPeriod } from '@/utils/fiscal';
+
 export const ExecutiveDashboardView: React.FC = () => {
   const {
     accounts, opportunities, selectedYear, selectedQuarter,
+    financialYears, financialCalendar,
     globalAccountId: selectedAccountId, loading, setView,
   } = useCRM();
 
@@ -46,19 +49,15 @@ export const ExecutiveDashboardView: React.FC = () => {
   const accountsById = useMemo(() => new Map(accounts.map((a) => [a.id, a])), [accounts]);
 
   // Reporting view: the FY/Quarter selector applies here, using the
-  // backend-derived fiscal labels (from close/due dates via the configured
-  // Financial Calendar). Closed-lost deals are excluded from all figures.
-  const fyLabel = selectedYear !== 'All' ? selectedYear : null;
-
+  // canonical fiscal period overlap against project timeline (allocation start -> end date).
   // Base set for the Revenue Reports: FY + Quarter + global Account +
   // every filter-panel field. Deliberately does NOT exclude Lost — the
   // Stage-wise/Location-wise reports need Lost opportunities visible.
   const filteredOppsAll = useMemo(() => opportunities.filter((o) => {
     if (!matchesGlobalAccount(o.accountId, selectedAccountId)) return false;
-    if (fyLabel && o.financialYear !== fyLabel) return false;
-    if (selectedQuarter !== 'All' && o.quarter !== selectedQuarter) return false;
+    if (!isOpportunityInPeriod(o, selectedYear, selectedQuarter, financialYears, financialCalendar)) return false;
     return matchesReportsFilters(o, accountsById.get(o.accountId), filters);
-  }), [opportunities, selectedAccountId, fyLabel, selectedQuarter, filters, accountsById]);
+  }), [opportunities, selectedAccountId, selectedYear, selectedQuarter, financialYears, financialCalendar, filters, accountsById]);
 
   // Pipeline/Forecast cards: same base set, PLUS the original hardcoded Lost
   // exclusion — unchanged behavior from before this feature.
@@ -141,9 +140,9 @@ export const ExecutiveDashboardView: React.FC = () => {
   const accountName = selectedAccountId === 'All'
     ? 'All Accounts'
     : accounts.find(a => a.id === selectedAccountId)?.name || 'Account';
-  const periodLabel = fyLabel
-    ? `FY ${fyLabel}${selectedQuarter !== 'All' ? ` — ${selectedQuarter}` : ' — All Quarters'}`
-    : `All Financial Years${selectedQuarter !== 'All' ? ` — ${selectedQuarter}` : ''}`;
+  const periodLabel = selectedYear && selectedYear !== 'All'
+    ? `FY ${selectedYear}${selectedQuarter !== 'All' ? ` — ${selectedQuarter}` : ' — All Quarters'}`
+    : `All Financial Years${selectedQuarter && selectedQuarter !== 'All' ? ` — ${selectedQuarter}` : ''}`;
 
   // Bundles every report on the page into a single export, reusing the exact
   // same calculation functions each report component calls internally —

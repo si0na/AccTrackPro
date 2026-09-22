@@ -70,6 +70,7 @@ import {
   isOpenActionItemStatus,
   mapLocationToOption,
   serviceProviderOptionLabel,
+  cleanOwnerName,
 } from '@/utils';
 import {
   ArrowLeft,
@@ -112,8 +113,7 @@ const getInitials = (name: string): string => {
 export const AccountDetailsView: React.FC = () => {
   const {
     selectedAccountId,
-    accountDetailsActiveTab,
-    setAccountDetailsActiveTab,
+
     accounts,
     opportunities,
     projects,
@@ -161,8 +161,7 @@ export const AccountDetailsView: React.FC = () => {
   const account = accounts.find(a => a.id === selectedAccountId);
 
   // Tab State
-  const activeTab = accountDetailsActiveTab as 'overview' | 'projects' | 'opportunities' | 'stakeholders' | 'action-items' | 'comments' | 'documents' | 'nps' | 'appreciation' | 'risks-dependencies';
-  const setActiveTab = setAccountDetailsActiveTab;
+  const [activeTab, setActiveTab] = useState<'overview' | 'projects' | 'opportunities' | 'stakeholders' | 'action-items' | 'comments' | 'documents' | 'nps' | 'appreciation' | 'risks-dependencies'>('overview');
 
   // Selected opportunity in opportunities tab
   const [selectedExcelOppId, setSelectedExcelOppId] = useState<string | null>(null);
@@ -1429,19 +1428,19 @@ export const AccountDetailsView: React.FC = () => {
                                           accountId={account.id}
                                           stakeholders={stakeholders}
                                           value={item.ownerStakeholderId}
-                                          fallbackName={item.ownerName || item.owner}
+                                          fallbackName={cleanOwnerName(item.ownerName || item.owner)}
                                           onChange={async (stkId) => {
                                             const stk = stakeholders.find(s => s.id === stkId);
                                             await updateActionItem({
                                               ...item,
                                               ownerStakeholderId: stkId || undefined,
-                                              owner: stk?.name || item.owner || '',
-                                              ownerName: stk?.name || item.ownerName || '',
+                                              owner: cleanOwnerName(stk?.name || item.owner || ''),
+                                              ownerName: cleanOwnerName(stk?.name || item.ownerName || ''),
                                             });
                                           }}
                                         />
                                       ) : (
-                                        item.ownerName || item.owner || '—'
+                                        cleanOwnerName(item.ownerName || item.owner) || '—'
                                       )}
                                     </TableCell>
                                   );

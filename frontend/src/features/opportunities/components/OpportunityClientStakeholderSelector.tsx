@@ -27,9 +27,9 @@ export const OpportunityClientStakeholderSelector: React.FC<OpportunityClientSta
 
   // Retrieve ONLY Client Stakeholders associated with THIS Opportunity's Account
   const accountClientStakeholders = useMemo(() => {
-    return (stakeholders || []).filter(
-      (s) => s.accountId === accountId && s.stakeholderType === 'CLIENT',
-    );
+    return (stakeholders || [])
+      .filter((s) => s.accountId === accountId && s.stakeholderType === 'CLIENT')
+      .sort((a, b) => (a.name || a.email || '').localeCompare(b.name || b.email || '', undefined, { sensitivity: 'base' }));
   }, [stakeholders, accountId]);
 
   return (

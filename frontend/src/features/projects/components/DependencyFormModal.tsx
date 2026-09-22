@@ -92,8 +92,8 @@ export const DependencyFormModal: React.FC<DependencyFormModalProps> = ({
               className={SELECT_CLS}
             >
               <option value="High">High</option>
-              <option value="Medium">Medium</option>
               <option value="Low">Low</option>
+              <option value="Medium">Medium</option>
             </select>
           </FormField>
           <FormField label="Status">
@@ -102,10 +102,10 @@ export const DependencyFormModal: React.FC<DependencyFormModalProps> = ({
               onChange={(e) => onChange({ status: e.target.value as DependencyStatus })}
               className={SELECT_CLS}
             >
-              <option value="Open">Open</option>
-              <option value="In Progress">In Progress</option>
-              <option value="Resolved">Resolved</option>
               <option value="Closed">Closed</option>
+              <option value="In Progress">In Progress</option>
+              <option value="Open">Open</option>
+              <option value="Resolved">Resolved</option>
             </select>
           </FormField>
           <FormField label="Dependency Type">

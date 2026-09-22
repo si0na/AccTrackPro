@@ -26,6 +26,7 @@ import { useCRM } from '@/contexts/CRMContext';
 import { opportunityForecastApi } from '@/api/crm.api';
 import type { OpportunityForecastResult } from '@/types';
 import { matchesGlobalAccount, deriveOppStatus } from '@/utils';
+import { isOpportunityInPeriod } from '@/utils/fiscal';
 import { LoadingState } from '@/components/common/LoadingState';
 import { BackButton, EmptyState, ErrorBanner, PageHeader } from '@/components/ui';
 import type { Granularity } from './forecast/forecastMath';
@@ -89,24 +90,22 @@ export const OpportunityForecastView: React.FC<OpportunityForecastViewProps> = (
   // Quarter labels for the selected opportunity's FY (falls back to the calendar).
   const quarterLabels = useMemo(() => {
     const activeOpp = opportunities.find((o) => o.id === activeOppId);
-    const fyLabel = activeOpp?.financialYear ?? (selectedYear !== 'All' ? selectedYear : undefined);
+    const fyLabel = activeOpp?.applicableFinancialYears?.[0] ?? (selectedYear !== 'All' ? selectedYear : undefined);
     const fy = financialYears.find((f) => f.fyLabel === fyLabel);
     const defs = fy?.calendarQuarters ?? financialCalendar?.quarters ?? [];
     return defs.map((q) => q.label);
   }, [opportunities, activeOppId, selectedYear, financialYears, financialCalendar]);
 
   // ── Portfolio scope (FY / Quarter / Account + panel filters) ────────────────
-  const fyLabel = selectedYear !== 'All' ? selectedYear : null;
   const portfolioOpps = useMemo(() => opportunities.filter((o) => {
     if (!matchesGlobalAccount(o.accountId, globalAccountId)) return false;
-    if (fyLabel && o.financialYear !== fyLabel) return false;
-    if (selectedQuarter !== 'All' && o.quarter !== selectedQuarter) return false;
+    if (!isOpportunityInPeriod(o, selectedYear, selectedQuarter, financialYears, financialCalendar)) return false;
     if (filters.status !== 'All' && deriveOppStatus(o.stage) !== filters.status) return false;
     if (filters.stage !== 'All' && o.stage !== filters.stage) return false;
     if (filters.health !== 'All' && o.opportunityHealth !== filters.health) return false;
     if (filters.serviceLine !== 'All' && o.serviceLine !== filters.serviceLine) return false;
     return true;
-  }), [opportunities, globalAccountId, fyLabel, selectedQuarter, filters]);
+  }), [opportunities, globalAccountId, selectedYear, selectedQuarter, financialYears, financialCalendar, filters]);
 
   return (
     <div className="space-y-6">

@@ -96,9 +96,11 @@ export const OpportunityFormModal: React.FC<OpportunityFormModalProps> = ({
                   className={SELECT_CLS}
                 >
                   <option value="" disabled>Select an account...</option>
-                  {accounts.map((acc) => (
-                    <option key={acc.id} value={acc.id}>{acc.name}</option>
-                  ))}
+                  {[...accounts]
+                    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+                    .map((acc) => (
+                      <option key={acc.id} value={acc.id}>{acc.name}</option>
+                    ))}
                 </select>
               </FormField>
             )}

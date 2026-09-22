@@ -2,7 +2,7 @@
 
 import { SERVICE_LINE_OPTIONS } from '../common/utils/dto-transforms.util';
 
-export type AccountType = 'Strategic' | 'Non Strategic' | 'New';
+export type AccountType = 'Strategic' | 'Non Strategic' | 'New' | 'Internal';
 export type AccountHealth = 'Green' | 'Amber' | 'Red';
 export type OpportunityStage =
   | 'Lead' | 'Qualified' | 'Proposal' | 'Negotiation' | 'Verbal Agreement' | 'Won'
@@ -12,6 +12,7 @@ export type ServiceLine = (typeof SERVICE_LINE_OPTIONS)[number];
 export type OpportunityHealth = 'Green' | 'Amber' | 'Red';
 export type PriorityLevel = 'High' | 'Medium' | 'Low';
 export type ActionItemStatus = 'To Do' | 'In Progress' | 'Blocked' | 'Completed' | 'Cancelled';
+export type ActionItemType = 'Account mining' | 'Proposals' | 'Stakeholder connect';
 export type InfluenceLevel = 'High' | 'Medium' | 'Low';
 export type RelationshipStatus = 'Strong' | 'Neutral' | 'Weak';
 export type StakeholderType = 'CLIENT' | 'SERVICE_PROVIDER';
@@ -85,10 +86,16 @@ export interface Opportunity {
   closedAt?: string;
   tags: string[];
   team: string[];
-  /** Derived (never stored): FY label computed from allocationEndDate via the configured Financial Calendar. */
+  /** Derived (never stored): FY label computed from project timeline via the configured Financial Calendar. */
   financialYear: string;
-  /** Derived (never stored): quarter computed from allocationEndDate via the configured Financial Calendar. */
+  /** Derived (never stored): quarter computed from project timeline via the configured Financial Calendar. */
   quarter: string;
+  /** All financial years overlapping the project timeline. */
+  applicableFinancialYears?: string[];
+  /** All quarters overlapping the project timeline. */
+  applicableQuarters?: string[];
+  /** All (financialYear, quarter) pairs overlapping the project timeline. */
+  applicablePeriods?: Array<{ financialYear: string; quarter: string }>;
   clientStakeholderId?: string;
   /** Joined display fields (server-side); valid even when not eagerly requested. */
   clientStakeholderName?: string;
@@ -537,6 +544,7 @@ export interface ActionItem {
   dueDate: string;
   priority: PriorityLevel;
   status: ActionItemStatus;
+  actionItemType?: ActionItemType;
   notes: string;
   /** Known risks or blocking dependencies for this action item. */
   risksAndDependencies: string;
@@ -590,7 +598,7 @@ export interface Activity {
 
 export interface Comment {
   id: string;
-  targetType: 'account' | 'opportunity' | 'actionItem';
+  targetType: 'account' | 'opportunity' | 'actionItem' | 'risk' | 'issue';
   targetId: string;
   user: string;
   text: string;

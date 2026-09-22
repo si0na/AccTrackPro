@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Edit2 } from 'lucide-react';
 import { INPUT_CLS } from './Form';
+import { isRawIdStr, serviceProviderOptionLabel } from '@/utils';
 
 /** Inline Text / Date / Number Edit Cell */
 export const InlineTextEditCell: React.FC<{
@@ -104,8 +105,9 @@ export const InlineTextEditCell: React.FC<{
 /** Inline Dropdown Select Edit Cell */
 export const InlineSelectEditCell: React.FC<{
   value?: string | boolean | number | null;
-  options: ReadonlyArray<{ value: string; label: string } | string>;
+  options: ReadonlyArray<any>;
   placeholder?: string;
+  fallbackLabel?: string;
   disabled?: boolean;
   className?: string;
   onSave: (val: string) => Promise<void> | void;
@@ -113,17 +115,67 @@ export const InlineSelectEditCell: React.FC<{
   value = '',
   options,
   placeholder = 'Select...',
+  fallbackLabel,
   disabled = false,
   className = '',
   onSave,
 }) => {
   const [saving, setSaving] = useState(false);
 
-  const formattedOptions = options.map((opt) =>
-    typeof opt === 'string' ? { value: opt, label: opt } : opt,
-  );
+  const rawFormatted = (options || [])
+    .map((opt: any) => {
+      if (typeof opt === 'string') return { value: opt, label: opt };
+      if (opt && typeof opt === 'object') {
+        const rawVal = opt.value ?? opt.id ?? opt.userId ?? opt.stakeholderId ?? opt.serviceProviderUserId ?? opt.key;
+        let rawLbl =
+          opt.label ??
+          opt.name ??
+          opt.displayName ??
+          opt.email ??
+          (opt.isActive !== undefined || opt.isPending !== undefined ? serviceProviderOptionLabel(opt) : undefined);
+        const valStr = rawVal !== undefined && rawVal !== null ? String(rawVal) : '';
+        let lblStr = rawLbl !== undefined && rawLbl !== null ? String(rawLbl) : '';
+        if (!lblStr || isRawIdStr(lblStr)) {
+          if (opt.email) {
+            lblStr = serviceProviderOptionLabel(opt);
+          } else if (valStr && !isRawIdStr(valStr)) {
+            lblStr = valStr;
+          } else {
+            lblStr = valStr || '';
+          }
+        }
+        return { value: valStr, label: lblStr };
+      }
+      return { value: String(opt ?? ''), label: String(opt ?? '') };
+    })
+    .sort((a, b) => {
+      const labelA = String(a.label ?? '');
+      const labelB = String(b.label ?? '');
+      const cleanA = labelA.replace(/\s*(\[(Pending Registration|Deactivated)\]|\([^)]+\))\s*/gi, '').trim() || labelA;
+      const cleanB = labelB.replace(/\s*(\[(Pending Registration|Deactivated)\]|\([^)]+\))\s*/gi, '').trim() || labelB;
+      const cmp = cleanA.localeCompare(cleanB, undefined, { sensitivity: 'base', numeric: true });
+      return cmp !== 0 ? cmp : labelA.localeCompare(labelB, undefined, { sensitivity: 'base', numeric: true });
+    });
 
   const strVal = value === true ? 'Yes' : value === false ? 'No' : String(value ?? '');
+  const hasMatch = !!strVal && rawFormatted.some((o) => o.value === strVal);
+  const effectiveLabel = (fallbackLabel && fallbackLabel !== strVal && !isRawIdStr(fallbackLabel) ? fallbackLabel : '') || (strVal && !isRawIdStr(strVal) ? strVal : '');
+
+  const formattedOptions = React.useMemo(() => {
+    if (strVal && !hasMatch && effectiveLabel) {
+      const injected = { value: strVal, label: effectiveLabel };
+      const merged = [...rawFormatted, injected];
+      return merged.sort((a, b) => {
+        const labelA = String(a.label ?? '');
+        const labelB = String(b.label ?? '');
+        const cleanA = labelA.replace(/\s*(\[(Pending Registration|Deactivated)\]|\([^)]+\))\s*/gi, '').trim() || labelA;
+        const cleanB = labelB.replace(/\s*(\[(Pending Registration|Deactivated)\]|\([^)]+\))\s*/gi, '').trim() || labelB;
+        const cmp = cleanA.localeCompare(cleanB, undefined, { sensitivity: 'base', numeric: true });
+        return cmp !== 0 ? cmp : labelA.localeCompare(labelB, undefined, { sensitivity: 'base', numeric: true });
+      });
+    }
+    return rawFormatted;
+  }, [rawFormatted, strVal, hasMatch, effectiveLabel]);
 
   const handleChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newVal = e.target.value;
@@ -138,12 +190,18 @@ export const InlineSelectEditCell: React.FC<{
 
   if (disabled) {
     const selectedOpt = formattedOptions.find((o) => o.value === strVal);
+    const displayLabel =
+      selectedOpt?.label ||
+      effectiveLabel ||
+      placeholder;
     return (
       <span className="text-slate-600 font-medium">
-        {selectedOpt?.label || strVal || placeholder}
+        {displayLabel}
       </span>
     );
   }
+
+  const hasOptionForStrVal = formattedOptions.some((o) => o.value === strVal);
 
   return (
     <div onClick={(e) => e.stopPropagation()} className="inline-flex items-center max-w-full">
@@ -155,6 +213,9 @@ export const InlineSelectEditCell: React.FC<{
       >
         {placeholder && !formattedOptions.some((o) => o.value === '') && (
           <option value="">{placeholder}</option>
+        )}
+        {strVal && !hasOptionForStrVal && (
+          <option value={strVal}>{effectiveLabel || strVal}</option>
         )}
         {formattedOptions.map((opt) => (
           <option key={opt.value} value={opt.value}>

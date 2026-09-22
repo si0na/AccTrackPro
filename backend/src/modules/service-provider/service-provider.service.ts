@@ -110,7 +110,7 @@ export class ServiceProviderService {
          (u.id IS NULL)                                         AS is_pending
        FROM employee_master em
        FULL OUTER JOIN users u ON LOWER(u.email) = LOWER(em.email)
-       ORDER BY COALESCE(NULLIF(u.name, ''), NULLIF(em.name, ''), u.email, em.email) ASC NULLS LAST`,
+       ORDER BY LOWER(COALESCE(NULLIF(u.name, ''), NULLIF(em.name, ''), u.email, em.email)) ASC`,
     );
     return rows.map((r) => ({
       id:          r.id,

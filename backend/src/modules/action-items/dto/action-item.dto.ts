@@ -33,6 +33,11 @@ export class CreateActionItemDto {
   @IsIn(['High', 'Medium', 'Low']) priority!: string;
   @IsIn(['To Do', 'In Progress', 'Blocked', 'Completed', 'Cancelled']) status!: string;
 
+  @EmptyToUndefined()
+  @IsOptional()
+  @IsIn(['Account mining', 'Proposals', 'Stakeholder connect'])
+  actionItemType?: string;
+
   @IsString() @IsOptional() @MaxLength(5000) notes?: string;
   @IsString() @IsOptional() @MaxLength(5000) risksAndDependencies?: string;
 
@@ -53,6 +58,7 @@ export class UpdateActionItemDto {
   @EmptyToUndefined() @IsOptional() @Matches(ISO_DATE_RE, { message: `dueDate ${ISO_DATE_MSG}` }) dueDate?: string;
   @IsOptional() @IsIn(['High', 'Medium', 'Low']) priority?: string;
   @IsOptional() @IsIn(['To Do', 'In Progress', 'Blocked', 'Completed', 'Cancelled']) status?: string;
+  @EmptyToUndefined() @IsOptional() @IsIn(['Account mining', 'Proposals', 'Stakeholder connect']) actionItemType?: string;
   @IsString() @IsOptional() @MaxLength(5000) notes?: string;
   @IsString() @IsOptional() @MaxLength(5000) risksAndDependencies?: string;
   @EmptyToUndefined() @IsOptional() @Matches(ISO_DATE_RE, { message: `completedDate ${ISO_DATE_MSG}` }) completedDate?: string;

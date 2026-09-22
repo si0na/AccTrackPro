@@ -96,7 +96,7 @@ export const TopOpportunitiesCard: React.FC<TopOpportunitiesCardProps> = ({ topO
                       {opp.probability}%
                     </span>
                   </TableCell>
-                  <TableCell align="right" className="font-mono text-slate-500 whitespace-nowrap">{formatShortDate(opp.allocationEndDate)}</TableCell>
+                  <TableCell align="right" className="font-mono text-slate-500 whitespace-nowrap">{formatShortDate(opp.allocationEndDate ?? undefined)}</TableCell>
                 </TableRow>
               );
             })}

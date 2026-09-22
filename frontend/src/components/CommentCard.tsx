@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Pencil, Trash2 } from 'lucide-react';
-import { ConfirmDialog } from '@/components/ui';
+import { ConfirmDialog, AutoResizeTextarea } from '@/components/ui';
 import type { Comment } from '@/types';
 
 export interface CommentCardProps {
@@ -87,11 +87,17 @@ export const CommentCard: React.FC<CommentCardProps> = ({
 
       {isEditing ? (
         <div className="space-y-2 pt-1">
-          <textarea
-            rows={2}
+          <AutoResizeTextarea
+            minRows={2}
             value={editText}
             onChange={(e) => setEditText(e.target.value)}
-            className="w-full text-xs p-2.5 border border-blue-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 resize-none font-medium text-slate-700"
+            onKeyDown={(e) => {
+              if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+                e.preventDefault();
+                handleSave();
+              }
+            }}
+            className="w-full text-xs p-2.5 border border-blue-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 font-medium text-slate-700"
             placeholder="Edit comment..."
           />
           <div className="flex justify-end space-x-2">

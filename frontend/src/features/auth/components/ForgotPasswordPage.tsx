@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { authApi } from '@/api/crm.api';
 import { Mail, ArrowLeft, CheckCircle2 } from 'lucide-react';
 import { Card, Button, ErrorBanner, FormField, INPUT_CLS } from '@/components/ui';
+import { ReflectOneLogo } from '@/components/common/ReflectOneLogo';
 
 interface ForgotPasswordPageProps {
   onBack: () => void;
@@ -9,10 +10,10 @@ interface ForgotPasswordPageProps {
 }
 
 export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({ onBack, onGoToReset }) => {
-  const [email, setEmail]       = useState('');
+  const [email, setEmail] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
-  const [error, setError]       = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,9 +48,6 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({ onBack, 
                 If an account exists for <span className="text-slate-700 font-medium">{email}</span>,
                 a password reset link has been sent. The link expires in 15 minutes.
               </p>
-              <p className="text-[10px] text-slate-400 mt-3">
-                In development mode, the reset token is logged to the backend console.
-              </p>
             </div>
             <div className="flex flex-col items-center space-y-2 pt-1">
               <button
@@ -83,9 +81,7 @@ export const ForgotPasswordPage: React.FC<ForgotPasswordPageProps> = ({ onBack, 
       <Card padding="none" className="w-full max-w-md">
         <div className="p-8 sm:p-9 space-y-6">
           <div className="flex flex-col items-center text-center space-y-3">
-            <div className="w-11 h-11 rounded-xl bg-blue-600 flex items-center justify-center font-bold text-white shadow-md shadow-blue-600/20 ring-4 ring-blue-600/10">
-              AT
-            </div>
+            <ReflectOneLogo className="w-10 h-10" />
             <div>
               <h1 className="text-xl font-bold text-slate-800 tracking-tight">Reset your password</h1>
               <p className="text-xs text-slate-500 mt-1.5">Enter your email and we'll send a reset link.</p>

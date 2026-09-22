@@ -244,10 +244,10 @@ export const MilestoneFormModal: React.FC<MilestoneFormModalProps> = ({
                     onChange={(e) => onChange({ status: e.target.value as MilestoneStatus })}
                     className={SELECT_CLS}
                   >
-                    <option value="Not Started">Not Started</option>
-                    <option value="In Progress">In Progress</option>
                     <option value="Completed">Completed</option>
                     <option value="Delayed">Delayed</option>
+                    <option value="In Progress">In Progress</option>
+                    <option value="Not Started">Not Started</option>
                   </select>
                 </FormField>
                 <FormField label="Completion (%)">

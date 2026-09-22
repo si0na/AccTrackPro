@@ -62,6 +62,7 @@ import { AssumptionFormModal, AssumptionDraft, emptyAssumptionDraft } from './As
 import { IssueFormModal, IssueDraft, emptyIssueDraft } from './IssueFormModal';
 import { DependencyFormModal, DependencyDraft, emptyDependencyDraft } from './DependencyFormModal';
 import { ACTION_ITEM_STATUS_OPTIONS, LOCATION_OPTIONS, PROJECT_HEALTH_OPTIONS } from '@/constants';
+import { isRawIdStr, serviceProviderOptionLabel } from '@/utils';
 import {
   ACTION_STATUS_COLORS,
   BackButton,
@@ -93,7 +94,7 @@ import {
   TableHeadCell,
   TableRow,
 } from '@/components/ui';
-import { compareForSort, getTodayISODate, SortDirection } from '@/utils';
+import { compareForSort, getTodayISODate, cleanOwnerName, SortDirection } from '@/utils';
 
 type ProjectTab =
   | 'overview' | 'progress' | 'team'
@@ -161,14 +162,31 @@ export const ProjectDetailsView: React.FC = () => {
     can,
     projectDetailsSourceView,
     setProjectDetailsSourceView,
-    setAccountDetailsActiveTab,
+
     loading,
+    serviceProviders,
+    projectManagers,
+    practiceLeads,
+    clientPartners,
   } = useCRM();
 
   // Single RBAC gate for every delete surface on this page — the project itself
   // and its child records (team, milestones, risks, assumptions, issues,
   // dependencies), all of which the backend guards with `projects:delete`.
   const canDeleteProject = can('projects', 'delete');
+
+  const resolveUserName = (name?: string | null, id?: string | null) => {
+    if (name && name.trim() && !isRawIdStr(name)) return name;
+    if (id) {
+      const sp =
+        serviceProviders.find((u) => u.id === id || (u as any).userId === id) ||
+        (projectManagers || []).find((u) => u.id === id || (u as any).userId === id) ||
+        (practiceLeads || []).find((u) => u.id === id || (u as any).userId === id) ||
+        (clientPartners || []).find((u) => u.id === id || (u as any).userId === id);
+      if (sp) return serviceProviderOptionLabel(sp);
+    }
+    return '';
+  };
 
   const project = projects.find((p) => p.id === selectedProjectId);
   const account = project ? accounts.find((a) => a.id === project.accountId) : null;
@@ -185,8 +203,10 @@ export const ProjectDetailsView: React.FC = () => {
   // lookups.
   const [users, setUsers] = useState<AdminUser[]>([]);
   useEffect(() => {
+    // Only admin users have the administration:view permission; skip for others.
+    if (!can('administration', 'view')) return;
     administrationApi.getUsers().then(setUsers).catch(() => setUsers([]));
-  }, []);
+  }, [can]);
 
   // ── Edit Project modal ──────────────────────────────────────────────────────
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -574,7 +594,6 @@ export const ProjectDetailsView: React.FC = () => {
 
   const goBack = () => {
     if (projectDetailsSourceView === 'account-details') {
-      setAccountDetailsActiveTab('projects');
       setView('account-details');
       setProjectDetailsSourceView(null);
     } else {
@@ -758,9 +777,9 @@ export const ProjectDetailsView: React.FC = () => {
             <FormSection title="Assignments">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {([
-                  { label: 'Service Provider Project Manager', name: project.serviceProviderPmName },
-                  { label: 'Practice Lead', name: project.practiceLeadName },
-                  { label: 'Client Partner Name', name: project.clientPartnerName },
+                  { label: 'Service Provider Project Manager', name: resolveUserName(project.serviceProviderPmName, project.serviceProviderPmId) },
+                  { label: 'Practice Lead', name: resolveUserName(project.practiceLeadName, project.practiceLeadId) },
+                  { label: 'Client Partner Name', name: resolveUserName(project.clientPartnerName, project.clientPartnerId) },
                   { label: 'Client Project Manager', name: project.clientPmName },
                 ]).map((row) => (
                   <div key={row.label} className="rounded-lg border border-slate-100 p-3.5">
@@ -1372,9 +1391,9 @@ export const ProjectDetailsView: React.FC = () => {
                               }
                               if (col.key === 'owner') {
                                 return (
-                                  <TableCell key={col.key} className="text-slate-600 font-semibold">
-                                    {item.ownerName || item.owner || '—'}
-                                  </TableCell>
+                                   <TableCell key={col.key} className="text-slate-600 font-semibold">
+                                     {cleanOwnerName(item.ownerName || item.owner) || '—'}
+                                   </TableCell>
                                 );
                               }
                               if (col.key === 'priority') {
@@ -1396,6 +1415,13 @@ export const ProjectDetailsView: React.FC = () => {
                               }
                               if (col.key === 'dueDate') {
                                 return <TableCell key={col.key} className="font-mono font-medium text-slate-500">{item.dueDate}</TableCell>;
+                              }
+                              if (col.key === 'actionItemType') {
+                                return (
+                                  <TableCell key={col.key} className="text-slate-700 font-semibold text-xs">
+                                    {item.actionItemType || '—'}
+                                  </TableCell>
+                                );
                               }
                               const rawVal = item[col.key] ?? (col.type === 'boolean' ? false : '');
                               return (

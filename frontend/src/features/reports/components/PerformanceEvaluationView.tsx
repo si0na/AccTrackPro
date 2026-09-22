@@ -87,7 +87,9 @@ export const PerformanceEvaluationView: React.FC = () => {
   // Employee Master directory — only whitelisted employees can be evaluated.
   const [employees, setEmployees] = useState<EmployeeMaster[]>([]);
   useEffect(() => {
-    employeeMasterApi.getAll().then(setEmployees).catch(() => {});
+    employeeMasterApi.getAll().then(data => {
+      setEmployees([...data].sort((a, b) => (a.name || a.email || '').localeCompare(b.name || b.email || '', undefined, { sensitivity: 'base' })));
+    }).catch(() => {});
   }, []);
   const employeeLabel = (emp: EmployeeMaster) => emp.name || emp.email;
 
@@ -99,11 +101,10 @@ export const PerformanceEvaluationView: React.FC = () => {
   useEffect(() => { loadSummary(); }, [loadSummary]);
 
   // ─── Derived filter lists ───────────────────────────────────────────────────
-
-  const managersList = useMemo(() => Array.from(new Set(evaluations.map(e => e.manager))), [evaluations]);
-  const projectsList = useMemo(() => Array.from(new Set(evaluations.map(e => e.project))), [evaluations]);
-  const accountsList = useMemo(() => Array.from(new Set(evaluations.map(e => e.account))), [evaluations]);
-  const monthsList   = useMemo(() => Array.from(new Set(evaluations.map(e => e.month))), [evaluations]);
+  const managersList = useMemo(() => Array.from(new Set(evaluations.map(e => e.manager).filter(Boolean))).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })), [evaluations]);
+  const projectsList = useMemo(() => Array.from(new Set(evaluations.map(e => e.project).filter(Boolean))).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })), [evaluations]);
+  const accountsList = useMemo(() => Array.from(new Set(evaluations.map(e => e.account).filter(Boolean))).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })), [evaluations]);
+  const monthsList   = useMemo(() => Array.from(new Set(evaluations.map(e => e.month).filter(Boolean))).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })), [evaluations]);
 
   // ─── Filter state ───────────────────────────────────────────────────────────
 
@@ -458,7 +459,7 @@ export const PerformanceEvaluationView: React.FC = () => {
                   ...(projMatches ? {} : { projectId: '', project: '' }),
                 });
               }}
-              options={accounts.map(a => ({ value: a.id, label: a.name }))}
+              options={[...accounts].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })).map(a => ({ value: a.id, label: a.name }))}
               placeholder="Search account…"
               aria-label="Account Client"
             />
@@ -483,7 +484,7 @@ export const PerformanceEvaluationView: React.FC = () => {
                   ...(projAcc && !selectedAccId ? { accountId: projAcc.id, account: projAcc.name } : {}),
                 });
               }}
-              options={availableProjects.map(p => ({ value: p.id, label: p.name }))}
+              options={[...availableProjects].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })).map(p => ({ value: p.id, label: p.name }))}
               placeholder={selectedAccId ? (availableProjects.length ? "Search project…" : "No projects under this Account") : "Select an Account first…"}
               aria-label="Project Name"
               disabled={!selectedAccId}
@@ -512,9 +513,9 @@ export const PerformanceEvaluationView: React.FC = () => {
           <select required value={vals.retentionRisk} onChange={e => set({ ...vals, retentionRisk: e.target.value as any })}
             className="w-full p-2 border border-slate-200 rounded-lg bg-white focus:ring-1 focus:ring-indigo-500 text-xs focus:outline-none">
             <option value="" disabled>Select risk level…</option>
+            <option value="High">High Risk</option>
             <option value="Low">Low Risk</option>
             <option value="Medium">Medium Risk</option>
-            <option value="High">High Risk</option>
           </select>
         </div>
         <div className="md:col-span-3 flex items-center h-10 bg-slate-50 px-3 rounded-lg border">
@@ -690,9 +691,9 @@ export const PerformanceEvaluationView: React.FC = () => {
             onChange={e => setEditingCell({ ...editingCell, value: e.target.value })}
             onBlur={() => saveInlineCell(evalItem.id, cellKey, editingCell.value)}
             className="px-1 py-0.5 border border-indigo-500 rounded focus:outline-none bg-white">
+            <option value="High">High</option>
             <option value="Low">Low</option>
             <option value="Medium">Medium</option>
-            <option value="High">High</option>
           </select>
         );
       } else {

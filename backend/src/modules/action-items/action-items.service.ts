@@ -17,7 +17,7 @@ import { BulkModuleAdapter } from '../import-export/bulk-adapter';
 const KNOWN = new Set([
   'id', 'title', 'accountId', 'accountName', 'opportunityId', 'opportunityName', 'projectId', 'projectName', 'owner', 'ownerId', 'ownerStakeholderId',
   'ownerName', 'ownerDesignation', 'ownerStakeholderType',
-  'openDate', 'dueDate', 'priority', 'status', 'notes', 'risksAndDependencies', 'completedDate',
+  'openDate', 'dueDate', 'priority', 'status', 'actionItemType', 'notes', 'risksAndDependencies', 'completedDate',
   'financialYear', 'quarter',
 ]);
 
@@ -30,6 +30,7 @@ function rowToActionItem(row: any, derive: (date: string) => { financialYear: st
   const {
     custom_data, is_deleted, created_at, updated_at,
     account_id, account_name, opportunity_id, opportunity_name, project_id, project_name, open_date, due_date, completed_date,
+    action_item_type,
     risks_and_dependencies,
     owner_id, owner_name,
     owner_stakeholder_id, stakeholder_owner_name, stakeholder_owner_designation, stakeholder_owner_type,
@@ -53,6 +54,7 @@ function rowToActionItem(row: any, derive: (date: string) => { financialYear: st
     ownerStakeholderType: stakeholder_owner_type ?? undefined,
     openDate: open_date,
     dueDate: due_date,
+    actionItemType: action_item_type ?? undefined,
     completedDate: completed_date ?? undefined,
     risksAndDependencies: risks_and_dependencies ?? '',
     // Read-only reporting labels derived from the business date (due date).
@@ -62,12 +64,13 @@ function rowToActionItem(row: any, derive: (date: string) => { financialYear: st
 }
 
 const AI_SELECT = `
-  SELECT ai.*, u.name AS owner_name, a.name AS account_name, proj.name AS project_name, opp.name AS opportunity_name,
+  SELECT ai.*, COALESCE(NULLIF(u.name, ''), NULLIF(em_u.name, ''), u.email, em_u.email) AS owner_name, a.name AS account_name, proj.name AS project_name, opp.name AS opportunity_name,
          COALESCE(NULLIF(os.name, ''), os.email) AS stakeholder_owner_name, os.designation AS stakeholder_owner_designation,
          os.stakeholder_type AS stakeholder_owner_type
   FROM action_items ai
   LEFT JOIN accounts     a ON ai.account_id = a.id
   LEFT JOIN users        u ON ai.owner_id   = u.id
+  LEFT JOIN employee_master em_u ON ai.owner_id = em_u.id
   LEFT JOIN projects     proj ON ai.project_id = proj.id
   LEFT JOIN opportunities opp ON ai.opportunity_id = opp.id
   LEFT JOIN stakeholders os ON ai.owner_stakeholder_id = os.id AND os.is_deleted = FALSE
@@ -221,13 +224,14 @@ export class ActionItemsService {
 
     const { rows } = await this.db.query(
       `INSERT INTO action_items
-         (id, title, account_id, opportunity_id, project_id, owner_id, owner_stakeholder_id, open_date, due_date, priority, status, notes, risks_and_dependencies, completed_date, custom_data)
-       VALUES (gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+         (id, title, account_id, opportunity_id, project_id, owner_id, owner_stakeholder_id, open_date, due_date, priority, status, action_item_type, notes, risks_and_dependencies, completed_date, custom_data)
+       VALUES (gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
        RETURNING id`,
       [
         data.title, data.accountId, data.opportunityId ?? null, data.projectId ?? null,
         data.ownerId ?? null, data.ownerStakeholderId ?? null,
-        data.openDate || todayIsoDate(), data.dueDate ?? '', data.priority, data.status, data.notes ?? '',
+        data.openDate || todayIsoDate(), data.dueDate ?? '', data.priority, data.status,
+        data.actionItemType ?? null, data.notes ?? '',
         data.risksAndDependencies ?? '',
         data.completedDate ?? null, JSON.stringify(cd),
       ],
@@ -272,6 +276,7 @@ export class ActionItemsService {
     const dueDate = 'dueDate' in data ? (data.dueDate ?? '') : existing.dueDate;
     const priority = data.priority ?? existing.priority;
     const status = data.status ?? existing.status;
+    const actionItemType = 'actionItemType' in data ? (data.actionItemType ?? null) : (existing.actionItemType ?? null);
     const notes = 'notes' in data ? (data.notes ?? '') : existing.notes;
     const risksAndDependencies = 'risksAndDependencies' in data ? (data.risksAndDependencies ?? '') : existing.risksAndDependencies;
     const completedDate = 'completedDate' in data ? (data.completedDate ?? null) : existing.completedDate;
@@ -290,13 +295,13 @@ export class ActionItemsService {
     await this.db.query(
       `UPDATE action_items SET
          title=$1, account_id=$2, opportunity_id=$3, project_id=$4, owner_id=$5, owner_stakeholder_id=$6, open_date=$7, due_date=$8,
-         priority=$9, status=$10, notes=$11, risks_and_dependencies=$12, completed_date=$13,
-         custom_data=$14, updated_at=NOW()
-       WHERE id=$15 AND is_deleted=FALSE`,
+         priority=$9, status=$10, action_item_type=$11, notes=$12, risks_and_dependencies=$13, completed_date=$14,
+         custom_data=$15, updated_at=NOW()
+       WHERE id=$16 AND is_deleted=FALSE`,
       [
         targetTitle, targetAccountId, targetOpportunityId, targetProjectId,
         effectiveOwnerId, ownerStakeholderId,
-        openDate, dueDate, priority, status, notes,
+        openDate, dueDate, priority, status, actionItemType, notes,
         risksAndDependencies, completedDate, JSON.stringify(cd),
         id,
       ],

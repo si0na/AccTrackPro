@@ -13,7 +13,7 @@ import {
 } from '@/constants';
 import type { ReportsFilterState } from '../utils/reportsFilters';
 
-const STATUS_OPTIONS = ['All', 'Open', 'Won', 'Lost'];
+const STATUS_OPTIONS = ['All', 'Lost', 'Open', 'Won'];
 
 export interface ReportsFilterPanelProps {
   filters: ReportsFilterState;

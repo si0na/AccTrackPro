@@ -10,6 +10,9 @@ import type {
   Role, PermissionMatrix, MyPermissions,
   SqaRecord, SqaWeeklyHealth, SqaAvailableProject, SqaTrackerSnapshot, NpsResponse,
   EmployeeAppreciation, EmployeeRewardsRecognition, AccountRisk, NormalizedRisk,
+  AccountGrowthWorkspace, AccountGrowthClientPriority, AccountGrowthIndustryTrend,
+  AccountGrowthBudgetPositioning, AccountGrowthWalletSharePlan, AccountGrowthSuccessParameter,
+  AccountGrowthOutsourcingSplit, AccountGrowthSwot, AccountGrowthCompetitor, AccountGrowthActionPlan,
 } from '@/types';
 
 /** Attributes an administrator can pre-assign / edit on a user or whitelist row. */
@@ -407,7 +410,8 @@ export const customColumnsApi = {
 };
 
 export const financialYearsApi = {
-  getAll: () => apiClient.get<FinancialYear[]>('/financial-years').then((r) => r.data),
+  getAll: (params?: { all?: boolean }) =>
+    apiClient.get<FinancialYear[]>('/financial-years', { params }).then((r) => r.data),
   create: (data: { startYear: number }, userId?: string) =>
     apiClient.post<FinancialYear>('/financial-years', data, { params: userId ? { userId } : undefined }).then((r) => r.data),
   activate:       (id: string) => apiClient.post<FinancialYear>(`/financial-years/${id}/activate`).then((r) => r.data),
@@ -787,4 +791,76 @@ export const centralRisksApi = {
   getAll: (filters?: { source?: string; accountId?: string; rag?: string; priority?: string; status?: string }) =>
     apiClient.get<NormalizedRisk[]>('/risks/all', { params: filters }).then((r) => r.data),
 };
+
+export const accountGrowthApi = {
+  getWorkspace: (accountId: string, financialYearId: string) =>
+    apiClient
+      .get<AccountGrowthWorkspace>('/account-growth', { params: { accountId, financialYearId } })
+      .then((r) => r.data),
+
+  // Client Priorities
+  createClientPriority: (data: Partial<AccountGrowthClientPriority>) =>
+    apiClient.post<AccountGrowthClientPriority>('/account-growth/client-priorities', data).then((r) => r.data),
+  updateClientPriority: (id: string, data: Partial<AccountGrowthClientPriority>) =>
+    apiClient.post<AccountGrowthClientPriority>(`/account-growth/client-priorities/${id}/update`, data).then((r) => r.data),
+  deleteClientPriority: (id: string, accountId: string) =>
+    apiClient.post<{ success: boolean }>(`/account-growth/client-priorities/${id}/delete`, { accountId }).then((r) => r.data),
+
+  // Industry Trends
+  createIndustryTrend: (data: Partial<AccountGrowthIndustryTrend>) =>
+    apiClient.post<AccountGrowthIndustryTrend>('/account-growth/industry-trends', data).then((r) => r.data),
+  updateIndustryTrend: (id: string, data: Partial<AccountGrowthIndustryTrend>) =>
+    apiClient.post<AccountGrowthIndustryTrend>(`/account-growth/industry-trends/${id}/update`, data).then((r) => r.data),
+  deleteIndustryTrend: (id: string, accountId: string) =>
+    apiClient.post<{ success: boolean }>(`/account-growth/industry-trends/${id}/delete`, { accountId }).then((r) => r.data),
+
+  // Budget Positioning
+  saveBudgetPositioning: (data: Partial<AccountGrowthBudgetPositioning>) =>
+    apiClient.post<AccountGrowthBudgetPositioning>('/account-growth/budget-positioning/save', data).then((r) => r.data),
+
+  // Wallet Share Plans
+  createWalletSharePlan: (data: Partial<AccountGrowthWalletSharePlan>) =>
+    apiClient.post<AccountGrowthWalletSharePlan>('/account-growth/wallet-share-plans', data).then((r) => r.data),
+  updateWalletSharePlan: (id: string, data: Partial<AccountGrowthWalletSharePlan>) =>
+    apiClient.post<AccountGrowthWalletSharePlan>(`/account-growth/wallet-share-plans/${id}/update`, data).then((r) => r.data),
+  deleteWalletSharePlan: (id: string, accountId: string) =>
+    apiClient.post<{ success: boolean }>(`/account-growth/wallet-share-plans/${id}/delete`, { accountId }).then((r) => r.data),
+
+  // Success Parameters
+  saveSuccessParameters: (accountId: string, financialYearId: string, items: Array<{ parameterKey: string; parameterName: string; clientPerception: string }>) =>
+    apiClient.post<AccountGrowthSuccessParameter[]>('/account-growth/success-parameters/save', { accountId, financialYearId, items }).then((r) => r.data),
+
+  // Outsourcing Splits
+  createOutsourcingSplit: (data: Partial<AccountGrowthOutsourcingSplit>) =>
+    apiClient.post<AccountGrowthOutsourcingSplit>('/account-growth/outsourcing-splits', data).then((r) => r.data),
+  updateOutsourcingSplit: (id: string, data: Partial<AccountGrowthOutsourcingSplit>) =>
+    apiClient.post<AccountGrowthOutsourcingSplit>(`/account-growth/outsourcing-splits/${id}/update`, data).then((r) => r.data),
+  deleteOutsourcingSplit: (id: string, accountId: string) =>
+    apiClient.post<{ success: boolean }>(`/account-growth/outsourcing-splits/${id}/delete`, { accountId }).then((r) => r.data),
+
+  // SWOT
+  createSwot: (data: Partial<AccountGrowthSwot>) =>
+    apiClient.post<AccountGrowthSwot>('/account-growth/swot', data).then((r) => r.data),
+  updateSwot: (id: string, data: Partial<AccountGrowthSwot>) =>
+    apiClient.post<AccountGrowthSwot>(`/account-growth/swot/${id}/update`, data).then((r) => r.data),
+  deleteSwot: (id: string, accountId: string) =>
+    apiClient.post<{ success: boolean }>(`/account-growth/swot/${id}/delete`, { accountId }).then((r) => r.data),
+
+  // Competitors
+  createCompetitor: (data: Partial<AccountGrowthCompetitor>) =>
+    apiClient.post<AccountGrowthCompetitor>('/account-growth/competitors', data).then((r) => r.data),
+  updateCompetitor: (id: string, data: Partial<AccountGrowthCompetitor>) =>
+    apiClient.post<AccountGrowthCompetitor>(`/account-growth/competitors/${id}/update`, data).then((r) => r.data),
+  deleteCompetitor: (id: string, accountId: string) =>
+    apiClient.post<{ success: boolean }>(`/account-growth/competitors/${id}/delete`, { accountId }).then((r) => r.data),
+
+  // Action Plans
+  createActionPlan: (data: Partial<AccountGrowthActionPlan>) =>
+    apiClient.post<AccountGrowthActionPlan>('/account-growth/action-plans', data).then((r) => r.data),
+  updateActionPlan: (id: string, data: Partial<AccountGrowthActionPlan>) =>
+    apiClient.post<AccountGrowthActionPlan>(`/account-growth/action-plans/${id}/update`, data).then((r) => r.data),
+  deleteActionPlan: (id: string, accountId: string) =>
+    apiClient.post<{ success: boolean }>(`/account-growth/action-plans/${id}/delete`, { accountId }).then((r) => r.data),
+};
+
 

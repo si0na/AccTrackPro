@@ -57,14 +57,14 @@ export const EmployeeAppreciationFormModal: React.FC<EmployeeAppreciationFormMod
 
   // Filter projects by selected Account
   const availableProjects = useMemo(() => {
-    if (!accountId) return projects;
-    return projects.filter((p) => p.accountId === accountId);
+    const list = !accountId ? projects : projects.filter((p) => p.accountId === accountId);
+    return [...list].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
   }, [projects, accountId]);
 
   // Filter stakeholders by selected Account
   const availableStakeholders = useMemo(() => {
-    if (!accountId) return stakeholders;
-    return stakeholders.filter((s) => s.accountId === accountId);
+    const list = !accountId ? stakeholders : stakeholders.filter((s) => s.accountId === accountId);
+    return [...list].sort((a, b) => (a.name || a.email || '').localeCompare(b.name || b.email || '', undefined, { sensitivity: 'base' }));
   }, [stakeholders, accountId]);
 
   useEffect(() => {
@@ -250,11 +250,13 @@ export const EmployeeAppreciationFormModal: React.FC<EmployeeAppreciationFormMod
                 required
               >
                 <option value="">Select Account…</option>
-                {accounts.map((a) => (
-                  <option key={a.id} value={a.id}>
-                    {a.name}
-                  </option>
-                ))}
+                {[...accounts]
+                  .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+                  .map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                    </option>
+                  ))}
               </select>
             </FormField>
           </FormGrid>
@@ -287,11 +289,13 @@ export const EmployeeAppreciationFormModal: React.FC<EmployeeAppreciationFormMod
                 className={selectCls}
               >
                 <option value="">— Select from Team Directory —</option>
-                {serviceProviders.map((sp) => (
-                  <option key={sp.id} value={sp.id}>
-                    {sp.name} {sp.designation ? `(${sp.designation})` : ''}
-                  </option>
-                ))}
+                {[...serviceProviders]
+                  .sort((a, b) => (a.name || a.email || '').localeCompare(b.name || b.email || '', undefined, { sensitivity: 'base' }))
+                  .map((sp) => (
+                    <option key={sp.id} value={sp.id}>
+                      {sp.name} {sp.designation ? `(${sp.designation})` : ''}
+                    </option>
+                  ))}
               </select>
             </FormField>
 

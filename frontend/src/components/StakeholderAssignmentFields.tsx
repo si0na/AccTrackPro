@@ -85,6 +85,8 @@ export const StakeholderAssignmentFields: React.FC<StakeholderAssignmentFieldsPr
     setCreatingType(null);
   };
 
+  const currentOwnerValue = value.serviceProviderUserId || value.serviceProviderStakeholderId || '';
+
   const uniqueServiceProviders = React.useMemo(() => {
     const list: typeof serviceProviders = [];
     const seen = new Set<string>();
@@ -94,8 +96,16 @@ export const StakeholderAssignmentFields: React.FC<StakeholderAssignmentFieldsPr
         list.push(sp);
       }
     }
+    if (currentOwnerValue && !seen.has(currentOwnerValue)) {
+      const match = serviceProviders.find(s => s.id === currentOwnerValue || (s as any).userId === currentOwnerValue || (s as any).stakeholderId === currentOwnerValue);
+      if (match && !seen.has(match.id)) {
+        seen.add(match.id);
+        list.push(match);
+      }
+    }
+    list.sort((a, b) => (a.name || a.email || '').localeCompare(b.name || b.email || '', undefined, { sensitivity: 'base' }));
     return list;
-  }, [serviceProviders]);
+  }, [serviceProviders, currentOwnerValue]);
 
   return (
     <>
@@ -115,6 +125,7 @@ export const StakeholderAssignmentFields: React.FC<StakeholderAssignmentFieldsPr
           <option value="">— None —</option>
           {stakeholders
             .filter((s) => s.accountId === accountId && s.stakeholderType === 'CLIENT')
+            .sort((a, b) => a.name.localeCompare(b.name))
             .map((s) => (
               <option key={s.id} value={s.id}>{s.name} ({s.designation})</option>
             ))}
@@ -127,8 +138,8 @@ export const StakeholderAssignmentFields: React.FC<StakeholderAssignmentFieldsPr
           Owner
         </label>
         <select
-          value={value.serviceProviderUserId ?? ''}
-          onChange={(e) => onChange({ serviceProviderUserId: e.target.value || undefined })}
+          value={currentOwnerValue}
+          onChange={(e) => onChange({ serviceProviderUserId: e.target.value || undefined, serviceProviderStakeholderId: undefined })}
           className={selectCls}
         >
           <option value="">— None —</option>

@@ -5,7 +5,7 @@ import {
 } from '@/api/crm.api';
 import type { UserRbacAttrs } from '@/api/crm.api';
 import type {
-  AdminSystemOverview, AdminUser, FinancialCalendar, FYQuarterDef, Role,
+  AdminSystemOverview, AdminUser, FinancialCalendar, FinancialYear, FYQuarterDef, Role,
 } from '@/types';
 import {
   Users, BarChart3, Briefcase, FileText, Bell,
@@ -120,7 +120,7 @@ export const AdministrationPage: React.FC = () => {
   // Financial years, the calendar template and admin settings are all owned by
   // loadConfig() — refreshData() only refetches operational entities and would
   // leave this page showing stale config after a save.
-  const { financialYears, financialCalendar, adminSettings, loadConfig, refreshPermissions, can } = useCRM();
+  const { financialYears, financialCalendar, adminSettings, loadConfig, loadAdminConfig, refreshPermissions, can } = useCRM();
 
   const [activeTab, setActiveTab] = useState<AdminTab>('users');
 
@@ -241,11 +241,25 @@ export const AdministrationPage: React.FC = () => {
     } catch { /* swallow — dropdowns simply show no options */ }
   }, []);
 
+  const [adminFYs, setAdminFYs] = useState<FinancialYear[]>([]);
+
+  const loadAdminFYs = useCallback(async () => {
+    try {
+      const data = await financialYearsApi.getAll({ all: true });
+      setAdminFYs(data);
+    } catch { /* swallow */ }
+  }, []);
+
   useEffect(() => {
     loadOverview();
-    loadUsers();
     loadRoles();
-  }, [loadOverview, loadUsers, loadRoles]);
+    loadAdminConfig();
+    loadAdminFYs();
+  }, [loadOverview, loadRoles, loadAdminConfig, loadAdminFYs]);
+
+  useEffect(() => {
+    loadUsers();
+  }, [loadUsers]);
 
   // Silent 10-second presence refresh while viewing the System Users tab
   useEffect(() => {
@@ -260,7 +274,9 @@ export const AdministrationPage: React.FC = () => {
     };
   }, [activeTab, loadUsers]);
 
-  const roleOptions = roles.map((r) => ({ value: r.id, label: r.name }));
+  const roleOptions = [...roles]
+    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
+    .map((r) => ({ value: r.id, label: r.name }));
   const roleNameById = (id?: string | null) => roles.find((r) => r.id === id)?.name ?? null;
 
   /** Comma-separated display of every role a user holds (falls back to primary). */
@@ -306,6 +322,7 @@ export const AdministrationPage: React.FC = () => {
     const existing = financialYears.find((fy) => fy.startYear === startYear);
     try {
       const created = await financialYearsApi.create({ startYear });
+      await loadAdminFYs();
       await loadConfig();
       setFYSuccess(
         existing
@@ -331,6 +348,7 @@ export const AdministrationPage: React.FC = () => {
       } else {
         await financialYearsApi.activate(id);
       }
+      await loadAdminFYs();
       await loadConfig();
     } catch {
       setFYError('Failed to update financial year status.');
@@ -347,6 +365,7 @@ export const AdministrationPage: React.FC = () => {
     try {
       const quarters = deriveQuarters(editCalStartMonth);
       await financialYearsApi.updateCalendar(fyId, { startMonth: editCalStartMonth, quarters });
+      await loadAdminFYs();
       await loadConfig();
       setEditingCalendarFYId(null);
     } catch {
@@ -487,7 +506,7 @@ export const AdministrationPage: React.FC = () => {
     try {
       const quarters = deriveQuarters(calStartMonth);
       await administrationApi.updateFinancialCalendar({ startMonth: calStartMonth, quarters });
-      await loadConfig();
+      await loadAdminConfig();
       setCalSuccess('Financial calendar updated. New financial years will use this structure.');
     } catch {
       setCalError('Failed to save financial calendar configuration.');
@@ -508,7 +527,7 @@ export const AdministrationPage: React.FC = () => {
     setSettingsSuccess('');
     try {
       await administrationApi.updateSettings({ fySelectorCount: String(n) });
-      await loadConfig();
+      await loadAdminConfig();
       setSettingsSuccess('Settings saved.');
     } catch { /* swallow */ } finally {
       setSettingsSaving(false);
@@ -834,10 +853,10 @@ export const AdministrationPage: React.FC = () => {
               <TableHeadCell>Actions</TableHeadCell>
             </TableHead>
             <tbody>
-              {financialYears.length === 0 ? (
+              {(adminFYs.length > 0 ? adminFYs : financialYears).length === 0 ? (
                 <EmptyRow colSpan={6} message="No financial years configured." />
               ) : (
-                [...financialYears].sort((a, b) => b.startYear - a.startYear).map((fy) => {
+                [...(adminFYs.length > 0 ? adminFYs : financialYears)].sort((a, b) => b.startYear - a.startYear).map((fy) => {
                   const isActioning = fyActionId === fy.id;
                   return (
                     <React.Fragment key={fy.id}>
@@ -852,7 +871,7 @@ export const AdministrationPage: React.FC = () => {
                       <TableCell className="font-mono text-slate-600">{fy.startDate}</TableCell>
                       <TableCell className="font-mono text-slate-600">{fy.endDate}</TableCell>
                       <TableCell className="text-slate-500">
-                        {fy.calendarQuarters.map((q) => (
+                        {fy.calendarQuarters.map((q: FYQuarterDef) => (
                           <span key={q.label} className="mr-2 whitespace-nowrap">
                             <span className="font-semibold text-slate-700">{q.label}</span>{' '}
                             <span className="text-[10px]">{monthAbbr(q.startMonth)}–{monthAbbr(q.endMonth)}</span>

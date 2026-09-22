@@ -72,6 +72,10 @@ export class CreateOpportunityDto {
 
   @EmptyToUndefined()
   @IsOptional() @IsString()
+  serviceProviderUserId?: string;
+
+  @EmptyToUndefined()
+  @IsOptional() @IsString()
   serviceProviderPmId?: string;
 
   @IsBoolean() @IsOptional()
@@ -120,7 +124,7 @@ export class CreateOpportunityDto {
   billingModel?: string;
 
   @EmptyToUndefined()
-  @IsOptional() @IsIn(['Tower 1', 'Tower 2'], { message: 'Tower must be one of: Tower 1, Tower 2' })
+  @IsOptional() @IsIn(['Tower 1', 'Tower 2', 'Others'], { message: 'Tower must be one of: Tower 1, Tower 2, Others' })
   tower?: string;
 }
 
