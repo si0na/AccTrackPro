@@ -95,6 +95,9 @@ export const OpportunityActionsCommentsPanel: React.FC<PanelProps> = ({ opportun
     actionItemColumns,
     actionItemsColumnConfig,
     currentUser,
+    setSelectedActionItemId: setSelectedActionItemIdNav,
+    setActionItemDetailsSourceView,
+    setView,
   } = useCRM();
 
   // Target opportunity & account
@@ -584,9 +587,16 @@ export const OpportunityActionsCommentsPanel: React.FC<PanelProps> = ({ opportun
                         <TableRow className="hover:bg-slate-50/50 bg-white">
                           <TableCell className="max-w-[180px]">
                             <div className="flex items-center gap-1">
-                              <p className="font-extrabold text-slate-900 truncate min-w-0 flex-1" title={action.title}>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedActionItemId(action.id);
+                                }}
+                                className="font-extrabold text-blue-600 hover:text-blue-800 hover:underline text-left truncate min-w-0 flex-1 cursor-pointer"
+                                title={action.title}
+                              >
                                 {action.title}
-                              </p>
+                              </button>
                               <ActionItemCommentToggle
                                 itemTitle={action.title}
                                 commentCount={actionComments.length}

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ProjectChildTableService } from './project-child-table.service';
 import { ProjectRisk } from '../../types';
 
@@ -90,13 +90,19 @@ export class ProjectRisksService extends ProjectChildTableService {
   }
 
   async create(projectId: string, data: any, userId?: string): Promise<ProjectRisk> {
-    await this.assertProjectAccess(projectId, userId);
+    const project = await this.projectsService.findOne(projectId, userId);
+    if (data.accountId && data.accountId !== project.accountId) {
+      throw new BadRequestException('Selected project does not belong to the specified account.');
+    }
     const id = await this.insertRow(TABLE, projectId, COLUMNS, toValues(data));
     return this.findOneMapped(projectId, id);
   }
 
   async update(projectId: string, id: string, data: any, userId?: string): Promise<ProjectRisk> {
-    await this.assertProjectAccess(projectId, userId);
+    const project = await this.projectsService.findOne(projectId, userId);
+    if (data.accountId && data.accountId !== project.accountId) {
+      throw new BadRequestException('Selected project does not belong to the specified account.');
+    }
     await this.updateRow(TABLE, projectId, id, COLUMNS, toValues(data));
     return this.findOneMapped(projectId, id);
   }

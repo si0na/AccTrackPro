@@ -75,7 +75,7 @@ const MODE_META: Record<EditMode, { title: string; primaryKey: string }> = {
 // so more fields fit per row and the modal scrolls less.
 const WIDE_KEYS = new Set([
   'name', 'title', 'accountId', 'address',
-  'description', 'notes', 'nextStep', 'risksAndDependencies', 'tags', 'team',
+  'description', 'notes', 'nextStep', 'risksAndDependencies', 'nextAction', 'impediments', 'tags', 'team',
   'aopAvailable',
 ]);
 
@@ -184,15 +184,19 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
           type: 'text',
         });
       }
-      if (!finalCols.some((c) => c.key === 'projectId')) {
-        finalCols.push({
-          key: 'projectId',
-          name: 'Associated Project',
-          isStandard: true,
-          isPinned: false,
-          isDisplayed: true,
-          type: 'text',
-        });
+      if (entity.projectId) {
+        if (!finalCols.some((c) => c.key === 'projectId')) {
+          finalCols.push({
+            key: 'projectId',
+            name: 'Associated Project',
+            isStandard: true,
+            isPinned: false,
+            isDisplayed: true,
+            type: 'text',
+          });
+        }
+      } else {
+        finalCols = finalCols.filter((c) => c.key !== 'projectId');
       }
       if (!finalCols.some((c) => c.key === 'ownerStakeholderId')) {
         finalCols.push({
@@ -407,6 +411,8 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
       case 'description':
       case 'notes':
       case 'risksAndDependencies':
+      case 'nextAction':
+      case 'impediments':
         return (
           <textarea
             value={val ?? ''}
@@ -418,15 +424,36 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
 
       case 'accountId': {
         if (mode === 'actionItems') {
+          const isProjectActionItem = !!entity.projectId;
+          let accountOptions: Array<{ id: string; name: string }>;
+          if (isProjectActionItem) {
+            const map = new Map<string, { id: string; name: string }>();
+            (accounts || []).forEach((a) => {
+              if (a && a.id) map.set(a.id, { id: a.id, name: a.name });
+            });
+            (projects || []).forEach((p) => {
+              if (p && p.accountId && !map.has(p.accountId)) {
+                map.set(p.accountId, { id: p.accountId, name: p.accountName || 'Account' });
+              }
+            });
+            accountOptions = Array.from(map.values()).sort((a, b) =>
+              a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+            );
+          } else {
+            accountOptions = [...(accounts || [])].sort((a, b) =>
+              a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+            );
+          }
+
           return (
             <select
               value={val ?? ''}
               onChange={(e) => {
                 const newAccId = e.target.value;
-                const acc = accounts.find((a) => a.id === newAccId);
+                const accName = accountOptions.find((a) => a.id === newAccId)?.name || '';
                 onChange({
                   accountId: newAccId,
-                  accountName: acc?.name || '',
+                  accountName: accName,
                   opportunityId: newAccId && entity.opportunityId && opportunities.find((o) => o.id === entity.opportunityId)?.accountId !== newAccId ? '' : entity.opportunityId,
                   projectId: newAccId && entity.projectId && projects.find((p) => p.id === entity.projectId)?.accountId !== newAccId ? '' : entity.projectId,
                 });
@@ -434,13 +461,11 @@ export const InlineEditModal: React.FC<InlineEditModalProps> = ({
               className={`${inputCls} bg-white`}
             >
               <option value="" disabled>Select account…</option>
-              {[...accounts]
-                .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
-                .map((acc) => (
-                  <option key={acc.id} value={acc.id}>
-                    {acc.name}
-                  </option>
-                ))}
+              {accountOptions.map((acc) => (
+                <option key={acc.id} value={acc.id}>
+                  {acc.name}
+                </option>
+              ))}
             </select>
           );
         }

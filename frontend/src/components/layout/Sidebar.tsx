@@ -1,4 +1,4 @@
-﻿/**
+/**
  * @license
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -44,6 +44,7 @@ interface NavSubItem {
   id: ViewType;
   label: string;
   icon: React.ElementType;
+  badge?: number | null;
 }
 
 interface NavItem {
@@ -88,7 +89,7 @@ export const Sidebar: React.FC = () => {
   } = useCRM();
 
   // Track which parent nav items are expanded (by ViewType id)
-  const TRACKING_VIEWS: ViewType[] = ['tracking', 'delivery-review', 'technical-review', 'sqa-review'];
+  const TRACKING_VIEWS: ViewType[] = ['tracking', 'delivery-review', 'technical-review', 'sqa-review', 'sqa-tracking'];
   const isTrackingActive = TRACKING_VIEWS.includes(currentView);
   const [trackingExpanded, setTrackingExpanded] = useState(isTrackingActive);
 
@@ -136,6 +137,13 @@ export const Sidebar: React.FC = () => {
       items: [
         { id: 'account-growth', label: 'Account Growth', icon: Sprout, badge: null },
         { id: 'partnership', label: 'Partnership', icon: Handshake, badge: null },
+      ],
+    },
+    {
+      label: 'Delivery',
+      items: [
+        { id: 'projects', label: 'Projects', icon: FolderKanban, badge: projects.length },
+        { id: 'projectActionItems', label: 'Project Action Items', icon: CheckSquare, badge: projectActionItemsCount },
         {
           id: 'tracking',
           label: 'Tracking',
@@ -144,17 +152,9 @@ export const Sidebar: React.FC = () => {
           children: [
             { id: 'delivery-review', label: 'Delivery Review', icon: Truck },
             { id: 'technical-review', label: 'Technical Review', icon: Settings2 },
-            { id: 'sqa-review', label: 'SQA Review', icon: BadgeCheck },
+            { id: 'sqa-review', label: 'SQA Review', icon: BadgeCheck, badge: sqaCount },
           ],
         },
-      ],
-    },
-    {
-      label: 'Delivery',
-      items: [
-        { id: 'projects', label: 'Projects', icon: FolderKanban, badge: projects.length },
-        { id: 'projectActionItems', label: 'Project Action Items', icon: CheckSquare, badge: projectActionItemsCount },
-        { id: 'sqa', label: 'SQA', icon: BadgeCheck, badge: sqaCount },
       ],
     },
     {
@@ -291,6 +291,17 @@ export const Sidebar: React.FC = () => {
                             </span>
                           )}
                         </div>
+                        {!sidebarCollapsed && item.badge !== null && item.badge !== undefined && (
+                          <span
+                            className={`text-[11px] px-2 py-0.5 rounded-full font-bold transition-all shrink-0 ${
+                              isParentActive
+                                ? 'bg-slate-700 text-white'
+                                : 'bg-slate-800 text-slate-400 group-hover:bg-slate-700 group-hover:text-white'
+                            }`}
+                          >
+                            {item.badge}
+                          </span>
+                        )}
                         {!sidebarCollapsed && (
                           <ChevronDown
                             className={`w-3.5 h-3.5 shrink-0 transition-transform duration-200 ${
@@ -311,14 +322,27 @@ export const Sidebar: React.FC = () => {
                                 key={child.id}
                                 onClick={() => handleNavClick(child.id)}
                                 title={child.label}
-                                className={`flex items-center gap-2 w-full px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 cursor-pointer ${
+                                className={`flex items-center justify-between gap-2 w-full px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all duration-150 cursor-pointer ${
                                   isChildActive
                                     ? 'bg-slate-700 text-white font-semibold'
                                     : 'text-slate-500 hover:bg-slate-800/60 hover:text-slate-200'
                                 }`}
                               >
-                                <ChildIcon className={`w-3.5 h-3.5 shrink-0 ${isChildActive ? 'text-white' : 'text-slate-600'}`} />
-                                <span className="whitespace-nowrap truncate">{child.label}</span>
+                                <div className="flex items-center gap-2 min-w-0 truncate">
+                                  <ChildIcon className={`w-3.5 h-3.5 shrink-0 ${isChildActive ? 'text-white' : 'text-slate-600'}`} />
+                                  <span className="whitespace-nowrap truncate">{child.label}</span>
+                                </div>
+                                {child.badge !== undefined && child.badge !== null && (
+                                  <span
+                                    className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold transition-all shrink-0 ${
+                                      isChildActive
+                                        ? 'bg-slate-600 text-white'
+                                        : 'bg-slate-800 text-slate-400 group-hover:bg-slate-700 group-hover:text-white'
+                                    }`}
+                                  >
+                                    {child.badge}
+                                  </span>
+                                )}
                               </button>
                             );
                           })}

@@ -87,7 +87,7 @@ export interface BulkValidateHandlers {
     raw: Record<string, any>,
   ) => Promise<{ errors: string[]; refNames: Record<string, string> }>;
   /** Cross-field business rules run after coercion + reference resolution. */
-  postValidate?: (payload: Record<string, any>, raw: Record<string, any>) => string[];
+  postValidate?: (payload: Record<string, any>, raw: Record<string, any>) => string[] | Promise<string[]>;
   /** Final DTO gate — the same class-validator rules the create route applies. */
   validate: (payload: Record<string, any>) => Promise<string[]>;
   /** Natural key for duplicate detection (null → row cannot be deduped). */
@@ -270,7 +270,8 @@ export async function runBulkValidate(
       Object.assign(refNames, res.refNames);
     }
     if (errors.length === 0 && handlers.postValidate) {
-      errors.push(...handlers.postValidate(payload, raw));
+      const postErrors = await handlers.postValidate(payload, raw);
+      errors.push(...postErrors);
     }
     if (errors.length === 0) {
       errors.push(...(await handlers.validate(payload)));

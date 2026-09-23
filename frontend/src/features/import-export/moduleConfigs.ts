@@ -15,6 +15,7 @@ import {
   PRIORITY_OPTIONS,
   INDUSTRY_OPTIONS,
 } from '@/constants';
+import { cleanOwnerName, formatCommentTimestamp } from '@/utils';
 import type { IEModuleKey, ModuleIEConfig, RefData } from './types';
 
 const PRIORITY = ['High', 'Medium', 'Low'] as const;
@@ -23,6 +24,20 @@ const RELATIONSHIP = ['Strong', 'Neutral', 'Weak'] as const;
 
 const accName = (id: string, ref: RefData) => ref.accounts.find((a) => a.id === id)?.name ?? '';
 const oppName = (id: string, ref: RefData) => ref.opportunities.find((o) => o.id === id)?.name ?? '';
+const projName = (id: string, ref: RefData) => ref.projects?.find((p: any) => p.id === id)?.name ?? '';
+const aiOwnerName = (e: any, ref: RefData) => cleanOwnerName(ref.stakeholders?.find((s) => s.id === e.ownerStakeholderId)?.name || e.ownerName || e.owner) || '';
+
+function formatActionItemExportComments(actionItemId: string, comments?: RefData['comments']): string {
+  if (!comments || !comments.length) return '';
+  const itemComments = comments
+    .filter((c) => c.targetType === 'actionItem' && c.targetId === actionItemId)
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+    .slice(0, 2);
+
+  return itemComments
+    .map((c) => `${formatCommentTimestamp(c.timestamp)} - ${c.text}`)
+    .join('\n');
+}
 
 // ─── Accounts ─────────────────────────────────────────────────────────────────
 const accountsConfig: ModuleIEConfig = {
@@ -185,30 +200,36 @@ const actionItemsConfig: ModuleIEConfig = {
     { key: 'priority', header: 'Priority', type: 'enum', options: PRIORITY, required: true, example: 'High' },
     { key: 'status', header: 'Status', type: 'enum', options: ACTION_ITEM_STATUS_OPTIONS, required: true, example: 'To Do' },
     { key: 'actionItemType', header: 'Type', headerAliases: ['Action Item Type', 'Type of Action Item'], type: 'enum', options: ACTION_ITEM_TYPE_OPTIONS, example: 'Stakeholder connect' },
-    { key: 'projectId', header: 'Project', headerAliases: ['Project Name'], type: 'reference', reference: 'project', hint: 'Optional; setting Project classifies this row as a Project Action Item' },
     { key: 'opportunityId', header: 'Opportunity', headerAliases: ['Opportunity Name'], type: 'reference', reference: 'opportunity', hint: 'Optional; must belong to the same account (Opportunities sheet or existing)' },
     { key: 'openDate', header: 'Open Date', type: 'date', example: '2026-01-10' },
     { key: 'dueDate', header: 'Due Date', type: 'date', example: '2026-02-10' },
     { key: 'notes', header: 'Description', headerAliases: ['Notes'], type: 'string' },
     { key: 'risksAndDependencies', header: 'Risks & Dependencies', type: 'string' },
+    { key: 'nextAction', header: 'Next Action', type: 'string' },
+    { key: 'impediments', header: 'Impediments', type: 'string' },
     { key: 'completedDate', header: 'Completed Date', type: 'date' },
   ],
   exportColumns: [
+    { key: 'actionItemNumber', header: 'Action Item #', value: (e) => e.actionItemNumber ?? '' },
     { key: 'title', header: 'Task Title', value: (e) => e.title ?? '' },
     { key: 'accountId', header: 'Account', value: (e, ref) => e.accountName ?? accName(e.accountId, ref) },
-    { key: 'projectId', header: 'Project', value: (e) => e.projectName ?? e.project ?? '' },
-    { key: 'owner', header: 'Owner', value: (e) => e.ownerName ?? e.owner ?? '' },
+    { key: 'owner', header: 'Owner', value: (e, ref) => aiOwnerName(e, ref) },
+    { key: 'ownerStakeholderId', header: 'Owner', value: (e, ref) => aiOwnerName(e, ref) },
     { key: 'priority', header: 'Priority', value: (e) => e.priority ?? '' },
     { key: 'status', header: 'Status', value: (e) => e.status ?? '' },
     { key: 'actionItemType', header: 'Type', value: (e) => e.actionItemType ?? '' },
     { key: 'opportunityId', header: 'Opportunity', value: (e, ref) => (e.opportunityId ? oppName(e.opportunityId, ref) : '') },
+    { key: 'projectId', header: 'Project', value: (e, ref) => (e.projectId ? (e.projectName ?? projName(e.projectId, ref)) : '') },
     { key: 'openDate', header: 'Open Date', value: (e) => e.openDate ?? '' },
     { key: 'dueDate', header: 'Due Date', value: (e) => e.dueDate ?? '' },
     { key: 'notes', header: 'Description', value: (e) => e.notes ?? '' },
     { key: 'risksAndDependencies', header: 'Risks & Dependencies', value: (e) => e.risksAndDependencies ?? '' },
+    { key: 'nextAction', header: 'Next Action', value: (e) => e.nextAction ?? '' },
+    { key: 'impediments', header: 'Impediments', value: (e) => e.impediments ?? '' },
     { key: 'completedDate', header: 'Completed Date', value: (e) => e.completedDate ?? '' },
     { key: 'financialYear', header: 'Financial Year', value: (e) => e.financialYear ?? '' },
     { key: 'quarter', header: 'Quarter', value: (e) => e.quarter ?? '' },
+    { key: 'comments', header: 'Comments', value: (e, ref) => formatActionItemExportComments(e.id, ref.comments) },
   ],
 };
 

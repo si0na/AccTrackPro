@@ -1,7 +1,8 @@
-import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
 import { FilterContextService, FilterParams, FiscalContext } from '../../common/services/filter-context.service';
 import { AccessScopeService } from '../rbac/access-scope.service';
+import { PermissionsService } from '../rbac/permissions.service';
 import { NotificationEventBus } from '../../common/events/notification-event-bus.service';
 import { ActionItem } from '../../types';
 import { extractCustomData } from '../../common/utils/db-mapping.util';
@@ -15,9 +16,9 @@ import { BulkModuleAdapter } from '../import-export/bulk-adapter';
 // stripped instead of leaking into custom_data — fiscal periods are derived
 // from dueDate and never stored.
 const KNOWN = new Set([
-  'id', 'title', 'accountId', 'accountName', 'opportunityId', 'opportunityName', 'projectId', 'projectName', 'owner', 'ownerId', 'ownerStakeholderId',
+  'id', 'actionItemNumber', 'title', 'accountId', 'accountName', 'opportunityId', 'opportunityName', 'projectId', 'projectName', 'owner', 'ownerId', 'ownerStakeholderId',
   'ownerName', 'ownerDesignation', 'ownerStakeholderType',
-  'openDate', 'dueDate', 'priority', 'status', 'actionItemType', 'notes', 'risksAndDependencies', 'completedDate',
+  'openDate', 'dueDate', 'priority', 'status', 'actionItemType', 'notes', 'risksAndDependencies', 'nextAction', 'impediments', 'completedDate',
   'financialYear', 'quarter',
 ]);
 
@@ -26,18 +27,33 @@ function todayIsoDate(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+/**
+ * Derives a deterministic 3-character uppercase prefix from an Account name.
+ * Takes the first 3 alphabetic characters, upper-cased. If fewer than 3
+ * alphabetic characters exist, pads with 'X'.
+ */
+export function generateAccountPrefix(accountName?: string): string {
+  const cleanName = (accountName ?? '').trim();
+  const alphas = cleanName.replace(/[^A-Za-z]/g, '').toUpperCase();
+  if (alphas.length >= 3) {
+    return alphas.slice(0, 3);
+  }
+  return alphas.padEnd(3, 'X');
+}
+
 function rowToActionItem(row: any, derive: (date: string) => { financialYear: string; quarter: string }): ActionItem {
   const {
     custom_data, is_deleted, created_at, updated_at,
     account_id, account_name, opportunity_id, opportunity_name, project_id, project_name, open_date, due_date, completed_date,
-    action_item_type,
-    risks_and_dependencies,
+    action_item_type, action_item_number,
+    risks_and_dependencies, next_action, impediments,
     owner_id, owner_name,
     owner_stakeholder_id, stakeholder_owner_name, stakeholder_owner_designation, stakeholder_owner_type,
     ...base
   } = row;
   return {
     ...base,
+    actionItemNumber: action_item_number ?? undefined,
     accountId: account_id,
     accountName: account_name ?? undefined,
     opportunityId: opportunity_id ?? undefined,
@@ -57,6 +73,8 @@ function rowToActionItem(row: any, derive: (date: string) => { financialYear: st
     actionItemType: action_item_type ?? undefined,
     completedDate: completed_date ?? undefined,
     risksAndDependencies: risks_and_dependencies ?? '',
+    nextAction: next_action ?? '',
+    impediments: impediments ?? '',
     // Read-only reporting labels derived from the business date (due date).
     ...derive(due_date),
     ...(custom_data || {}),
@@ -85,6 +103,7 @@ export class ActionItemsService {
     private readonly filter: FilterContextService,
     private readonly access: AccessScopeService,
     private readonly bus: NotificationEventBus,
+    private readonly permissions: PermissionsService,
   ) { }
 
   /**
@@ -112,12 +131,44 @@ export class ActionItemsService {
     return {
       moduleKey: 'actionItems',
       fields: ACTION_ITEM_FIELDS,
+      postValidate: async (payload, raw) => {
+        const errors: string[] = [];
+        if (payload.projectId || raw?.projectId || raw?.Project || raw?.['Project Name']) {
+          errors.push('Project Action Items cannot be imported or updated via Global Import/Export');
+        }
+        if (payload.accountId && payload.title) {
+          const existingId = await this.findActiveByTitleAndAccount(payload.title, payload.accountId, userId);
+          if (existingId) {
+            const existing = await this.findOneRaw(existingId);
+            if (existing && existing.projectId != null) {
+              errors.push('Project Action Items cannot be imported or updated via Global Import/Export');
+            }
+          }
+        }
+        return errors;
+      },
       validate: (row) => validateDto(CreateActionItemDto, row),
       naturalKey: (row) =>
         row.accountId && row.title ? `${row.accountId}::${String(row.title).trim().toLowerCase()}` : null,
       findExistingId: (row) => this.findActiveByTitleAndAccount(row.title, row.accountId, userId),
-      create: (row) => this.create({ ...row, ownerId: userId }),
-      update: (id, row) => this.update(id, row, userId),
+      create: (row) => {
+        if (row.projectId) {
+          throw new BadRequestException('Project Action Items cannot be imported or updated via Global Import/Export');
+        }
+        const { projectId, ...cleanRow } = row;
+        return this.create({ ...cleanRow, ownerId: userId });
+      },
+      update: async (id, row) => {
+        const existing = await this.findOneRaw(id);
+        if (existing && existing.projectId != null) {
+          throw new ForbiddenException('Project Action Items cannot be imported or updated via Global Import/Export');
+        }
+        if (row.projectId) {
+          throw new BadRequestException('Project Action Items cannot be imported or updated via Global Import/Export');
+        }
+        const { projectId, ...cleanRow } = row;
+        return this.update(id, cleanRow, userId);
+      },
     };
   }
 
@@ -206,7 +257,50 @@ export class ActionItemsService {
     return (await this.mapper())(rows[0]);
   }
 
-  async create(data: any): Promise<ActionItem> {
+  /** Unscoped raw fetch helper for internal permission checking before row scoping. */
+  private async findOneRaw(id: string): Promise<{ id: string; projectId: string | null; accountId: string; title: string } | null> {
+    const { rows } = await this.db.query(
+      `SELECT ai.id, ai.project_id AS "projectId", ai.account_id AS "accountId", ai.title
+       FROM action_items ai
+       WHERE ai.id = $1 AND ai.is_deleted = FALSE`,
+      [id],
+    );
+    return rows[0] ?? null;
+  }
+
+  async assertUpdatePermission(id: string, updateData: any, requestingUserId: string): Promise<void> {
+    const existing = await this.findOneRaw(id);
+    if (!existing) throw new NotFoundException(`ActionItem "${id}" not found`);
+
+    const sourceModule = existing.projectId ? 'project-action-items' : 'action-items';
+    const targetProjectId = 'projectId' in updateData ? updateData.projectId : existing.projectId;
+    const targetModule = targetProjectId ? 'project-action-items' : 'action-items';
+
+    const canSource = await this.permissions.can(requestingUserId, sourceModule, 'update');
+    if (!canSource) {
+      throw new ForbiddenException(`You do not have permission to update ${sourceModule}.`);
+    }
+
+    if (sourceModule !== targetModule) {
+      const canTarget = await this.permissions.can(requestingUserId, targetModule, 'update');
+      if (!canTarget) {
+        throw new ForbiddenException(`You do not have permission to update ${targetModule}.`);
+      }
+    }
+  }
+
+  async assertDeletePermission(id: string, requestingUserId: string): Promise<void> {
+    const existing = await this.findOneRaw(id);
+    if (!existing) throw new NotFoundException(`ActionItem "${id}" not found`);
+
+    const requiredModule = existing.projectId ? 'project-action-items' : 'action-items';
+    const allowed = await this.permissions.can(requestingUserId, requiredModule, 'delete');
+    if (!allowed) {
+      throw new ForbiddenException(`You do not have permission to delete ${requiredModule}.`);
+    }
+  }
+
+  async create(data: any, requestingUserId?: string): Promise<ActionItem> {
     this.logger.log(`Creating action item [title="${data.title}" accountId=${data.accountId} ownerId=${data.ownerId ?? 'MISSING'}]`);
 
     if (!data.ownerId) {
@@ -215,28 +309,51 @@ export class ActionItemsService {
       );
     }
 
-    await this.assertValidRelations(data.accountId, data.opportunityId, data.projectId, data.ownerId);
+    await this.assertValidRelations(data.accountId, data.opportunityId, data.projectId, requestingUserId ?? data.ownerId);
     if (data.ownerStakeholderId) {
       await this.assertOwnerStakeholder(data.ownerStakeholderId, data.accountId);
     }
 
     const cd = extractCustomData(data, KNOWN);
 
-    const { rows } = await this.db.query(
-      `INSERT INTO action_items
-         (id, title, account_id, opportunity_id, project_id, owner_id, owner_stakeholder_id, open_date, due_date, priority, status, action_item_type, notes, risks_and_dependencies, completed_date, custom_data)
-       VALUES (gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
-       RETURNING id`,
-      [
-        data.title, data.accountId, data.opportunityId ?? null, data.projectId ?? null,
-        data.ownerId ?? null, data.ownerStakeholderId ?? null,
-        data.openDate || todayIsoDate(), data.dueDate ?? '', data.priority, data.status,
-        data.actionItemType ?? null, data.notes ?? '',
-        data.risksAndDependencies ?? '',
-        data.completedDate ?? null, JSON.stringify(cd),
-      ],
-    );
-    const item = await this.findOne(rows[0].id);
+    // Fetch account name to derive prefix
+    const { rows: acctRows } = await this.db.query(`SELECT name FROM accounts WHERE id = $1`, [data.accountId]);
+    const accountName = acctRows[0]?.name ?? '';
+    const prefix = generateAccountPrefix(accountName);
+
+    const createdId = await this.db.withTransaction(async (client) => {
+      // Lock and increment sequence counter row per account prefix atomically
+      const { rows: seqRows } = await client.query(
+        `INSERT INTO action_item_sequences (prefix, last_seq)
+         VALUES ($1, 1)
+         ON CONFLICT (prefix) DO UPDATE SET last_seq = action_item_sequences.last_seq + 1
+         RETURNING last_seq`,
+        [prefix],
+      );
+      const seqNum = seqRows[0].last_seq;
+      const formattedNum = `${prefix}-${String(seqNum).padStart(4, '0')}`;
+
+      const { rows } = await client.query(
+        `INSERT INTO action_items
+           (id, action_item_number, title, account_id, opportunity_id, project_id, owner_id, owner_stakeholder_id, open_date, due_date, priority, status, action_item_type, notes, risks_and_dependencies, next_action, impediments, completed_date, custom_data)
+         VALUES (gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
+         RETURNING id`,
+        [
+          formattedNum,
+          data.title, data.accountId, data.opportunityId ?? null, data.projectId ?? null,
+          data.ownerId ?? null, data.ownerStakeholderId ?? null,
+          data.openDate || todayIsoDate(), data.dueDate ?? '', data.priority, data.status,
+          data.actionItemType ?? null, data.notes ?? '',
+          data.risksAndDependencies ?? '',
+          data.nextAction ?? '',
+          data.impediments ?? '',
+          data.completedDate ?? null, JSON.stringify(cd),
+        ],
+      );
+      return rows[0].id;
+    });
+
+    const item = await this.findOne(createdId);
     this.logger.log(`Action item created [id=${item.id} ownerId=${item.ownerId ?? 'NULL'}]`);
     await this.log(`Created Action Item '${item.title}'`, item.accountId, data.ownerId);
 
@@ -265,6 +382,9 @@ export class ActionItemsService {
   async update(id: string, data: any, requestingUserId?: string): Promise<ActionItem> {
     const existing = await this.findOne(id, requestingUserId);
 
+    const targetActionItemNumber = ('actionItemNumber' in data && data.actionItemNumber !== undefined)
+      ? (data.actionItemNumber?.trim() || existing.actionItemNumber)
+      : existing.actionItemNumber;
     const targetTitle = data.title ?? existing.title;
     const targetAccountId = data.accountId ?? existing.accountId;
     const targetOpportunityId = 'opportunityId' in data ? (data.opportunityId ?? null) : existing.opportunityId;
@@ -281,33 +401,79 @@ export class ActionItemsService {
     const risksAndDependencies = 'risksAndDependencies' in data ? (data.risksAndDependencies ?? '') : existing.risksAndDependencies;
     const completedDate = 'completedDate' in data ? (data.completedDate ?? null) : existing.completedDate;
 
+    const nextAction = 'nextAction' in data ? (data.nextAction ?? '') : existing.nextAction;
+    const impediments = 'impediments' in data ? (data.impediments ?? '') : existing.impediments;
+
     if (targetAccountId !== existing.accountId || targetOpportunityId !== existing.opportunityId || targetProjectId !== existing.projectId) {
       await this.assertValidRelations(targetAccountId, targetOpportunityId, targetProjectId, requestingUserId);
     }
     if (ownerStakeholderId && (ownerStakeholderId !== existing.ownerStakeholderId || targetAccountId !== existing.accountId)) {
       await this.assertOwnerStakeholder(ownerStakeholderId, targetAccountId);
     }
+
+    // Application-level uniqueness validation for Action Item #
+    if (targetActionItemNumber && targetActionItemNumber !== existing.actionItemNumber) {
+      const { rows: dupRows } = await this.db.query(
+        `SELECT id FROM action_items WHERE LOWER(TRIM(action_item_number)) = LOWER(TRIM($1)) AND id != $2 AND is_deleted = FALSE LIMIT 1`,
+        [targetActionItemNumber, id],
+      );
+      if (dupRows.length > 0) {
+        throw new ConflictException(`Action Item # "${targetActionItemNumber}" is already in use`);
+      }
+    }
+
     const cd = extractCustomData(data, KNOWN);
 
     // Ownership (owner_id) is preserved from DB — never changed by a regular update.
     const effectiveOwnerId = existing.ownerId ?? null;
 
-    await this.db.query(
-      `UPDATE action_items SET
-         title=$1, account_id=$2, opportunity_id=$3, project_id=$4, owner_id=$5, owner_stakeholder_id=$6, open_date=$7, due_date=$8,
-         priority=$9, status=$10, action_item_type=$11, notes=$12, risks_and_dependencies=$13, completed_date=$14,
-         custom_data=$15, updated_at=NOW()
-       WHERE id=$16 AND is_deleted=FALSE`,
-      [
-        targetTitle, targetAccountId, targetOpportunityId, targetProjectId,
-        effectiveOwnerId, ownerStakeholderId,
-        openDate, dueDate, priority, status, actionItemType, notes,
-        risksAndDependencies, completedDate, JSON.stringify(cd),
-        id,
-      ],
-    );
+    try {
+      await this.db.query(
+        `UPDATE action_items SET
+           action_item_number=$1, title=$2, account_id=$3, opportunity_id=$4, project_id=$5, owner_id=$6, owner_stakeholder_id=$7, open_date=$8, due_date=$9,
+           priority=$10, status=$11, action_item_type=$12, notes=$13, risks_and_dependencies=$14, next_action=$15, impediments=$16, completed_date=$17,
+           custom_data=$18, updated_at=NOW()
+         WHERE id=$19 AND is_deleted=FALSE`,
+        [
+          targetActionItemNumber, targetTitle, targetAccountId, targetOpportunityId, targetProjectId,
+          effectiveOwnerId, ownerStakeholderId,
+          openDate, dueDate, priority, status, actionItemType, notes,
+          risksAndDependencies, nextAction, impediments, completedDate, JSON.stringify(cd),
+          id,
+        ],
+      );
+    } catch (err: any) {
+      if (err?.code === '23505' || err?.message?.includes('idx_ai_action_item_number')) {
+        throw new ConflictException(`Action Item # "${targetActionItemNumber}" is already in use`);
+      }
+      throw err;
+    }
     const item = await this.findOne(id);
-    await this.log(`Updated Action Item '${item.title}'`, item.accountId, requestingUserId);
+
+    // Track field changes for history
+    const changes: string[] = [];
+    const normStr = (v: unknown) => String(v ?? '').trim();
+    if ('actionItemNumber' in data && normStr(existing.actionItemNumber) !== normStr(targetActionItemNumber)) {
+      const oldVal = normStr(existing.actionItemNumber) || 'None';
+      const newVal = normStr(targetActionItemNumber) || 'None';
+      changes.push(`Action Item #: [ ${oldVal} ] → [ ${newVal} ]`);
+    }
+    if ('nextAction' in data && normStr(existing.nextAction) !== normStr(nextAction)) {
+      const oldVal = normStr(existing.nextAction) || 'None';
+      const newVal = normStr(nextAction) || 'None';
+      changes.push(`Next Action: [ ${oldVal} ] → [ ${newVal} ]`);
+    }
+    if ('impediments' in data && normStr(existing.impediments) !== normStr(impediments)) {
+      const oldVal = normStr(existing.impediments) || 'None';
+      const newVal = normStr(impediments) || 'None';
+      changes.push(`Impediments: [ ${oldVal} ] → [ ${newVal} ]`);
+    }
+
+    let logMessage = `Updated Action Item '${item.title}'`;
+    if (changes.length > 0) {
+      logMessage += ` — ${changes.join(' | ')}`;
+    }
+    await this.log(logMessage, item.accountId, requestingUserId);
 
     if (item.ownerId) {
       if (item.status === 'Completed' && existing.status !== 'Completed') {
@@ -376,24 +542,21 @@ export class ActionItemsService {
   }
 
   /**
-   * Relational rules: the parent account must exist, be active, and be VISIBLE to
-   * the requesting user (role-aware, not owner-only); a linked opportunity
-   * (optional) must exist and belong to the same account; a linked project
-   * (optional) must exist, be active, and belong to the same account.
+   * Relational & authorization rules:
+   * 1. The parent account must exist and be active.
+   * 2. If opportunityId is provided, it must exist and belong to accountId.
+   * 3. If projectId is provided, it must exist, be active, belong to accountId, AND be visible to requestingUserId via canonical buildProjectVisibility.
+   * 4. If projectId is NOT provided, accountId must be visible to requestingUserId via buildAccountVisibility.
    */
   private async assertValidRelations(
     accountId: string,
     opportunityId?: string | null,
     projectId?: string | null,
-    ownerId?: string,
+    requestingUserId?: string,
   ): Promise<void> {
-    const scope = ownerId
-      ? this.access.buildAccountVisibility('a', await this.access.getContext(ownerId), 2)
-      : { conditions: [] as string[], params: [] as any[], nextIdx: 2 };
-    const scopeClause = scope.conditions.length ? ` AND ${scope.conditions.join(' AND ')}` : '';
     const { rows: acct } = await this.db.query(
-      `SELECT a.id FROM accounts a WHERE a.id = $1 AND a.is_deleted = FALSE${scopeClause}`,
-      [accountId, ...scope.params],
+      `SELECT a.id FROM accounts a WHERE a.id = $1 AND a.is_deleted = FALSE`,
+      [accountId],
     );
     if (!acct.length) throw new BadRequestException('The selected account does not exist');
 
@@ -409,14 +572,26 @@ export class ActionItemsService {
     }
 
     if (projectId) {
+      const scope = requestingUserId
+        ? await this.access.buildProjectVisibility('p', await this.access.getContext(requestingUserId), 2)
+        : { conditions: [] as string[], params: [] as any[], nextIdx: 2 };
+      const scopeClause = scope.conditions.length ? ` AND ${scope.conditions.join(' AND ')}` : '';
       const { rows: proj } = await this.db.query(
-        `SELECT account_id FROM projects WHERE id = $1 AND is_deleted = FALSE`,
-        [projectId],
+        `SELECT p.account_id FROM projects p WHERE p.id = $1 AND p.is_deleted = FALSE${scopeClause}`,
+        [projectId, ...scope.params],
       );
-      if (!proj.length) throw new BadRequestException('The linked project does not exist');
+      if (!proj.length) throw new BadRequestException('The selected project does not exist');
       if (proj[0].account_id !== accountId) {
         throw new BadRequestException('The linked project belongs to a different account');
       }
+    } else if (requestingUserId) {
+      const scope = this.access.buildAccountVisibility('a', await this.access.getContext(requestingUserId), 2);
+      const scopeClause = scope.conditions.length ? ` AND ${scope.conditions.join(' AND ')}` : '';
+      const { rows: acctWithScope } = await this.db.query(
+        `SELECT a.id FROM accounts a WHERE a.id = $1 AND a.is_deleted = FALSE${scopeClause}`,
+        [accountId, ...scope.params],
+      );
+      if (!acctWithScope.length) throw new BadRequestException('The selected account does not exist');
     }
   }
 

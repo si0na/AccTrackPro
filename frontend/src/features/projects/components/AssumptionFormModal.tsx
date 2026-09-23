@@ -29,6 +29,20 @@ export const emptyAssumptionDraft: AssumptionDraft = {
   remarks: '',
 };
 
+export const createAssumptionDraftFromModel = (a?: ProjectAssumption | null): AssumptionDraft => {
+  if (!a) return emptyAssumptionDraft;
+  return {
+    priority: a.priority ?? 'Medium',
+    description: a.description ?? '',
+    impactIfFalse: a.impactIfFalse ?? '',
+    validationStatus: a.validationStatus ?? 'Unvalidated',
+    ownerId: a.ownerId ?? '',
+    dateIdentified: a.dateIdentified ?? '',
+    targetValidationDate: a.targetValidationDate ?? '',
+    remarks: a.remarks ?? '',
+  };
+};
+
 export interface AssumptionFormModalProps {
   isOpen: boolean;
   onClose: () => void;

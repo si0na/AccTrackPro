@@ -9,10 +9,11 @@ export function sheetName(title: string): string {
   return title.replace(/[[\]:*?/\\]/g, ' ').trim().slice(0, 31) || 'Sheet1';
 }
 
-export function autoWidths(headers: string[], rows: (string | number)[][]) {
-  return headers.map((h, col) => ({
-    wch: Math.max(h.length, ...rows.map((r) => String(r[col] ?? '').length), 10) + 2,
-  }));
+export function autoWidths(headers: string[], rows: (string | number)[][], maxColWidth = 40) {
+  return headers.map((h, col) => {
+    const maxLen = Math.max(h.length, ...rows.map((r) => String(r[col] ?? '').length), 10);
+    return { wch: Math.min(maxLen + 2, maxColWidth) };
+  });
 }
 
 /** A fully-resolved export column: a header and a value extractor. */
@@ -81,14 +82,38 @@ export async function exportWorkbook(
 
   for (const input of inputs) {
     const config = IE_CONFIGS[input.module];
-    const cols = buildExportColumns(config, input.columns);
+    let exportRows = input.rows;
+    if (input.module === 'actionItems') {
+      // Global export ONLY exports Account Management Action Items (projectId IS NULL).
+      exportRows = input.rows.filter((r) => !r.projectId);
+    }
+    const cols = buildExportColumns(config, input.columns).filter(
+      (c) => c.header !== 'Project' && c.header !== 'Project Name',
+    );
     const headers = cols.map((c) => c.header);
-    const data = input.rows.map((e) => cols.map((c) => c.value(e, ref)));
+    const data = exportRows.map((e) => cols.map((c) => c.value(e, ref)));
 
     const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
-    ws['!cols'] = autoWidths(headers, data);
+    ws['!cols'] = autoWidths(headers, data, 40);
+
+    // Apply wrapText alignment to data cells so long text wraps cleanly
+    if (ws['!ref']) {
+      const range = XLSX.utils.decode_range(ws['!ref']);
+      for (let R = range.s.r; R <= range.e.r; ++R) {
+        for (let C = range.s.c; C <= range.e.c; ++C) {
+          const cellAddr = XLSX.utils.encode_cell({ r: R, c: C });
+          if (ws[cellAddr]) {
+            ws[cellAddr].s = {
+              ...(ws[cellAddr].s || {}),
+              alignment: { wrapText: true, vertical: 'top' },
+            };
+          }
+        }
+      }
+    }
+
     XLSX.utils.book_append_sheet(wb, ws, sheetName(SHEET_NAMES[input.module]));
-    counts.push({ module: input.module, count: input.rows.length });
+    counts.push({ module: input.module, count: exportRows.length });
   }
 
   XLSX.writeFile(wb, fileName, { bookType: 'xlsx' });

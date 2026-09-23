@@ -87,8 +87,6 @@ export const SqaListView: React.FC = () => {
   } = useSqaRecords();
   const { projects, updateProject } = useCRM();
 
-  const [activeTab, setActiveTab] = useState<'details' | 'tracker'>('details');
-
   const [users, setUsers] = useState<User[]>([]);
   useEffect(() => {
     usersApi.getAll().then(setUsers).catch(() => setUsers([]));
@@ -242,8 +240,15 @@ export const SqaListView: React.FC = () => {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="SQA"
+        title="SQA Review"
         subtitle="Weekly quality tracking per project — inherited delivery data, SQA classification, and the weekly health trend."
+        actions={
+          canCreate ? (
+            <Button variant="primary" onClick={openCreate} icon={<Plus className="w-4 h-4" />}>
+              Add SQA Record
+            </Button>
+          ) : undefined
+        }
       />
 
       {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}

@@ -9,7 +9,7 @@ import type { ProjectMilestone } from '@/types';
 import { Button, Modal, ModalFooter, StatusBadge } from '@/components/ui';
 
 /** Milestone-status → badge color, mirroring the list column in ProjectDetailsView. */
-const MILESTONE_STATUS_COLORS: Record<string, string> = {
+export const MILESTONE_STATUS_COLORS: Record<string, string> = {
   'Not Started': 'bg-slate-100 text-slate-600',
   'In Progress': 'bg-blue-100 text-blue-700',
   Completed: 'bg-green-100 text-green-700',

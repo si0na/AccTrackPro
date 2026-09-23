@@ -4,6 +4,7 @@ import { npsApi } from '@/api/crm.api';
 import type { NpsResponse } from '@/types';
 import { NpsFormModal, getNpsClassification } from './NpsFormModal';
 import { LoadingState } from '@/components/common/LoadingState';
+import { ConfirmDialog } from '@/components/ui';
 import {
   Plus, Search, Star, AlertCircle, Smile, Meh, Frown,
   Trash2, Edit, MessageSquare, Calendar, UserCheck
@@ -56,6 +57,7 @@ export const NpsTab: React.FC<NpsTabProps> = ({ accountId, accountName = '', pro
   // Modal state
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [editingItem, setEditingItem] = useState<NpsResponse | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<NpsResponse | null>(null);
 
   const fetchNpsData = async () => {
     try {
@@ -135,13 +137,15 @@ export const NpsTab: React.FC<NpsTabProps> = ({ accountId, accountName = '', pro
     await fetchNpsData();
   };
 
-  const handleDelete = async (id: string) => {
-    if (!window.confirm('Are you sure you want to delete this NPS response?')) return;
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
     try {
-      await npsApi.delete(id);
+      await npsApi.delete(deleteTarget.id);
       await fetchNpsData();
     } catch (err: any) {
-      alert(err?.message || 'Failed to delete NPS response.');
+      setErrorMsg(err?.message || 'Failed to delete NPS response.');
+    } finally {
+      setDeleteTarget(null);
     }
   };
 
@@ -327,7 +331,7 @@ export const NpsTab: React.FC<NpsTabProps> = ({ accountId, accountName = '', pro
                     </button>
                     <button
                       type="button"
-                      onClick={() => handleDelete(r.id)}
+                      onClick={() => setDeleteTarget(r)}
                       className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-slate-100 rounded-lg transition-colors"
                       title="Delete response"
                     >
@@ -381,6 +385,23 @@ export const NpsTab: React.FC<NpsTabProps> = ({ accountId, accountName = '', pro
           stakeholders={stakeholders}
         />
       )}
+
+      {/* ── DELETE CONFIRMATION DIALOG ────────────────────────────────────────── */}
+      <ConfirmDialog
+        isOpen={!!deleteTarget}
+        title="Delete NPS Response"
+        message={
+          deleteTarget ? (
+            <>
+              Are you sure you want to delete this NPS response from{' '}
+              <span className="font-bold">"{deleteTarget.respondentName || 'Anonymous / Unspecified'}"</span>? This action cannot be undone.
+            </>
+          ) : undefined
+        }
+        confirmLabel="Delete Response"
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 };

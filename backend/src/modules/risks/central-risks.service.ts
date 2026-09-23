@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
 import { PermissionsService } from '../rbac/permissions.service';
+import { AccessScopeService } from '../rbac/access-scope.service';
 import { NormalizedRisk } from '../../types';
 
 @Injectable()
@@ -8,6 +9,7 @@ export class CentralRisksService {
   constructor(
     private readonly db: DatabaseService,
     private readonly permissions: PermissionsService,
+    private readonly access: AccessScopeService,
   ) {}
 
   async findAll(
@@ -18,8 +20,7 @@ export class CentralRisksService {
     status?: string,
     userId?: string,
   ): Promise<NormalizedRisk[]> {
-    const accessCtx = userId ? await this.permissions.getUserAccessContext(userId) : null;
-    const canViewAll = accessCtx ? accessCtx.canViewAllAccounts : true;
+    const accessCtx = userId ? await this.access.getContext(userId) : null;
 
     const normalizedRisks: NormalizedRisk[] = [];
 
@@ -44,13 +45,17 @@ export class CentralRisksService {
         params.push(accountId);
         sql += ` AND r.account_id = $${params.length}`;
       }
+      if (accessCtx) {
+        const childScope = this.access.buildChildVisibility('r', accessCtx, params.length + 1, 'risks');
+        if (childScope.conditions.length > 0) {
+          sql += ` AND ${childScope.conditions.join(' AND ')}`;
+          params.push(...childScope.params);
+        }
+      }
       sql += ` ORDER BY r.created_at DESC`;
 
       const { rows } = await this.db.query(sql, params);
       for (const row of rows) {
-        if (!canViewAll && accessCtx) {
-          // Verify ownership/visibility if restricted
-        }
         normalizedRisks.push({
           id: `acc-${row.id}`,
           sourceType: 'Account',
@@ -95,6 +100,13 @@ export class CentralRisksService {
       if (accountId && accountId !== 'All') {
         params.push(accountId);
         sql += ` AND p.account_id = $${params.length}`;
+      }
+      if (accessCtx) {
+        const projScope = this.access.buildProjectVisibility('p', accessCtx, params.length + 1);
+        if (projScope.conditions.length > 0) {
+          sql += ` AND ${projScope.conditions.join(' AND ')}`;
+          params.push(...projScope.params);
+        }
       }
       sql += ` ORDER BY r.created_at DESC`;
 
@@ -146,6 +158,13 @@ export class CentralRisksService {
       if (accountId && accountId !== 'All') {
         params.push(accountId);
         sql += ` AND p.account_id = $${params.length}`;
+      }
+      if (accessCtx) {
+        const projIssueScope = this.access.buildProjectVisibility('p', accessCtx, params.length + 1);
+        if (projIssueScope.conditions.length > 0) {
+          sql += ` AND ${projIssueScope.conditions.join(' AND ')}`;
+          params.push(...projIssueScope.params);
+        }
       }
       sql += ` ORDER BY i.created_at DESC`;
 

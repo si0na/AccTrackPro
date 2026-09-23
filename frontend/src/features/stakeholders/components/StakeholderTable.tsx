@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
 import { Account, Stakeholder, StakeholderType } from '@/types';
 import { Mail, Phone, Linkedin, User } from 'lucide-react';
@@ -61,7 +61,7 @@ export const StakeholderTable: React.FC<StakeholderTableProps> = ({
   rows, type, resolveAccount, canEdit, canDelete, onEdit, onDelete, onRowClick, emptyMessage,
   hideAccountColumn = false, storageKey,
 }) => {
-  const { updateStakeholder } = useCRM();
+  const { updateStakeholder, setActiveExportRows } = useCRM();
   const isServiceProvider = type === 'SERVICE_PROVIDER';
 
   const [searchQuery, setSearchQuery] = useState('');
@@ -99,6 +99,12 @@ export const StakeholderTable: React.FC<StakeholderTableProps> = ({
     () => [...filtered].sort((a, b) => compareForSort(getSortValue(a, sortField), getSortValue(b, sortField), sortDirection)),
     [filtered, sortField, sortDirection],
   );
+
+  useEffect(() => {
+    if (!isServiceProvider) {
+      setActiveExportRows('stakeholders', sorted);
+    }
+  }, [sorted, isServiceProvider, setActiveExportRows]);
 
   const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
   const currentPage = Math.min(page, totalPages);

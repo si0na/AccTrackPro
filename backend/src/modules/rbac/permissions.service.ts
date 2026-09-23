@@ -10,6 +10,7 @@ import { TtlCacheService } from '../../common/services/ttl-cache.service';
  */
 export interface UserAccessContext {
   userId: string;
+  userEmail: string | null;
   /** Primary role (users.role_id) — the JWT display claim / single-role fallback. */
   roleId: string | null;
   roleKey: string | null;
@@ -84,7 +85,7 @@ export class PermissionsService {
     return this.cache.getOrSet(`${CACHE_PREFIX}ctx:${userId}`, CTX_TTL_MS, async () => {
       // Primary role (JWT display claim / single-role fallback).
       const { rows: primaryRows } = await this.db.query(
-        `SELECT u.role_id, r.key AS role_key, r.name AS role_name, r.account_scope_field
+        `SELECT u.role_id, u.email, r.key AS role_key, r.name AS role_name, r.account_scope_field
          FROM users u
          LEFT JOIN roles r ON r.id = u.role_id
          WHERE u.id = $1`,
@@ -142,6 +143,7 @@ export class PermissionsService {
 
       return {
         userId,
+        userEmail: primary?.email ? String(primary.email).trim().toLowerCase() : null,
         roleId: primary?.role_id ?? null,
         roleKey: primary?.role_key ?? null,
         roleName: primary?.role_name ?? null,

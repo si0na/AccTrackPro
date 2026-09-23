@@ -1,8 +1,10 @@
+import { ReflectOneLogo } from '@/components/common/ReflectOneLogo';
+
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter, useNavigate } from 'react-router-dom';
 import { CRMProvider, useCRM } from '@/contexts/CRMContext';
 import { buildPath } from '@/routes';
-import { canAccessView } from '@/utils/permissions';
+import { canAccessView, getFirstAccessibleView } from '@/utils/permissions';
 import { NotAuthorized } from '@/components/NotAuthorized';
 import { Sidebar } from '@/components/layout/Sidebar';
 import { GlobalAccountSelector } from '@/components/layout/GlobalAccountSelector';
@@ -17,6 +19,7 @@ import { ProjectDetailsView } from '@/features/projects/components/ProjectDetail
 import { SqaListView } from '@/features/sqa/components/SqaListView';
 import { SqaDetailsView } from '@/features/sqa/components/SqaDetailsView';
 import { ActionItemsView } from '@/features/action-items/components/ActionItemsView';
+import { ActionItemDetailsView } from '@/features/action-items/components/ActionItemDetailsView';
 import { StakeholdersView } from '@/features/stakeholders/components/StakeholdersView';
 import { ExecutiveDashboardView } from '@/features/reports/components/ExecutiveDashboardView';
 import { AuditLogView } from '@/features/reports/components/AuditLogView';
@@ -50,7 +53,7 @@ const InnerLayout: React.FC = () => {
   const {
     currentView, setView,
     currentUser, isLoggedIn, authLoading, currentUserProfile, logout,
-    selectedAccountId, selectedOpportunityId, selectedProjectId, selectedSqaId, selectedRiskId,
+    selectedAccountId, selectedOpportunityId, selectedProjectId, selectedSqaId, selectedRiskId, selectedActionItemId,
     updateProfilePicture,
     unreadNotificationCount,
     can, permissionsLoaded,
@@ -84,6 +87,22 @@ const InnerLayout: React.FC = () => {
     window.location.pathname === '/reset-password' ? 'reset-password' : 'login'
   );
 
+  // Auto-redirect from default landing (e.g. Dashboard) if user lacks permission for it
+  useEffect(() => {
+    if (!isLoggedIn || !permissionsLoaded) return;
+
+    if (!canAccessView(currentView, can)) {
+      const path = window.location.pathname;
+      const isDefaultLanding = currentView === 'dashboard' || path === '/' || path === '/dashboard';
+      if (isDefaultLanding) {
+        const firstView = getFirstAccessibleView(can);
+        if (firstView && firstView !== currentView) {
+          setView(firstView);
+        }
+      }
+    }
+  }, [isLoggedIn, permissionsLoaded, currentView, can, setView]);
+
   // Sync state → URL so browser history reflects the current view
   useEffect(() => {
     if (!isLoggedIn) {
@@ -92,11 +111,11 @@ const InnerLayout: React.FC = () => {
       }
       return;
     }
-    const path = buildPath(currentView, selectedAccountId, selectedOpportunityId, selectedProjectId, selectedSqaId, selectedRiskId);
+    const path = buildPath(currentView, selectedAccountId, selectedOpportunityId, selectedProjectId, selectedSqaId, selectedRiskId, selectedActionItemId);
     if (window.location.pathname !== path) {
       navigate(path, { replace: true });
     }
-  }, [currentView, selectedAccountId, selectedOpportunityId, selectedProjectId, selectedSqaId, selectedRiskId, navigate, isLoggedIn]);
+  }, [currentView, selectedAccountId, selectedOpportunityId, selectedProjectId, selectedSqaId, selectedRiskId, selectedActionItemId, navigate, isLoggedIn]);
 
   if (authLoading) {
     return <FullPageLoading />;
@@ -155,6 +174,7 @@ const InnerLayout: React.FC = () => {
           {/* Center ReflectOne Branding Header */}
           <div className="hidden md:flex flex-col items-center justify-center text-center px-4 py-1 select-none">
             <h1 className="text-base font-black tracking-tight text-slate-800 flex items-center gap-1.5 leading-none">
+              <ReflectOneLogo className="w-5 h-5 shrink-0" />
               <span className="bg-gradient-to-r from-blue-700 via-sky-600 to-teal-600 bg-clip-text text-transparent font-black tracking-tight text-lg">
                 ReflectOne
               </span>
@@ -280,10 +300,11 @@ const InnerLayout: React.FC = () => {
           {currentView === 'opportunity-forecast'   && <OpportunityForecastView mode="opportunity" />}
           {currentView === 'projects'                && <ProjectsListView />}
           {currentView === 'project-details'         && <ProjectDetailsView key={selectedProjectId} />}
-          {currentView === 'sqa'                     && <SqaListView />}
+          {(currentView === 'sqa' || currentView === 'sqa-tracking') && <SqaListView />}
           {currentView === 'sqa-details'             && <SqaDetailsView key={selectedSqaId} />}
           {currentView === 'actionItems'            && <ActionItemsView />}
           {currentView === 'projectActionItems'     && <ActionItemsView />}
+          {(currentView === 'action-item-details' || currentView === 'project-action-item-details') && <ActionItemDetailsView key={selectedActionItemId} />}
           {currentView === 'stakeholders'           && <StakeholdersView />}
           {currentView === 'forecast'               && <OpportunityForecastView mode="portfolio" />}
           {currentView === 'executive'              && <ExecutiveDashboardView />}

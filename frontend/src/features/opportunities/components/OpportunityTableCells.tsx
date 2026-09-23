@@ -141,7 +141,7 @@ export const renderOpportunityCell = (
   const onUpdateOpp = onUpdateOppRaw;
   if (col.key === 'name') {
     return (
-      <div className="flex items-center gap-2.5 min-w-0" onClick={(e) => onUpdateOpp && e.stopPropagation()}>
+      <div className="flex items-center gap-2.5 min-w-0">
         <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg font-bold shrink-0">
           <TrendingUp className="w-4 h-4" aria-hidden="true" />
         </div>
@@ -197,14 +197,12 @@ export const renderOpportunityCell = (
 
   if (col.key === 'value') {
     return onUpdateOpp ? (
-      <div onClick={(e) => e.stopPropagation()}>
-        <InlineTextEditCell
-          type="number"
-          value={opp.value}
-          formatDisplay={(v) => formatCurrency(Number(v))}
-          onSave={(v) => onUpdateOpp(opp, { value: Number(v) || 0 })}
-        />
-      </div>
+      <InlineTextEditCell
+        type="number"
+        value={opp.value}
+        formatDisplay={(v) => formatCurrency(Number(v))}
+        onSave={(v) => onUpdateOpp(opp, { value: Number(v) || 0 })}
+      />
     ) : (
       <span className="text-slate-900 font-bold font-mono text-sm">{formatCurrency(opp.value)}</span>
     );
@@ -212,7 +210,7 @@ export const renderOpportunityCell = (
 
   if (col.key === 'probability') {
     return onUpdateOpp ? (
-      <div className="flex items-center justify-center space-x-2" onClick={(e) => e.stopPropagation()}>
+      <div className="flex items-center justify-center space-x-2">
         <InlineTextEditCell
           type="number"
           value={opp.probability}
@@ -242,14 +240,12 @@ export const renderOpportunityCell = (
     const raw = opp.allocationStartDate || (opp as any).startDate || (opp as any).projectStartDate || '';
     const val = raw ? (raw.includes('T') ? raw.split('T')[0] : raw) : '';
     return onUpdateOpp ? (
-      <div onClick={(e) => e.stopPropagation()}>
-        <InlineTextEditCell
-          type="date"
-          value={val}
-          placeholder="Set start date…"
-          onSave={(v) => onUpdateOpp(opp, { allocationStartDate: v })}
-        />
-      </div>
+      <InlineTextEditCell
+        type="date"
+        value={val}
+        placeholder="Set start date…"
+        onSave={(v) => onUpdateOpp(opp, { allocationStartDate: v })}
+      />
     ) : (
       <span className="text-slate-500 font-mono font-medium whitespace-nowrap">{val || '—'}</span>
     );
@@ -259,14 +255,12 @@ export const renderOpportunityCell = (
     const raw = opp.allocationEndDate || (opp as any).endDate || (opp as any).projectEndDate || '';
     const val = raw ? (raw.includes('T') ? raw.split('T')[0] : raw) : '';
     return onUpdateOpp ? (
-      <div onClick={(e) => e.stopPropagation()}>
-        <InlineTextEditCell
-          type="date"
-          value={val}
-          placeholder="Set end date…"
-          onSave={(v) => onUpdateOpp(opp, { allocationEndDate: v })}
-        />
-      </div>
+      <InlineTextEditCell
+        type="date"
+        value={val}
+        placeholder="Set end date…"
+        onSave={(v) => onUpdateOpp(opp, { allocationEndDate: v })}
+      />
     ) : (
       <span className="text-slate-500 font-mono font-medium whitespace-nowrap">{val || '—'}</span>
     );
@@ -274,13 +268,11 @@ export const renderOpportunityCell = (
 
   if (col.key === 'description') {
     return onUpdateOpp ? (
-      <div onClick={(e) => e.stopPropagation()}>
-        <InlineTextEditCell
-          value={opp.description || ''}
-          placeholder="Add description…"
-          onSave={(v) => onUpdateOpp(opp, { description: v })}
-        />
-      </div>
+      <InlineTextEditCell
+        value={opp.description || ''}
+        placeholder="Add description…"
+        onSave={(v) => onUpdateOpp(opp, { description: v })}
+      />
     ) : (
       <ExpandableTextCell
         text={opp.description}

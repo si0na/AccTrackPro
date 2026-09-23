@@ -8,6 +8,7 @@ import { FolderKanban } from 'lucide-react';
 import type { AdminUser, Project, ProjectHealth, ProjectMethodology, ProjectStatus, Stakeholder } from '@/types';
 import { PROJECT_HEALTH_CHOICES, PRIORITY_OPTIONS, DELIVERY_MODEL_OPTIONS, BILLING_MODEL_OPTIONS, TOWER_OPTIONS, SERVICE_LINE_OPTIONS } from '@/constants';
 import {
+  ErrorBanner,
   FormField,
   FormGrid,
   FormModal,
@@ -25,10 +26,10 @@ export interface ProjectFormModalProps {
   submitLabel?: string;
   value: Project;
   onChange: (patch: Partial<Project>) => void;
-  /** Users list (Administration) — backs the Service Provider PM / Practice Lead selects (both FK users). */
-  users: AdminUser[];
-  /** Full stakeholders list — filtered here to the project's account + CLIENT type for the Client Name / Client PM selects. */
-  stakeholders: Stakeholder[];
+  /** Users list (Administration) — backs the Service Provider PM / Practice Lead selects (both FK users). Optional. */
+  users?: AdminUser[];
+  /** Full stakeholders list — filtered here to the project's account + CLIENT type for the Client Name / Client PM selects. Optional. */
+  stakeholders?: Stakeholder[];
   /**
    * 'edit' (default) — updating an existing project's Overview fields.
    * 'create' — converting a Won opportunity into a new project; the same fields,
@@ -36,6 +37,8 @@ export interface ProjectFormModalProps {
    * are fixed by the originating opportunity server-side and so are not shown.
    */
   mode?: 'create' | 'edit';
+  /** Error message banner displayed at top of form modal if submit fails */
+  errorMsg?: string | null;
 }
 
 /**
@@ -61,11 +64,12 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
   onClose,
   onSubmit,
   isSubmitting = false,
-  submitLabel = 'Create Project',
+  submitLabel,
   value,
   onChange,
   stakeholders = [],
-  mode = 'create',
+  mode = 'edit',
+  errorMsg,
 }) => {
   const isEdit = mode === 'edit';
   const { projectManagers, practiceLeads, clientPartners, accounts, serviceProviders, stakeholders: crmStakeholders } = useCRM();
@@ -129,12 +133,13 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
       icon={<FolderKanban className="w-5 h-5 text-indigo-600" aria-hidden="true" />}
       onClose={onClose}
       onSubmit={onSubmit}
-      submitLabel={isSubmitting ? (isCreate ? 'Creating…' : 'Saving…') : (isCreate ? 'Create Project' : 'Save Changes')}
+      submitLabel={submitLabel || (isSubmitting ? (isCreate ? 'Creating…' : 'Saving…') : (isCreate ? 'Create Project' : 'Save Changes'))}
       isSubmitting={isSubmitting}
       submitVariant={isCreate ? 'primary' : 'warning'}
       maxWidth="max-w-5xl"
     >
       <div className="space-y-5">
+        {errorMsg && <ErrorBanner message={errorMsg} />}
         <FormSection title="Project Information">
           <FormGrid>
             <FormField label="Project Name" required wide>
@@ -146,32 +151,31 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
                 className={INPUT_CLS}
               />
             </FormField>
-            {isCreate && (
-              <FormField label="Account" required wide>
-                {value.opportunityId ? (
-                  <input
-                    type="text"
-                    disabled
-                    value={value.accountName || accounts.find((a) => a.id === value.accountId)?.name || '—'}
-                    className={`${INPUT_CLS} bg-slate-100 font-semibold`}
-                  />
-                ) : (
-                  <SearchableSelect
-                    options={(accounts || []).map((a) => ({ value: a.id, label: a.name }))}
-                    value={value.accountId || ''}
-                    onChange={(accId) => {
-                      const selectedAcc = (accounts || []).find((a) => a.id === accId);
-                      onChange({
-                        accountId: accId,
-                        accountName: selectedAcc?.name || '',
-                      });
-                    }}
-                    placeholder="Select Account..."
-                    required
-                  />
-                )}
-              </FormField>
-            )}
+            <FormField label="Account" required={!value.opportunityId} wide>
+              {value.opportunityId ? (
+                <input
+                  type="text"
+                  disabled
+                  value={value.accountName || accounts.find((a) => a.id === value.accountId)?.name || '—'}
+                  className={`${INPUT_CLS} bg-slate-100 font-semibold text-slate-700`}
+                  title="Account is fixed for projects created from opportunities"
+                />
+              ) : (
+                <SearchableSelect
+                  options={(accounts || []).map((a) => ({ value: a.id, label: a.name }))}
+                  value={value.accountId || ''}
+                  onChange={(accId) => {
+                    const selectedAcc = (accounts || []).find((a) => a.id === accId);
+                    onChange({
+                      accountId: accId,
+                      accountName: selectedAcc?.name || '',
+                    });
+                  }}
+                  placeholder="Select Account..."
+                  required
+                />
+              )}
+            </FormField>
             <FormField label="Project Description" wide>
               <textarea
                 rows={2}

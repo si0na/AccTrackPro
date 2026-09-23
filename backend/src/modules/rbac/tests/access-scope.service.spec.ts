@@ -17,6 +17,7 @@ describe('AccessScopeService', () => {
     it('Test 4 — Admin: should return empty conditions when canViewAllAccounts is true', () => {
       const ctx: UserAccessContext = {
         userId: 'admin-user-id',
+        userEmail: null,
         roleId: 'admin-role-id',
         roleKey: 'admin',
         roleName: 'Admin',
@@ -37,6 +38,7 @@ describe('AccessScopeService', () => {
     it('Test 1 & 2 & 6 (Predicate Correctness): Account Manager should generate OR condition for assigned AM and owner_id', () => {
       const ctx: UserAccessContext = {
         userId: 'am-user-id',
+        userEmail: null,
         roleId: 'am-role-id',
         roleKey: 'account-manager',
         roleName: 'Account Manager',
@@ -58,6 +60,7 @@ describe('AccessScopeService', () => {
     it('Test 3 — Other ownership-scoped roles (e.g. Practice Lead): should NOT include owner_id in OR condition', () => {
       const ctx: UserAccessContext = {
         userId: 'pl-user-id',
+        userEmail: null,
         roleId: 'pl-role-id',
         roleKey: 'practice-lead',
         roleName: 'Practice Lead',
@@ -79,6 +82,7 @@ describe('AccessScopeService', () => {
     it('Test 5 — Multiple roles: should correctly union conditions and include owner_id because of Account Manager role', () => {
       const ctx: UserAccessContext = {
         userId: 'multi-user-id',
+        userEmail: null,
         roleId: 'am-role-id',
         roleKey: 'account-manager',
         roleName: 'Account Manager',
@@ -102,6 +106,7 @@ describe('AccessScopeService', () => {
     it('Default user (no scope fields): should fall back to owner_id condition only', () => {
       const ctx: UserAccessContext = {
         userId: 'basic-user-id',
+        userEmail: null,
         roleId: 'basic-role-id',
         roleKey: 'basic',
         roleName: 'Basic User',

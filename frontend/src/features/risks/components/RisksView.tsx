@@ -57,12 +57,32 @@ const STATUS_COLORS: Record<string, string> = {
 export const RisksView: React.FC = () => {
   const {
     accounts,
+    projects,
     globalAccountId,
     setView,
     setSelectedAccountId,
     setSelectedRiskId,
     can,
   } = useCRM();
+
+  // Compute available accounts by combining accounts list and accounts derived from accessible projects
+  const availableAccounts = useMemo(() => {
+    const map = new Map<string, { id: string; name: string }>();
+    accounts.forEach((acc) => {
+      if (acc.id) {
+        map.set(acc.id, { id: acc.id, name: acc.name });
+      }
+    });
+    projects.forEach((proj) => {
+      if (proj.accountId && !map.has(proj.accountId)) {
+        map.set(proj.accountId, {
+          id: proj.accountId,
+          name: proj.accountName || proj.accountId,
+        });
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [accounts, projects]);
 
   // Parent Tab State: 'Risks' | 'Issues'
   const [activeTab, setActiveTab] = useState<'Risks' | 'Issues'>('Risks');
@@ -517,13 +537,11 @@ export const RisksView: React.FC = () => {
               className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white cursor-pointer font-semibold text-slate-700 disabled:bg-slate-100 disabled:cursor-not-allowed"
             >
               <option value="All">All Accounts</option>
-              {[...accounts]
-                .sort((a, b) => a.name.localeCompare(b.name))
-                .map((acc) => (
-                  <option key={acc.id} value={acc.id}>
-                    {acc.name}
-                  </option>
-                ))}
+              {availableAccounts.map((acc) => (
+                <option key={acc.id} value={acc.id}>
+                  {acc.name}
+                </option>
+              ))}
             </select>
           </div>
         </div>

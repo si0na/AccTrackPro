@@ -46,6 +46,7 @@ const SUPPORTED_PERMISSIONS: Record<string, string[]> = {
   accounts: ['view', 'view-all', 'create', 'update', 'delete', 'import', 'export'],
   opportunities: ['view', 'view-all', 'create', 'update', 'delete', 'export'],
   'action-items': ['view', 'view-all', 'create', 'update', 'delete'],
+  'project-action-items': ['view', 'view-all', 'create', 'update', 'delete'],
   stakeholders: ['view', 'view-all', 'create', 'update', 'delete'],
   projects: ['view', 'view-all', 'create', 'update', 'delete'],
   sqa: ['view', 'view-all', 'create', 'update', 'delete', 'export'],

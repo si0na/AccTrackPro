@@ -3,12 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
 import { Project, User } from '@/types';
 import { usersApi, projectsApi } from '@/api/crm.api';
-import { Eye, Trash2, FolderKanban, Plus, Pencil } from 'lucide-react';
+import { Eye, Trash2, FolderKanban, Plus, Pencil, Settings2 } from 'lucide-react';
 import { compareForSort, matchesGlobalAccount, serviceProviderOptionLabel, isRawIdStr, SortDirection } from '@/utils';
+import { CustomizeColumnsSidebar } from '@/components/table/CustomizeColumnsSidebar';
 import {
   Button,
   Card,
@@ -32,6 +33,7 @@ import {
   TableHead,
   TableHeadCell,
   TableRow,
+  computePinnedOffsets,
 } from '@/components/ui';
 import { LoadingState } from '@/components/common/LoadingState';
 import { ProjectFormModal } from './ProjectFormModal';
@@ -41,10 +43,7 @@ const STATUS_OPTIONS = ['Active', 'Cancelled', 'Completed', 'On Hold'] as const;
 const HEALTH_OPTIONS = ['Amber', 'Green', 'Red'] as const;
 
 /**
- * Projects list — modeled on OpportunitiesView.tsx. Unlike every other list
- * view, there is intentionally no "New Project" action here: a Project is only
- * created via the "Create Project" action on a Won Opportunity (which fixes the
- * account/opportunity links), never started blank from this list.
+ * Projects list — modeled on OpportunitiesView.tsx.
  */
 export const ProjectsListView: React.FC = () => {
   const {
@@ -61,6 +60,7 @@ export const ProjectsListView: React.FC = () => {
     refreshData,
     loading,
     can,
+    projectsColumnConfig,
   } = useCRM();
 
   const canDeleteProject = can('projects', 'delete');
@@ -142,22 +142,29 @@ export const ProjectsListView: React.FC = () => {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingProjectDraft, setEditingProjectDraft] = useState<Project | null>(null);
   const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
+  const [editProjectError, setEditProjectError] = useState<string | null>(null);
 
   const handleOpenEditModal = (project: Project) => {
     setEditingProjectDraft({ ...project });
+    setEditProjectError(null);
     setIsEditModalOpen(true);
   };
 
   const handleSaveEditProject = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingProjectDraft || !editingProjectDraft.name.trim()) return;
+    if (editingProjectDraft.startDate && editingProjectDraft.endDate && editingProjectDraft.endDate < editingProjectDraft.startDate) {
+      setEditProjectError('Project End Date cannot be earlier than Project Start Date.');
+      return;
+    }
     setIsSubmittingEdit(true);
+    setEditProjectError(null);
     try {
       await updateProject(editingProjectDraft);
       setIsEditModalOpen(false);
       setEditingProjectDraft(null);
     } catch (err: any) {
-      alert(err?.response?.data?.message || err?.message || 'Failed to update project.');
+      setEditProjectError(err?.response?.data?.message || err?.message || 'Failed to update project.');
     } finally {
       setIsSubmittingEdit(false);
     }
@@ -269,6 +276,21 @@ export const ProjectsListView: React.FC = () => {
     setView('project-details');
   };
 
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
+  const displayedConfigs = useMemo(() => {
+    const cols = (projectsColumnConfig || []).filter((c) => c.isDisplayed);
+    const pinned = cols.filter((c) => c.isPinned);
+    const unpinned = cols.filter((c) => !c.isPinned);
+    return [...pinned, ...unpinned];
+  }, [projectsColumnConfig]);
+
+  const pinnedOffsets = useMemo(() => {
+    return computePinnedOffsets(displayedConfigs, 'projects');
+  }, [displayedConfigs]);
+
+  const extraColumnCount = displayedConfigs.filter((col) => !col.isStandard).length;
+
   const handleRestoreProject = async (id: string) => {
     setRestoreError(null);
     try {
@@ -289,17 +311,33 @@ export const ProjectsListView: React.FC = () => {
         title="Project Management"
         subtitle="Live delivery record for active projects — progress, team, and ongoing work."
         actions={
-          canCreateProject && (
+          <div className="flex items-center gap-2">
             <Button
-              variant="primary"
+              variant="secondary"
               size="md"
-              icon={<Plus className="w-4.5 h-4.5" aria-hidden="true" />}
-              onClick={handleOpenCreateModal}
+              icon={<Settings2 className="w-4.5 h-4.5 text-slate-500" aria-hidden="true" />}
+              onClick={() => setIsSidebarOpen(true)}
             >
-              Create Project
+              Customize Columns
             </Button>
-          )
+            {canCreateProject && (
+              <Button
+                variant="primary"
+                size="md"
+                icon={<Plus className="w-4.5 h-4.5" aria-hidden="true" />}
+                onClick={handleOpenCreateModal}
+              >
+                Create Project
+              </Button>
+            )}
+          </div>
         }
+      />
+
+      <CustomizeColumnsSidebar
+        module="projects"
+        isOpen={isSidebarOpen}
+        onClose={() => setIsSidebarOpen(false)}
       />
 
       <FilterBar className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
@@ -349,105 +387,200 @@ export const ProjectsListView: React.FC = () => {
 
       <Card padding="none" clip>
         <div className="overflow-x-auto">
-          <Table resizable storageKey="projects">
+          <Table extraColumns={extraColumnCount} resizable storageKey="projects">
             <TableHead>
-              <TableHeadCell columnId="name">
-                <SortableHeader label="Project Name" field="name" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
-              </TableHeadCell>
-              <TableHeadCell columnId="accountId">
-                <SortableHeader label="Account" field="accountId" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} />
-              </TableHeadCell>
-              <TableHeadCell columnId="clientPartnerName">Client Partner Name</TableHeadCell>
-              <TableHeadCell columnId="serviceProviderPmName">Service Provider PM</TableHeadCell>
-              <TableHeadCell columnId="practiceLeadName">Practice Lead</TableHeadCell>
-              <TableHeadCell columnId="methodology">Methodology</TableHeadCell>
-              <TableHeadCell columnId="health" align="center">Health</TableHeadCell>
-              <TableHeadCell columnId="actualCompletionPct" align="center">Progress</TableHeadCell>
-              <TableHeadCell columnId="status">Status</TableHeadCell>
-              <TableHeadCell columnId="startDate">Start Date</TableHeadCell>
-              <TableHeadCell columnId="endDate">End Date</TableHeadCell>
+              {displayedConfigs.map((col) => (
+                <TableHeadCell
+                  key={col.key}
+                  columnId={col.key}
+                  sticky={col.isPinned ? 'left' : undefined}
+                  stickyLeft={pinnedOffsets[col.key]}
+                  align={col.key === 'health' || col.key === 'actualCompletionPct' ? 'center' : undefined}
+                >
+                  {col.key === 'name' || col.key === 'accountId' ? (
+                    <SortableHeader
+                      label={col.name}
+                      field={col.key}
+                      sortField={sortField}
+                      sortDirection={sortDirection}
+                      onSort={handleSort}
+                    />
+                  ) : (
+                    col.name
+                  )}
+                </TableHeadCell>
+              ))}
               <TableHeadCell align="center" sticky="right">Actions</TableHeadCell>
             </TableHead>
             <tbody>
               {pagedProjects.length === 0 ? (
-                <EmptyRow colSpan={12} message="No projects found matching the selected search and criteria." />
+                <EmptyRow colSpan={displayedConfigs.length + 1} message="No projects found matching the selected search and criteria." />
               ) : (
                 pagedProjects.map((p) => {
                   const account = accounts.find((a) => a.id === p.accountId);
                   const pct = p.actualCompletionPct ?? 0;
                   return (
                     <TableRow key={p.id}>
-                      <TableCell className="cursor-pointer" onClick={() => handleRowClick(p.id)}>
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg font-bold shrink-0">
-                            <FolderKanban className="w-4 h-4" aria-hidden="true" />
-                          </div>
-                          <p className="font-bold text-slate-900 text-sm min-w-0 truncate hover:text-indigo-600 transition-colors">{p.name}</p>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-slate-600 font-semibold">
-                        {account?.name || p.accountName || 'Unknown Account'}
-                      </TableCell>
-                      <TableCell className="text-slate-600" onDoubleClick={(e) => { e.stopPropagation(); if (canUpdateProject) setEditingCell({ id: p.id, key: 'clientPartnerId', value: p.clientPartnerId || '' }); }}>
-                        {editingCell?.id === p.id && editingCell?.key === 'clientPartnerId' ? (
-                          <select autoFocus value={editingCell.value} onChange={e => { const u = clientPartnerOptions.find((x: any) => x.id === e.target.value); saveInlineCell(p.id, 'clientPartnerId', e.target.value, { clientPartnerName: u?.name || '' }); }} onBlur={() => setEditingCell(null)} className="text-xs p-1 border border-indigo-500 rounded bg-white">
-                            <option value="">Select Client Partner…</option>
-                            {clientPartnerOptions.map((u: any) => <option key={u.id} value={u.id}>{serviceProviderOptionLabel(u)}</option>)}
-                          </select>
-                        ) : (resolveProjectUserLabel(p.clientPartnerName, p.clientPartnerId, clientPartnerOptions))}
-                      </TableCell>
-                      <TableCell className="text-slate-600" onDoubleClick={(e) => { e.stopPropagation(); if (canUpdateProject) setEditingCell({ id: p.id, key: 'serviceProviderPmId', value: p.serviceProviderPmId || '' }); }}>
-                        {editingCell?.id === p.id && editingCell?.key === 'serviceProviderPmId' ? (
-                          <select autoFocus value={editingCell.value} onChange={e => { const u = pmOptions.find((x: any) => x.id === e.target.value); saveInlineCell(p.id, 'serviceProviderPmId', e.target.value, { serviceProviderPmName: u?.name || '' }); }} onBlur={() => setEditingCell(null)} className="text-xs p-1 border border-indigo-500 rounded bg-white">
-                            <option value="">Select Project Manager…</option>
-                            {pmOptions.map((u: any) => <option key={u.id} value={u.id}>{serviceProviderOptionLabel(u)}</option>)}
-                          </select>
-                        ) : (resolveProjectUserLabel(p.serviceProviderPmName, p.serviceProviderPmId, pmOptions))}
-                      </TableCell>
-                      <TableCell className="text-slate-600" onDoubleClick={(e) => { e.stopPropagation(); if (canUpdateProject) setEditingCell({ id: p.id, key: 'practiceLeadId', value: p.practiceLeadId || '' }); }}>
-                        {editingCell?.id === p.id && editingCell?.key === 'practiceLeadId' ? (
-                          <select autoFocus value={editingCell.value} onChange={e => { const u = practiceLeadOptions.find((x: any) => x.id === e.target.value); saveInlineCell(p.id, 'practiceLeadId', e.target.value, { practiceLeadName: u?.name || '' }); }} onBlur={() => setEditingCell(null)} className="text-xs p-1 border border-indigo-500 rounded bg-white">
-                            <option value="">Select Practice Lead…</option>
-                            {practiceLeadOptions.map((u: any) => <option key={u.id} value={u.id}>{serviceProviderOptionLabel(u)}</option>)}
-                          </select>
-                        ) : (resolveProjectUserLabel(p.practiceLeadName, p.practiceLeadId, practiceLeadOptions))}
-                      </TableCell>
-                      <TableCell className="text-slate-600" onDoubleClick={(e) => { e.stopPropagation(); if (canUpdateProject) setEditingCell({ id: p.id, key: 'methodology', value: p.methodology }); }}>
-                        {editingCell?.id === p.id && editingCell?.key === 'methodology' ? (
-                          <select autoFocus value={editingCell.value} onChange={e => saveInlineCell(p.id, 'methodology', e.target.value)} onBlur={() => setEditingCell(null)} className="text-xs p-1 border border-indigo-500 rounded bg-white">
-                            {METHODOLOGY_OPTIONS.map(m => <option key={m} value={m}>{m}</option>)}
-                          </select>
-                        ) : (p.methodology)}
-                      </TableCell>
-                      <TableCell align="center" onDoubleClick={(e) => { e.stopPropagation(); if (canUpdateProject) setEditingCell({ id: p.id, key: 'health', value: p.health }); }}>
-                        {editingCell?.id === p.id && editingCell?.key === 'health' ? (
-                          <select autoFocus value={editingCell.value} onChange={e => saveInlineCell(p.id, 'health', e.target.value)} onBlur={() => setEditingCell(null)} className="text-xs p-1 border border-indigo-500 rounded bg-white">
-                            {HEALTH_OPTIONS.map(h => <option key={h} value={h}>{h}</option>)}
-                          </select>
-                        ) : (
-                          <StatusBadge value={p.health} colorMap={HEALTH_COLORS} />
-                        )}
-                      </TableCell>
-                      <TableCell align="center">
-                        <div className="flex items-center justify-center gap-2">
-                          <div className="w-14 bg-slate-100 h-2 rounded-full overflow-hidden shrink-0">
-                            <div
-                              className={`h-full ${pct >= 80 ? 'bg-green-500' : pct >= 50 ? 'bg-blue-500' : 'bg-yellow-500'}`}
-                              style={{ width: `${Math.min(100, Math.max(0, pct))}%` }}
-                            />
-                          </div>
-                          <span className="font-bold text-slate-700 font-mono text-[11px]">{pct}%</span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-slate-600 font-medium" onDoubleClick={(e) => { e.stopPropagation(); if (canUpdateProject) setEditingCell({ id: p.id, key: 'status', value: p.status }); }}>
-                        {editingCell?.id === p.id && editingCell?.key === 'status' ? (
-                          <select autoFocus value={editingCell.value} onChange={e => saveInlineCell(p.id, 'status', e.target.value)} onBlur={() => setEditingCell(null)} className="text-xs p-1 border border-indigo-500 rounded bg-white">
-                            {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
-                          </select>
-                        ) : (p.status)}
-                      </TableCell>
-                      <TableCell className="font-mono text-slate-500 whitespace-nowrap">{p.startDate || 'N/A'}</TableCell>
-                      <TableCell className="font-mono text-slate-500 whitespace-nowrap">{p.endDate || 'N/A'}</TableCell>
+                      {displayedConfigs.map((col) => {
+                        if (col.key === 'name') {
+                          return (
+                            <TableCell key={col.key} sticky={col.isPinned ? 'left' : undefined} stickyLeft={pinnedOffsets[col.key]} className="cursor-pointer" onClick={() => handleRowClick(p.id)}>
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <div className="p-1.5 bg-indigo-50 text-indigo-600 rounded-lg font-bold shrink-0">
+                                  <FolderKanban className="w-4 h-4" aria-hidden="true" />
+                                </div>
+                                <p className="font-bold text-slate-900 text-sm min-w-0 truncate hover:text-indigo-600 transition-colors">{p.name}</p>
+                              </div>
+                            </TableCell>
+                          );
+                        }
+                        if (col.key === 'accountId') {
+                          const isFromOpportunity = !!p.opportunityId;
+                          const canEditAccount = canUpdateProject && !isFromOpportunity;
+                          return (
+                            <TableCell
+                              key={col.key}
+                              sticky={col.isPinned ? 'left' : undefined}
+                              stickyLeft={pinnedOffsets[col.key]}
+                              className={`text-slate-600 font-semibold ${canEditAccount ? 'cursor-pointer' : ''}`}
+                              onDoubleClick={(e) => {
+                                e.stopPropagation();
+                                if (canEditAccount) {
+                                  setEditingCell({ id: p.id, key: 'accountId', value: p.accountId || '' });
+                                }
+                              }}
+                              title={isFromOpportunity ? 'Account is fixed for projects created from opportunities' : undefined}
+                            >
+                              {editingCell?.id === p.id && editingCell?.key === 'accountId' ? (
+                                <select
+                                  autoFocus
+                                  value={editingCell.value}
+                                  onChange={(e) => {
+                                    const selectedAcc = accounts.find((a) => a.id === e.target.value);
+                                    saveInlineCell(p.id, 'accountId', e.target.value, { accountName: selectedAcc?.name || '' });
+                                  }}
+                                  onBlur={() => setEditingCell(null)}
+                                  className="text-xs p-1 border border-indigo-500 rounded bg-white font-normal min-w-[140px]"
+                                >
+                                  <option value="" disabled>Select Account…</option>
+                                  {accounts.map((acc) => (
+                                    <option key={acc.id} value={acc.id}>
+                                      {acc.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : (
+                                account?.name || p.accountName || 'Unknown Account'
+                              )}
+                            </TableCell>
+                          );
+                        }
+                        if (col.key === 'clientPartnerName' || col.key === 'clientPartnerId') {
+                          return (
+                            <TableCell key={col.key} sticky={col.isPinned ? 'left' : undefined} stickyLeft={pinnedOffsets[col.key]} className="text-slate-600" onDoubleClick={(e) => { e.stopPropagation(); if (canUpdateProject) setEditingCell({ id: p.id, key: 'clientPartnerId', value: p.clientPartnerId || '' }); }}>
+                              {editingCell?.id === p.id && editingCell?.key === 'clientPartnerId' ? (
+                                <select autoFocus value={editingCell.value} onChange={e => { const u = clientPartnerOptions.find((x: any) => x.id === e.target.value); saveInlineCell(p.id, 'clientPartnerId', e.target.value, { clientPartnerName: u?.name || '' }); }} onBlur={() => setEditingCell(null)} className="text-xs p-1 border border-indigo-500 rounded bg-white">
+                                  <option value="">Select Client Partner…</option>
+                                  {clientPartnerOptions.map((u: any) => <option key={u.id} value={u.id}>{serviceProviderOptionLabel(u)}</option>)}
+                                </select>
+                              ) : (resolveProjectUserLabel(p.clientPartnerName, p.clientPartnerId, clientPartnerOptions))}
+                            </TableCell>
+                          );
+                        }
+                        if (col.key === 'serviceProviderPmName' || col.key === 'serviceProviderPmId') {
+                          return (
+                            <TableCell key={col.key} sticky={col.isPinned ? 'left' : undefined} stickyLeft={pinnedOffsets[col.key]} className="text-slate-600" onDoubleClick={(e) => { e.stopPropagation(); if (canUpdateProject) setEditingCell({ id: p.id, key: 'serviceProviderPmId', value: p.serviceProviderPmId || '' }); }}>
+                              {editingCell?.id === p.id && editingCell?.key === 'serviceProviderPmId' ? (
+                                <select autoFocus value={editingCell.value} onChange={e => { const u = pmOptions.find((x: any) => x.id === e.target.value); saveInlineCell(p.id, 'serviceProviderPmId', e.target.value, { serviceProviderPmName: u?.name || '' }); }} onBlur={() => setEditingCell(null)} className="text-xs p-1 border border-indigo-500 rounded bg-white">
+                                  <option value="">Select Project Manager…</option>
+                                  {pmOptions.map((u: any) => <option key={u.id} value={u.id}>{serviceProviderOptionLabel(u)}</option>)}
+                                </select>
+                              ) : (resolveProjectUserLabel(p.serviceProviderPmName, p.serviceProviderPmId, pmOptions))}
+                            </TableCell>
+                          );
+                        }
+                        if (col.key === 'practiceLeadName' || col.key === 'practiceLeadId') {
+                          return (
+                            <TableCell key={col.key} sticky={col.isPinned ? 'left' : undefined} stickyLeft={pinnedOffsets[col.key]} className="text-slate-600" onDoubleClick={(e) => { e.stopPropagation(); if (canUpdateProject) setEditingCell({ id: p.id, key: 'practiceLeadId', value: p.practiceLeadId || '' }); }}>
+                              {editingCell?.id === p.id && editingCell?.key === 'practiceLeadId' ? (
+                                <select autoFocus value={editingCell.value} onChange={e => { const u = practiceLeadOptions.find((x: any) => x.id === e.target.value); saveInlineCell(p.id, 'practiceLeadId', e.target.value, { practiceLeadName: u?.name || '' }); }} onBlur={() => setEditingCell(null)} className="text-xs p-1 border border-indigo-500 rounded bg-white">
+                                  <option value="">Select Practice Lead…</option>
+                                  {practiceLeadOptions.map((u: any) => <option key={u.id} value={u.id}>{serviceProviderOptionLabel(u)}</option>)}
+                                </select>
+                              ) : (resolveProjectUserLabel(p.practiceLeadName, p.practiceLeadId, practiceLeadOptions))}
+                            </TableCell>
+                          );
+                        }
+                        if (col.key === 'methodology') {
+                          return (
+                            <TableCell key={col.key} sticky={col.isPinned ? 'left' : undefined} stickyLeft={pinnedOffsets[col.key]} className="text-slate-600" onDoubleClick={(e) => { e.stopPropagation(); if (canUpdateProject) setEditingCell({ id: p.id, key: 'methodology', value: p.methodology }); }}>
+                              {editingCell?.id === p.id && editingCell?.key === 'methodology' ? (
+                                <select autoFocus value={editingCell.value} onChange={e => saveInlineCell(p.id, 'methodology', e.target.value)} onBlur={() => setEditingCell(null)} className="text-xs p-1 border border-indigo-500 rounded bg-white">
+                                  {METHODOLOGY_OPTIONS.map(m => <option key={m} value={m}>{m}</option>)}
+                                </select>
+                              ) : (p.methodology)}
+                            </TableCell>
+                          );
+                        }
+                        if (col.key === 'health') {
+                          return (
+                            <TableCell key={col.key} sticky={col.isPinned ? 'left' : undefined} stickyLeft={pinnedOffsets[col.key]} align="center" onDoubleClick={(e) => { e.stopPropagation(); if (canUpdateProject) setEditingCell({ id: p.id, key: 'health', value: p.health }); }}>
+                              {editingCell?.id === p.id && editingCell?.key === 'health' ? (
+                                <select autoFocus value={editingCell.value} onChange={e => saveInlineCell(p.id, 'health', e.target.value)} onBlur={() => setEditingCell(null)} className="text-xs p-1 border border-indigo-500 rounded bg-white">
+                                  {HEALTH_OPTIONS.map(h => <option key={h} value={h}>{h}</option>)}
+                                </select>
+                              ) : (
+                                <StatusBadge value={p.health} colorMap={HEALTH_COLORS} />
+                              )}
+                            </TableCell>
+                          );
+                        }
+                        if (col.key === 'actualCompletionPct') {
+                          return (
+                            <TableCell key={col.key} sticky={col.isPinned ? 'left' : undefined} stickyLeft={pinnedOffsets[col.key]} align="center">
+                              <div className="flex items-center justify-center gap-2">
+                                <div className="w-14 bg-slate-100 h-2 rounded-full overflow-hidden shrink-0">
+                                  <div
+                                    className={`h-full ${pct >= 80 ? 'bg-green-500' : pct >= 50 ? 'bg-blue-500' : 'bg-yellow-500'}`}
+                                    style={{ width: `${Math.min(100, Math.max(0, pct))}%` }}
+                                  />
+                                </div>
+                                <span className="font-bold text-slate-700 font-mono text-[11px]">{pct}%</span>
+                              </div>
+                            </TableCell>
+                          );
+                        }
+                        if (col.key === 'status') {
+                          return (
+                            <TableCell key={col.key} sticky={col.isPinned ? 'left' : undefined} stickyLeft={pinnedOffsets[col.key]} className="text-slate-600 font-medium" onDoubleClick={(e) => { e.stopPropagation(); if (canUpdateProject) setEditingCell({ id: p.id, key: 'status', value: p.status }); }}>
+                              {editingCell?.id === p.id && editingCell?.key === 'status' ? (
+                                <select autoFocus value={editingCell.value} onChange={e => saveInlineCell(p.id, 'status', e.target.value)} onBlur={() => setEditingCell(null)} className="text-xs p-1 border border-indigo-500 rounded bg-white">
+                                  {STATUS_OPTIONS.map(s => <option key={s} value={s}>{s}</option>)}
+                                </select>
+                              ) : (p.status)}
+                            </TableCell>
+                          );
+                        }
+                        if (col.key === 'startDate') {
+                          return (
+                            <TableCell key={col.key} sticky={col.isPinned ? 'left' : undefined} stickyLeft={pinnedOffsets[col.key]} className="font-mono text-slate-500 whitespace-nowrap">
+                              {p.startDate || 'N/A'}
+                            </TableCell>
+                          );
+                        }
+                        if (col.key === 'endDate') {
+                          return (
+                            <TableCell key={col.key} sticky={col.isPinned ? 'left' : undefined} stickyLeft={pinnedOffsets[col.key]} className="font-mono text-slate-500 whitespace-nowrap">
+                              {p.endDate || 'N/A'}
+                            </TableCell>
+                          );
+                        }
+                        return (
+                          <TableCell key={col.key} sticky={col.isPinned ? 'left' : undefined} stickyLeft={pinnedOffsets[col.key]} className="text-slate-600">
+                            {String((p as any)[col.key] ?? '—')}
+                          </TableCell>
+                        );
+                      })}
                       <TableCell align="center" sticky="right" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-center justify-center gap-1.5 whitespace-nowrap">
                           <RowActionButton
@@ -572,13 +705,12 @@ export const ProjectsListView: React.FC = () => {
         <ProjectFormModal
           isOpen={isEditModalOpen}
           mode="edit"
-          onClose={() => { setIsEditModalOpen(false); setEditingProjectDraft(null); }}
+          onClose={() => { setIsEditModalOpen(false); setEditingProjectDraft(null); setEditProjectError(null); }}
           onSubmit={handleSaveEditProject}
           isSubmitting={isSubmittingEdit}
+          errorMsg={editProjectError}
           value={editingProjectDraft}
           onChange={(patch) => setEditingProjectDraft((prev) => (prev ? { ...prev, ...patch } : null))}
-          users={[]}
-          stakeholders={[]}
         />
       )}
     </div>

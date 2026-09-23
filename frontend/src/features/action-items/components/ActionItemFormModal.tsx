@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { CheckSquare } from 'lucide-react';
 import type { Account, ActionItem, ActionItemStatus, ActionItemType, ColumnConfig, CustomColumn, Opportunity, PriorityLevel, Stakeholder } from '@/types';
 import { ACTION_ITEM_STATUS_OPTIONS, ACTION_ITEM_TYPE_OPTIONS } from '@/constants';
@@ -73,6 +73,31 @@ export const ActionItemFormModal: React.FC<ActionItemFormModalProps> = ({
     !!lockedProject ||
     (mode !== 'normal' && !!value.projectId);
 
+  const accountOptions = useMemo(() => {
+    if (isProjectActionItem) {
+      const map = new Map<string, { id: string; name: string }>();
+      (accounts || []).forEach((a) => {
+        if (a && a.id) {
+          map.set(a.id, { id: a.id, name: a.name });
+        }
+      });
+      (projects || []).forEach((p) => {
+        if (p && p.accountId && !map.has(p.accountId)) {
+          map.set(p.accountId, {
+            id: p.accountId,
+            name: p.accountName || 'Account',
+          });
+        }
+      });
+      return Array.from(map.values()).sort((a, b) =>
+        a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+      );
+    }
+    return [...(accounts || [])].sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+    );
+  }, [accounts, projects, isProjectActionItem]);
+
   return (
     <FormModal
       isOpen={isOpen}
@@ -115,17 +140,23 @@ export const ActionItemFormModal: React.FC<ActionItemFormModalProps> = ({
                 <select
                   required
                   value={value.accountId}
-                  onChange={(e) =>
-                    onChange({ accountId: e.target.value, opportunityId: '', projectId: '' })
-                  }
+                  onChange={(e) => {
+                    const newAccId = e.target.value;
+                    const projBelongs = value.projectId
+                      ? (projects || []).find((p) => p.id === value.projectId)?.accountId === newAccId
+                      : true;
+                    onChange({
+                      accountId: newAccId,
+                      opportunityId: '',
+                      projectId: projBelongs ? value.projectId : '',
+                    });
+                  }}
                   className={SELECT_CLS}
                 >
                   <option value="" disabled>Select an account...</option>
-                  {[...accounts]
-                    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
-                    .map((acc) => (
-                      <option key={acc.id} value={acc.id}>{acc.name}</option>
-                    ))}
+                  {accountOptions.map((acc) => (
+                    <option key={acc.id} value={acc.id}>{acc.name}</option>
+                  ))}
                 </select>
               </FormField>
             )}
@@ -147,7 +178,14 @@ export const ActionItemFormModal: React.FC<ActionItemFormModalProps> = ({
                   <select
                     required
                     value={value.projectId || ''}
-                    onChange={(e) => onChange({ projectId: e.target.value })}
+                    onChange={(e) => {
+                      const selectedProjId = e.target.value;
+                      const selectedProj = (projects || []).find((p) => p.id === selectedProjId);
+                      onChange({
+                        projectId: selectedProjId,
+                        ...(selectedProj?.accountId ? { accountId: selectedProj.accountId } : {}),
+                      });
+                    }}
                     className={SELECT_CLS}
                   >
                     <option value="" disabled>Select a project...</option>
@@ -281,6 +319,26 @@ export const ActionItemFormModal: React.FC<ActionItemFormModalProps> = ({
             value={value.risksAndDependencies}
             onChange={(e) => onChange({ risksAndDependencies: e.target.value })}
             placeholder="e.g., Pending budget approval, dependent on vendor SOW sign-off"
+            className={`${INPUT_CLS} resize-none`}
+          />
+        </FormField>
+
+        <FormField label="Next Action" wide>
+          <textarea
+            rows={2}
+            value={value.nextAction || ''}
+            onChange={(e) => onChange({ nextAction: e.target.value })}
+            placeholder="e.g., Schedule technical review with client team"
+            className={`${INPUT_CLS} resize-none`}
+          />
+        </FormField>
+
+        <FormField label="Impediments" wide>
+          <textarea
+            rows={2}
+            value={value.impediments || ''}
+            onChange={(e) => onChange({ impediments: e.target.value })}
+            placeholder="e.g., Awaiting security clearance and access credentials"
             className={`${INPUT_CLS} resize-none`}
           />
         </FormField>

@@ -1,4 +1,4 @@
-import type { SERVICE_LINE_OPTIONS } from '@/constants';
+import type { SERVICE_LINE_OPTIONS, ACTION_ITEM_TYPE_OPTIONS } from '@/constants';
 
 export type AccountType = 'Strategic' | 'Non Strategic' | 'New' | 'Internal';
 export type AccountHealth = 'Green' | 'Amber' | 'Red';
@@ -10,7 +10,7 @@ export type ServiceLine = (typeof SERVICE_LINE_OPTIONS)[number];
 export type OpportunityHealth = 'Green' | 'Amber' | 'Red';
 export type PriorityLevel = 'High' | 'Medium' | 'Low';
 export type ActionItemStatus = 'To Do' | 'In Progress' | 'Blocked' | 'Completed' | 'Cancelled';
-export type ActionItemType = 'Account mining' | 'Proposals' | 'Stakeholder connect';
+export type ActionItemType = (typeof ACTION_ITEM_TYPE_OPTIONS)[number];
 export type InfluenceLevel = 'High' | 'Medium' | 'Low';
 export type RelationshipStatus = 'Strong' | 'Neutral' | 'Weak';
 export type StakeholderType = 'CLIENT' | 'SERVICE_PROVIDER';
@@ -674,6 +674,8 @@ export interface ProjectDependency {
 
 export interface ActionItem {
   id: string;
+  /** System-generated unique identifier (e.g. AKU-0001). Read-only and immutable once created. */
+  actionItemNumber?: string;
   title: string;
   accountId: string;
   /** Parent account display name (joined server-side; valid even when the account is deactivated). */
@@ -702,6 +704,8 @@ export interface ActionItem {
   notes: string;
   /** Known risks or blocking dependencies for this action item. */
   risksAndDependencies: string;
+  nextAction?: string;
+  impediments?: string;
   completedDate?: string;
   /** Read-only, derived by backend from dueDate via the configured Financial Calendar. Never sent on create/update. */
   financialYear?: string;
@@ -816,6 +820,14 @@ export interface Document {
   uploadedBy: string;
   createdAt: string;
 }
+
+export type CustomColumnModule =
+  | 'accounts'
+  | 'opportunities'
+  | 'actionItems'
+  | 'performanceEvaluation'
+  | 'projects'
+  | 'projectActionItems';
 
 export interface CustomColumn {
   id: string;

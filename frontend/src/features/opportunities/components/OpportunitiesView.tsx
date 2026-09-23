@@ -3,9 +3,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
-import { Opportunity, OpportunityStage } from '@/types';
+import { Opportunity, OpportunityStage, ColumnConfig } from '@/types';
 import { Plus, Eye, Trash2, TrendingUp, X, FileSpreadsheet, Settings2, Pencil, Calendar, FolderKanban, LineChart } from 'lucide-react';
 import { CustomizeColumnsSidebar } from '@/components/table/CustomizeColumnsSidebar';
 import { OpportunityActionsCommentsPanel } from '@/features/opportunities/components/OpportunityActionsCommentsPanel';
@@ -41,6 +41,7 @@ import {
   TableHead,
   TableHeadCell,
   TableRow,
+  computePinnedOffsets,
   FormModal,
   INPUT_CLS,
 } from '@/components/ui';
@@ -103,6 +104,7 @@ export const OpportunitiesView: React.FC = () => {
     currentUser,
     loading,
     can,
+    setActiveExportRows,
   } = useCRM();
 
   // Module-specific filter states (operational — never fiscal-period-based)
@@ -307,6 +309,10 @@ export const OpportunitiesView: React.FC = () => {
     compareForSort(getSortValue(a, sortField), getSortValue(b, sortField), sortDirection),
   );
 
+  useEffect(() => {
+    setActiveExportRows('opportunities', sortedOpps);
+  }, [sortedOpps, setActiveExportRows]);
+
   // Clamp page so filter changes never leave the user on an empty page.
   const totalPages = Math.max(1, Math.ceil(sortedOpps.length / pageSize));
   const currentPage = Math.min(page, totalPages);
@@ -348,10 +354,20 @@ export const OpportunitiesView: React.FC = () => {
     }
   };
 
-  const displayedConfigs = opportunitiesColumnConfig.filter(col => col.isDisplayed);
+  const displayedConfigs = useMemo(() => {
+    const displayed = opportunitiesColumnConfig.filter(col => col.isDisplayed);
+    const pinned = displayed.filter(col => col.isPinned);
+    const unpinned = displayed.filter(col => !col.isPinned);
+    return [...pinned, ...unpinned];
+  }, [opportunitiesColumnConfig]);
+
+  const pinnedOffsets = useMemo(() => {
+    return computePinnedOffsets(displayedConfigs, 'opportunities');
+  }, [displayedConfigs]);
+
   // User-added (non-standard) columns widen the table past the viewport and
   // trigger horizontal scroll; the default column set always fits the screen.
-  const extraColumnCount = displayedConfigs.filter(col => !col.isStandard).length;
+  const extraColumnCount = displayedConfigs.filter((col: ColumnConfig) => !col.isStandard).length;
 
   if (loading) return <LoadingState label="Loading opportunities…" />;
 
@@ -567,11 +583,13 @@ export const OpportunitiesView: React.FC = () => {
         <div className="overflow-x-auto">
           <Table extraColumns={extraColumnCount} resizable storageKey="opportunities">
             <TableHead>
-              {displayedConfigs.map(col => (
+              {displayedConfigs.map((col: ColumnConfig) => (
                 <TableHeadCell
                   key={col.key}
                   columnId={col.key}
                   align={col.key === 'value' ? 'right' : col.key === 'probability' ? 'center' : 'left'}
+                  sticky={col.isPinned ? 'left' : undefined}
+                  stickyLeft={pinnedOffsets[col.key]}
                 >
                   <SortableHeader
                     label={col.name}
@@ -610,10 +628,12 @@ export const OpportunitiesView: React.FC = () => {
                             : ''
                       }
                     >
-                      {displayedConfigs.map(col => (
+                      {displayedConfigs.map((col: ColumnConfig) => (
                         <TableCell
                           key={col.key}
                           align={col.key === 'value' ? 'right' : col.key === 'probability' ? 'center' : 'left'}
+                          sticky={col.isPinned ? 'left' : undefined}
+                          stickyLeft={pinnedOffsets[col.key]}
                           onDoubleClick={(e) => {
                             e.stopPropagation();
                             if (can('opportunities', 'update')) handleEditClick(opp);

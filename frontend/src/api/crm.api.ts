@@ -1,7 +1,7 @@
 import apiClient from './apiClient';
 import type {
   Account, Opportunity, ActionItem, Stakeholder,
-  Activity, Comment, ColumnConfig, CustomColumn, User, Document, FinancialYear,
+  Activity, Comment, ColumnConfig, CustomColumn, CustomColumnModule, User, Document, FinancialYear,
   CRMNotification, Alert, ForecastData,
   AdminSystemOverview, AdminUser, FinancialCalendar, AdminSettings, FYQuarterDef,
   PerformanceEvaluation, EmployeeMaster, Project, ProjectTeamMember,
@@ -403,7 +403,7 @@ export const customColumnsApi = {
         '/custom-columns',
       )
       .then((r) => r.data),
-  create: (data: { module: 'accounts' | 'opportunities' | 'actionItems' | 'performanceEvaluation'; name: string; type: 'text' | 'number' | 'date' | 'boolean' }) =>
+  create: (data: { module: CustomColumnModule; name: string; type: 'text' | 'number' | 'date' | 'boolean' }) =>
     apiClient.post<CustomColumn>('/custom-columns', data).then((r) => r.data),
   delete: (module: string, id: string) =>
     apiClient.post<{ success: boolean }>(`/custom-columns/${module}/${id}/delete`).then((r) => r.data),
