@@ -29,6 +29,12 @@ export class ProjectsController {
     return this.projectsService.findAllDeactivated({ userId: authUser.sub });
   }
 
+  @Get('account-options')
+  @RequirePermission('projects', 'view')
+  getAccountOptions(@AuthUser() authUser: JwtPayload) {
+    return this.projectsService.getAccountOptions(authUser.sub);
+  }
+
   @Get(':id')
   @RequirePermission('projects', 'view')
   findOne(@Param('id') id: string, @AuthUser() authUser: JwtPayload) {

@@ -178,6 +178,7 @@ export const actionItemsApi = {
 export const projectsApi = {
   getAll: (f?: OwnerFilter) => apiClient.get<Project[]>('/projects', { params: f }).then((r) => r.data),
   getDeactivated: (f?: OwnerFilter) => apiClient.get<Project[]>('/projects/deactivated', { params: f }).then((r) => r.data),
+  getAccountOptions: () => apiClient.get<{ id: string; name: string }[]>('/projects/account-options').then((r) => r.data),
   getById: (id: string) => apiClient.get<Project>(`/projects/${id}`).then((r) => r.data),
   create: (data: Omit<Project, 'id'>) => apiClient.post<Project>('/projects', data).then((r) => r.data),
   update: (id: string, data: Project) => apiClient.post<Project>(`/projects/${id}/update`, data).then((r) => r.data),

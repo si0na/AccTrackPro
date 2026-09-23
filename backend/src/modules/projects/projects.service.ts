@@ -159,6 +159,40 @@ export class ProjectsService {
     return { data: rows.map(rowToProject), total, page: pg.page, pageSize: pg.pageSize };
   }
 
+  /**
+   * Returns Account dropdown options for the Project context.
+   * - If the user has Account module permissions (`accounts:view` / `accounts:view-all` / `canViewAllAccounts`),
+   *   returns all active accounts.
+   * - For users without Account access (e.g. PMs), derives accounts strictly from accessible projects
+   *   using `buildProjectVisibility`.
+   */
+  async getAccountOptions(userId: string): Promise<{ id: string; name: string }[]> {
+    const ctx = await this.access.getContext(userId);
+
+    // If user has legitimate Account-module permissions, return all active accounts
+    if (ctx.permissions.has('accounts:view-all') || ctx.permissions.has('accounts:view') || ctx.canViewAllAccounts) {
+      const { rows } = await this.db.query(
+        `SELECT id, name FROM accounts WHERE is_deleted = FALSE ORDER BY name ASC`,
+      );
+      return rows;
+    }
+
+    // For users without Account permissions (including PMs), derive accounts strictly from accessible Projects
+    const scope = await this.access.buildProjectVisibility('p', ctx, 1);
+    const where = ['p.is_deleted = FALSE', 'p.account_id IS NOT NULL', ...scope.conditions].join(' AND ');
+
+    const { rows } = await this.db.query(
+      `SELECT DISTINCT a.id, a.name
+       FROM projects p
+       INNER JOIN accounts a ON p.account_id = a.id AND a.is_deleted = FALSE
+       WHERE ${where}
+       ORDER BY a.name ASC`,
+      scope.params,
+    );
+    return rows;
+  }
+
+
   async findOne(id: string, userId?: string): Promise<Project> {
     const scope = await this.projectScope(userId ?? null, 2);
     const scopeClause = scope.conditions.length ? ` AND ${scope.conditions.join(' AND ')}` : '';

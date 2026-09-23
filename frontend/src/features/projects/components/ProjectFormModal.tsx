@@ -58,6 +58,7 @@ export interface ProjectFormModalProps {
  */
 import { isRawIdStr, serviceProviderOptionLabel } from '@/utils';
 import { useCRM } from '@/contexts/CRMContext';
+import { projectsApi } from '@/api/crm.api';
 
 export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
   isOpen,
@@ -72,7 +73,55 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
   errorMsg,
 }) => {
   const isEdit = mode === 'edit';
-  const { projectManagers, practiceLeads, clientPartners, accounts, serviceProviders, stakeholders: crmStakeholders } = useCRM();
+  const { projectManagers, practiceLeads, clientPartners, accounts, serviceProviders, stakeholders: crmStakeholders, projects: crmProjects } = useCRM();
+
+  const [fetchedAccountOptions, setFetchedAccountOptions] = React.useState<{ id: string; name: string }[]>([]);
+
+  React.useEffect(() => {
+    if (isOpen) {
+      projectsApi
+        .getAccountOptions()
+        .then((opts) => setFetchedAccountOptions(opts || []))
+        .catch(() => setFetchedAccountOptions([]));
+    }
+  }, [isOpen]);
+
+  const accountOptions = React.useMemo(() => {
+    const map = new Map<string, { value: string; label: string }>();
+
+    // Priority 1: Canonical Account records (users with accounts:view module access)
+    (accounts || []).forEach((a) => {
+      if (a?.id) {
+        map.set(a.id, { value: a.id, label: a.name });
+      }
+    });
+
+    // Priority 2: Project-scoped account options from backend
+    (fetchedAccountOptions || []).forEach((a) => {
+      if (a?.id && !map.has(a.id)) {
+        map.set(a.id, { value: a.id, label: a.name });
+      }
+    });
+
+    // Priority 3: Accounts derived from accessible projects in CRMContext
+    (crmProjects || []).forEach((p) => {
+      if (p?.accountId && !map.has(p.accountId)) {
+        map.set(p.accountId, { value: p.accountId, label: p.accountName || 'Account' });
+      }
+    });
+
+    // Priority 4: Current selected account fallback for Edit mode
+    if (value.accountId && !map.has(value.accountId)) {
+      map.set(value.accountId, {
+        value: value.accountId,
+        label: value.accountName || 'Selected Account',
+      });
+    }
+
+    return Array.from(map.values()).sort((a, b) =>
+      a.label.localeCompare(b.label, undefined, { sensitivity: 'base' })
+    );
+  }, [accounts, fetchedAccountOptions, crmProjects, value.accountId, value.accountName]);
 
   const resolveUserFallback = React.useCallback(
     (id?: string | null, name?: string | null, roleList?: any[]) => {
@@ -156,19 +205,19 @@ export const ProjectFormModal: React.FC<ProjectFormModalProps> = ({
                 <input
                   type="text"
                   disabled
-                  value={value.accountName || accounts.find((a) => a.id === value.accountId)?.name || '—'}
+                  value={value.accountName || accountOptions.find((a) => a.value === value.accountId)?.label || '—'}
                   className={`${INPUT_CLS} bg-slate-100 font-semibold text-slate-700`}
                   title="Account is fixed for projects created from opportunities"
                 />
               ) : (
                 <SearchableSelect
-                  options={(accounts || []).map((a) => ({ value: a.id, label: a.name }))}
+                  options={accountOptions}
                   value={value.accountId || ''}
                   onChange={(accId) => {
-                    const selectedAcc = (accounts || []).find((a) => a.id === accId);
+                    const selectedAcc = accountOptions.find((a) => a.value === accId);
                     onChange({
                       accountId: accId,
-                      accountName: selectedAcc?.name || '',
+                      accountName: selectedAcc?.label || '',
                     });
                   }}
                   placeholder="Select Account..."
