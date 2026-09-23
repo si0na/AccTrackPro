@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, ForbiddenException, OnModuleInit } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
 import { PermissionsService } from '../rbac/permissions.service';
+import { AccessScopeService } from '../rbac/access-scope.service';
 import { AccountRisk } from '../../types';
 import { CreateAccountRiskDto, UpdateAccountRiskDto } from './dto/account-risk.dto';
 
@@ -62,6 +63,7 @@ export class AccountRisksService implements OnModuleInit {
   constructor(
     private readonly db: DatabaseService,
     private readonly permissions: PermissionsService,
+    private readonly access: AccessScopeService,
   ) {}
 
   async onModuleInit() {
@@ -89,13 +91,15 @@ export class AccountRisksService implements OnModuleInit {
 
   async assertAccountAccess(accountId: string, userId?: string): Promise<void> {
     if (!userId) return;
-    const ctx = await this.permissions.getUserAccessContext(userId);
-    if (ctx.canViewAllAccounts) return;
+    const ctx = await this.access.getContext(userId);
+    if (ctx.canViewAllAccounts || ctx.permissions.has('risks:view-all')) return;
+    const scope = this.access.buildAccountVisibility('a', ctx, 2);
+    const where = scope.conditions.length ? ` AND ${scope.conditions.join(' AND ')}` : '';
     const { rows } = await this.db.query(
-      `SELECT id FROM accounts WHERE id = $1 AND is_deleted = FALSE`,
-      [accountId],
+      `SELECT a.id FROM accounts a WHERE a.id = $1 AND a.is_deleted = FALSE${where}`,
+      [accountId, ...scope.params],
     );
-    if (!rows.length) throw new NotFoundException(`Account ${accountId} not found`);
+    if (!rows.length) throw new NotFoundException(`Account ${accountId} not found or access denied`);
   }
 
   async findAll(accountId?: string, userId?: string): Promise<AccountRisk[]> {
@@ -108,6 +112,15 @@ export class AccountRisksService implements OnModuleInit {
     if (accountId) {
       params.push(accountId);
       whereClause += ` AND r.account_id = $${params.length}`;
+    }
+
+    if (userId) {
+      const ctx = await this.access.getContext(userId);
+      const childScope = this.access.buildChildVisibility('r', ctx, params.length + 1, 'risks');
+      if (childScope.conditions.length > 0) {
+        whereClause += ` AND ${childScope.conditions.join(' AND ')}`;
+        params.push(...childScope.params);
+      }
     }
 
     const { rows } = await this.db.query(

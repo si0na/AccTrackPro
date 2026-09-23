@@ -13,7 +13,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 
 interface CustomizeColumnsSidebarProps {
-  module: 'accounts' | 'opportunities' | 'actionItems' | 'performanceEvaluation';
+  module: 'accounts' | 'opportunities' | 'actionItems' | 'performanceEvaluation' | 'projects' | 'projectActionItems';
   isOpen: boolean;
   onClose: () => void;
 }
@@ -28,6 +28,8 @@ export const CustomizeColumnsSidebar: React.FC<CustomizeColumnsSidebarProps> = (
     opportunitiesColumnConfig,
     actionItemsColumnConfig,
     performanceEvaluationColumnConfig,
+    projectsColumnConfig,
+    projectActionItemsColumnConfig,
     updateColumnConfig,
     resetColumnConfig,
     addCustomColumn,
@@ -43,8 +45,10 @@ export const CustomizeColumnsSidebar: React.FC<CustomizeColumnsSidebarProps> = (
     if (module === 'accounts') return accountsColumnConfig;
     if (module === 'opportunities') return opportunitiesColumnConfig;
     if (module === 'actionItems') return actionItemsColumnConfig;
+    if (module === 'projects') return projectsColumnConfig;
+    if (module === 'projectActionItems') return projectActionItemsColumnConfig;
     return performanceEvaluationColumnConfig;
-  }, [module, accountsColumnConfig, opportunitiesColumnConfig, actionItemsColumnConfig, performanceEvaluationColumnConfig]);
+  }, [module, accountsColumnConfig, opportunitiesColumnConfig, actionItemsColumnConfig, performanceEvaluationColumnConfig, projectsColumnConfig, projectActionItemsColumnConfig]);
 
   // Local temp copy for changes inside sidebar before clicking "Apply"
   const [tempColumns, setTempColumns] = useState<ColumnConfig[]>([]);
@@ -119,18 +123,24 @@ export const CustomizeColumnsSidebar: React.FC<CustomizeColumnsSidebarProps> = (
 
   // Toggling pinned state
   const handleTogglePin = (key: string) => {
-    setTempColumns(prev => prev.map(c => {
-      if (c.key === key) {
-        const nextPinned = !c.isPinned;
-        return {
-          ...c,
-          isPinned: nextPinned,
-          // If we pin it, we must display it!
-          isDisplayed: nextPinned ? true : c.isDisplayed
-        };
-      }
-      return c;
-    }));
+    setTempColumns(prev => {
+      const updated = prev.map(c => {
+        if (c.key === key) {
+          const nextPinned = !c.isPinned;
+          return {
+            ...c,
+            isPinned: nextPinned,
+            // If we pin it, we must display it!
+            isDisplayed: nextPinned ? true : c.isDisplayed
+          };
+        }
+        return c;
+      });
+      // Ensure pinned columns stay grouped at the front of tempColumns while preserving relative ordering
+      const pinned = updated.filter(c => c.isPinned);
+      const unpinned = updated.filter(c => !c.isPinned);
+      return [...pinned, ...unpinned];
+    });
   };
 
   // Reordering Columns (Up / Down buttons on Arrange tab)
@@ -302,6 +312,8 @@ export const CustomizeColumnsSidebar: React.FC<CustomizeColumnsSidebarProps> = (
                     module === 'accounts' ? 'Accounts List' :
                     module === 'opportunities' ? 'Opportunities List' :
                     module === 'actionItems' ? 'Action Items' :
+                    module === 'projects' ? 'Projects List' :
+                    module === 'projectActionItems' ? 'Project Action Items' :
                     'Employee Feedback'
                   }
                 </p>

@@ -90,6 +90,32 @@ export class AccessScopeService {
   }
 
   /**
+   * Dedicated RBAC visibility for stakeholders.
+   * - stakeholders:view-all grants visibility to ALL Client Stakeholders regardless of Account permissions.
+   * - stakeholders:view (without view-all) provides scoped visibility via parent account.
+   * - No stakeholder view permission returns 1=0 (no access).
+   */
+  buildStakeholderVisibility(alias: string, ctx: UserAccessContext, startIdx: number): ScopeFragment {
+    const hasView = ctx.permissions.has('stakeholders:view') || ctx.permissions.has('stakeholders:view-all');
+    const hasViewAll = ctx.permissions.has('stakeholders:view-all');
+
+    if (!hasView) {
+      return { conditions: ['1=0'], params: [], nextIdx: startIdx };
+    }
+    if (hasViewAll) {
+      return { conditions: [], params: [], nextIdx: startIdx };
+    }
+
+    const inner = this.buildAccountVisibility('acc_stk_scope', ctx, startIdx);
+    const innerWhere = inner.conditions.length ? ` AND ${inner.conditions.join(' AND ')}` : '';
+    const exists =
+      `(${alias}.account_id IS NULL OR EXISTS (SELECT 1 FROM accounts acc_stk_scope ` +
+      `WHERE acc_stk_scope.id = ${alias}.account_id AND acc_stk_scope.is_deleted = FALSE${innerWhere}))`;
+    return { conditions: [exists], params: inner.params, nextIdx: inner.nextIdx };
+  }
+
+
+  /**
    * Role-aware visibility for a projects row aliased `alias`.
    */
   buildProjectVisibility(alias: string, ctx: UserAccessContext, startIdx: number): ScopeFragment {
@@ -100,21 +126,25 @@ export class AccessScopeService {
     let idx = startIdx;
     const params: any[] = [];
 
-    const accountScope = this.buildAccountVisibility('acc_proj_scope', ctx, idx + 4);
-    const innerAccWhere = accountScope.conditions.length ? ` AND ${accountScope.conditions.join(' AND ')}` : '';
+    const uId = idx;
+    const uEmail = idx + 1;
+    params.push(ctx.userId, ctx.userEmail ?? '');
+    idx += 2;
 
-    const pUser = idx;
-    params.push(ctx.userId, ctx.userId, ctx.userId, ctx.userId);
-    idx += 4;
+    const accountScope = this.buildAccountVisibility('acc_proj_scope', ctx, idx);
+    const innerAccWhere = accountScope.conditions.length ? ` AND ${accountScope.conditions.join(' AND ')}` : '';
 
     params.push(...accountScope.params);
     idx = accountScope.nextIdx;
 
+    const matchAssigned = (col: string) =>
+      `(${alias}.${col} = $${uId} OR ($${uEmail} <> '' AND LOWER(${alias}.${col}) = LOWER($${uEmail})))`;
+
     const ors = [
-      `${alias}.owner_id = $${pUser}`,
-      `${alias}.service_provider_pm_id = $${pUser + 1}`,
-      `${alias}.practice_lead_id = $${pUser + 2}`,
-      `${alias}.client_partner_id = $${pUser + 3}`,
+      matchAssigned('owner_id'),
+      matchAssigned('service_provider_pm_id'),
+      matchAssigned('practice_lead_id'),
+      matchAssigned('client_partner_id'),
       `EXISTS (SELECT 1 FROM accounts acc_proj_scope WHERE acc_proj_scope.id = ${alias}.account_id AND acc_proj_scope.is_deleted = FALSE${innerAccWhere})`,
     ];
 
@@ -125,30 +155,58 @@ export class AccessScopeService {
    * Role-aware visibility for an action_items row aliased `alias`.
    */
   buildActionItemVisibility(alias: string, ctx: UserAccessContext, startIdx: number): ScopeFragment {
-    if (ctx.permissions.has('action-items:view-all') || ctx.canViewAllAccounts) {
-      return { conditions: [], params: [], nextIdx: startIdx };
+    const hasNormalView = ctx.permissions.has('action-items:view') || ctx.permissions.has('action-items:view-all') || ctx.canViewAllAccounts;
+    const hasNormalViewAll = ctx.permissions.has('action-items:view-all') || ctx.canViewAllAccounts;
+
+    const hasProjView = ctx.permissions.has('project-action-items:view') || ctx.permissions.has('project-action-items:view-all');
+    const hasProjViewAll = ctx.permissions.has('project-action-items:view-all');
+
+    if (!hasNormalView && !hasProjView) {
+      return { conditions: ['1=0'], params: [], nextIdx: startIdx };
     }
 
     let idx = startIdx;
     const params: any[] = [];
+    const mainOrs: string[] = [];
 
-    const accountScope = this.buildAccountVisibility('acc_ai_scope', ctx, idx + 2);
-    const innerAccWhere = accountScope.conditions.length ? ` AND ${accountScope.conditions.join(' AND ')}` : '';
+    if (hasNormalView) {
+      if (hasNormalViewAll) {
+        mainOrs.push(`${alias}.project_id IS NULL`);
+      } else {
+        const uOwner = idx;
+        params.push(ctx.userId);
+        idx += 1;
 
-    const uOwner = idx;
-    const uProj = idx + 1;
-    params.push(ctx.userId, ctx.userId);
-    idx += 2;
+        const accountScope = this.buildAccountVisibility('acc_ai_scope', ctx, idx);
+        const innerAccWhere = accountScope.conditions.length ? ` AND ${accountScope.conditions.join(' AND ')}` : '';
+        params.push(...accountScope.params);
+        idx = accountScope.nextIdx;
 
-    params.push(...accountScope.params);
-    idx = accountScope.nextIdx;
+        mainOrs.push(
+          `(${alias}.project_id IS NULL AND (${alias}.owner_id = $${uOwner} OR EXISTS (SELECT 1 FROM accounts acc_ai_scope WHERE acc_ai_scope.id = ${alias}.account_id AND acc_ai_scope.is_deleted = FALSE${innerAccWhere})))`
+        );
+      }
+    }
 
-    const ors = [
-      `${alias}.owner_id = $${uOwner}`,
-      `EXISTS (SELECT 1 FROM accounts acc_ai_scope WHERE acc_ai_scope.id = ${alias}.account_id AND acc_ai_scope.is_deleted = FALSE${innerAccWhere})`,
-      `EXISTS (SELECT 1 FROM projects proj_ai_scope WHERE proj_ai_scope.id = ${alias}.project_id AND proj_ai_scope.is_deleted = FALSE AND (proj_ai_scope.owner_id = $${uProj} OR proj_ai_scope.service_provider_pm_id = $${uProj} OR proj_ai_scope.practice_lead_id = $${uProj} OR proj_ai_scope.client_partner_id = $${uProj}))`,
-    ];
+    if (hasProjView) {
+      if (hasProjViewAll) {
+        mainOrs.push(`${alias}.project_id IS NOT NULL`);
+      } else {
+        const uOwner = idx;
+        params.push(ctx.userId);
+        idx += 1;
 
-    return { conditions: [`(${ors.join(' OR ')})`], params, nextIdx: idx };
+        const projScope = this.buildProjectVisibility('proj_ai_scope', ctx, idx);
+        const innerProjWhere = projScope.conditions.length ? ` AND ${projScope.conditions.join(' AND ')}` : '';
+        params.push(...projScope.params);
+        idx = projScope.nextIdx;
+
+        mainOrs.push(
+          `(${alias}.project_id IS NOT NULL AND (${alias}.owner_id = $${uOwner} OR EXISTS (SELECT 1 FROM projects proj_ai_scope WHERE proj_ai_scope.id = ${alias}.project_id AND proj_ai_scope.is_deleted = FALSE${innerProjWhere})))`
+        );
+      }
+    }
+
+    return { conditions: [`(${mainOrs.join(' OR ')})`], params, nextIdx: idx };
   }
 }

@@ -6,7 +6,14 @@ import { ColumnConfig } from '../../types';
 export class ColumnConfigsService {
   constructor(private readonly db: DatabaseService) {}
 
-  async findAll(userId: string): Promise<{ rawAccountsConfig: ColumnConfig[]; rawOpportunitiesConfig: ColumnConfig[]; rawActionItemsConfig: ColumnConfig[]; rawPerformanceEvaluationConfig: ColumnConfig[] }> {
+  async findAll(userId: string): Promise<{
+    rawAccountsConfig: ColumnConfig[];
+    rawOpportunitiesConfig: ColumnConfig[];
+    rawActionItemsConfig: ColumnConfig[];
+    rawPerformanceEvaluationConfig: ColumnConfig[];
+    rawProjectsConfig: ColumnConfig[];
+    rawProjectActionItemsConfig: ColumnConfig[];
+  }> {
     const { rows } = await this.db.query(
       `SELECT module, config FROM column_configs WHERE user_id = $1`,
       [userId],
@@ -18,6 +25,8 @@ export class ColumnConfigsService {
       rawOpportunitiesConfig: get('opportunities'),
       rawActionItemsConfig: get('actionItems'),
       rawPerformanceEvaluationConfig: get('performanceEvaluation'),
+      rawProjectsConfig: get('projects'),
+      rawProjectActionItemsConfig: get('projectActionItems'),
     };
   }
 
@@ -26,6 +35,8 @@ export class ColumnConfigsService {
     rawOpportunitiesConfig?: ColumnConfig[];
     rawActionItemsConfig?: ColumnConfig[];
     rawPerformanceEvaluationConfig?: ColumnConfig[];
+    rawProjectsConfig?: ColumnConfig[];
+    rawProjectActionItemsConfig?: ColumnConfig[];
   }): Promise<{ success: boolean }> {
     const upsert = async (module: string, config: ColumnConfig[]) => {
       await this.db.query(
@@ -39,6 +50,8 @@ export class ColumnConfigsService {
     if (body.rawOpportunitiesConfig) await upsert('opportunities', body.rawOpportunitiesConfig);
     if (body.rawActionItemsConfig) await upsert('actionItems', body.rawActionItemsConfig);
     if (body.rawPerformanceEvaluationConfig) await upsert('performanceEvaluation', body.rawPerformanceEvaluationConfig);
+    if (body.rawProjectsConfig) await upsert('projects', body.rawProjectsConfig);
+    if (body.rawProjectActionItemsConfig) await upsert('projectActionItems', body.rawProjectActionItemsConfig);
     return { success: true };
   }
 }

@@ -60,7 +60,7 @@ export class StakeholdersService {
   private async childScope(userId: string | null, startIdx: number) {
     if (!userId) return { conditions: [], params: [], nextIdx: startIdx };
     const ctx = await this.access.getContext(userId);
-    return this.access.buildChildVisibility('s', ctx, startIdx);
+    return this.access.buildStakeholderVisibility('s', ctx, startIdx);
   }
 
   /**
@@ -316,6 +316,17 @@ export class StakeholdersService {
   /** Relational rule: the parent account must exist, be active, and be visible to the requesting user. */
   private async assertAccountExists(accountId?: string, userId?: string): Promise<void> {
     if (!accountId) return;
+    if (userId) {
+      const ctx = await this.access.getContext(userId);
+      if (ctx.canViewAllAccounts || ctx.permissions.has('stakeholders:view-all')) {
+        const { rows } = await this.db.query(
+          `SELECT a.id FROM accounts a WHERE a.id = $1 AND a.is_deleted = FALSE`,
+          [accountId],
+        );
+        if (!rows.length) throw new BadRequestException('The selected account does not exist');
+        return;
+      }
+    }
     const scope = userId
       ? this.access.buildAccountVisibility('a', await this.access.getContext(userId), 2)
       : { conditions: [] as string[], params: [] as any[] };

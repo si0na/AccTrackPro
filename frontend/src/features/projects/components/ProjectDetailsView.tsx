@@ -6,7 +6,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
 import {
-  ActionItem, ActionItemStatus, AdminUser, PriorityLevel, ProjectHealth, ProjectTeamMember,
+  ActionItem, ActionItemStatus, AdminUser, PriorityLevel, Project, ProjectHealth, ProjectTeamMember,
   ProjectMilestone, ProjectRisk, ProjectAssumption, ProjectIssue, ProjectDependency,
 } from '@/types';
 import { NpsTab } from '@/features/nps/components/NpsTab';
@@ -52,15 +52,17 @@ import { InlineEditModal } from '@/components/InlineEditModal';
 import { ActionItemFormModal } from '@/features/action-items/components/ActionItemFormModal';
 import { ProjectFormModal } from './ProjectFormModal';
 import { SimpleCrudTab } from './SimpleCrudTab';
-import { MilestoneFormModal, MilestoneDraft, emptyMilestoneDraft } from './MilestoneFormModal';
-import { MilestoneDetailsModal } from './MilestoneDetailsModal';
+import { MilestoneFormModal, MilestoneDraft, emptyMilestoneDraft, createMilestoneDraftFromModel } from './MilestoneFormModal';
+import { MilestoneDetailsModal, MILESTONE_STATUS_COLORS } from './MilestoneDetailsModal';
 import { ProjectHealthTab } from './ProjectHealthTab';
 import { ProjectProgressTab } from './ProjectProgressTab';
 import { ProjectHealthDetailsSection } from './ProjectHealthDetailsSection';
 import { RiskFormModal, RiskDraft, emptyRiskDraft } from './RiskFormModal';
-import { AssumptionFormModal, AssumptionDraft, emptyAssumptionDraft } from './AssumptionFormModal';
+import { AssumptionFormModal, AssumptionDraft, emptyAssumptionDraft, createAssumptionDraftFromModel } from './AssumptionFormModal';
+import { AssumptionDetailsModal } from './AssumptionDetailsModal';
 import { IssueFormModal, IssueDraft, emptyIssueDraft } from './IssueFormModal';
-import { DependencyFormModal, DependencyDraft, emptyDependencyDraft } from './DependencyFormModal';
+import { DependencyFormModal, DependencyDraft, emptyDependencyDraft, createDependencyDraftFromModel } from './DependencyFormModal';
+import { DependencyDetailsModal } from './DependencyDetailsModal';
 import { ACTION_ITEM_STATUS_OPTIONS, LOCATION_OPTIONS, PROJECT_HEALTH_OPTIONS } from '@/constants';
 import { isRawIdStr, serviceProviderOptionLabel } from '@/utils';
 import {
@@ -93,6 +95,7 @@ import {
   TableHead,
   TableHeadCell,
   TableRow,
+  computePinnedOffsets,
 } from '@/components/ui';
 import { compareForSort, getTodayISODate, cleanOwnerName, SortDirection } from '@/utils';
 
@@ -161,6 +164,8 @@ export const ProjectDetailsView: React.FC = () => {
     navSource,
     can,
     projectDetailsSourceView,
+    setSelectedActionItemId: setSelectedActionItemIdNav,
+    setActionItemDetailsSourceView,
     setProjectDetailsSourceView,
 
     loading,
@@ -210,18 +215,34 @@ export const ProjectDetailsView: React.FC = () => {
 
   // ── Edit Project modal ──────────────────────────────────────────────────────
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [projectDraft, setProjectDraft] = useState(project ?? null);
+  const [projectDraft, setProjectDraft] = useState<Project | null>(project ?? null);
+  const [isSubmittingProject, setIsSubmittingProject] = useState(false);
+  const [editProjectError, setEditProjectError] = useState<string | null>(null);
+
   const openProjectEdit = () => {
     if (!project) return;
     setProjectDraft({ ...project });
+    setEditProjectError(null);
     setIsEditModalOpen(true);
   };
   const handleSaveProject = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!projectDraft || !projectDraft.name.trim()) return;
-    await updateProject(projectDraft);
-    setIsEditModalOpen(false);
-    setProjectDraft(null);
+    if (projectDraft.startDate && projectDraft.endDate && projectDraft.endDate < projectDraft.startDate) {
+      setEditProjectError('Project End Date cannot be earlier than Project Start Date.');
+      return;
+    }
+    setIsSubmittingProject(true);
+    setEditProjectError(null);
+    try {
+      await updateProject(projectDraft);
+      setIsEditModalOpen(false);
+      setProjectDraft(null);
+    } catch (err: any) {
+      setEditProjectError(err?.response?.data?.message || err?.message || 'Failed to update project.');
+    } finally {
+      setIsSubmittingProject(false);
+    }
   };
 
   // Header overflow menu (deactivate)
@@ -310,7 +331,7 @@ export const ProjectDetailsView: React.FC = () => {
   const openEditMilestone = (m: ProjectMilestone) => {
     setViewingMilestone(null);
     setEditingMilestone(m);
-    setMilestoneDraft({ ...m });
+    setMilestoneDraft(createMilestoneDraftFromModel(m));
     setIsMilestoneModalOpen(true);
   };
   const handleSaveMilestone = async (e: React.FormEvent) => {
@@ -400,15 +421,20 @@ export const ProjectDetailsView: React.FC = () => {
   const [editingAssumption, setEditingAssumption] = useState<ProjectAssumption | null>(null);
   const [assumptionDraft, setAssumptionDraft] = useState<AssumptionDraft>(emptyAssumptionDraft);
   const [isSavingAssumption, setIsSavingAssumption] = useState(false);
+  const [viewingAssumption, setViewingAssumption] = useState<ProjectAssumption | null>(null);
 
   const openAddAssumption = () => {
     setEditingAssumption(null);
     setAssumptionDraft(emptyAssumptionDraft);
     setIsAssumptionModalOpen(true);
   };
+  const openAssumptionDetails = (a: ProjectAssumption) => {
+    setViewingAssumption(a);
+  };
   const openEditAssumption = (a: ProjectAssumption) => {
+    setViewingAssumption(null);
     setEditingAssumption(a);
-    setAssumptionDraft({ ...a });
+    setAssumptionDraft(createAssumptionDraftFromModel(a));
     setIsAssumptionModalOpen(true);
   };
   const handleSaveAssumption = async (e: React.FormEvent) => {
@@ -498,15 +524,20 @@ export const ProjectDetailsView: React.FC = () => {
   const [editingDependency, setEditingDependency] = useState<ProjectDependency | null>(null);
   const [dependencyDraft, setDependencyDraft] = useState<DependencyDraft>(emptyDependencyDraft);
   const [isSavingDependency, setIsSavingDependency] = useState(false);
+  const [viewingDependency, setViewingDependency] = useState<ProjectDependency | null>(null);
 
   const openAddDependency = () => {
     setEditingDependency(null);
     setDependencyDraft(emptyDependencyDraft);
     setIsDependencyModalOpen(true);
   };
+  const openDependencyDetails = (d: ProjectDependency) => {
+    setViewingDependency(d);
+  };
   const openEditDependency = (d: ProjectDependency) => {
+    setViewingDependency(null);
     setEditingDependency(d);
-    setDependencyDraft({ ...d });
+    setDependencyDraft(createDependencyDraftFromModel(d));
     setIsDependencyModalOpen(true);
   };
   const handleSaveDependency = async (e: React.FormEvent) => {
@@ -575,6 +606,8 @@ export const ProjectDetailsView: React.FC = () => {
     status: 'To Do' as ActionItemStatus,
     notes: '',
     risksAndDependencies: '',
+    nextAction: '',
+    impediments: '',
   };
   const [newAi, setNewAi] = useState<Omit<ActionItem, 'id'>>(emptyTask);
   const handleOpenAddTask = () => {
@@ -602,14 +635,21 @@ export const ProjectDetailsView: React.FC = () => {
   };
 
   const displayedActionCols = useMemo(() => {
-    return actionItemsColumnConfig.filter((col) => col.isDisplayed && col.key !== 'opportunityId' && col.key !== 'projectId');
+    const cols = actionItemsColumnConfig.filter((col) => col.isDisplayed && col.key !== 'opportunityId' && col.key !== 'projectId');
+    const pinned = cols.filter(col => col.isPinned);
+    const unpinned = cols.filter(col => !col.isPinned);
+    return [...pinned, ...unpinned];
   }, [actionItemsColumnConfig]);
+
+  const actionColPinnedOffsets = useMemo(() => {
+    return computePinnedOffsets(displayedActionCols, 'project-details:action-items');
+  }, [displayedActionCols]);
 
   if (loading) {
     return <LoadingState label="Loading project details..." />;
   }
 
-  if (!project || !account) {
+  if (!project) {
     return (
       <Card padding="none">
         <div className="p-8 text-center">
@@ -649,7 +689,7 @@ export const ProjectDetailsView: React.FC = () => {
   const totalActions = sortedActions.length;
   const pagedActions = sortedActions.slice((aiPage - 1) * aiPageSize, aiPage * aiPageSize);
 
-  const lockedAccount = { id: project.accountId, name: account.name };
+  const lockedAccount = { id: project.accountId, name: account?.name || project.accountName || 'Unknown Account' };
   const lockedProject = { id: project.id, name: project.name };
 
   return (
@@ -711,7 +751,7 @@ export const ProjectDetailsView: React.FC = () => {
           {
             icon: <Briefcase className="w-4 h-4" />,
             label: 'Account',
-            value: (
+            value: can('accounts', 'view') && account ? (
               <button
                 type="button"
                 onClick={() => { setSelectedAccountId(project.accountId); setView('account-details'); }}
@@ -720,6 +760,10 @@ export const ProjectDetailsView: React.FC = () => {
               >
                 {account.name}
               </button>
+            ) : (
+              <span className="font-bold text-slate-700 truncate max-w-full">
+                {account?.name || project.accountName || 'Unknown Account'}
+              </span>
             ),
           },
           { icon: <Users className="w-4 h-4" />, label: 'Client Partner Name', value: project.clientPartnerName || 'Not assigned' },
@@ -744,7 +788,9 @@ export const ProjectDetailsView: React.FC = () => {
           { id: 'risks-issues', label: 'Risks & Issues', icon: ShieldAlert, count: (risks.length + issues.length) > 0 ? (risks.length + issues.length) : null },
           { id: 'assumptions', label: 'Assumptions', icon: HelpCircle, count: assumptions.length > 0 ? assumptions.length : null },
           { id: 'dependencies', label: 'Dependencies', icon: Link2, count: dependencies.length > 0 ? dependencies.length : null },
-          { id: 'action-items', label: 'Action Items', icon: CheckSquare, count: projectActions.length },
+          ...(can('project-action-items', 'view') || can('project-action-items', 'view-all')
+            ? [{ id: 'action-items' as const, label: 'Action Items', icon: CheckSquare, count: projectActions.length }]
+            : []),
           { id: 'health', label: 'Health Tracker', icon: Gauge, count: null },
           { id: 'appreciation', label: 'Employee Appreciation', icon: HeartHandshake, count: null },
           { id: 'nps', label: 'NPS', icon: Star, count: null },
@@ -951,6 +997,18 @@ export const ProjectDetailsView: React.FC = () => {
               { key: 'paymentPct', label: 'Payment %', align: 'right', render: (m) => <span className="font-mono text-slate-600">{m.paymentPct ? `${m.paymentPct}%` : '—'}</span> },
               { key: 'paymentAmount', label: 'Payment Amount', align: 'right', render: (m) => <span className="font-mono text-slate-600">{m.paymentAmount ? `$${m.paymentAmount.toLocaleString()}` : '—'}</span> },
               { key: 'targetDate', label: 'Target Date', render: (m) => <span className="font-mono text-slate-500">{m.targetDate || '—'}</span> },
+              { key: 'sprints', label: 'Sprints', render: (m) => <span className="text-slate-600">{m.sprints || '—'}</span> },
+              { key: 'plannedStart', label: 'Planned Start', render: (m) => <span className="font-mono text-slate-500">{m.plannedStart || '—'}</span> },
+              { key: 'plannedEnd', label: 'Planned End', render: (m) => <span className="font-mono text-slate-500">{m.plannedEnd || '—'}</span> },
+              { key: 'actualStart', label: 'Actual Start', render: (m) => <span className="font-mono text-slate-500">{m.actualStart || '—'}</span> },
+              { key: 'actualEnd', label: 'Actual End', render: (m) => <span className="font-mono text-slate-500">{m.actualEnd || '—'}</span> },
+              { key: 'status', label: 'Status', render: (m) => <StatusBadge value={m.status} colorMap={MILESTONE_STATUS_COLORS} shape="rounded" /> },
+              { key: 'completionPct', label: 'Completion %', align: 'right', render: (m) => <span className="font-mono text-slate-600">{m.completionPct ? `${m.completionPct}%` : '—'}</span> },
+              { key: 'effortPlanned', label: 'Effort Planned (Hrs)', align: 'right', render: (m) => <span className="font-mono text-slate-600">{m.effortPlanned ? `${m.effortPlanned} hrs` : '—'}</span> },
+              { key: 'effortSpent', label: 'Effort Spent (Hrs)', align: 'right', render: (m) => <span className="font-mono text-slate-600">{m.effortSpent ? `${m.effortSpent} hrs` : '—'}</span> },
+              { key: 'costPlanned', label: 'Cost Planned', align: 'right', render: (m) => <span className="font-mono text-slate-600">{m.costPlanned ? `$${m.costPlanned.toLocaleString()}` : '—'}</span> },
+              { key: 'costSpent', label: 'Cost Spent', align: 'right', render: (m) => <span className="font-mono text-slate-600">{m.costSpent ? `$${m.costSpent.toLocaleString()}` : '—'}</span> },
+              { key: 'remarks', label: 'Remarks', render: (m) => <span className="block max-w-[200px] line-clamp-2 text-slate-600" title={m.remarks || ''}>{m.remarks || '—'}</span> },
             ]}
           />
         )}
@@ -1240,6 +1298,8 @@ export const ProjectDetailsView: React.FC = () => {
             emptyMessage='No assumptions yet. Click "Add Assumption" to log one.'
             onAddClick={openAddAssumption}
             onEditClick={openEditAssumption}
+            onRowClick={openAssumptionDetails}
+            onViewClick={openAssumptionDetails}
             getRowLabel={(a) => a.description.substring(0, 40)}
             onDelete={canDeleteProject ? handleDeleteAssumption : undefined}
             columns={[
@@ -1247,7 +1307,10 @@ export const ProjectDetailsView: React.FC = () => {
               { key: 'priority', label: 'Priority', render: (a) => <StatusBadge value={a.priority} colorMap={PRIORITY_COLORS} shape="rounded" /> },
               { key: 'validationStatus', label: 'Validation Status', render: (a) => <StatusBadge value={a.validationStatus} colorMap={ASSUMPTION_VALIDATION_COLORS} shape="rounded" /> },
               { key: 'owner', label: 'Owner', render: (a) => <span className="text-slate-600 font-semibold">{a.ownerName || '—'}</span> },
+              { key: 'impactIfFalse', label: 'Impact If False', render: (a) => <span className="block max-w-[200px] line-clamp-2 text-slate-600" title={a.impactIfFalse || ''}>{a.impactIfFalse || '—'}</span> },
+              { key: 'dateIdentified', label: 'Date Identified', render: (a) => <span className="font-mono text-slate-500">{a.dateIdentified || '—'}</span> },
               { key: 'targetValidationDate', label: 'Target Validation', render: (a) => <span className="font-mono text-slate-500">{a.targetValidationDate || '—'}</span> },
+              { key: 'remarks', label: 'Remarks', render: (a) => <span className="block max-w-[200px] line-clamp-2 text-slate-600" title={a.remarks || ''}>{a.remarks || '—'}</span> },
             ]}
           />
         )}
@@ -1262,6 +1325,8 @@ export const ProjectDetailsView: React.FC = () => {
             emptyMessage='No dependencies yet. Click "Add Dependency" to log one.'
             onAddClick={openAddDependency}
             onEditClick={openEditDependency}
+            onRowClick={openDependencyDetails}
+            onViewClick={openDependencyDetails}
             getRowLabel={(d) => d.description.substring(0, 40)}
             onDelete={canDeleteProject ? handleDeleteDependency : undefined}
             columns={[
@@ -1269,8 +1334,11 @@ export const ProjectDetailsView: React.FC = () => {
               { key: 'priority', label: 'Priority', render: (d) => <StatusBadge value={d.priority} colorMap={PRIORITY_COLORS} shape="rounded" /> },
               { key: 'status', label: 'Status', render: (d) => <StatusBadge value={d.status} colorMap={DEPENDENCY_STATUS_COLORS} shape="rounded" /> },
               { key: 'dependencyType', label: 'Type', render: (d) => <span className="text-slate-600">{d.dependencyType || '—'}</span> },
+              { key: 'dependentTask', label: 'Dependent Task', render: (d) => <span className="text-slate-600">{d.dependentTask || '—'}</span> },
               { key: 'owner', label: 'Owner', render: (d) => <span className="text-slate-600 font-semibold">{d.ownerName || '—'}</span> },
+              { key: 'externalParty', label: 'External Party', render: (d) => <span className="text-slate-600">{d.externalParty || '—'}</span> },
               { key: 'targetResolutionDate', label: 'Target Resolution', render: (d) => <span className="font-mono text-slate-500">{d.targetResolutionDate || '—'}</span> },
+              { key: 'remarks', label: 'Remarks', render: (d) => <span className="block max-w-[200px] line-clamp-2 text-slate-600" title={d.remarks || ''}>{d.remarks || '—'}</span> },
             ]}
           />
         )}
@@ -1317,16 +1385,24 @@ export const ProjectDetailsView: React.FC = () => {
                 </span>
               }
               actions={
-                <Button icon={<Plus className="w-3.5 h-3.5" aria-hidden="true" />} onClick={handleOpenAddTask}>
-                  Add Task
-                </Button>
+                can('project-action-items', 'create') ? (
+                  <Button icon={<Plus className="w-3.5 h-3.5" aria-hidden="true" />} onClick={handleOpenAddTask}>
+                    Add Task
+                  </Button>
+                ) : null
               }
             >
               <div className="overflow-x-auto">
                 <Table extraColumns={extraActionColCount} resizable storageKey="project-details:action-items">
                   <TableHead>
                     {displayedActionCols.map((col) => (
-                      <TableHeadCell key={col.key} columnId={col.key} className={col.key === 'title' ? 'px-5' : ''}>
+                      <TableHeadCell
+                        key={col.key}
+                        columnId={col.key}
+                        sticky={col.isPinned ? 'left' : undefined}
+                        stickyLeft={actionColPinnedOffsets[col.key]}
+                        className={col.key === 'title' ? 'px-5' : ''}
+                      >
                         {SORTABLE_AI_FIELDS.has(col.key) ? (
                           <SortableHeader
                             label={col.name}
@@ -1356,14 +1432,23 @@ export const ProjectDetailsView: React.FC = () => {
                         return (
                           <TableRow key={item.id} className="hover:bg-slate-50/50">
                             {displayedActionCols.map((col) => {
+                              const stickyProps = {
+                                sticky: (col.isPinned ? 'left' : undefined) as 'left' | undefined,
+                                stickyLeft: actionColPinnedOffsets[col.key],
+                              };
+
                               if (col.key === 'title') {
                                 return (
-                                  <TableCell key={col.key}>
+                                  <TableCell key={col.key} {...stickyProps}>
                                     <div className="flex items-center flex-wrap gap-2">
                                       <div className="flex-1 min-w-0">
                                         <button
                                           type="button"
-                                          onClick={() => setSelectedActionItemId(item.id)}
+                                          onClick={() => {
+                                            setSelectedActionItemId(item.id);
+                                            setActionItemDetailsSourceView('project-details');
+                                            setView('project-action-item-details');
+                                          }}
                                           className="font-extrabold text-slate-900 text-sm hover:text-blue-600 cursor-pointer text-left transition-colors truncate block max-w-full"
                                         >
                                           {item.title}
@@ -1373,59 +1458,60 @@ export const ProjectDetailsView: React.FC = () => {
                                   </TableCell>
                                 );
                               }
-                              if (col.key === 'notes') {
+                              if (col.key === 'notes' || col.key === 'risksAndDependencies' || col.key === 'nextAction' || col.key === 'impediments') {
+                                const txtVal = String(item[col.key] || '');
                                 return (
-                                  <TableCell key={col.key} className="text-slate-600 font-medium">
-                                    <span className="block max-w-[280px] line-clamp-2" title={item.notes || undefined}>
-                                      {item.notes || '—'}
+                                  <TableCell key={col.key} {...stickyProps} className="text-slate-600 font-medium" title={txtVal || undefined}>
+                                    <span className="truncate block w-full">
+                                      {txtVal || '—'}
                                     </span>
                                   </TableCell>
                                 );
                               }
                               if (col.key === 'accountId') {
                                 return (
-                                  <TableCell key={col.key} className="text-slate-600 font-bold">
-                                    {account ? account.name : 'Unknown Account'}
+                                  <TableCell key={col.key} {...stickyProps} className="text-slate-600 font-bold">
+                                     {account ? account.name : (project.accountName || 'Unknown Account')}
                                   </TableCell>
                                 );
                               }
                               if (col.key === 'owner') {
                                 return (
-                                   <TableCell key={col.key} className="text-slate-600 font-semibold">
+                                   <TableCell key={col.key} {...stickyProps} className="text-slate-600 font-semibold">
                                      {cleanOwnerName(item.ownerName || item.owner) || '—'}
                                    </TableCell>
                                 );
                               }
                               if (col.key === 'priority') {
                                 return (
-                                  <TableCell key={col.key}>
+                                  <TableCell key={col.key} {...stickyProps}>
                                     <StatusBadge value={item.priority} colorMap={PRIORITY_COLORS} shape="rounded" />
                                   </TableCell>
                                 );
                               }
                               if (col.key === 'status') {
                                 return (
-                                  <TableCell key={col.key}>
+                                  <TableCell key={col.key} {...stickyProps}>
                                     <StatusBadge value={item.status} colorMap={ACTION_STATUS_COLORS} shape="rounded" />
                                   </TableCell>
                                 );
                               }
                               if (col.key === 'openDate') {
-                                return <TableCell key={col.key} className="font-mono font-medium text-slate-500">{item.openDate}</TableCell>;
+                                return <TableCell key={col.key} {...stickyProps} className="font-mono font-medium text-slate-500">{item.openDate}</TableCell>;
                               }
                               if (col.key === 'dueDate') {
-                                return <TableCell key={col.key} className="font-mono font-medium text-slate-500">{item.dueDate}</TableCell>;
+                                return <TableCell key={col.key} {...stickyProps} className="font-mono font-medium text-slate-500">{item.dueDate}</TableCell>;
                               }
                               if (col.key === 'actionItemType') {
                                 return (
-                                  <TableCell key={col.key} className="text-slate-700 font-semibold text-xs">
+                                  <TableCell key={col.key} {...stickyProps} className="text-slate-700 font-semibold text-xs">
                                     {item.actionItemType || '—'}
                                   </TableCell>
                                 );
                               }
                               const rawVal = item[col.key] ?? (col.type === 'boolean' ? false : '');
                               return (
-                                <TableCell key={col.key}>
+                                <TableCell key={col.key} {...stickyProps}>
                                   {col.type === 'boolean' ? (
                                     <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${rawVal ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>
                                       {rawVal ? 'Yes' : 'No'}
@@ -1440,18 +1526,22 @@ export const ProjectDetailsView: React.FC = () => {
                             })}
                             <TableCell align="center" sticky="right">
                               <div className="flex items-center justify-center space-x-1">
-                                <RowActionButton
-                                  intent="edit"
-                                  label={`Edit action item ${item.title}`}
-                                  icon={<Pencil className="w-3.5 h-3.5" />}
-                                  onClick={() => handleEditAiClick(item)}
-                                />
-                                <RowActionButton
-                                  intent="delete"
-                                  label={`Delete action item ${item.title}`}
-                                  icon={<Trash2 className="w-3.5 h-3.5" />}
-                                  onClick={() => setDeleteTarget({ type: 'actionItem', id: item.id, label: item.title })}
-                                />
+                                {can('project-action-items', 'update') && (
+                                  <RowActionButton
+                                    intent="edit"
+                                    label={`Edit action item ${item.title}`}
+                                    icon={<Pencil className="w-3.5 h-3.5" />}
+                                    onClick={() => handleEditAiClick(item)}
+                                  />
+                                )}
+                                {can('project-action-items', 'delete') && (
+                                  <RowActionButton
+                                    intent="delete"
+                                    label={`Delete action item ${item.title}`}
+                                    icon={<Trash2 className="w-3.5 h-3.5" />}
+                                    onClick={() => setDeleteTarget({ type: 'actionItem', id: item.id, label: item.title })}
+                                  />
+                                )}
                               </div>
                             </TableCell>
                           </TableRow>
@@ -1494,10 +1584,13 @@ export const ProjectDetailsView: React.FC = () => {
       {isEditModalOpen && projectDraft && (
         <ProjectFormModal
           isOpen={isEditModalOpen}
-          onClose={() => { setIsEditModalOpen(false); setProjectDraft(null); }}
+          mode="edit"
+          onClose={() => { setIsEditModalOpen(false); setProjectDraft(null); setEditProjectError(null); }}
           onSubmit={handleSaveProject}
+          isSubmitting={isSubmittingProject}
+          errorMsg={editProjectError}
           value={projectDraft}
-          onChange={(patch) => setProjectDraft({ ...projectDraft, ...patch })}
+          onChange={(patch) => setProjectDraft((prev) => (prev ? { ...prev, ...patch } : null))}
           users={users}
           stakeholders={stakeholders}
         />
@@ -1609,6 +1702,14 @@ export const ProjectDetailsView: React.FC = () => {
         teamMembers={team}
       />
 
+      {/* Assumption Details (read-only) */}
+      <AssumptionDetailsModal
+        isOpen={!!viewingAssumption}
+        assumption={viewingAssumption}
+        onClose={() => setViewingAssumption(null)}
+        onEdit={viewingAssumption ? () => openEditAssumption(viewingAssumption) : undefined}
+      />
+
       {/* Add/Edit Issue Modal */}
       <IssueFormModal
         isOpen={isIssueModalOpen}
@@ -1637,6 +1738,14 @@ export const ProjectDetailsView: React.FC = () => {
         teamMembers={team}
       />
 
+      {/* Dependency Details (read-only) */}
+      <DependencyDetailsModal
+        isOpen={!!viewingDependency}
+        dependency={viewingDependency}
+        onClose={() => setViewingDependency(null)}
+        onEdit={viewingDependency ? () => openEditDependency(viewingDependency) : undefined}
+      />
+
       {/* Add Action Item Modal — locked to this project + its account */}
       <ActionItemFormModal
         isOpen={isAddTaskOpen}
@@ -1650,8 +1759,9 @@ export const ProjectDetailsView: React.FC = () => {
         stakeholders={stakeholders}
         actionItemColumns={actionItemColumns}
         actionItemsColumnConfig={actionItemsColumnConfig}
-        lockedAccount={lockedAccount}
-        lockedProject={lockedProject}
+        lockedAccount={project ? { id: project.accountId, name: project.accountName || account?.name || 'Account' } : undefined}
+        lockedProject={project ? { id: project.id, name: project.name } : undefined}
+        projects={projects}
         mode="project"
       />
 

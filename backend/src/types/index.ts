@@ -12,7 +12,27 @@ export type ServiceLine = (typeof SERVICE_LINE_OPTIONS)[number];
 export type OpportunityHealth = 'Green' | 'Amber' | 'Red';
 export type PriorityLevel = 'High' | 'Medium' | 'Low';
 export type ActionItemStatus = 'To Do' | 'In Progress' | 'Blocked' | 'Completed' | 'Cancelled';
-export type ActionItemType = 'Account mining' | 'Proposals' | 'Stakeholder connect';
+export type ActionItemType =
+  | 'Account mining'
+  | 'Approval'
+  | 'Board Meeting'
+  | 'CEO Connect'
+  | 'Communication'
+  | 'Customer Request'
+  | 'Decision'
+  | 'Dependency'
+  | 'Documentation'
+  | 'Escalation'
+  | 'Follow-up'
+  | 'Issue Resolution'
+  | 'Meeting Action'
+  | 'Opportunity / Growth'
+  | 'Other'
+  | 'Proposals'
+  | 'Review'
+  | 'Risk Mitigation'
+  | 'Stakeholder connect'
+  | 'Task';
 export type InfluenceLevel = 'High' | 'Medium' | 'Low';
 export type RelationshipStatus = 'Strong' | 'Neutral' | 'Weak';
 export type StakeholderType = 'CLIENT' | 'SERVICE_PROVIDER';
@@ -521,6 +541,8 @@ export interface ProjectDependency {
 
 export interface ActionItem {
   id: string;
+  /** System-generated unique identifier (e.g. AKU-0001). Read-only and immutable once created. */
+  actionItemNumber?: string;
   title: string;
   accountId: string;
   /** Parent account display name (joined server-side; valid even when the account is deactivated). */
@@ -548,6 +570,8 @@ export interface ActionItem {
   notes: string;
   /** Known risks or blocking dependencies for this action item. */
   risksAndDependencies: string;
+  nextAction?: string;
+  impediments?: string;
   completedDate?: string;
   /** Derived (never stored): FY label computed from dueDate via the configured Financial Calendar. */
   financialYear: string;

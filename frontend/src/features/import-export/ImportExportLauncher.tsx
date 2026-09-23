@@ -23,9 +23,9 @@ import { ImportWizard } from './ImportWizard';
  */
 export const ImportExportLauncher: React.FC = () => {
   const {
-    accounts, opportunities, actionItems, stakeholders,
+    accounts, opportunities, actionItems, stakeholders, projects, comments,
     accountsColumnConfig, opportunitiesColumnConfig, actionItemsColumnConfig,
-    refreshData,
+    refreshData, activeExportRows,
   } = useCRM();
 
   const [hubOpen, setHubOpen] = useState(false);
@@ -49,12 +49,38 @@ export const ImportExportLauncher: React.FC = () => {
     setLastExport(null);
   };
 
-  const refData: RefData = { accounts, opportunities, actionItems, stakeholders };
+  const refData: RefData = { accounts, opportunities, actionItems, stakeholders, projects, comments };
 
-  const clientStakeholders = stakeholders.filter((s) => s.stakeholderType !== 'SERVICE_PROVIDER');
+  const clientStakeholders = React.useMemo(
+    () => stakeholders.filter((s) => s.stakeholderType !== 'SERVICE_PROVIDER'),
+    [stakeholders],
+  );
+
+  const defaultAccounts = React.useMemo(
+    () => [...accounts].sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' })),
+    [accounts],
+  );
+  const defaultOpportunities = React.useMemo(
+    () => [...opportunities].sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' })),
+    [opportunities],
+  );
+  const defaultActionItems = React.useMemo(
+    () => [...actionItems].filter((ai) => !ai.projectId).sort((a, b) => (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' })),
+    [actionItems],
+  );
+  const defaultStakeholders = React.useMemo(
+    () =>
+      [...clientStakeholders].sort((a, b) =>
+        (a.name || a.email || '').localeCompare(b.name || b.email || '', undefined, { sensitivity: 'base' }),
+      ),
+    [clientStakeholders],
+  );
 
   const rowsFor: Record<IEModuleKey, any[]> = {
-    accounts, stakeholders: clientStakeholders, opportunities, actionItems,
+    accounts: activeExportRows.accounts ?? defaultAccounts,
+    stakeholders: activeExportRows.stakeholders ?? defaultStakeholders,
+    opportunities: activeExportRows.opportunities ?? defaultOpportunities,
+    actionItems: activeExportRows.actionItems ?? defaultActionItems,
   };
   const columnsFor: Record<IEModuleKey, ColumnConfig[] | undefined> = {
     accounts: accountsColumnConfig,
@@ -63,10 +89,10 @@ export const ImportExportLauncher: React.FC = () => {
     stakeholders: undefined, // Stakeholders has no column customization
   };
   const counts: Record<IEModuleKey, number> = {
-    accounts: accounts.length,
-    stakeholders: clientStakeholders.length,
-    opportunities: opportunities.length,
-    actionItems: actionItems.length,
+    accounts: rowsFor.accounts.length,
+    stakeholders: rowsFor.stakeholders.length,
+    opportunities: rowsFor.opportunities.length,
+    actionItems: rowsFor.actionItems.length,
   };
 
   const doExport = async (selection: ExportSelection) => {

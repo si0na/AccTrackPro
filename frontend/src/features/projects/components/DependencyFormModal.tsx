@@ -31,6 +31,21 @@ export const emptyDependencyDraft: DependencyDraft = {
   remarks: '',
 };
 
+export const createDependencyDraftFromModel = (d?: ProjectDependency | null): DependencyDraft => {
+  if (!d) return emptyDependencyDraft;
+  return {
+    priority: d.priority ?? 'Medium',
+    description: d.description ?? '',
+    dependencyType: d.dependencyType ?? '',
+    dependentTask: d.dependentTask ?? '',
+    ownerId: d.ownerId ?? '',
+    externalParty: d.externalParty ?? '',
+    status: d.status ?? 'Open',
+    targetResolutionDate: d.targetResolutionDate ?? '',
+    remarks: d.remarks ?? '',
+  };
+};
+
 export interface DependencyFormModalProps {
   isOpen: boolean;
   onClose: () => void;

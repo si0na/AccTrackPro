@@ -66,10 +66,29 @@ export const RiskFormModal: React.FC<RiskFormModalProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  // Available projects for selected Account
+  // Compute available accounts by combining accounts list and accounts derived from accessible projects
+  const availableAccounts = useMemo(() => {
+    const map = new Map<string, { id: string; name: string }>();
+    accounts.forEach((acc) => {
+      if (acc.id) {
+        map.set(acc.id, { id: acc.id, name: acc.name });
+      }
+    });
+    projects.forEach((proj) => {
+      if (proj.accountId && !map.has(proj.accountId)) {
+        map.set(proj.accountId, {
+          id: proj.accountId,
+          name: proj.accountName || proj.accountId,
+        });
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  }, [accounts, projects]);
+
+  // Available projects for selected Account (or all accessible projects if no Account selected)
   const accountProjects = useMemo(() => {
     const accId = fixedAccountId || selectedAccountId;
-    if (!accId) return [];
+    if (!accId) return projects;
     return projects.filter((p) => p.accountId === accId);
   }, [projects, selectedAccountId, fixedAccountId]);
 
@@ -82,10 +101,11 @@ export const RiskFormModal: React.FC<RiskFormModalProps> = ({
       const isProj = norm.sourceType === 'Project' || !!(risk as ProjectRisk).projectId || !!norm.projectId;
       setLevel(fixedLevel || (isProj ? 'Project' : 'Account'));
 
-      const accId = fixedAccountId || norm.accountId || (risk as AccountRisk).accountId || '';
-      setSelectedAccountId(accId);
-
       const projId = fixedProjectId || norm.projectId || (risk as ProjectRisk).projectId || '';
+      const fixedProj = projId ? projects.find((p) => p.id === projId) : null;
+      const accId = fixedAccountId || norm.accountId || (risk as AccountRisk).accountId || fixedProj?.accountId || '';
+
+      setSelectedAccountId(accId);
       setSelectedProjectId(projId);
 
       setDescription(norm.description || '');
@@ -107,11 +127,35 @@ export const RiskFormModal: React.FC<RiskFormModalProps> = ({
       setMitigationPlan(norm.mitigationPlan || (risk as AccountRisk).mitigationPlan || '');
       setContingencyPlan(norm.contingencyPlan || (risk as ProjectRisk).contingencyPlan || '');
     } else {
-      setLevel(fixedLevel || 'Account');
-      const accId = fixedAccountId || (accounts.length > 0 ? accounts[0].id : '');
-      setSelectedAccountId(accId);
-      const validProjs = projects.filter((p) => p.accountId === accId);
-      setSelectedProjectId(fixedProjectId || (validProjs.length > 0 ? validProjs[0].id : ''));
+      const initialLevel = fixedLevel || 'Account';
+      setLevel(initialLevel);
+
+      let initialProjId = fixedProjectId || '';
+      let initialAccId = fixedAccountId || '';
+
+      if (initialProjId) {
+        const foundProj = projects.find((p) => p.id === initialProjId);
+        if (foundProj && foundProj.accountId) {
+          initialAccId = foundProj.accountId;
+        }
+      }
+
+      if (!initialAccId && availableAccounts.length > 0) {
+        initialAccId = availableAccounts[0].id;
+      }
+
+      if (initialLevel === 'Project' && !initialProjId && initialAccId) {
+        const validProjs = projects.filter((p) => p.accountId === initialAccId);
+        if (validProjs.length > 0) {
+          initialProjId = validProjs[0].id;
+        } else if (projects.length > 0) {
+          initialProjId = projects[0].id;
+          initialAccId = projects[0].accountId;
+        }
+      }
+
+      setSelectedAccountId(initialAccId);
+      setSelectedProjectId(initialProjId);
       setDescription('');
       setRag('');
       setClassification('');
@@ -126,7 +170,7 @@ export const RiskFormModal: React.FC<RiskFormModalProps> = ({
       setMitigationPlan('');
       setContingencyPlan('');
     }
-  }, [isOpen, isEdit, risk, fixedLevel, fixedAccountId, fixedProjectId, accounts]);
+  }, [isOpen, isEdit, risk, fixedLevel, fixedAccountId, fixedProjectId, availableAccounts, projects]);
 
   const handleAccountChange = (accId: string) => {
     setSelectedAccountId(accId);
@@ -135,6 +179,14 @@ export const RiskFormModal: React.FC<RiskFormModalProps> = ({
       setSelectedProjectId(validProjs[0].id);
     } else {
       setSelectedProjectId('');
+    }
+  };
+
+  const handleProjectChange = (projId: string) => {
+    setSelectedProjectId(projId);
+    const proj = projects.find((p) => p.id === projId);
+    if (proj && proj.accountId) {
+      setSelectedAccountId(proj.accountId);
     }
   };
 
@@ -195,7 +247,7 @@ export const RiskFormModal: React.FC<RiskFormModalProps> = ({
         }
       } else {
         // Project Level Risk
-        const payload: Omit<ProjectRisk, 'id' | 'projectId' | 'ownerName'> = {
+        const payload: Omit<ProjectRisk, 'id' | 'projectId' | 'ownerName'> & { accountId?: string } = {
           priority,
           description: description.trim(),
           impact: impact || undefined,
@@ -210,6 +262,7 @@ export const RiskFormModal: React.FC<RiskFormModalProps> = ({
           targetResolutionDate: targetResolutionDate || undefined,
           rag: (rag as any) || undefined,
           classification: classification || 'Risk',
+          accountId: accId || undefined,
         };
 
         if (isEdit) {
@@ -283,13 +336,11 @@ export const RiskFormModal: React.FC<RiskFormModalProps> = ({
                   className={`${selectCls} ${(isEdit || !!fixedAccountId) ? 'bg-slate-100 cursor-not-allowed' : ''}`}
                 >
                   <option value="">— Select Account —</option>
-                  {[...accounts]
-                    .sort((a, b) => a.name.localeCompare(b.name))
-                    .map((acc) => (
-                      <option key={acc.id} value={acc.id}>
-                        {acc.name}
-                      </option>
-                    ))}
+                  {availableAccounts.map((acc) => (
+                    <option key={acc.id} value={acc.id}>
+                      {acc.name}
+                    </option>
+                  ))}
                 </select>
               </FormField>
 
@@ -298,7 +349,7 @@ export const RiskFormModal: React.FC<RiskFormModalProps> = ({
                   <select
                     disabled={isEdit || !!fixedProjectId}
                     value={selectedProjectId}
-                    onChange={(e) => setSelectedProjectId(e.target.value)}
+                    onChange={(e) => handleProjectChange(e.target.value)}
                     className={`${selectCls} ${(isEdit || !!fixedProjectId) ? 'bg-slate-100 cursor-not-allowed' : ''}`}
                   >
                     <option value="">— Select Project —</option>

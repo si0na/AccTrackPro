@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import type {
   Account, Opportunity, ActionItem, Stakeholder, Activity, Comment,
-  CustomColumn, ColumnConfig, FinancialYear, FinancialCalendar, AdminSettings, Project,
+  CustomColumn, CustomColumnModule, ColumnConfig, FinancialYear, FinancialCalendar, AdminSettings, Project,
   EmployeeAppreciation, EmployeeRewardsRecognition, SqaRecord, NormalizedRisk, PerformanceEvaluation,
 } from '@/types';
 import { showToast } from '@/components/common/ToastHost';
@@ -56,7 +56,8 @@ const DEFAULT_OPPORTUNITIES_COLUMNS: ColumnConfig[] = [
 ];
 
 const DEFAULT_ACTION_ITEMS_COLUMNS: ColumnConfig[] = [
-  { key: 'title',         name: 'Action Item Title', isStandard: true, isPinned: true,  isDisplayed: true, type: 'text' },
+  { key: 'actionItemNumber', name: 'Action Item #',    isStandard: true, isPinned: true,  isDisplayed: true, type: 'text' },
+  { key: 'title',            name: 'Action Item Title', isStandard: true, isPinned: true,  isDisplayed: true, type: 'text' },
   { key: 'accountId',     name: 'Account',           isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
   { key: 'opportunityId', name: 'Opportunity',       isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
   { key: 'projectId',     name: 'Project',           isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
@@ -68,6 +69,9 @@ const DEFAULT_ACTION_ITEMS_COLUMNS: ColumnConfig[] = [
   { key: 'dueDate',       name: 'Due Date',          isStandard: true, isPinned: false, isDisplayed: true, type: 'date' },
   { key: 'notes',         name: 'Description',       isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
   { key: 'risksAndDependencies', name: 'Risks & Dependencies', isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
+  { key: 'nextAction',    name: 'Next Action',       isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
+  { key: 'impediments',   name: 'Impediments',       isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
+  { key: 'comments',      name: 'Comments',          isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
 ];
 
 const DEFAULT_PERFORMANCE_EVALUATION_COLUMNS: ColumnConfig[] = [
@@ -102,7 +106,44 @@ const DEFAULT_PERFORMANCE_EVALUATION_COLUMNS: ColumnConfig[] = [
   { key: 'retentionRisk',          name: 'Retention Risk',             isStandard: true, isPinned: false, isDisplayed: true,  type: 'text'   },
 ];
 
-type CustomColumnModule = 'accounts' | 'opportunities' | 'actionItems' | 'performanceEvaluation';
+const DEFAULT_PROJECTS_COLUMNS: ColumnConfig[] = [
+  { key: 'name',                name: 'Project Name',        isStandard: true, isPinned: true,  isDisplayed: true, type: 'text' },
+  { key: 'accountId',           name: 'Account',             isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
+  { key: 'status',              name: 'Status',              isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
+  { key: 'health',              name: 'Health',              isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
+  { key: 'priority',            name: 'Priority',            isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
+  { key: 'startDate',          name: 'Start Date',          isStandard: true, isPinned: false, isDisplayed: true, type: 'date' },
+  { key: 'endDate',            name: 'End Date',            isStandard: true, isPinned: false, isDisplayed: true, type: 'date' },
+  { key: 'serviceProviderPmId', name: 'Project Manager',     isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
+  { key: 'practiceLeadId',     name: 'Practice Lead',       isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
+  { key: 'clientPartnerId',    name: 'Client Partner',      isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
+  { key: 'clientPmName',       name: 'Client PM',           isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
+  { key: 'deliveryModel',       name: 'Delivery Model',      isStandard: true, isPinned: false, isDisplayed: false, type: 'text' },
+  { key: 'billingModel',        name: 'Billing Model',       isStandard: true, isPinned: false, isDisplayed: false, type: 'text' },
+  { key: 'tower',               name: 'Tower',               isStandard: true, isPinned: false, isDisplayed: false, type: 'text' },
+  { key: 'serviceLine',         name: 'Service Line',        isStandard: true, isPinned: false, isDisplayed: false, type: 'text' },
+  { key: 'methodology',         name: 'Methodology',         isStandard: true, isPinned: false, isDisplayed: false, type: 'text' },
+  { key: 'dealValue',           name: 'Deal Value',          isStandard: true, isPinned: false, isDisplayed: false, type: 'number' },
+  { key: 'description',         name: 'Description',         isStandard: true, isPinned: false, isDisplayed: false, type: 'text' },
+];
+
+const DEFAULT_PROJECT_ACTION_ITEMS_COLUMNS: ColumnConfig[] = [
+  { key: 'actionItemNumber', name: 'Action Item #',    isStandard: true, isPinned: true,  isDisplayed: true, type: 'text' },
+  { key: 'title',            name: 'Action Item Title', isStandard: true, isPinned: true,  isDisplayed: true, type: 'text' },
+  { key: 'accountId',     name: 'Account',           isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
+  { key: 'projectId',     name: 'Project',           isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
+  { key: 'owner',         name: 'Owner',             isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
+  { key: 'priority',      name: 'Priority',          isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
+  { key: 'status',        name: 'Status',            isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
+  { key: 'actionItemType', name: 'Type',             isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
+  { key: 'openDate',      name: 'Open Date',         isStandard: true, isPinned: false, isDisplayed: true, type: 'date' },
+  { key: 'dueDate',       name: 'Due Date',          isStandard: true, isPinned: false, isDisplayed: true, type: 'date' },
+  { key: 'notes',         name: 'Description',       isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
+  { key: 'risksAndDependencies', name: 'Risks & Dependencies', isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
+  { key: 'nextAction',    name: 'Next Action',       isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
+  { key: 'impediments',   name: 'Impediments',       isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
+  { key: 'comments',      name: 'Comments',          isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
+];
 
 function getMergedConfig(
   module: CustomColumnModule,
@@ -113,6 +154,8 @@ function getMergedConfig(
     module === 'accounts' ? DEFAULT_ACCOUNTS_COLUMNS
     : module === 'opportunities' ? DEFAULT_OPPORTUNITIES_COLUMNS
     : module === 'actionItems' ? DEFAULT_ACTION_ITEMS_COLUMNS
+    : module === 'projects' ? DEFAULT_PROJECTS_COLUMNS
+    : module === 'projectActionItems' ? DEFAULT_PROJECT_ACTION_ITEMS_COLUMNS
     : DEFAULT_PERFORMANCE_EVALUATION_COLUMNS;
 
   let current = savedConfig?.length > 0 ? [...savedConfig] : [...defaults];
@@ -192,6 +235,8 @@ export const useCRMData = (
   const [rawOpportunitiesConfig, setRawOpportunitiesConfig] = useState<ColumnConfig[]>([]);
   const [rawActionItemsConfig, setRawActionItemsConfig] = useState<ColumnConfig[]>([]);
   const [rawPerformanceEvaluationConfig, setRawPerformanceEvaluationConfig] = useState<ColumnConfig[]>([]);
+  const [rawProjectsConfig, setRawProjectsConfig] = useState<ColumnConfig[]>([]);
+  const [rawProjectActionItemsConfig, setRawProjectActionItemsConfig] = useState<ColumnConfig[]>([]);
   const [financialYears, setFinancialYears] = useState<FinancialYear[]>([]);
   const [financialCalendar, setFinancialCalendar] = useState<FinancialCalendar | null>(null);
   const [adminSettings, setAdminSettings] = useState<AdminSettings | null>(null);
@@ -224,6 +269,15 @@ export const useCRMData = (
   }, []);
 
 
+function catchForbidden<T>(promise: Promise<T[]>, fallback: T[] = []): Promise<T[]> {
+  return promise.catch((err) => {
+    if (err?.response?.status === 403) {
+      return fallback;
+    }
+    throw err;
+  });
+}
+
   // Loads operational entity data. Operational modules are never filtered by
   // the Global Period Selector — only reporting (analytics) endpoints are.
   const refreshData = async () => {
@@ -240,22 +294,22 @@ export const useCRMData = (
         apprData, rewardsData,
         sqaData, risksData, perfData,
       ] = await Promise.all([
-        accountsApi.getAll(owner),
-        accountsApi.getDeactivated(owner),
-        opportunitiesApi.getAll(owner),
-        opportunitiesApi.getDeactivated(owner),
-        actionItemsApi.getAll(owner),
-        actionItemsApi.getDeactivated(owner),
-        stakeholdersApi.getAll(owner),
-        stakeholdersApi.getDeactivated(owner),
-        activitiesApi.getAll(owner),
-        commentsApi.getAll(),
-        customColumnsApi.getAll(),
-        columnConfigsApi.getAll(),
-        projectsApi.getAll(owner),
-        projectsApi.getDeactivated(owner),
-        employeeAppreciationApi.getAll(),
-        employeeRewardsRecognitionApi.getAll(),
+        catchForbidden(accountsApi.getAll(owner)),
+        catchForbidden(accountsApi.getDeactivated(owner)),
+        catchForbidden(opportunitiesApi.getAll(owner)),
+        catchForbidden(opportunitiesApi.getDeactivated(owner)),
+        catchForbidden(actionItemsApi.getAll(owner)),
+        catchForbidden(actionItemsApi.getDeactivated(owner)),
+        catchForbidden(stakeholdersApi.getAll(owner)),
+        catchForbidden(stakeholdersApi.getDeactivated(owner)),
+        catchForbidden(activitiesApi.getAll(owner)),
+        commentsApi.getAll().catch(() => []),
+        customColumnsApi.getAll().catch(() => ({ accountColumns: [], opportunityColumns: [], actionItemColumns: [], performanceEvaluationColumns: [] })),
+        columnConfigsApi.getAll().catch(() => ({ rawAccountsConfig: [], rawOpportunitiesConfig: [], rawActionItemsConfig: [], rawPerformanceEvaluationConfig: [], rawProjectsConfig: [], rawProjectActionItemsConfig: [] })),
+        catchForbidden(projectsApi.getAll(owner)),
+        catchForbidden(projectsApi.getDeactivated(owner)),
+        employeeAppreciationApi.getAll().catch(() => []),
+        employeeRewardsRecognitionApi.getAll().catch(() => []),
         sqaApi.getAll().catch(() => []),
         centralRisksApi.getAll().catch(() => []),
         performanceEvaluationsApi.getAll(owner).catch(() => []),
@@ -286,6 +340,8 @@ export const useCRMData = (
       setRawOpportunitiesConfig(configs.rawOpportunitiesConfig ?? []);
       setRawActionItemsConfig(configs.rawActionItemsConfig ?? []);
       setRawPerformanceEvaluationConfig(configs.rawPerformanceEvaluationConfig ?? []);
+      setRawProjectsConfig((configs as any).rawProjectsConfig ?? []);
+      setRawProjectActionItemsConfig((configs as any).rawProjectActionItemsConfig ?? []);
       notificationsApi.getUnreadCount().then(({ count }) => setUnreadNotificationCount(count)).catch((err) => console.error('[useCRMData] Failed to fetch unread count:', err));
     } catch (err) {
       console.error('[useCRMData] Failed to load entity data:', err);
@@ -327,6 +383,8 @@ export const useCRMData = (
   const opportunitiesColumnConfig = getMergedConfig('opportunities', rawOpportunitiesConfig, opportunityColumns);
   const actionItemsColumnConfig = getMergedConfig('actionItems', rawActionItemsConfig, actionItemColumns);
   const performanceEvaluationColumnConfig = getMergedConfig('performanceEvaluation', rawPerformanceEvaluationConfig, performanceEvaluationColumns);
+  const projectsColumnConfig = getMergedConfig('projects', rawProjectsConfig, []);
+  const projectActionItemsColumnConfig = getMergedConfig('projectActionItems', rawProjectActionItemsConfig, actionItemColumns);
 
   // ─── Column config actions ─────────────────────────────────────────────────
 
@@ -334,6 +392,8 @@ export const useCRMData = (
     if (module === 'accounts') { setRawAccountsConfig(config); await columnConfigsApi.save({ rawAccountsConfig: config }); }
     else if (module === 'opportunities') { setRawOpportunitiesConfig(config); await columnConfigsApi.save({ rawOpportunitiesConfig: config }); }
     else if (module === 'actionItems') { setRawActionItemsConfig(config); await columnConfigsApi.save({ rawActionItemsConfig: config }); }
+    else if (module === 'projects') { setRawProjectsConfig(config); await columnConfigsApi.save({ rawProjectsConfig: config } as any); }
+    else if (module === 'projectActionItems') { setRawProjectActionItemsConfig(config); await columnConfigsApi.save({ rawProjectActionItemsConfig: config } as any); }
     else { setRawPerformanceEvaluationConfig(config); await columnConfigsApi.save({ rawPerformanceEvaluationConfig: config }); }
   };
 
@@ -341,6 +401,8 @@ export const useCRMData = (
     if (module === 'accounts') { setRawAccountsConfig(DEFAULT_ACCOUNTS_COLUMNS); await columnConfigsApi.save({ rawAccountsConfig: DEFAULT_ACCOUNTS_COLUMNS }); }
     else if (module === 'opportunities') { setRawOpportunitiesConfig(DEFAULT_OPPORTUNITIES_COLUMNS); await columnConfigsApi.save({ rawOpportunitiesConfig: DEFAULT_OPPORTUNITIES_COLUMNS }); }
     else if (module === 'actionItems') { setRawActionItemsConfig(DEFAULT_ACTION_ITEMS_COLUMNS); await columnConfigsApi.save({ rawActionItemsConfig: DEFAULT_ACTION_ITEMS_COLUMNS }); }
+    else if (module === 'projects') { setRawProjectsConfig(DEFAULT_PROJECTS_COLUMNS); await columnConfigsApi.save({ rawProjectsConfig: DEFAULT_PROJECTS_COLUMNS } as any); }
+    else if (module === 'projectActionItems') { setRawProjectActionItemsConfig(DEFAULT_PROJECT_ACTION_ITEMS_COLUMNS); await columnConfigsApi.save({ rawProjectActionItemsConfig: DEFAULT_PROJECT_ACTION_ITEMS_COLUMNS } as any); }
     else { setRawPerformanceEvaluationConfig(DEFAULT_PERFORMANCE_EVALUATION_COLUMNS); await columnConfigsApi.save({ rawPerformanceEvaluationConfig: DEFAULT_PERFORMANCE_EVALUATION_COLUMNS }); }
   };
 
@@ -736,7 +798,9 @@ export const useCRMData = (
     risks,
     performanceEvaluations,
     accountColumns, opportunityColumns, actionItemColumns, performanceEvaluationColumns,
+    projectColumns: [], projectActionItemColumns: actionItemColumns,
     accountsColumnConfig, opportunitiesColumnConfig, actionItemsColumnConfig, performanceEvaluationColumnConfig,
+    projectsColumnConfig, projectActionItemsColumnConfig,
     loading,
     unreadNotificationCount,
     refreshUnreadCount: useCallback(() => {

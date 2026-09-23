@@ -74,6 +74,7 @@ import {
   TableHeadCell,
   TableCell,
   TableRow,
+  computePinnedOffsets,
   InlineSelectEditCell,
   InlineTextEditCell,
 } from '@/components/ui';
@@ -432,7 +433,17 @@ export const OpportunityDetailsView: React.FC = () => {
   };
 
   // Action items: filter -> sort -> paginate (omit Project column in Opportunity Detailed View)
-  const displayedActionCols = actionItemsColumnConfig.filter(col => col.isDisplayed && col.key !== 'projectId');
+  const displayedActionCols = useMemo(() => {
+    const cols = actionItemsColumnConfig.filter(col => col.isDisplayed && col.key !== 'projectId');
+    const pinned = cols.filter(col => col.isPinned);
+    const unpinned = cols.filter(col => !col.isPinned);
+    return [...pinned, ...unpinned];
+  }, [actionItemsColumnConfig]);
+
+  const actionColPinnedOffsets = useMemo(() => {
+    return computePinnedOffsets(displayedActionCols, 'opportunity-details:action-items');
+  }, [displayedActionCols]);
+
   // User-added (non-standard) columns widen the table past the viewport and
   // trigger horizontal scroll; the default column set always fits the screen.
   const extraActionColCount = displayedActionCols.filter(col => !col.isStandard).length;
@@ -1138,6 +1149,8 @@ export const OpportunityDetailsView: React.FC = () => {
                       <TableHeadCell
                         key={col.key}
                         columnId={col.key}
+                        sticky={col.isPinned ? 'left' : undefined}
+                        stickyLeft={actionColPinnedOffsets[col.key]}
                         className={col.key === 'title' ? 'px-5' : ''}
                       >
                         {SORTABLE_AI_FIELDS.has(col.key) ? (
@@ -1170,9 +1183,14 @@ export const OpportunityDetailsView: React.FC = () => {
                             <React.Fragment key={item.id}>
                               <TableRow className="hover:bg-slate-50/50">
                                 {displayedActionCols.map(col => {
+                                  const stickyProps = {
+                                    sticky: (col.isPinned ? 'left' : undefined) as 'left' | undefined,
+                                    stickyLeft: actionColPinnedOffsets[col.key],
+                                  };
+
                                   if (col.key === 'title') {
                                     return (
-                                      <TableCell key={col.key}>
+                                      <TableCell key={col.key} {...stickyProps}>
                                         <div className="flex items-center flex-wrap gap-1">
                                           <div className="flex-1 min-w-0">
                                             <InlineTextEditCell
@@ -1205,7 +1223,7 @@ export const OpportunityDetailsView: React.FC = () => {
                                   }
                                   if (col.key === 'notes') {
                                     return (
-                                      <TableCell key={col.key} className="text-slate-600 font-medium">
+                                      <TableCell key={col.key} {...stickyProps} className="text-slate-600 font-medium">
                                         <InlineTextEditCell
                                           value={item.notes || ''}
                                           placeholder="Add notes..."
@@ -1219,7 +1237,7 @@ export const OpportunityDetailsView: React.FC = () => {
                                   }
                                   if (col.key === 'accountId') {
                                     return (
-                                      <TableCell key={col.key} className="text-slate-600 font-bold">
+                                      <TableCell key={col.key} {...stickyProps} className="text-slate-600 font-bold">
                                         {account ? account.name : (item.accountName || 'Unknown Account')}
                                       </TableCell>
                                     );
@@ -1227,7 +1245,7 @@ export const OpportunityDetailsView: React.FC = () => {
                                   if (col.key === 'opportunityId') {
                                     const oppItem = opportunities.find(o => o.id === item.opportunityId);
                                     return (
-                                      <TableCell key={col.key} className="text-slate-600 font-semibold">
+                                      <TableCell key={col.key} {...stickyProps} className="text-slate-600 font-semibold">
                                         {oppItem ? oppItem.name : (item.opportunityName || opp.name || '—')}
                                       </TableCell>
                                     );
@@ -1240,7 +1258,7 @@ export const OpportunityDetailsView: React.FC = () => {
                                       ...oppProjects.map(p => ({ value: p.id, label: p.name })),
                                     ];
                                     return (
-                                      <TableCell key={col.key} className="text-slate-600 font-semibold">
+                                      <TableCell key={col.key} {...stickyProps} className="text-slate-600 font-semibold">
                                         <InlineSelectEditCell
                                           value={item.projectId ?? ''}
                                           options={projOptions}
@@ -1260,7 +1278,7 @@ export const OpportunityDetailsView: React.FC = () => {
                                   }
                                   if (col.key === 'owner' || col.key === 'ownerStakeholderId') {
                                     return (
-                                      <TableCell key={col.key} className="text-slate-600 font-semibold" onClick={(e) => e.stopPropagation()}>
+                                      <TableCell key={col.key} {...stickyProps} className="text-slate-600 font-semibold" onClick={(e) => e.stopPropagation()}>
                                         {can('actionItems', 'update') ? (
                                           <ActionItemOwnerField
                                             accountId={opp.accountId}
@@ -1285,7 +1303,7 @@ export const OpportunityDetailsView: React.FC = () => {
                                   }
                                   if (col.key === 'priority') {
                                     return (
-                                      <TableCell key={col.key}>
+                                      <TableCell key={col.key} {...stickyProps}>
                                         <InlineSelectEditCell
                                           value={item.priority}
                                           options={['Low', 'Medium', 'High', 'Critical']}
@@ -1299,7 +1317,7 @@ export const OpportunityDetailsView: React.FC = () => {
                                   }
                                   if (col.key === 'status') {
                                     return (
-                                      <TableCell key={col.key}>
+                                      <TableCell key={col.key} {...stickyProps}>
                                         <InlineSelectEditCell
                                           value={item.status}
                                           options={ACTION_ITEM_STATUS_OPTIONS}
@@ -1313,7 +1331,7 @@ export const OpportunityDetailsView: React.FC = () => {
                                   }
                                   if (col.key === 'actionItemType') {
                                     return (
-                                      <TableCell key={col.key} className="text-slate-700 font-semibold text-xs">
+                                      <TableCell key={col.key} {...stickyProps} className="text-slate-700 font-semibold text-xs">
                                         <InlineSelectEditCell
                                           value={item.actionItemType ?? ''}
                                           options={['— None —', ...ACTION_ITEM_TYPE_OPTIONS]}
@@ -1328,7 +1346,7 @@ export const OpportunityDetailsView: React.FC = () => {
                                   }
                                   if (col.key === 'openDate' || col.key === 'dueDate') {
                                     return (
-                                      <TableCell key={col.key} className="font-mono font-medium text-slate-500">
+                                      <TableCell key={col.key} {...stickyProps} className="font-mono font-medium text-slate-500">
                                         <InlineTextEditCell
                                           type="date"
                                           value={item[col.key] || ''}
@@ -1343,7 +1361,7 @@ export const OpportunityDetailsView: React.FC = () => {
 
                                   const rawVal = item[col.key] ?? (col.type === 'boolean' ? false : '');
                                   return (
-                                    <TableCell key={col.key}>
+                                    <TableCell key={col.key} {...stickyProps}>
                                       {col.type === 'boolean' ? (
                                         <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${rawVal ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>
                                           {rawVal ? 'Yes' : 'No'}

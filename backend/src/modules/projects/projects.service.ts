@@ -357,11 +357,11 @@ export class ProjectsService {
 
   async findAllDeactivated(params: FilterParams = {}): Promise<Project[]> {
     const f = this.filter.normalize(params);
-    const owner = this.filter.buildOwnerConditions('p', f, 1);
-    const where = ['p.is_deleted = TRUE', ...owner.conditions].join(' AND ');
+    const scope = await this.projectScope(f.userId, 1);
+    const where = ['p.is_deleted = TRUE', ...scope.conditions].join(' AND ');
     const { rows } = await this.db.query(
       `${PROJECT_SELECT} WHERE ${where} ORDER BY p.updated_at DESC`,
-      owner.params,
+      scope.params,
     );
     return rows.map(rowToProject);
   }

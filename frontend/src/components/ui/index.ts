@@ -95,7 +95,7 @@ export {
 } from './PhoneInput';
 export type { PhoneInputProps, CountryDialCode } from './PhoneInput';
 
-export { Table, TableHead, TableHeadCell, TableCell, TableRow } from './Table';
+export { Table, TableHead, TableHeadCell, TableCell, TableRow, computePinnedOffsets } from './Table';
 export type { TableProps, TableHeadProps, TableHeadCellProps, TableCellProps, TableRowProps } from './Table';
 
 export { TextPreviewCell } from './TextPreviewCell';

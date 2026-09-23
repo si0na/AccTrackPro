@@ -25,7 +25,9 @@ export const VIEW_TO_PATH: Record<ViewType, string> = {
   sqa:                    '/sqa',
   'sqa-details':          '/sqa/:id',
   actionItems:            '/action-items',
+  'action-item-details':  '/action-items/:id',
   projectActionItems:     '/project-action-items',
+  'project-action-item-details': '/project-action-items/:id',
   stakeholders:           '/stakeholders',
   forecast:               '/forecast',
   executive:              '/reports',
@@ -41,10 +43,11 @@ export const VIEW_TO_PATH: Record<ViewType, string> = {
   'account-growth':        '/account-growth',
   // ── Growth section ────────────────────────────────────────────────────────
   partnership:              '/growth/partnership',
-  tracking:                 '/growth/tracking',
-  'delivery-review':        '/growth/tracking/delivery-review',
-  'technical-review':       '/growth/tracking/technical-review',
-  'sqa-review':             '/growth/tracking/sqa-review',
+  tracking:                 '/delivery/tracking',
+  'delivery-review':        '/delivery/tracking/delivery-review',
+  'technical-review':       '/delivery/tracking/technical-review',
+  'sqa-review':             '/delivery/tracking/sqa',
+  'sqa-tracking':           '/delivery/tracking/sqa',
 };
 
 /** Build the actual browser URL for a given view, substituting real entity IDs */
@@ -55,6 +58,7 @@ export function buildPath(
   projectId?: string | null,
   sqaId?: string | null,
   riskId?: string | null,
+  actionItemId?: string | null,
 ): string {
   if (view === 'account-details' && accountId)     return `/accounts/${accountId}`;
   if (view === 'opportunity-details' && opportunityId) return `/opportunities/${opportunityId}`;
@@ -62,5 +66,7 @@ export function buildPath(
   if (view === 'project-details' && projectId)     return `/projects/${projectId}`;
   if (view === 'sqa-details' && sqaId)             return `/sqa/${sqaId}`;
   if (view === 'risk-details' && riskId)           return `/risks/${riskId}`;
+  if (view === 'action-item-details' && actionItemId) return `/action-items/${actionItemId}`;
+  if (view === 'project-action-item-details' && actionItemId) return `/project-action-items/${actionItemId}`;
   return VIEW_TO_PATH[view] ?? '/';
 }

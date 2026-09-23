@@ -17,7 +17,28 @@ const OPPORTUNITY_TYPE = ['Growth', 'Pursuit', 'Whitespace', 'New', 'Extension']
 const SERVICE_LINE = SERVICE_LINE_OPTIONS;
 const OPPORTUNITY_HEALTH = ['Green', 'Amber', 'Red'] as const;
 const ACTION_ITEM_STATUS = ['To Do', 'In Progress', 'Blocked', 'Completed', 'Cancelled'] as const;
-const ACTION_ITEM_TYPE = ['Account mining', 'Proposals', 'Stakeholder connect'] as const;
+const ACTION_ITEM_TYPE = [
+  'Account mining',
+  'Approval',
+  'Board Meeting',
+  'CEO Connect',
+  'Communication',
+  'Customer Request',
+  'Decision',
+  'Dependency',
+  'Documentation',
+  'Escalation',
+  'Follow-up',
+  'Issue Resolution',
+  'Meeting Action',
+  'Opportunity / Growth',
+  'Other',
+  'Proposals',
+  'Review',
+  'Risk Mitigation',
+  'Stakeholder connect',
+  'Task',
+] as const;
 const PRIORITY = ['High', 'Medium', 'Low'] as const;
 const INFLUENCE = ['High', 'Medium', 'Low'] as const;
 const RELATIONSHIP = ['Strong', 'Neutral', 'Weak'] as const;
@@ -131,12 +152,13 @@ export const ACTION_ITEM_FIELDS: ImportFieldDef[] = [
   { key: 'priority', header: 'Priority', type: 'enum', options: PRIORITY, required: true },
   { key: 'status', header: 'Status', type: 'enum', options: ACTION_ITEM_STATUS, required: true },
   { key: 'actionItemType', header: 'Type', headerAliases: ['Action Item Type', 'Type of Action Item'], type: 'enum', options: ACTION_ITEM_TYPE },
-  { key: 'projectId', header: 'Project', headerAliases: ['Project Name'], type: 'reference', reference: 'project' },
   { key: 'opportunityId', header: 'Opportunity', headerAliases: ['Opportunity Name'], type: 'reference', reference: 'opportunity' },
   { key: 'openDate', header: 'Open Date', type: 'date' },
   { key: 'dueDate', header: 'Due Date', type: 'date' },
   { key: 'notes', header: 'Description', headerAliases: ['Notes'], type: 'string' },
   { key: 'risksAndDependencies', header: 'Risks & Dependencies', type: 'string' },
+  { key: 'nextAction', header: 'Next Action', type: 'string' },
+  { key: 'impediments', header: 'Impediments', type: 'string' },
   { key: 'completedDate', header: 'Completed Date', type: 'date' },
 ];
 

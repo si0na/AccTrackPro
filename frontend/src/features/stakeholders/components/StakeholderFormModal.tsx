@@ -76,7 +76,26 @@ export const StakeholderFormModal: React.FC<StakeholderFormModalProps> = ({
   const [draft, setDraft] = useState<Omit<Stakeholder, 'id'>>(EMPTY_STAKEHOLDER);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { stakeholders: allContextStakeholders, serviceProviders, associateServiceProvider } = useCRM();
+  const { stakeholders: allContextStakeholders, serviceProviders, associateServiceProvider, projects } = useCRM();
+
+  const mergedAccountOptions = useMemo(() => {
+    const map = new Map<string, { id: string; name: string }>();
+    for (const acc of accounts || []) {
+      if (acc.id) map.set(acc.id, { id: acc.id, name: acc.name });
+    }
+    for (const proj of projects || []) {
+      if (proj.accountId && !map.has(proj.accountId)) {
+        map.set(proj.accountId, { id: proj.accountId, name: proj.accountName || 'Account' });
+      }
+    }
+    for (const stk of allContextStakeholders || []) {
+      if (stk.accountId && !map.has(stk.accountId)) {
+        map.set(stk.accountId, { id: stk.accountId, name: stk.accountName || 'Account' });
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
+  }, [accounts, projects, allContextStakeholders]);
+
   const { serviceProviderOptions, stkIdToOptionIdMap } = useMemo(() => {
     const list: Array<{ id: string; name: string; rawName?: string; isSystemUser?: boolean }> = [];
     const seenKeys = new Set<string>();
@@ -250,13 +269,11 @@ export const StakeholderFormModal: React.FC<StakeholderFormModalProps> = ({
                   className={selectCls}
                 >
                   <option value="" disabled>Select account…</option>
-                  {[...accounts]
-                    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
-                    .map((acc) => (
-                      <option key={acc.id} value={acc.id}>
-                        {acc.name}
-                      </option>
-                    ))}
+                  {mergedAccountOptions.map((acc) => (
+                    <option key={acc.id} value={acc.id}>
+                      {acc.name}
+                    </option>
+                  ))}
                 </select>
               )}
             </FormField>

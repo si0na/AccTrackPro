@@ -20,7 +20,6 @@ export type MilestoneDraft = Omit<ProjectMilestone, 'id' | 'projectId' | 'create
 
 export const emptyMilestoneDraft: MilestoneDraft = {
   name: '',
-  // Essential planning fields (Create form)
   milestoneNo: '',
   activities: '',
   deliverables: '',
@@ -29,7 +28,6 @@ export const emptyMilestoneDraft: MilestoneDraft = {
   paymentPct: 0,
   paymentAmount: 0,
   targetDate: '',
-  // Advanced execution fields (Edit/Detail only)
   sprints: '',
   plannedStart: '',
   plannedEnd: '',
@@ -44,6 +42,33 @@ export const emptyMilestoneDraft: MilestoneDraft = {
   completionPct: 0,
 };
 
+export const createMilestoneDraftFromModel = (m?: ProjectMilestone | null): MilestoneDraft => {
+  if (!m) return emptyMilestoneDraft;
+  return {
+    name: m.name ?? '',
+    milestoneNo: m.milestoneNo ?? '',
+    activities: m.activities ?? '',
+    deliverables: m.deliverables ?? '',
+    acceptanceCriteria: m.acceptanceCriteria ?? '',
+    paymentTrigger: m.paymentTrigger ?? '',
+    paymentPct: m.paymentPct ?? 0,
+    paymentAmount: m.paymentAmount ?? 0,
+    targetDate: m.targetDate ?? '',
+    sprints: m.sprints ?? '',
+    plannedStart: m.plannedStart ?? '',
+    plannedEnd: m.plannedEnd ?? '',
+    actualStart: m.actualStart ?? '',
+    actualEnd: m.actualEnd ?? '',
+    status: m.status ?? 'Not Started',
+    remarks: m.remarks ?? '',
+    effortPlanned: m.effortPlanned ?? 0,
+    effortSpent: m.effortSpent ?? 0,
+    costPlanned: m.costPlanned ?? 0,
+    costSpent: m.costSpent ?? 0,
+    completionPct: m.completionPct ?? 0,
+  };
+};
+
 export interface MilestoneFormModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -53,21 +78,13 @@ export interface MilestoneFormModalProps {
   submitVariant?: 'primary' | 'warning';
   value: MilestoneDraft;
   onChange: (patch: Partial<MilestoneDraft>) => void;
-  /**
-   * 'create' → lightweight form: only the essential planning fields.
-   * 'edit'   → full milestone management: every field (planning + execution).
-   */
   mode?: 'create' | 'edit';
 }
 
 /**
  * Add/edit dialog for a Project's Milestones tab.
- *
- * Creation is intentionally lightweight — only essential planning information is
- * requested (Basic Information, Scope, Quality, Payment, Schedule). Every other
- * milestone field (Sprints, actual dates, status, effort, cost, completion,
- * remarks) is still fully supported and becomes editable once the milestone
- * exists, via this same dialog in `edit` mode.
+ * Uses the canonical milestone field definitions so all fields are available
+ * consistently across Create, Edit, and Milestone Detailed View.
  */
 export const MilestoneFormModal: React.FC<MilestoneFormModalProps> = ({
   isOpen,
@@ -94,7 +111,6 @@ export const MilestoneFormModal: React.FC<MilestoneFormModalProps> = ({
       maxWidth="max-w-3xl"
     >
       <div className="space-y-5">
-        {/* ── Essential planning fields — always shown ── */}
         <FormSection title="Basic Information">
           <FormGrid>
             <FormField label="Milestone No.">
@@ -182,110 +198,100 @@ export const MilestoneFormModal: React.FC<MilestoneFormModalProps> = ({
                 className={`${INPUT_CLS} font-mono`}
               />
             </FormField>
-            {/* Existing scheduling fields (edit only) */}
-            {isEdit && (
-              <FormField label="Sprints">
-                <input
-                  type="text"
-                  value={value.sprints ?? ''}
-                  onChange={(e) => onChange({ sprints: e.target.value })}
-                  placeholder="e.g., Sprint 3-4"
-                  className={INPUT_CLS}
-                />
-              </FormField>
-            )}
+            <FormField label="Sprints">
+              <input
+                type="text"
+                value={value.sprints ?? ''}
+                onChange={(e) => onChange({ sprints: e.target.value })}
+                placeholder="e.g., Sprint 3-4"
+                className={INPUT_CLS}
+              />
+            </FormField>
           </FormGrid>
-          {isEdit && (
-            <FormGrid>
-              <FormField label="Planned Start">
-                <input
-                  type="date"
-                  value={value.plannedStart ?? ''}
-                  onChange={(e) => onChange({ plannedStart: e.target.value || undefined })}
-                  className={`${INPUT_CLS} font-mono`}
-                />
-              </FormField>
-              <FormField label="Planned End">
-                <input
-                  type="date"
-                  value={value.plannedEnd ?? ''}
-                  onChange={(e) => onChange({ plannedEnd: e.target.value || undefined })}
-                  className={`${INPUT_CLS} font-mono`}
-                />
-              </FormField>
-              <FormField label="Actual Start">
-                <input
-                  type="date"
-                  value={value.actualStart ?? ''}
-                  onChange={(e) => onChange({ actualStart: e.target.value || undefined })}
-                  className={`${INPUT_CLS} font-mono`}
-                />
-              </FormField>
-              <FormField label="Actual End">
-                <input
-                  type="date"
-                  value={value.actualEnd ?? ''}
-                  onChange={(e) => onChange({ actualEnd: e.target.value || undefined })}
-                  className={`${INPUT_CLS} font-mono`}
-                />
-              </FormField>
-            </FormGrid>
-          )}
+          <FormGrid>
+            <FormField label="Planned Start">
+              <input
+                type="date"
+                value={value.plannedStart ?? ''}
+                onChange={(e) => onChange({ plannedStart: e.target.value || undefined })}
+                className={`${INPUT_CLS} font-mono`}
+              />
+            </FormField>
+            <FormField label="Planned End">
+              <input
+                type="date"
+                value={value.plannedEnd ?? ''}
+                onChange={(e) => onChange({ plannedEnd: e.target.value || undefined })}
+                className={`${INPUT_CLS} font-mono`}
+              />
+            </FormField>
+            <FormField label="Actual Start">
+              <input
+                type="date"
+                value={value.actualStart ?? ''}
+                onChange={(e) => onChange({ actualStart: e.target.value || undefined })}
+                className={`${INPUT_CLS} font-mono`}
+              />
+            </FormField>
+            <FormField label="Actual End">
+              <input
+                type="date"
+                value={value.actualEnd ?? ''}
+                onChange={(e) => onChange({ actualEnd: e.target.value || undefined })}
+                className={`${INPUT_CLS} font-mono`}
+              />
+            </FormField>
+          </FormGrid>
         </FormSection>
 
-        {/* ── Execution fields — edit/detail only ── */}
-        {isEdit && (
-          <>
-            <FormSection title="Execution">
-              <FormGrid columns={3}>
-                <FormField label="Status">
-                  <select
-                    value={value.status}
-                    onChange={(e) => onChange({ status: e.target.value as MilestoneStatus })}
-                    className={SELECT_CLS}
-                  >
-                    <option value="Completed">Completed</option>
-                    <option value="Delayed">Delayed</option>
-                    <option value="In Progress">In Progress</option>
-                    <option value="Not Started">Not Started</option>
-                  </select>
-                </FormField>
-                <FormField label="Completion (%)">
-                  <NumberInput min={0} max={100} value={value.completionPct} onValueChange={(v) => onChange({ completionPct: v })} placeholder="0–100" className={INPUT_CLS} />
-                </FormField>
-              </FormGrid>
-            </FormSection>
+        <FormSection title="Execution">
+          <FormGrid columns={2}>
+            <FormField label="Status">
+              <select
+                value={value.status}
+                onChange={(e) => onChange({ status: e.target.value as MilestoneStatus })}
+                className={SELECT_CLS}
+              >
+                <option value="Completed">Completed</option>
+                <option value="Delayed">Delayed</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Not Started">Not Started</option>
+              </select>
+            </FormField>
+            <FormField label="Completion (%)">
+              <NumberInput min={0} max={100} value={value.completionPct} onValueChange={(v) => onChange({ completionPct: v })} placeholder="0–100" className={INPUT_CLS} />
+            </FormField>
+          </FormGrid>
+        </FormSection>
 
-            <FormSection title="Effort & Cost">
-              <FormGrid columns={3}>
-                <FormField label="Effort Planned (Hours)">
-                  <NumberInput min={0} value={value.effortPlanned} onValueChange={(v) => onChange({ effortPlanned: v })} className={INPUT_CLS} />
-                </FormField>
-                <FormField label="Effort Spent (Hours)">
-                  <NumberInput min={0} value={value.effortSpent} onValueChange={(v) => onChange({ effortSpent: v })} className={INPUT_CLS} />
-                </FormField>
-                <FormField label="Cost Planned ($)">
-                  <NumberInput min={0} step="0.01" value={value.costPlanned} onValueChange={(v) => onChange({ costPlanned: v })} className={INPUT_CLS} />
-                </FormField>
-                <FormField label="Cost Spent ($)">
-                  <NumberInput min={0} step="0.01" value={value.costSpent} onValueChange={(v) => onChange({ costSpent: v })} className={INPUT_CLS} />
-                </FormField>
-              </FormGrid>
-            </FormSection>
+        <FormSection title="Effort & Cost">
+          <FormGrid columns={2}>
+            <FormField label="Effort Planned (Hours)">
+              <NumberInput min={0} value={value.effortPlanned} onValueChange={(v) => onChange({ effortPlanned: v })} className={INPUT_CLS} />
+            </FormField>
+            <FormField label="Effort Spent (Hours)">
+              <NumberInput min={0} value={value.effortSpent} onValueChange={(v) => onChange({ effortSpent: v })} className={INPUT_CLS} />
+            </FormField>
+            <FormField label="Cost Planned ($)">
+              <NumberInput min={0} step="0.01" value={value.costPlanned} onValueChange={(v) => onChange({ costPlanned: v })} className={INPUT_CLS} />
+            </FormField>
+            <FormField label="Cost Spent ($)">
+              <NumberInput min={0} step="0.01" value={value.costSpent} onValueChange={(v) => onChange({ costSpent: v })} className={INPUT_CLS} />
+            </FormField>
+          </FormGrid>
+        </FormSection>
 
-            <FormSection title="Remarks">
-              <FormField label="Remarks" wide>
-                <textarea
-                  rows={2}
-                  value={value.remarks}
-                  onChange={(e) => onChange({ remarks: e.target.value })}
-                  placeholder="Additional context..."
-                  className={`${INPUT_CLS} resize-none`}
-                />
-              </FormField>
-            </FormSection>
-          </>
-        )}
+        <FormSection title="Remarks">
+          <FormField label="Remarks" wide>
+            <textarea
+              rows={2}
+              value={value.remarks ?? ''}
+              onChange={(e) => onChange({ remarks: e.target.value })}
+              placeholder="Additional context..."
+              className={`${INPUT_CLS} resize-none`}
+            />
+          </FormField>
+        </FormSection>
       </div>
     </FormModal>
   );

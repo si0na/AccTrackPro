@@ -25,7 +25,7 @@ export class ProjectProgressController {
     return this.progressService.create(projectId, body, authUser.sub);
   }
 
-  @Post(':projectId/update')
+  @Post(':id/update')
   @RequirePermission('projects', 'update')
   update(
     @Param('projectId') projectId: string,

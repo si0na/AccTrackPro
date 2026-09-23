@@ -25,7 +25,7 @@ export class ProjectDependenciesController {
     return this.dependenciesService.create(projectId, body, authUser.sub);
   }
 
-  @Post(':projectId/update')
+  @Post(':id/update')
   @RequirePermission('projects', 'update')
   update(
     @Param('projectId') projectId: string,
@@ -36,7 +36,7 @@ export class ProjectDependenciesController {
     return this.dependenciesService.update(projectId, id, body, authUser.sub);
   }
 
-  @Post(':projectId/delete')
+  @Post(':id/delete')
   @RequirePermission('projects', 'delete')
   @HttpCode(HttpStatus.OK)
   remove(

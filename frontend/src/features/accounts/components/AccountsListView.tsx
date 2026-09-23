@@ -50,6 +50,7 @@ import {
   TableHeadCell,
   TableRow,
   InlineCreateField,
+  computePinnedOffsets,
 } from '@/components/ui';
 
 export const AccountsListView: React.FC = () => {
@@ -77,6 +78,7 @@ export const AccountsListView: React.FC = () => {
     loading,
     can,
     refreshData,
+    setActiveExportRows,
   } = useCRM();
 
   // Users list — backs the four role-filtered "owner" dropdowns on the create
@@ -249,6 +251,10 @@ export const AccountsListView: React.FC = () => {
     compareForSort((a as any)[sortField], (b as any)[sortField], sortDirection),
   );
 
+  useEffect(() => {
+    setActiveExportRows('accounts', sortedAccounts);
+  }, [sortedAccounts, setActiveExportRows]);
+
   // Clamp the page so filter changes never leave the user on an empty page.
   const totalPages = Math.max(1, Math.ceil(sortedAccounts.length / pageSize));
   const currentPage = Math.min(page, totalPages);
@@ -290,7 +296,17 @@ export const AccountsListView: React.FC = () => {
     setView('account-details');
   };
 
-  const displayedConfigs = accountsColumnConfig.filter(col => col.isDisplayed);
+  const displayedConfigs = useMemo(() => {
+    const displayed = accountsColumnConfig.filter(col => col.isDisplayed);
+    const pinned = displayed.filter(col => col.isPinned);
+    const unpinned = displayed.filter(col => !col.isPinned);
+    return [...pinned, ...unpinned];
+  }, [accountsColumnConfig]);
+
+  const pinnedOffsets = useMemo(() => {
+    return computePinnedOffsets(displayedConfigs, 'accounts');
+  }, [displayedConfigs]);
+
   // User-added (non-standard) columns widen the table past the viewport and
   // trigger horizontal scroll; the default column set always fits the screen.
   const extraColumnCount = displayedConfigs.filter(col => !col.isStandard).length;
@@ -451,6 +467,8 @@ export const AccountsListView: React.FC = () => {
                   key={col.key}
                   columnId={col.key}
                   align={col.key === 'revenue' ? 'right' : 'left'}
+                  sticky={col.isPinned ? 'left' : undefined}
+                  stickyLeft={pinnedOffsets[col.key]}
                 >
                   <SortableHeader
                     label={col.name}

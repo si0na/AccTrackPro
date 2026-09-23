@@ -411,7 +411,7 @@ export class AuthService {
     // Send the email using Microsoft Graph API
     await this.graphMailService.sendMail(
       user.email,
-      'ReflectOne – Password Reset Request',
+      'AccTrack Pro – Password Reset Request',
       htmlContent,
     );
   }

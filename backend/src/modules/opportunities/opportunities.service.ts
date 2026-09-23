@@ -324,7 +324,7 @@ export class OpportunitiesService {
   private async childScope(userId: string | null, startIdx: number) {
     if (!userId) return { conditions: [], params: [], nextIdx: startIdx };
     const ctx = await this.access.getContext(userId);
-    return this.access.buildChildVisibility('o', ctx, startIdx);
+    return this.access.buildChildVisibility('o', ctx, startIdx, 'opportunities');
   }
 
   /**

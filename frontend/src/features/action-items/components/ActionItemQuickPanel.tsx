@@ -23,6 +23,8 @@ import {
   User,
   Calendar,
   AlertTriangle,
+  ExternalLink,
+  Tag,
 } from 'lucide-react';
 import {
   ConfirmDialog,
@@ -53,6 +55,9 @@ export const ActionItemQuickPanel: React.FC<ActionItemQuickPanelProps> = ({
     addComment,
     updateComment,
     deleteComment,
+    setSelectedActionItemId,
+    setActionItemDetailsSourceView,
+    setView,
   } = useCRM();
 
   // Selected Action Item
@@ -67,6 +72,7 @@ export const ActionItemQuickPanel: React.FC<ActionItemQuickPanelProps> = ({
   // Details Edit State
   const [isEditing, setIsEditing] = useState(false);
   const [editForm, setEditForm] = useState<Partial<ActionItem>>({});
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   // Comment State
   const [commentText, setCommentText] = useState('');
@@ -102,9 +108,22 @@ export const ActionItemQuickPanel: React.FC<ActionItemQuickPanelProps> = ({
     c => c.targetType === 'actionItem' && c.targetId === item.id
   );
 
-  const handleSaveDetails = () => {
-    updateActionItem({ ...item, ...editForm });
-    setIsEditing(false);
+  const handleSaveDetails = async () => {
+    setSaveError(null);
+    try {
+      await updateActionItem({ ...item, ...editForm });
+      setIsEditing(false);
+    } catch (err: any) {
+      setSaveError(err?.response?.data?.message || err?.message || 'Failed to update action item.');
+    }
+  };
+
+  const handleViewFullDetails = () => {
+    if (!item) return;
+    setSelectedActionItemId(item.id);
+    setActionItemDetailsSourceView(item.projectId ? 'projectActionItems' : 'actionItems');
+    setView(item.projectId ? 'project-action-item-details' : 'action-item-details');
+    if (onClose) onClose();
   };
 
   const handlePostComment = (e: React.FormEvent) => {
@@ -137,6 +156,27 @@ export const ActionItemQuickPanel: React.FC<ActionItemQuickPanelProps> = ({
     return list.sort((a, b) => (a.name || a.email || '').localeCompare(b.name || b.email || '', undefined, { sensitivity: 'base' }));
   }, [stakeholders, editForm.ownerStakeholderId, item?.ownerStakeholderId]);
 
+  const quickPanelAccountOptions = useMemo(() => {
+    const isProjectActionItem = !!(item?.projectId || editForm.projectId);
+    if (isProjectActionItem) {
+      const map = new Map<string, { id: string; name: string }>();
+      (accounts || []).forEach((a) => {
+        if (a && a.id) map.set(a.id, { id: a.id, name: a.name });
+      });
+      (projects || []).forEach((p) => {
+        if (p && p.accountId && !map.has(p.accountId)) {
+          map.set(p.accountId, { id: p.accountId, name: p.accountName || 'Account' });
+        }
+      });
+      return Array.from(map.values()).sort((a, b) =>
+        a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+      );
+    }
+    return [...(accounts || [])].sort((a, b) =>
+      a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })
+    );
+  }, [accounts, projects, item?.projectId, editForm.projectId]);
+
   return (
     <div className="bg-white h-screen max-h-screen flex flex-col space-y-0" id="action-item-quick-panel">
       {/* Panel Header */}
@@ -146,6 +186,11 @@ export const ActionItemQuickPanel: React.FC<ActionItemQuickPanelProps> = ({
             <span className="text-[10px] bg-blue-600/20 text-blue-400 border border-blue-500/20 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
               Action Item
             </span>
+            {item.actionItemNumber && (
+              <span className="text-xs font-mono font-extrabold text-blue-300 bg-blue-900/60 px-2 py-0.5 rounded border border-blue-700/60">
+                {item.actionItemNumber}
+              </span>
+            )}
             {account && (
               <>
                 <span className="text-slate-500">•</span>
@@ -182,56 +227,87 @@ export const ActionItemQuickPanel: React.FC<ActionItemQuickPanelProps> = ({
               <FileText className="w-4.5 h-4.5 text-blue-600" />
               <h4 className="font-bold text-slate-800 text-sm tracking-tight">Action Item Details</h4>
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                if (isEditing) {
-                  handleSaveDetails();
-                } else {
-                  setEditForm({
-                    title: item.title,
-                    accountId: item.accountId,
-                    opportunityId: item.opportunityId,
-                    projectId: item.projectId,
-                    ownerStakeholderId: item.ownerStakeholderId,
-                    priority: item.priority,
-                    status: item.status,
-                    actionItemType: item.actionItemType,
-                    openDate: item.openDate,
-                    dueDate: item.dueDate,
-                    notes: item.notes,
-                    risksAndDependencies: item.risksAndDependencies,
-                  });
-                  setIsEditing(true);
-                }
-              }}
-              className="flex items-center space-x-1 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-lg cursor-pointer transition-colors"
-            >
-              {isEditing ? (
-                <>
-                  <Save className="w-3.5 h-3.5 text-green-600" />
-                  <span>Save Details</span>
-                </>
-              ) : (
-                <>
-                  <Edit className="w-3.5 h-3.5 text-slate-500" />
-                  <span>Edit Details</span>
-                </>
-              )}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleViewFullDetails}
+                className="flex items-center space-x-1 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold rounded-lg cursor-pointer transition-colors shadow-xs"
+                title="Open full detail view"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>View Full Details</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (isEditing) {
+                    handleSaveDetails();
+                  } else {
+                    setEditForm({
+                      actionItemNumber: item.actionItemNumber || '',
+                      title: item.title,
+                      accountId: item.accountId,
+                      opportunityId: item.opportunityId,
+                      projectId: item.projectId,
+                      ownerStakeholderId: item.ownerStakeholderId,
+                      priority: item.priority,
+                      status: item.status,
+                      actionItemType: item.actionItemType,
+                      openDate: item.openDate,
+                      dueDate: item.dueDate,
+                      notes: item.notes,
+                      risksAndDependencies: item.risksAndDependencies,
+                      nextAction: item.nextAction,
+                      impediments: item.impediments,
+                    });
+                    setSaveError(null);
+                    setIsEditing(true);
+                  }
+                }}
+                className="flex items-center space-x-1 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-[11px] font-bold rounded-lg cursor-pointer transition-colors"
+              >
+                {isEditing ? (
+                  <>
+                    <Save className="w-3.5 h-3.5 text-green-600" />
+                    <span>Save Details</span>
+                  </>
+                ) : (
+                  <>
+                    <Edit className="w-3.5 h-3.5 text-slate-500" />
+                    <span>Edit Details</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
 
           {isEditing ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5 bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
-              <div className="md:col-span-2 space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase">Title</label>
-                <input
-                  type="text"
-                  value={editForm.title || ''}
-                  onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
-                  className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white font-semibold text-slate-800"
-                />
-              </div>
+            <div className="space-y-3.5 bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
+              {saveError && (
+                <div className="p-3 bg-red-50 border border-red-200 text-red-700 rounded-lg text-xs font-medium">
+                  {saveError}
+                </div>
+              )}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Action Item #</label>
+                  <input
+                    type="text"
+                    value={editForm.actionItemNumber || ''}
+                    onChange={(e) => setEditForm({ ...editForm, actionItemNumber: e.target.value })}
+                    className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white font-mono font-bold text-slate-800"
+                    placeholder="e.g. AKU-0001"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase">Title</label>
+                  <input
+                    type="text"
+                    value={editForm.title || ''}
+                    onChange={(e) => setEditForm({ ...editForm, title: e.target.value })}
+                    className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white font-semibold text-slate-800"
+                  />
+                </div>
 
               {/* Account */}
               <div className="space-y-1">
@@ -242,11 +318,9 @@ export const ActionItemQuickPanel: React.FC<ActionItemQuickPanelProps> = ({
                   className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white font-semibold text-slate-800"
                 >
                   <option value="">Select Account...</option>
-                  {[...accounts]
-                    .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }))
-                    .map((a) => (
-                      <option key={a.id} value={a.id}>{a.name}</option>
-                    ))}
+                  {quickPanelAccountOptions.map((a) => (
+                    <option key={a.id} value={a.id}>{a.name}</option>
+                  ))}
                 </select>
               </div>
 
@@ -384,9 +458,32 @@ export const ActionItemQuickPanel: React.FC<ActionItemQuickPanelProps> = ({
                   className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white"
                 />
               </div>
+
+              <div className="md:col-span-2 space-y-1">
+                <label className="text-[10px] font-bold text-slate-500 uppercase">Next Action</label>
+                <textarea
+                  rows={2}
+                  value={editForm.nextAction || ''}
+                  onChange={(e) => setEditForm({ ...editForm, nextAction: e.target.value })}
+                  placeholder="e.g., Schedule technical review with client team"
+                  className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white"
+                />
+              </div>
+
+              <div className="md:col-span-2 space-y-1">
+                <label className="text-[10px] font-bold text-slate-500 uppercase">Impediments</label>
+                <textarea
+                  rows={2}
+                  value={editForm.impediments || ''}
+                  onChange={(e) => setEditForm({ ...editForm, impediments: e.target.value })}
+                  placeholder="e.g., Awaiting security clearance and access credentials"
+                  className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white"
+                />
+              </div>
             </div>
-          ) : (
-            <div className="space-y-3">
+          </div>
+        ) : (
+          <div className="space-y-3">
               <div className="flex items-center gap-2 flex-wrap">
                 <StatusBadge value={item.status} colorMap={ACTION_STATUS_COLORS} shape="rounded" />
                 <StatusBadge value={item.priority} colorMap={PRIORITY_COLORS} shape="rounded" />
@@ -398,6 +495,15 @@ export const ActionItemQuickPanel: React.FC<ActionItemQuickPanelProps> = ({
               </div>
 
               <div className="grid grid-cols-2 gap-3 bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-2xs text-xs">
+                {item.actionItemNumber && (
+                  <div className="space-y-0.5">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                      <Tag className="w-3 h-3 text-slate-400" /> Action Item #
+                    </span>
+                    <p className="font-mono font-extrabold text-blue-700 text-xs truncate">{item.actionItemNumber}</p>
+                  </div>
+                )}
+
                 {account && (
                   <div className="space-y-0.5">
                     <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
@@ -479,6 +585,20 @@ export const ActionItemQuickPanel: React.FC<ActionItemQuickPanelProps> = ({
                     <AlertTriangle className="w-3 h-3 text-amber-500" /> Risks & Dependencies
                   </span>
                   <p className="text-xs text-slate-700 font-medium leading-relaxed">{item.risksAndDependencies}</p>
+                </div>
+              )}
+
+              {item.nextAction && (
+                <div className="bg-blue-50/60 p-3.5 rounded-xl border border-blue-200/80 space-y-1">
+                  <span className="text-[10px] font-bold text-blue-800 uppercase tracking-wider block">Next Action</span>
+                  <p className="text-xs text-slate-700 font-medium leading-relaxed">{item.nextAction}</p>
+                </div>
+              )}
+
+              {item.impediments && (
+                <div className="bg-rose-50/60 p-3.5 rounded-xl border border-rose-200/80 space-y-1">
+                  <span className="text-[10px] font-bold text-rose-800 uppercase tracking-wider block">Impediments</span>
+                  <p className="text-xs text-slate-700 font-medium leading-relaxed">{item.impediments}</p>
                 </div>
               )}
             </div>

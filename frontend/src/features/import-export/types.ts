@@ -1,4 +1,4 @@
-import type { Account, Opportunity, ActionItem, Stakeholder } from '@/types';
+import type { Account, Opportunity, ActionItem, Stakeholder, Comment } from '@/types';
 import type { DuplicateMode, ValidatedImportRow, IEModuleKey } from '@/api/crm.api';
 
 export type { DuplicateMode, IEModuleKey };
@@ -42,6 +42,8 @@ export interface RefData {
   opportunities: Opportunity[];
   actionItems: ActionItem[];
   stakeholders: Stakeholder[];
+  projects?: any[];
+  comments?: Comment[];
 }
 
 export type ImportFieldType =

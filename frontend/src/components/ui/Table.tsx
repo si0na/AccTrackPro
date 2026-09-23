@@ -1,4 +1,4 @@
-import React, { useCallback, useContext, useLayoutEffect, useMemo, useRef } from 'react';
+import React, { useCallback, useContext, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 /** User-resized columns are clamped to this range so no column can collapse or swallow the table. */
 const MIN_COL_WIDTH = 80;
@@ -23,20 +23,92 @@ const cellColId = (cell: HTMLTableCellElement, index: number, mixed: boolean): s
 
 const hasAnyColId = (cells: HTMLTableCellElement[]) => cells.some((c) => c.dataset.colid);
 
+/** Computes a clean default width for a column when no user-dragged width is saved yet. */
+const getDefaultColWidth = (id: string | null, cell: HTMLTableCellElement, index: number): number => {
+  if (id) {
+    const lower = id.toLowerCase();
+    if (lower.includes('actions') || lower === 'actions') return 180;
+    if (lower.includes('actionitemnumber') || lower.includes('actionitem#') || lower === 'number') return 110;
+    if (lower.includes('name') || lower.includes('title')) return 220;
+    if (lower.includes('account') || lower.includes('opportunity') || lower.includes('project')) return 160;
+    if (lower.includes('owner') || lower.includes('user') || lower.includes('stakeholder')) return 150;
+    if (lower.includes('desc') || lower.includes('note') || lower.includes('risk') || lower.includes('issue') || lower.includes('address') || lower.includes('nextaction') || lower.includes('impediment')) return 240;
+    if (lower.includes('status') || lower.includes('health') || lower.includes('stage') || lower.includes('priority') || lower.includes('type')) return 120;
+    if (lower.includes('date') || lower.includes('time') || lower.includes('year') || lower.includes('quarter')) return 110;
+    if (lower.includes('revenue') || lower.includes('value') || lower.includes('cost') || lower.includes('margin') || lower.includes('prob')) return 110;
+  }
+  const text = cell.textContent?.trim().toLowerCase() || '';
+  if (text.includes('action item #') || text.includes('item #') || text.includes('action item number')) return 110;
+  if (text.includes('actions')) return 180;
+  if (text.includes('name') || text.includes('title')) return 220;
+  if (text.includes('account') || text.includes('opportunity') || text.includes('project')) return 160;
+  if (text.includes('owner')) return 150;
+  if (text.includes('description') || text.includes('notes') || text.includes('risks') || text.includes('impediments')) return 240;
+  if (text.includes('status') || text.includes('priority') || text.includes('stage') || text.includes('type')) return 120;
+  if (text.includes('date')) return 110;
+  return 180;
+};
+
 /**
  * Switch the table to fixed layout with an explicit width per column. Only the
  * dragged column changes afterwards; the rest keep their frozen widths.
  */
 const applyColumnWidths = (table: HTMLTableElement, widths: number[]) => {
-  headerCells(table).forEach((cell, i) => {
+  const sum = widths.reduce((a, b) => a + b, 0);
+  const container = table.parentElement;
+  const containerWidth = container ? container.clientWidth : 0;
+  const cells = headerCells(table);
+
+  let currentStickyLeft = 0;
+  cells.forEach((cell, i) => {
     cell.style.width = `${widths[i]}px`;
+    if (cell.dataset.sticky === 'left') {
+      cell.style.left = `${currentStickyLeft}px`;
+      const bodyCells = table.querySelectorAll(`tbody tr > td:nth-child(${i + 1})`);
+      bodyCells.forEach((td) => {
+        (td as HTMLElement).style.left = `${currentStickyLeft}px`;
+      });
+      currentStickyLeft += widths[i];
+    }
   });
+
   table.style.tableLayout = 'fixed';
-  table.style.width = `${widths.reduce((a, b) => a + b, 0)}px`;
-  // The extraColumns min-width heuristic no longer applies once the user
-  // manages widths explicitly — the summed column widths drive overflow.
+  if (containerWidth && sum < containerWidth) {
+    table.style.width = '100%';
+  } else {
+    table.style.width = `${sum}px`;
+  }
   table.style.minWidth = '';
 };
+
+/**
+ * Helper to compute cumulative sticky left offsets for pinned columns.
+ * Pass the array of displayed column configs and the table's storageKey (if any).
+ */
+export function computePinnedOffsets<T extends { key: string; isPinned?: boolean }>(
+  columns: T[],
+  storageKey?: string
+): Record<string, number> {
+  let saved: Record<string, number> | null = null;
+  if (storageKey) {
+    try {
+      saved = JSON.parse(sessionStorage.getItem(widthStoreKey(storageKey)) ?? 'null');
+    } catch {
+      saved = null;
+    }
+  }
+  const offsets: Record<string, number> = {};
+  let currentOffset = 0;
+  columns.forEach((col, i) => {
+    if (col.isPinned) {
+      offsets[col.key] = currentOffset;
+      const w = saved?.[col.key];
+      const width = typeof w === 'number' && Number.isFinite(w) ? clampWidth(w) : getDefaultColWidth(col.key, {} as any, i);
+      currentOffset += width;
+    }
+  });
+  return offsets;
+}
 
 interface TableResizeContextValue {
   startResize: (e: React.PointerEvent<HTMLElement>) => void;
@@ -96,31 +168,28 @@ export const Table: React.FC<TableProps> = ({
   // whenever the column set changes (Customize Columns, view switches), which
   // drops the inline styles set during the last drag.
   useLayoutEffect(() => {
-    if (!resizable || !storageKey) return;
     const table = tableRef.current;
     if (!table) return;
     let saved: Record<string, number> | null = null;
-    try {
-      saved = JSON.parse(sessionStorage.getItem(widthStoreKey(storageKey)) ?? 'null');
-    } catch {
-      saved = null; // corrupt entry — fall back to natural layout
+    if (storageKey) {
+      try {
+        saved = JSON.parse(sessionStorage.getItem(widthStoreKey(storageKey)) ?? 'null');
+      } catch {
+        saved = null;
+      }
     }
-    if (!saved) return;
     const cells = headerCells(table);
     if (cells.length === 0) return;
     const mixed = hasAnyColId(cells);
-    let hasSaved = false;
     const widths = cells.map((cell, i) => {
       const id = cellColId(cell, i, mixed);
-      const w = id === null ? undefined : saved![id];
+      const w = id === null ? undefined : saved?.[id];
       if (typeof w === 'number' && Number.isFinite(w)) {
-        hasSaved = true;
         return clampWidth(w);
       }
-      // Column with no saved width (e.g. newly displayed) keeps its measured size.
-      return cell.getBoundingClientRect().width;
+      return getDefaultColWidth(id, cell, i);
     });
-    if (hasSaved) applyColumnWidths(table, widths);
+    applyColumnWidths(table, widths);
   });
 
   const startResize = useCallback(
@@ -147,6 +216,20 @@ export const Table: React.FC<TableProps> = ({
         const next = clampWidth(startWidth + (ev.clientX - startX));
         th.style.width = `${next}px`;
         table.style.width = `${otherTotal + next}px`;
+
+        let currentLeft = 0;
+        cells.forEach((cell, i) => {
+          const w = i === index ? next : widths[i];
+          cell.style.width = `${w}px`;
+          if (cell.dataset.sticky === 'left') {
+            cell.style.left = `${currentLeft}px`;
+            const bodyCells = table.querySelectorAll(`tbody tr > td:nth-child(${i + 1})`);
+            bodyCells.forEach((td) => {
+              (td as HTMLElement).style.left = `${currentLeft}px`;
+            });
+            currentLeft += w;
+          }
+        });
       };
       const onUp = () => {
         document.removeEventListener('pointermove', onMove);
@@ -209,8 +292,10 @@ export const TableHead: React.FC<TableHeadProps> = ({ children }) => (
 
 export interface TableHeadCellProps extends React.ThHTMLAttributes<HTMLTableCellElement> {
   align?: 'left' | 'right' | 'center';
-  /** Pins the cell to the table's right edge during horizontal scroll (Actions columns). */
-  sticky?: 'right';
+  /** Pins the cell to the table's left or right edge during horizontal scroll. */
+  sticky?: 'left' | 'right';
+  /** Cumulative pixel offset for sticky left positioning. */
+  stickyLeft?: number;
   /** Stable id used to persist this column's user-resized width across re-renders. */
   columnId?: string;
 }
@@ -222,25 +307,38 @@ export interface TableHeadCellProps extends React.ThHTMLAttributes<HTMLTableCell
 export const TableHeadCell: React.FC<TableHeadCellProps> = ({
   align = 'left',
   sticky,
+  stickyLeft = 0,
   columnId,
   className = '',
+  style,
   children,
   ...rest
 }) => {
   const resize = useContext(TableResizeContext);
-  // Sticky (Actions) columns are intentionally not resizable — their width is
+  // Sticky right (Actions) columns are intentionally not resizable — their width is
   // driven by the action buttons and they must stay compact while pinned.
-  const showHandle = !!resize && !sticky;
+  const showHandle = !!resize && sticky !== 'right';
+
+  const stickyCls =
+    sticky === 'right'
+      ? 'sticky right-0 z-30 bg-slate-50 border-l border-slate-200 shadow-[-8px_0_8px_-8px_rgba(15,23,42,0.15)] min-w-[140px] w-[140px]'
+      : sticky === 'left'
+      ? 'sticky z-30 bg-slate-50 border-r border-slate-200 shadow-[4px_0_8px_-4px_rgba(15,23,42,0.1)]'
+      : 'relative';
+
+  const combinedStyle: React.CSSProperties = {
+    ...(sticky === 'left' ? { left: `${stickyLeft}px` } : {}),
+    ...style,
+  };
+
   return (
     <th
       data-colid={columnId}
+      data-sticky={sticky}
+      style={combinedStyle}
       className={`py-3 px-3 font-semibold text-label uppercase tracking-wider leading-snug align-middle overflow-hidden ${
         align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
-      } ${
-        sticky === 'right'
-          ? 'sticky right-0 z-20 bg-slate-50 border-l border-slate-200 shadow-[-8px_0_8px_-8px_rgba(15,23,42,0.15)]'
-          : 'relative'
-      } ${className}`}
+      } ${stickyCls} ${className}`}
       {...rest}
     >
       {children}
@@ -258,8 +356,10 @@ export const TableHeadCell: React.FC<TableHeadCellProps> = ({
 
 export interface TableCellProps extends React.TdHTMLAttributes<HTMLTableCellElement> {
   align?: 'left' | 'right' | 'center';
-  /** Pins the cell to the table's right edge during horizontal scroll (Actions columns). */
-  sticky?: 'right';
+  /** Pins the cell to the table's left or right edge during horizontal scroll. */
+  sticky?: 'left' | 'right';
+  /** Cumulative pixel offset for sticky left positioning. */
+  stickyLeft?: number;
 }
 
 /**
@@ -275,19 +375,62 @@ export interface TableCellProps extends React.TdHTMLAttributes<HTMLTableCellElem
 export const TableCell: React.FC<TableCellProps> = ({
   align = 'left',
   sticky,
+  stickyLeft = 0,
   className = '',
+  style,
   children,
+  title: explicitTitle,
   ...rest
 }) => {
+  const cellRef = useRef<HTMLTableCellElement>(null);
+  const [tooltipText, setTooltipText] = useState<string | undefined>(undefined);
+
+  const handleMouseEnter = () => {
+    if (explicitTitle !== undefined) {
+      setTooltipText(explicitTitle);
+      return;
+    }
+    const cell = cellRef.current;
+    if (!cell) return;
+    if (sticky === 'right' || (explicitTitle === undefined && cell.querySelector('button, input, select'))) {
+      setTooltipText(undefined);
+      return;
+    }
+    const targetEl = (cell.querySelector('.truncate') as HTMLElement) || cell;
+    if (targetEl && targetEl.scrollWidth > targetEl.clientWidth + 1) {
+      const txt = targetEl.textContent?.trim();
+      if (txt && txt !== '—' && txt !== '-' && txt !== 'None') {
+        setTooltipText(txt);
+        return;
+      }
+    }
+    setTooltipText(undefined);
+  };
+
   const stickyCls =
     sticky === 'right'
-      ? `sticky right-0 z-10 border-l border-slate-100 shadow-[-8px_0_8px_-8px_rgba(15,23,42,0.12)] ${
+      ? `sticky right-0 z-20 border-l border-slate-100 shadow-[-8px_0_8px_-8px_rgba(15,23,42,0.12)] min-w-[140px] w-[140px] ${
+          /(^|\s)bg-/.test(className) ? '' : 'bg-white group-hover/row:bg-slate-50'
+        }`
+      : sticky === 'left'
+      ? `sticky z-20 border-r border-slate-100 shadow-[4px_0_8px_-4px_rgba(15,23,42,0.08)] ${
           /(^|\s)bg-/.test(className) ? '' : 'bg-white group-hover/row:bg-slate-50'
         }`
       : '';
+
+  const combinedStyle: React.CSSProperties = {
+    ...(sticky === 'left' ? { left: `${stickyLeft}px` } : {}),
+    ...style,
+  };
+
   return (
     <td
-      className={`py-3 px-3 align-middle overflow-hidden ${
+      ref={cellRef}
+      data-sticky={sticky}
+      onMouseEnter={handleMouseEnter}
+      title={tooltipText}
+      style={combinedStyle}
+      className={`py-3 px-3 align-middle overflow-hidden truncate max-w-0 ${
         align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
       } ${stickyCls} ${className}`}
       {...rest}
@@ -319,3 +462,4 @@ export const TableRow: React.FC<TableRowProps> = ({
     {children}
   </tr>
 );
+

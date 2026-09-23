@@ -9,13 +9,13 @@ export class ProjectIssuesController {
   constructor(private readonly issuesService: ProjectIssuesService) {}
 
   @Get()
-  @RequirePermission('projects', 'view')
+  @RequirePermission('risks', 'view')
   findAll(@Param('projectId') projectId: string, @AuthUser() authUser: JwtPayload) {
     return this.issuesService.findAll(projectId, authUser.sub);
   }
 
   @Post()
-  @RequirePermission('projects', 'create')
+  @RequirePermission('risks', 'create')
   @HttpCode(HttpStatus.CREATED)
   create(
     @Param('projectId') projectId: string,
@@ -25,8 +25,8 @@ export class ProjectIssuesController {
     return this.issuesService.create(projectId, body, authUser.sub);
   }
 
-  @Post(':projectId/update')
-  @RequirePermission('projects', 'update')
+  @Post(':id/update')
+  @RequirePermission('risks', 'update')
   update(
     @Param('projectId') projectId: string,
     @Param('id') id: string,
@@ -36,8 +36,8 @@ export class ProjectIssuesController {
     return this.issuesService.update(projectId, id, body, authUser.sub);
   }
 
-  @Post(':projectId/delete')
-  @RequirePermission('projects', 'delete')
+  @Post(':id/delete')
+  @RequirePermission('risks', 'delete')
   @HttpCode(HttpStatus.OK)
   remove(
     @Param('projectId') projectId: string,

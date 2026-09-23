@@ -3,13 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useCRM } from '@/contexts/CRMContext';
 import { usersApi } from '@/api/crm.api';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ActionItemQuickPanel } from '@/features/action-items/components/ActionItemQuickPanel';
-import { Account, Opportunity, OpportunityStage, ActionItem, Stakeholder, StakeholderType, ActionItemStatus, PriorityLevel, User as UserRecord, Project } from '@/types';
+import { Account, Opportunity, OpportunityStage, ActionItem, Stakeholder, StakeholderType, ActionItemStatus, PriorityLevel, User as UserRecord, Project, ColumnConfig } from '@/types';
 import { AccountFormModal } from '@/features/accounts/components/AccountFormModal';
 import { InlineEditModal } from '@/components/InlineEditModal';
 import { DocumentsPanel } from '@/components/documents/DocumentsPanel';
@@ -49,6 +49,7 @@ import {
   TableCell,
   TableRow,
   ExpandableTextCell,
+  computePinnedOffsets,
   FormModal,
   INPUT_CLS,
   SELECT_CLS,
@@ -151,6 +152,7 @@ export const AccountDetailsView: React.FC = () => {
     setProjectDetailsSourceView,
     setCreateProjectIntent,
     setSelectedOpportunityId,
+    setActionItemDetailsSourceView,
     setView,
     updateProject,
     deleteProject,
@@ -435,9 +437,18 @@ export const AccountDetailsView: React.FC = () => {
   const accountProjects = (projects || []).filter(p => p.accountId === account.id);
 
   // Displayed columns for the Action Items table in Account Details View — excludes Project column
-  const displayActionItemColumns = actionItemsColumnConfig.filter(
-    c => c.isDisplayed && c.key !== 'projectId' && c.key !== 'projectName'
-  );
+  const displayActionItemColumns = useMemo(() => {
+    const cols = actionItemsColumnConfig.filter(
+      c => c.isDisplayed && c.key !== 'projectId' && c.key !== 'projectName'
+    );
+    const pinned = cols.filter(col => col.isPinned);
+    const unpinned = cols.filter(col => !col.isPinned);
+    return [...pinned, ...unpinned];
+  }, [actionItemsColumnConfig]);
+
+  const actionItemPinnedOffsets = useMemo(() => {
+    return computePinnedOffsets(displayActionItemColumns, 'account-details:action-items');
+  }, [displayActionItemColumns]);
 
   // Open subsets backing the overview summary cards: opportunities still in 'Open'
   // lifecycle status, action items not yet Completed
@@ -976,17 +987,6 @@ export const AccountDetailsView: React.FC = () => {
                   title="No projects found"
                   hint={`There are currently no projects associated with ${account.name}.`}
                 />
-                {can('projects', 'create') && (
-                  <Button
-                    variant="primary"
-                    size="sm"
-                    onClick={() => setView('projects')}
-                    icon={<Plus className="w-4 h-4" />}
-                    className="mt-2"
-                  >
-                    Go to Projects Module
-                  </Button>
-                )}
               </div>
             ) : (
               <div className="overflow-x-auto mt-4">
@@ -1308,15 +1308,17 @@ export const AccountDetailsView: React.FC = () => {
             <Card padding="none" clip>
               <div className="overflow-x-auto">
                 <Table
-                  extraColumns={displayActionItemColumns.filter(c => !c.isStandard).length}
+                  extraColumns={displayActionItemColumns.filter((c: ColumnConfig) => !c.isStandard).length}
                   resizable
                   storageKey="account-details:action-items"
                 >
                   <TableHead>
-                    {displayActionItemColumns.map(col => (
+                    {displayActionItemColumns.map((col: ColumnConfig) => (
                       <TableHeadCell
                         key={col.key}
                         columnId={col.key}
+                        sticky={col.isPinned ? 'left' : undefined}
+                        stickyLeft={actionItemPinnedOffsets[col.key]}
                         className={col.key === 'title' ? 'px-5' : ''}
                       >
                         {col.name}
@@ -1338,15 +1340,24 @@ export const AccountDetailsView: React.FC = () => {
                         return (
                           <React.Fragment key={item.id}>
                             <TableRow className="hover:bg-slate-50/50">
-                              {displayActionItemColumns.map(col => {
+                              {displayActionItemColumns.map((col: ColumnConfig) => {
+                                const stickyProps = {
+                                  sticky: (col.isPinned ? 'left' : undefined) as 'left' | undefined,
+                                  stickyLeft: actionItemPinnedOffsets[col.key],
+                                };
+
                                 if (col.key === 'title') {
                                   return (
-                                    <TableCell key={col.key}>
+                                    <TableCell key={col.key} {...stickyProps}>
                                       <div className="flex items-center flex-wrap gap-2">
                                         <div className="flex-1 min-w-0">
                                           <button
                                             type="button"
-                                            onClick={() => setSelectedActionItemId(item.id)}
+                                            onClick={() => {
+                                              setSelectedActionItemId(item.id);
+                                              setActionItemDetailsSourceView('account-details');
+                                              setView(item.projectId ? 'project-action-item-details' : 'action-item-details');
+                                            }}
                                             className="font-bold text-slate-900 text-xs hover:text-blue-600 cursor-pointer text-left transition-colors truncate block max-w-full"
                                           >
                                             {item.title}
@@ -1368,7 +1379,7 @@ export const AccountDetailsView: React.FC = () => {
                                 }
                                 if (col.key === 'notes') {
                                   return (
-                                    <TableCell key={col.key} className="text-slate-600 font-medium text-xs">
+                                    <TableCell key={col.key} {...stickyProps} className="text-slate-600 font-medium text-xs">
                                       <span className="block w-full max-w-full line-clamp-2" title={item.notes || undefined}>
                                         {item.notes || <span className="text-slate-400 italic">No description</span>}
                                       </span>
@@ -1377,7 +1388,7 @@ export const AccountDetailsView: React.FC = () => {
                                 }
                                 if (col.key === 'risksAndDependencies') {
                                   return (
-                                    <TableCell key={col.key}>
+                                    <TableCell key={col.key} {...stickyProps}>
                                       <ExpandableTextCell
                                         text={item.risksAndDependencies}
                                         label="Risks & Dependencies"
@@ -1388,7 +1399,7 @@ export const AccountDetailsView: React.FC = () => {
                                 }
                                 if (col.key === 'accountId') {
                                   return (
-                                    <TableCell key={col.key} className="text-slate-600 font-semibold text-xs">
+                                    <TableCell key={col.key} {...stickyProps} className="text-slate-600 font-semibold text-xs">
                                       {accounts.find(acc => acc.id === item.accountId)?.name || account.name}
                                     </TableCell>
                                   );
@@ -1402,7 +1413,7 @@ export const AccountDetailsView: React.FC = () => {
                                     ...filteredOpps.map(o => ({ value: o.id, label: o.name }))
                                   ];
                                   return (
-                                    <TableCell key={col.key} className="text-slate-600 font-semibold text-xs">
+                                    <TableCell key={col.key} {...stickyProps} className="text-slate-600 font-semibold text-xs">
                                       <InlineSelectEditCell
                                         value={item.opportunityId ?? ''}
                                         options={oppOptions}
@@ -1422,7 +1433,7 @@ export const AccountDetailsView: React.FC = () => {
                                 }
                                 if (col.key === 'owner' || col.key === 'ownerStakeholderId') {
                                   return (
-                                    <TableCell key={col.key} className="text-slate-600 font-semibold text-xs" onClick={(e) => e.stopPropagation()}>
+                                    <TableCell key={col.key} {...stickyProps} className="text-slate-600 font-semibold text-xs" onClick={(e) => e.stopPropagation()}>
                                       {can('actionItems', 'update') ? (
                                         <ActionItemOwnerField
                                           accountId={account.id}
@@ -1447,7 +1458,7 @@ export const AccountDetailsView: React.FC = () => {
                                 }
                                 if (col.key === 'priority') {
                                   return (
-                                    <TableCell key={col.key}>
+                                    <TableCell key={col.key} {...stickyProps}>
                                       <InlineSelectEditCell
                                         value={item.priority}
                                         options={['Low', 'Medium', 'High', 'Critical']}
@@ -1461,7 +1472,7 @@ export const AccountDetailsView: React.FC = () => {
                                 }
                                 if (col.key === 'status') {
                                   return (
-                                    <TableCell key={col.key}>
+                                    <TableCell key={col.key} {...stickyProps}>
                                       <InlineSelectEditCell
                                         value={item.status}
                                         options={ACTION_ITEM_STATUS_OPTIONS}
@@ -1475,7 +1486,7 @@ export const AccountDetailsView: React.FC = () => {
                                 }
                                 if (col.key === 'dueDate' || col.key === 'openDate') {
                                   return (
-                                    <TableCell key={col.key} className="text-slate-500 font-mono text-xs font-medium">
+                                    <TableCell key={col.key} {...stickyProps} className="text-slate-500 font-mono text-xs font-medium">
                                       <InlineTextEditCell
                                         type="date"
                                         value={item[col.key] || ''}
@@ -1491,7 +1502,7 @@ export const AccountDetailsView: React.FC = () => {
                                 // Customizable dynamic custom columns
                                 const rawVal = item[col.key] ?? (col.type === 'boolean' ? false : '');
                                 return (
-                                  <TableCell key={col.key}>
+                                  <TableCell key={col.key} {...stickyProps}>
                                     {col.type === 'boolean' ? (
                                       <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${rawVal ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>
                                         {rawVal ? 'Yes' : 'No'}

@@ -60,21 +60,40 @@ export const InlineTextEditCell: React.FC<{
     const displayStr = formatDisplay ? formatDisplay(value) : String(value ?? '');
     return (
       <div
-        onClick={(e) => {
+        onMouseEnter={(e) => {
+          const span = e.currentTarget.querySelector('.truncate') as HTMLElement;
+          if (span && span.scrollWidth > span.clientWidth + 1 && displayStr) {
+            e.currentTarget.setAttribute('title', displayStr);
+          } else if (!disabled) {
+            e.currentTarget.setAttribute('title', 'Click row for Quick Panel, double-click or click icon to inline edit');
+          } else {
+            e.currentTarget.removeAttribute('title');
+          }
+        }}
+        onDoubleClick={(e) => {
           if (disabled) return;
           e.stopPropagation();
           setIsEditing(true);
         }}
-        className={`group inline-flex items-center gap-1.5 px-1.5 py-1 -mx-1.5 rounded hover:bg-slate-100/80 transition-colors ${
+        className={`group flex items-center justify-between gap-1.5 px-1.5 py-1 -mx-1.5 rounded max-w-full w-full min-w-0 hover:bg-slate-100/80 transition-colors ${
           disabled ? '' : 'cursor-pointer'
         } ${className}`}
-        title={disabled ? undefined : 'Click to edit'}
       >
-        <span className={displayStr ? 'truncate' : 'text-slate-400 italic font-normal'}>
+        <span className={`truncate flex-1 min-w-0 ${displayStr ? '' : 'text-slate-400 italic font-normal'}`}>
           {displayStr || placeholder}
         </span>
         {!disabled && (
-          <Edit2 className="w-3 h-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsEditing(true);
+            }}
+            className="p-0.5 hover:bg-slate-200 rounded transition-colors"
+            title="Inline Edit"
+          >
+            <Edit2 className="w-3 h-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+          </button>
         )}
       </div>
     );
@@ -240,7 +259,7 @@ export const InlineTextareaEditCell: React.FC<{
   label,
   placeholder = 'No content',
   disabled = false,
-  className = 'w-[190px]',
+  className = 'w-full',
   onSave,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -327,11 +346,11 @@ export const InlineTextareaEditCell: React.FC<{
           setIsOpen((o) => !o);
         }}
         title={strVal || undefined}
-        className={`group flex items-center justify-between gap-1 ${className} truncate text-left text-xs font-medium cursor-pointer rounded py-0.5 px-1 hover:bg-slate-100 transition-colors ${
+        className={`group flex items-center justify-between gap-1 w-full max-w-full min-w-0 ${className} truncate text-left text-xs font-medium cursor-pointer rounded py-0.5 px-1 hover:bg-slate-100 transition-colors ${
           strVal ? 'text-slate-700' : 'text-slate-400 italic'
         }`}
       >
-        <span className="truncate">{strVal || placeholder}</span>
+        <span className="truncate flex-1 min-w-0">{strVal || placeholder}</span>
         {!disabled && (
           <Edit2 className="w-3 h-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
         )}

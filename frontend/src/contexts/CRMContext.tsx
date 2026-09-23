@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
 import { useCRMData } from '@/hooks/useCRMData';
-import { authApi, rbacApi, serviceProvidersApi, projectManagersApi, practiceLeadsApi, clientPartnersApi, verticalHeadsApi, accountManagersApi } from '@/api/crm.api';
+import { authApi, rbacApi, serviceProvidersApi, projectManagersApi, practiceLeadsApi, clientPartnersApi, verticalHeadsApi, accountManagersApi, type IEModuleKey } from '@/api/crm.api';
 import type {
   Account, Opportunity, ActionItem, Stakeholder, Activity, Comment, CustomColumn, ColumnConfig,
   User, FinancialYear, FinancialCalendar, AdminSettings, Project, MyPermissions, ServiceProviderUser,
@@ -31,7 +31,9 @@ export type ViewType =
   | 'sqa'
   | 'sqa-details'
   | 'actionItems'
+  | 'action-item-details'
   | 'projectActionItems'
+  | 'project-action-item-details'
   | 'stakeholders'
   | 'forecast'
   | 'executive'
@@ -50,7 +52,8 @@ export type ViewType =
   | 'tracking'
   | 'delivery-review'
   | 'technical-review'
-  | 'sqa-review';
+  | 'sqa-review'
+  | 'sqa-tracking';
 
 /**
  * The page that triggered deep-link navigation so target views can render a
@@ -141,6 +144,8 @@ interface CRMContextProps {
   setSelectedSqaId: (id: string | null) => void;
   selectedRiskId: string | null;
   setSelectedRiskId: (id: string | null) => void;
+  selectedActionItemId: string | null;
+  setSelectedActionItemId: (id: string | null) => void;
   /** When true, the Opportunity Details view auto-opens its Create Project modal on mount (set by the list "Create Project" action, then cleared). */
   createProjectIntent: boolean;
   setCreateProjectIntent: (val: boolean) => void;
@@ -148,6 +153,8 @@ interface CRMContextProps {
   setOppDetailsSourceView: (view: ViewType | null) => void;
   projectDetailsSourceView: ViewType | null;
   setProjectDetailsSourceView: (view: ViewType | null) => void;
+  actionItemDetailsSourceView: ViewType | null;
+  setActionItemDetailsSourceView: (view: ViewType | null) => void;
 
   cameFromDashboard: boolean;
   setCameFromDashboard: (val: boolean) => void;
@@ -195,16 +202,20 @@ interface CRMContextProps {
   opportunityColumns: CustomColumn[];
   actionItemColumns: CustomColumn[];
   performanceEvaluationColumns: CustomColumn[];
-  addCustomColumn: (module: 'accounts' | 'opportunities' | 'actionItems' | 'performanceEvaluation', name: string, type: 'text' | 'number' | 'date' | 'boolean') => Promise<void>;
-  deleteCustomColumn: (module: 'accounts' | 'opportunities' | 'actionItems' | 'performanceEvaluation', id: string) => Promise<void>;
+  projectColumns: CustomColumn[];
+  projectActionItemColumns: CustomColumn[];
+  addCustomColumn: (module: 'accounts' | 'opportunities' | 'actionItems' | 'performanceEvaluation' | 'projects' | 'projectActionItems', name: string, type: 'text' | 'number' | 'date' | 'boolean') => Promise<void>;
+  deleteCustomColumn: (module: 'accounts' | 'opportunities' | 'actionItems' | 'performanceEvaluation' | 'projects' | 'projectActionItems', id: string) => Promise<void>;
 
   // Column configs
   accountsColumnConfig: ColumnConfig[];
   opportunitiesColumnConfig: ColumnConfig[];
   actionItemsColumnConfig: ColumnConfig[];
   performanceEvaluationColumnConfig: ColumnConfig[];
-  updateColumnConfig: (module: 'accounts' | 'opportunities' | 'actionItems' | 'performanceEvaluation', config: ColumnConfig[]) => Promise<void>;
-  resetColumnConfig: (module: 'accounts' | 'opportunities' | 'actionItems' | 'performanceEvaluation') => Promise<void>;
+  projectsColumnConfig: ColumnConfig[];
+  projectActionItemsColumnConfig: ColumnConfig[];
+  updateColumnConfig: (module: 'accounts' | 'opportunities' | 'actionItems' | 'performanceEvaluation' | 'projects' | 'projectActionItems', config: ColumnConfig[]) => Promise<void>;
+  resetColumnConfig: (module: 'accounts' | 'opportunities' | 'actionItems' | 'performanceEvaluation' | 'projects' | 'projectActionItems') => Promise<void>;
 
   // Notifications
   unreadNotificationCount: number;
@@ -261,6 +272,10 @@ interface CRMContextProps {
   addEmployeeRewardsRecognition: (data: Omit<EmployeeRewardsRecognition, 'id' | 'createdAt' | 'updatedAt'>) => Promise<EmployeeRewardsRecognition>;
   updateEmployeeRewardsRecognition: (id: string, data: Partial<EmployeeRewardsRecognition>) => Promise<void>;
   deleteEmployeeRewardsRecognition: (id: string) => Promise<void>;
+
+  /** Complete filtered and sorted datasets for active list views (consumed by export). */
+  activeExportRows: Partial<Record<IEModuleKey, any[]>>;
+  setActiveExportRows: (module: IEModuleKey, rows: any[]) => void;
 }
 
 // ─── Context & Provider ───────────────────────────────────────────────────────
@@ -420,11 +435,14 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     if (path.startsWith('/projects/')) return 'project-details';
     if (path.startsWith('/sqa/')) return 'sqa-details';
+    if (path.startsWith('/action-items/')) return 'action-item-details';
+    if (path.startsWith('/project-action-items/')) return 'project-action-item-details';
     if (path === '/accounts') return 'accounts';
     if (path === '/opportunities') return 'opportunities';
     if (path === '/projects') return 'projects';
     if (path === '/sqa') return 'sqa';
     if (path === '/action-items') return 'actionItems';
+    if (path === '/project-action-items') return 'projectActionItems';
     if (path === '/stakeholders') return 'stakeholders';
     if (path.startsWith('/risks/')) return 'risk-details';
     if (path === '/risks') return 'risks';
@@ -452,9 +470,11 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(() => getInitialId('/projects/'));
   const [selectedSqaId, setSelectedSqaId] = useState<string | null>(() => getInitialId('/sqa/'));
   const [selectedRiskId, setSelectedRiskId] = useState<string | null>(() => getInitialId('/risks/'));
+  const [selectedActionItemId, setSelectedActionItemId] = useState<string | null>(() => getInitialId('/action-items/') || getInitialId('/project-action-items/'));
   const [createProjectIntent, setCreateProjectIntent] = useState<boolean>(false);
   const [oppDetailsSourceView, setOppDetailsSourceView] = useState<ViewType | null>(null);
   const [projectDetailsSourceView, setProjectDetailsSourceView] = useState<ViewType | null>(null);
+  const [actionItemDetailsSourceView, setActionItemDetailsSourceView] = useState<ViewType | null>(null);
 
   const [cameFromDashboard, setCameFromDashboard] = useState<boolean>(false);
   const [navSource, setNavSource] = useState<NavSource | null>(null);
@@ -475,6 +495,11 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [openActionItemsFilter, setOpenActionItemsFilter] = useState<boolean>(false);
   const [overdueActionItemsFilter, setOverdueActionItemsFilter] = useState<boolean>(false);
   const [focusedRecord, setFocusedRecord] = useState<FocusedRecord | null>(null);
+
+  const [activeExportRows, setActiveExportRowsState] = useState<Partial<Record<IEModuleKey, any[]>>>({});
+  const setActiveExportRows = useCallback((module: IEModuleKey, rows: any[]) => {
+    setActiveExportRowsState((prev) => ({ ...prev, [module]: rows }));
+  }, []);
 
   // ── UI state ──────────────────────────────────────────────────────────────────
   const [sidebarCollapsed, setSidebarCollapsedState] = useState<boolean>(
@@ -638,12 +663,16 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setSelectedSqaId,
         selectedRiskId,
         setSelectedRiskId,
+        selectedActionItemId,
+        setSelectedActionItemId,
         createProjectIntent,
         setCreateProjectIntent,
         oppDetailsSourceView,
         setOppDetailsSourceView,
         projectDetailsSourceView,
         setProjectDetailsSourceView,
+        actionItemDetailsSourceView,
+        setActionItemDetailsSourceView,
 
         cameFromDashboard,
         setCameFromDashboard,
@@ -677,6 +706,8 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         clientPartners,
         verticalHeads,
         accountManagers,
+        activeExportRows,
+        setActiveExportRows,
       }}
     >
       {children}

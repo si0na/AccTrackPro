@@ -1,66 +1,85 @@
-import { Controller, Get, Post, Body, Param, Query, Req, HttpCode, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Query, Req, HttpCode, HttpStatus, ForbiddenException } from '@nestjs/common';
 import { ActionItemsService } from './action-items.service';
 import { CreateActionItemDto, UpdateActionItemDto } from './dto/action-item.dto';
 import { AuthUser, JwtPayload } from '../auth/auth-user.decorator';
-import { RequirePermission } from '../rbac/require-permission.decorator';
+import { PermissionsService } from '../rbac/permissions.service';
 import { mergeWithCustomFields } from '../../common/utils/merge-custom-fields.util';
 import { parsePagination } from '../../common/utils/pagination.util';
 
 @Controller('action-items')
 export class ActionItemsController {
-  constructor(private readonly service: ActionItemsService) {}
+  constructor(
+    private readonly service: ActionItemsService,
+    private readonly permissions: PermissionsService,
+  ) {}
 
-  // Operational task list — never fiscal-period-filtered; owner scope only,
-  // always the authenticated user (JWT). Any client-sent userId is ignored.
-  // Optional ?page=&pageSize= switches the response to a paginated envelope.
+  // Operational task list — never fiscal-period-filtered; owner/role scope applied server-side.
   @Get()
-  @RequirePermission('action-items', 'view')
-  findAll(
+  async findAll(
     @AuthUser() authUser: JwtPayload,
     @Query('page') page?: string,
     @Query('pageSize') pageSize?: string,
   ) {
-    return this.service.findAll({ userId: authUser.sub }, parsePagination(page, pageSize));
+    const userId = authUser.sub;
+    const canViewNormal = (await this.permissions.can(userId, 'action-items', 'view')) || (await this.permissions.can(userId, 'action-items', 'view-all'));
+    const canViewProject = (await this.permissions.can(userId, 'project-action-items', 'view')) || (await this.permissions.can(userId, 'project-action-items', 'view-all'));
+
+    if (!canViewNormal && !canViewProject) {
+      throw new ForbiddenException('You do not have permission to view action items.');
+    }
+
+    return this.service.findAll({ userId }, parsePagination(page, pageSize));
   }
 
   @Get('deactivated')
-  @RequirePermission('action-items', 'view')
-  findAllDeactivated(@AuthUser() authUser: JwtPayload) {
-    return this.service.findAllDeactivated({ userId: authUser.sub });
+  async findAllDeactivated(@AuthUser() authUser: JwtPayload) {
+    const userId = authUser.sub;
+    const canViewNormal = (await this.permissions.can(userId, 'action-items', 'view')) || (await this.permissions.can(userId, 'action-items', 'view-all'));
+    const canViewProject = (await this.permissions.can(userId, 'project-action-items', 'view')) || (await this.permissions.can(userId, 'project-action-items', 'view-all'));
+
+    if (!canViewNormal && !canViewProject) {
+      throw new ForbiddenException('You do not have permission to view action items.');
+    }
+
+    return this.service.findAllDeactivated({ userId });
   }
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @RequirePermission('action-items', 'create')
-  create(
+  async create(
     @Body() body: CreateActionItemDto,
     @Req() req: { body: Record<string, any> },
     @AuthUser() authUser: JwtPayload,
   ) {
-    // Preserve custom-column fields stripped by the whitelist pipe; the
-    // backend is authoritative for ownerId — always set from the verified JWT.
     const fullData = mergeWithCustomFields(body as Record<string, any>, req.body ?? {});
-    return this.service.create({ ...fullData, ownerId: authUser.sub });
+    const projectId = fullData.projectId;
+    const requiredModule = projectId ? 'project-action-items' : 'action-items';
+
+    const allowed = await this.permissions.can(authUser.sub, requiredModule, 'create');
+    if (!allowed) {
+      throw new ForbiddenException(`You do not have permission to create ${requiredModule}.`);
+    }
+
+    return this.service.create({ ...fullData, ownerId: authUser.sub }, authUser.sub);
   }
 
   @Post(':id/update')
-  @RequirePermission('action-items', 'update')
-  update(
+  async update(
     @Param('id') id: string,
     @Body() body: UpdateActionItemDto,
     @Req() req: { body: Record<string, any> },
     @AuthUser() authUser: JwtPayload,
   ) {
-    // Strip any frontend-supplied ownerId: ownership is preserved from the database.
     const { ownerId: _strip, ...safeDto } = body as Record<string, any>;
     const fullData = mergeWithCustomFields(safeDto, req.body ?? {});
+    await this.service.assertUpdatePermission(id, fullData, authUser.sub);
     return this.service.update(id, fullData, authUser.sub);
   }
 
   @Post(':id/delete')
   @HttpCode(HttpStatus.OK)
-  @RequirePermission('action-items', 'delete')
-  remove(@Param('id') id: string, @AuthUser() authUser: JwtPayload) {
+  async remove(@Param('id') id: string, @AuthUser() authUser: JwtPayload) {
+    await this.service.assertDeletePermission(id, authUser.sub);
     return this.service.remove(id, authUser.sub);
   }
 }

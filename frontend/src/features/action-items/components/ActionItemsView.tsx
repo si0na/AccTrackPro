@@ -41,6 +41,7 @@ import {
   TableHeadCell,
   TableRow,
   ExpandableTextCell,
+  computePinnedOffsets,
   InlineTextEditCell,
   InlineSelectEditCell,
   InlineTextareaEditCell,
@@ -50,7 +51,7 @@ import { LoadingState } from '@/components/common/LoadingState';
 import { ActionItemFormModal } from '@/features/action-items/components/ActionItemFormModal';
 import { ActionItemQuickPanel } from '@/features/action-items/components/ActionItemQuickPanel';
 import { ACTION_ITEM_STATUS_OPTIONS, ACTION_ITEM_TYPE_OPTIONS } from '@/constants';
-import { compareForSort, getTodayISODate, isDueThisWeek, isOpenActionItemStatus, matchesGlobalAccount, cleanOwnerName, SortDirection } from '@/utils';
+import { compareForSort, getTodayISODate, isDueThisWeek, isOpenActionItemStatus, matchesGlobalAccount, cleanOwnerName, formatCommentTimestamp, SortDirection } from '@/utils';
 
 export const ActionItemsView: React.FC = () => {
   const {
@@ -66,6 +67,7 @@ export const ActionItemsView: React.FC = () => {
     deleteActionItem,
     actionItemColumns,
     actionItemsColumnConfig,
+    projectActionItemsColumnConfig,
     comments,
     addComment,
     deleteComment,
@@ -80,11 +82,17 @@ export const ActionItemsView: React.FC = () => {
     setOpenActionItemsFilter,
     overdueActionItemsFilter,
     setOverdueActionItemsFilter,
-    globalAccountId: selectedAccountFilter,
     loading,
     can,
+    setSelectedActionItemId: setSelectedActionItemIdNav,
+    setActionItemDetailsSourceView,
     currentView,
+    setActiveExportRows,
   } = useCRM();
+
+  const handleSelectActionItem = (item: ActionItem) => {
+    setSelectedActionItemId(item.id);
+  };
 
   const isProjectMode = currentView === 'projectActionItems';
   const isDrillDown = cameFromDashboard || openActionItemsFilter || overdueActionItemsFilter || dueThisWeekFilter;
@@ -142,6 +150,7 @@ export const ActionItemsView: React.FC = () => {
 
   // Module-specific filter states (operational — never fiscal-period-based)
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedAccountFilter, setSelectedAccountFilter] = useState<string>('All');
   const [selectedOwner, setSelectedOwner] = useState<string>('All');
   const [selectedOpportunityFilter, setSelectedOpportunityFilter] = useState<string>('All');
   const [selectedProjectFilter, setSelectedProjectFilter] = useState<string>('All');
@@ -255,6 +264,7 @@ export const ActionItemsView: React.FC = () => {
       const account = resolveAccount(effAccId);
       const matches =
         ai.title.toLowerCase().includes(q) ||
+        (ai.actionItemNumber || '').toLowerCase().includes(q) ||
         (ai.notes || '').toLowerCase().includes(q) ||
         (account?.name || '').toLowerCase().includes(q) ||
         (ai.ownerName || ai.owner || '').toLowerCase().includes(q) ||
@@ -297,6 +307,10 @@ export const ActionItemsView: React.FC = () => {
     compareForSort(getSortValue(a, sortField), getSortValue(b, sortField), sortDirection),
   );
 
+  useEffect(() => {
+    setActiveExportRows('actionItems', sortedActionItems.filter((ai) => !ai.projectId));
+  }, [sortedActionItems, setActiveExportRows]);
+
   // Clamp the page so filter changes never leave the user on an empty page.
   const totalPages = Math.max(1, Math.ceil(sortedActionItems.length / pageSize));
   const currentPage = Math.min(page, totalPages);
@@ -325,16 +339,23 @@ export const ActionItemsView: React.FC = () => {
     updateActionItem(updated);
   };
 
+  const activeColumnConfig = isProjectMode ? projectActionItemsColumnConfig : actionItemsColumnConfig;
+
   const displayedConfigs = useMemo(() => {
-    const cols = actionItemsColumnConfig.filter(col => col.isDisplayed);
-    if (selectedTypeFilter === 'Project') {
-      return cols.filter(col => col.key !== 'opportunityId');
-    }
-    if (selectedTypeFilter === 'AccountOpp') {
-      return cols.filter(col => col.key !== 'projectId');
-    }
-    return cols;
-  }, [actionItemsColumnConfig, selectedTypeFilter]);
+    const cols = activeColumnConfig.filter(col => col.isDisplayed);
+    const filtered = selectedTypeFilter === 'Project'
+      ? cols.filter(col => col.key !== 'opportunityId')
+      : selectedTypeFilter === 'AccountOpp'
+      ? cols.filter(col => col.key !== 'projectId')
+      : cols;
+    const pinned = filtered.filter(col => col.isPinned);
+    const unpinned = filtered.filter(col => !col.isPinned);
+    return [...pinned, ...unpinned];
+  }, [activeColumnConfig, selectedTypeFilter]);
+
+  const pinnedOffsets = useMemo(() => {
+    return computePinnedOffsets(displayedConfigs, isProjectMode ? 'project-action-items' : 'action-items');
+  }, [displayedConfigs, isProjectMode]);
 
   // User-added (non-standard) columns widen the table past the viewport and
   // trigger horizontal scroll; the default column set always fits the screen.
@@ -415,7 +436,7 @@ export const ActionItemsView: React.FC = () => {
             >
               Customize Columns
             </Button>
-            {can('action-items', 'create') && (
+            {can(isProjectMode ? 'project-action-items' : 'action-items', 'create') && (
               <Button
                 size="md"
                 icon={<Plus className="w-4 h-4" aria-hidden="true" />}
@@ -430,7 +451,7 @@ export const ActionItemsView: React.FC = () => {
 
       {/* Customizable Column Sidebar */}
       <CustomizeColumnsSidebar
-        module="actionItems"
+        module={isProjectMode ? 'projectActionItems' : 'actionItems'}
         isOpen={isSidebarOpen}
         onClose={() => setIsSidebarOpen(false)}
       />
@@ -554,10 +575,15 @@ export const ActionItemsView: React.FC = () => {
       {/* List Layout View */}
       <Card padding="none" clip>
         <div className="overflow-x-auto">
-          <Table extraColumns={extraColumnCount} resizable storageKey="action-items">
+          <Table extraColumns={extraColumnCount} resizable storageKey={isProjectMode ? 'project-action-items' : 'action-items'}>
             <TableHead>
               {displayedConfigs.map(col => (
-                <TableHeadCell key={col.key} columnId={col.key}>
+                <TableHeadCell
+                  key={col.key}
+                  columnId={col.key}
+                  sticky={col.isPinned ? 'left' : undefined}
+                  stickyLeft={pinnedOffsets[col.key]}
+                >
                   <SortableHeader
                     label={col.name}
                     field={col.key}
@@ -590,15 +616,37 @@ export const ActionItemsView: React.FC = () => {
                 return (
                   <TableRow
                     key={item.id}
-                    onClick={() => setSelectedActionItemId(item.id)}
+                    onClick={() => handleSelectActionItem(item)}
                     className="hover:bg-blue-50/40 cursor-pointer transition-colors group"
                   >
                     {displayedConfigs.map(col => {
-                      const canEdit = can('action-items', 'update');
+                      const rowModule = item.projectId ? 'project-action-items' : 'action-items';
+                      const canEdit = can(rowModule, 'update');
 
+                      const stickyProps = {
+                        sticky: (col.isPinned ? 'left' : undefined) as 'left' | undefined,
+                        stickyLeft: pinnedOffsets[col.key],
+                      };
+
+                      if (col.key === 'actionItemNumber') {
+                        return (
+                          <TableCell key={col.key} {...stickyProps}>
+                            <InlineTextEditCell
+                              value={item.actionItemNumber || ''}
+                              disabled={!canEdit}
+                              className="font-mono text-xs font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 inline-block"
+                              onSave={async (v) => {
+                                if (v && v.trim() && v.trim() !== item.actionItemNumber) {
+                                  await updateActionItem({ ...item, actionItemNumber: v.trim() });
+                                }
+                              }}
+                            />
+                          </TableCell>
+                        );
+                      }
                       if (col.key === 'title') {
                         return (
-                          <TableCell key={col.key}>
+                          <TableCell key={col.key} {...stickyProps}>
                             <div className="flex items-center gap-2 min-w-0">
                               <div className="flex-1 min-w-0">
                                 <InlineTextEditCell
@@ -628,7 +676,7 @@ export const ActionItemsView: React.FC = () => {
                       }
                       if (col.key === 'notes') {
                         return (
-                          <TableCell key={col.key} className="text-slate-600 font-medium">
+                          <TableCell key={col.key} {...stickyProps} className="text-slate-600 font-medium">
                             <InlineTextareaEditCell
                               value={item.notes}
                               label="Description / Notes"
@@ -643,7 +691,7 @@ export const ActionItemsView: React.FC = () => {
                       }
                       if (col.key === 'risksAndDependencies') {
                         return (
-                          <TableCell key={col.key}>
+                          <TableCell key={col.key} {...stickyProps}>
                             <InlineTextareaEditCell
                               value={item.risksAndDependencies}
                               label="Risks & Dependencies"
@@ -656,6 +704,29 @@ export const ActionItemsView: React.FC = () => {
                           </TableCell>
                         );
                       }
+                      if (col.key === 'comments') {
+                        const itemComments = comments.filter(c => c.targetType === 'actionItem' && c.targetId === item.id);
+                        const latestComments = [...itemComments]
+                          .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+                          .slice(0, 2);
+
+                        return (
+                          <TableCell key={col.key} {...stickyProps} className="text-slate-600 text-xs font-medium max-w-xs">
+                            {latestComments.length > 0 ? (
+                              <div className="space-y-1">
+                                {latestComments.map((c) => (
+                                  <div key={c.id} className="text-[11px] leading-tight truncate" title={`${formatCommentTimestamp(c.timestamp)} - ${c.text}`}>
+                                    <span className="font-semibold text-slate-500">{formatCommentTimestamp(c.timestamp)}: </span>
+                                    <span>{c.text}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <span className="text-slate-400 italic text-[11px]">No comments</span>
+                            )}
+                          </TableCell>
+                        );
+                      }
                       if (col.key === 'accountId') {
                         const accountOptions = [
                           { value: '', label: 'Select Account...' },
@@ -663,7 +734,7 @@ export const ActionItemsView: React.FC = () => {
                         ];
                         const acc = resolveAccount(item.accountId);
                         return (
-                          <TableCell key={col.key} className="text-slate-600 font-bold">
+                          <TableCell key={col.key} {...stickyProps} className="text-slate-600 font-bold">
                             <InlineSelectEditCell
                               value={item.accountId}
                               options={accountOptions}
@@ -695,7 +766,7 @@ export const ActionItemsView: React.FC = () => {
                           ...filteredOpps.map(o => ({ value: o.id, label: o.name }))
                         ];
                         return (
-                          <TableCell key={col.key} className="text-slate-600 font-semibold text-xs">
+                          <TableCell key={col.key} {...stickyProps} className="text-slate-600 font-semibold text-xs">
                             <InlineSelectEditCell
                               value={item.opportunityId ?? ''}
                               options={oppOptions}
@@ -726,7 +797,7 @@ export const ActionItemsView: React.FC = () => {
                           ...filteredProjs.map(p => ({ value: p.id, label: p.name }))
                         ];
                         return (
-                          <TableCell key={col.key} className="text-slate-600 font-semibold text-xs">
+                          <TableCell key={col.key} {...stickyProps} className="text-slate-600 font-semibold text-xs">
                             <InlineSelectEditCell
                               value={item.projectId ?? ''}
                               options={projOptions}
@@ -749,7 +820,7 @@ export const ActionItemsView: React.FC = () => {
                       }
                       if (col.key === 'owner' || col.key === 'ownerStakeholderId') {
                         return (
-                          <TableCell key={col.key} className="text-slate-600 font-semibold text-xs" onClick={(e) => e.stopPropagation()}>
+                          <TableCell key={col.key} {...stickyProps} className="text-slate-600 font-semibold text-xs">
                             {canEdit ? (
                               <ActionItemOwnerField
                                 accountId={item.accountId ?? ''}
@@ -774,7 +845,7 @@ export const ActionItemsView: React.FC = () => {
                       }
                       if (col.key === 'priority') {
                         return (
-                          <TableCell key={col.key}>
+                          <TableCell key={col.key} {...stickyProps}>
                             <InlineSelectEditCell
                               value={item.priority}
                               options={['Low', 'Medium', 'High', 'Critical']}
@@ -788,7 +859,7 @@ export const ActionItemsView: React.FC = () => {
                       }
                       if (col.key === 'status') {
                         return (
-                          <TableCell key={col.key}>
+                          <TableCell key={col.key} {...stickyProps}>
                             <InlineSelectEditCell
                               value={item.status}
                               options={ACTION_ITEM_STATUS_OPTIONS}
@@ -802,7 +873,7 @@ export const ActionItemsView: React.FC = () => {
                       }
                       if (col.key === 'actionItemType') {
                         return (
-                          <TableCell key={col.key} className="text-slate-700 font-semibold text-xs">
+                          <TableCell key={col.key} {...stickyProps} className="text-slate-700 font-semibold text-xs">
                             <InlineSelectEditCell
                               value={item.actionItemType ?? ''}
                               options={['— None —', ...ACTION_ITEM_TYPE_OPTIONS]}
@@ -817,7 +888,7 @@ export const ActionItemsView: React.FC = () => {
                       }
                       if (col.key === 'openDate') {
                         return (
-                          <TableCell key={col.key} className="font-mono font-medium text-slate-500">
+                          <TableCell key={col.key} {...stickyProps} className="font-mono font-medium text-slate-500">
                             <InlineTextEditCell
                               type="date"
                               value={item.openDate}
@@ -831,7 +902,7 @@ export const ActionItemsView: React.FC = () => {
                       }
                       if (col.key === 'dueDate') {
                         return (
-                          <TableCell key={col.key} className="font-mono font-medium text-slate-500">
+                          <TableCell key={col.key} {...stickyProps} className="font-mono font-medium text-slate-500">
                             <InlineTextEditCell
                               type="date"
                               value={item.dueDate}
@@ -843,11 +914,41 @@ export const ActionItemsView: React.FC = () => {
                           </TableCell>
                         );
                       }
+                      if (col.key === 'nextAction') {
+                        return (
+                          <TableCell key={col.key} {...stickyProps} className="text-slate-600 font-medium">
+                            <InlineTextareaEditCell
+                              value={item.nextAction}
+                              label="Next Action"
+                              placeholder="— None —"
+                              disabled={!canEdit}
+                              onSave={async (v) => {
+                                await updateActionItem({ ...item, nextAction: v });
+                              }}
+                            />
+                          </TableCell>
+                        );
+                      }
+                      if (col.key === 'impediments') {
+                        return (
+                          <TableCell key={col.key} {...stickyProps} className="text-slate-600 font-medium">
+                            <InlineTextareaEditCell
+                              value={item.impediments}
+                              label="Impediments"
+                              placeholder="— None —"
+                              disabled={!canEdit}
+                              onSave={async (v) => {
+                                await updateActionItem({ ...item, impediments: v });
+                              }}
+                            />
+                          </TableCell>
+                        );
+                      }
 
                       // Customizable dynamic custom columns
                       const rawVal = item[col.key] ?? (col.type === 'boolean' ? false : '');
                       return (
-                        <TableCell key={col.key}>
+                        <TableCell key={col.key} {...stickyProps}>
                           {col.type === 'boolean' ? (
                             <InlineSelectEditCell
                               value={rawVal ? 'Yes' : 'No'}
@@ -882,8 +983,13 @@ export const ActionItemsView: React.FC = () => {
                     <TableCell align="center" sticky="right" onClick={(e) => e.stopPropagation()}>
                       <TableActions
                         entityLabel={`action item ${item.title}`}
-                        onEdit={can('action-items', 'update') ? () => handleEditClick(item) : undefined}
-                        onDelete={can('action-items', 'delete') ? () => setDeleteTarget({ type: 'actionItem', id: item.id, label: item.title }) : undefined}
+                        onView={() => {
+                          setSelectedActionItemIdNav(item.id);
+                          setActionItemDetailsSourceView(isProjectMode ? 'projectActionItems' : 'actionItems');
+                          setView(item.projectId ? 'project-action-item-details' : 'action-item-details');
+                        }}
+                        onEdit={can(item.projectId ? 'project-action-items' : 'action-items', 'update') ? () => handleEditClick(item) : undefined}
+                        onDelete={can(item.projectId ? 'project-action-items' : 'action-items', 'delete') ? () => setDeleteTarget({ type: 'actionItem', id: item.id, label: item.title }) : undefined}
                       />
                     </TableCell>
                   </TableRow>
