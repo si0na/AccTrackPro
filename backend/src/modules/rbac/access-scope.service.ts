@@ -138,7 +138,7 @@ export class AccessScopeService {
     idx = accountScope.nextIdx;
 
     const matchAssigned = (col: string) =>
-      `(${alias}.${col} = $${uId} OR ($${uEmail} <> '' AND LOWER(${alias}.${col}) = LOWER($${uEmail})))`;
+      `(${alias}.${col} = $${uId} OR ($${uEmail} <> '' AND (LOWER(${alias}.${col}) = LOWER($${uEmail}) OR EXISTS (SELECT 1 FROM employee_master em_assign WHERE em_assign.id = ${alias}.${col} AND LOWER(em_assign.email) = LOWER($${uEmail})))))`;
 
     const ors = [
       matchAssigned('owner_id'),

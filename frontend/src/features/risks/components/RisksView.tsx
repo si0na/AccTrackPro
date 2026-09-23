@@ -137,9 +137,20 @@ export const RisksView: React.FC = () => {
     loadData();
   }, [loadData]);
 
+  // Filter items accessible to the current user (if non-admin)
+  const accessibleItems = useMemo(() => {
+    if (can('accounts', 'view-all')) return items;
+    return items.filter((r) => {
+      const effAccId = r.accountId || (r.projectId ? projects.find((p) => p.id === r.projectId)?.accountId : '');
+      const isAccAccessible = effAccId ? accounts.some((a) => a.id === effAccId) : false;
+      const isProjAccessible = r.projectId ? projects.some((p) => p.id === r.projectId) : false;
+      return isAccAccessible || isProjAccessible;
+    });
+  }, [items, accounts, projects, can]);
+
   // Separate Risks list vs Issues list
-  const risksList = useMemo(() => items.filter((i) => i.riskType !== 'Issue'), [items]);
-  const issuesList = useMemo(() => items.filter((i) => i.riskType === 'Issue'), [items]);
+  const risksList = useMemo(() => accessibleItems.filter((i) => i.riskType !== 'Issue'), [accessibleItems]);
+  const issuesList = useMemo(() => accessibleItems.filter((i) => i.riskType === 'Issue'), [accessibleItems]);
 
   const currentList = activeTab === 'Risks' ? risksList : issuesList;
 

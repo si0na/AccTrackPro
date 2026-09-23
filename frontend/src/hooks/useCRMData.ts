@@ -209,6 +209,8 @@ export const useCRMData = (
   currentUser: string,
   currentUserId: string,
   isAuthenticated: boolean,
+  permissionsLoaded: boolean = true,
+  permissionSet?: Set<string>,
 ) => {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [deactivatedAccounts, setDeactivatedAccounts] = useState<Account[]>([]);
@@ -268,21 +270,42 @@ export const useCRMData = (
     }
   }, []);
 
-
-function catchForbidden<T>(promise: Promise<T[]>, fallback: T[] = []): Promise<T[]> {
-  return promise.catch((err) => {
-    if (err?.response?.status === 403) {
-      return fallback;
-    }
-    throw err;
-  });
-}
+  function catchForbidden<T>(
+    promise: Promise<T[]>,
+    moduleKey?: string,
+    fallback: T[] = [],
+  ): Promise<T[]> {
+    return promise.catch((err) => {
+      if (err?.response?.status === 403) {
+        if (permissionsLoaded && moduleKey && permissionSet) {
+          const hasViewPermission =
+            permissionSet.has(`${moduleKey}:view`) ||
+            permissionSet.has(`${moduleKey}:view-all`);
+          if (!hasViewPermission) {
+            // Expected 403: user lacks view permission for this module
+            return fallback;
+          }
+        } else if (permissionsLoaded) {
+          return fallback;
+        }
+        // Unexpected 403: user holds view permission but request failed
+        console.error(`[useCRMData] Unexpected 403 Forbidden for module "${moduleKey ?? 'unknown'}"`, err);
+      }
+      throw err;
+    });
+  }
 
   // Loads operational entity data. Operational modules are never filtered by
   // the Global Period Selector — only reporting (analytics) endpoints are.
   const refreshData = async () => {
     try {
       const owner = buildOwnerFilter(currentUserId);
+      const hasModulePermission = (keys: string | string[]): boolean => {
+        if (!permissionsLoaded || !permissionSet) return false;
+        const keyList = Array.isArray(keys) ? keys : [keys];
+        return keyList.some((k) => permissionSet.has(`${k}:view`) || permissionSet.has(`${k}:view-all`));
+      };
+
       const [
         accountsData, deactivatedData,
         oppsData, deactivatedOppsData,
@@ -294,25 +317,25 @@ function catchForbidden<T>(promise: Promise<T[]>, fallback: T[] = []): Promise<T
         apprData, rewardsData,
         sqaData, risksData, perfData,
       ] = await Promise.all([
-        catchForbidden(accountsApi.getAll(owner)),
-        catchForbidden(accountsApi.getDeactivated(owner)),
-        catchForbidden(opportunitiesApi.getAll(owner)),
-        catchForbidden(opportunitiesApi.getDeactivated(owner)),
-        catchForbidden(actionItemsApi.getAll(owner)),
-        catchForbidden(actionItemsApi.getDeactivated(owner)),
-        catchForbidden(stakeholdersApi.getAll(owner)),
-        catchForbidden(stakeholdersApi.getDeactivated(owner)),
-        catchForbidden(activitiesApi.getAll(owner)),
+        hasModulePermission('accounts') ? catchForbidden(accountsApi.getAll(owner), 'accounts') : Promise.resolve([]),
+        hasModulePermission('accounts') ? catchForbidden(accountsApi.getDeactivated(owner), 'accounts') : Promise.resolve([]),
+        hasModulePermission('opportunities') ? catchForbidden(opportunitiesApi.getAll(owner), 'opportunities') : Promise.resolve([]),
+        hasModulePermission('opportunities') ? catchForbidden(opportunitiesApi.getDeactivated(owner), 'opportunities') : Promise.resolve([]),
+        hasModulePermission(['action-items', 'project-action-items']) ? catchForbidden(actionItemsApi.getAll(owner), 'action-items') : Promise.resolve([]),
+        hasModulePermission(['action-items', 'project-action-items']) ? catchForbidden(actionItemsApi.getDeactivated(owner), 'action-items') : Promise.resolve([]),
+        hasModulePermission('stakeholders') ? catchForbidden(stakeholdersApi.getAll(owner), 'stakeholders') : Promise.resolve([]),
+        hasModulePermission('stakeholders') ? catchForbidden(stakeholdersApi.getDeactivated(owner), 'stakeholders') : Promise.resolve([]),
+        hasModulePermission('activities') ? catchForbidden(activitiesApi.getAll(owner), 'activities') : Promise.resolve([]),
         commentsApi.getAll().catch(() => []),
         customColumnsApi.getAll().catch(() => ({ accountColumns: [], opportunityColumns: [], actionItemColumns: [], performanceEvaluationColumns: [] })),
         columnConfigsApi.getAll().catch(() => ({ rawAccountsConfig: [], rawOpportunitiesConfig: [], rawActionItemsConfig: [], rawPerformanceEvaluationConfig: [], rawProjectsConfig: [], rawProjectActionItemsConfig: [] })),
-        catchForbidden(projectsApi.getAll(owner)),
-        catchForbidden(projectsApi.getDeactivated(owner)),
-        employeeAppreciationApi.getAll().catch(() => []),
-        employeeRewardsRecognitionApi.getAll().catch(() => []),
-        sqaApi.getAll().catch(() => []),
-        centralRisksApi.getAll().catch(() => []),
-        performanceEvaluationsApi.getAll(owner).catch(() => []),
+        hasModulePermission(['projects', 'project-action-items']) ? catchForbidden(projectsApi.getAll(owner), 'projects') : Promise.resolve([]),
+        hasModulePermission(['projects', 'project-action-items']) ? catchForbidden(projectsApi.getDeactivated(owner), 'projects') : Promise.resolve([]),
+        hasModulePermission('employee-appreciation') ? catchForbidden(employeeAppreciationApi.getAll(), 'employee-appreciation') : Promise.resolve([]),
+        hasModulePermission('employee-rewards-recognition') ? catchForbidden(employeeRewardsRecognitionApi.getAll(), 'employee-rewards-recognition') : Promise.resolve([]),
+        hasModulePermission('sqa') ? catchForbidden(sqaApi.getAll(), 'sqa') : Promise.resolve([]),
+        hasModulePermission(['risks', 'projects', 'project-action-items']) ? catchForbidden(centralRisksApi.getAll(), 'risks') : Promise.resolve([]),
+        hasModulePermission('performance-evaluations') ? catchForbidden(performanceEvaluationsApi.getAll(owner), 'performance-evaluations') : Promise.resolve([]),
       ]);
 
       setAccounts([...accountsData].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' })));
@@ -348,11 +371,12 @@ function catchForbidden<T>(promise: Promise<T[]>, fallback: T[] = []): Promise<T
     }
   };
 
-  // Startup / auth change: load configuration then entity data. Operational
-  // data does not depend on the Global Period Selector, so no period-change
-  // refetch exists — reporting components fetch analytics themselves.
+  // Startup / auth change: load configuration then entity data once permissions are loaded.
   useEffect(() => {
-    if (!isAuthenticated) { setLoading(false); return; }
+    if (!isAuthenticated || !permissionsLoaded) {
+      if (!isAuthenticated) setLoading(false);
+      return;
+    }
     setLoading(true);
     (async () => {
       try {
@@ -362,7 +386,7 @@ function catchForbidden<T>(promise: Promise<T[]>, fallback: T[] = []): Promise<T
         setLoading(false);
       }
     })();
-  }, [isAuthenticated, currentUserId]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isAuthenticated, permissionsLoaded, currentUserId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Poll unread count every 30s so the navbar/sidebar badge stays current on
   // all views. Skipped while the tab is hidden — the next visible tick

@@ -305,8 +305,12 @@ export const OpportunitiesView: React.FC = () => {
            matchesHealth && matchesLocation && matchesServiceLine;
   });
 
-  const sortedOpps = [...filteredOpps].sort((a, b) =>
-    compareForSort(getSortValue(a, sortField), getSortValue(b, sortField), sortDirection),
+  const sortedOpps = useMemo(
+    () =>
+      [...filteredOpps].sort((a, b) =>
+        compareForSort(getSortValue(a, sortField), getSortValue(b, sortField), sortDirection),
+      ),
+    [filteredOpps, sortField, sortDirection],
   );
 
   useEffect(() => {

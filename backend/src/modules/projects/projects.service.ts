@@ -134,15 +134,21 @@ export class ProjectsService {
 
     const { rows } = await this.db.query(
       `SELECT p.*, a.name AS account_name, o.name AS opportunity_name,
-              ou.name AS owner_name, spu.name AS service_provider_pm_name, plu.name AS practice_lead_name,
-              cpu.name AS client_partner_name${totalCol}
+              COALESCE(NULLIF(ou.name, ''), NULLIF(em_ou.name, ''), ou.email, em_ou.email) AS owner_name,
+              COALESCE(NULLIF(spu.name, ''), NULLIF(em_spu.name, ''), spu.email, em_spu.email) AS service_provider_pm_name,
+              COALESCE(NULLIF(plu.name, ''), NULLIF(em_plu.name, ''), plu.email, em_plu.email) AS practice_lead_name,
+              COALESCE(NULLIF(cpu.name, ''), NULLIF(em_cpu.name, ''), cpu.email, em_cpu.email) AS client_partner_name${totalCol}
        FROM projects p
        INNER JOIN accounts      a   ON p.account_id = a.id AND a.is_deleted = FALSE
        LEFT  JOIN opportunities o   ON p.opportunity_id = o.id
-       LEFT  JOIN users         ou  ON p.owner_id = ou.id
-       LEFT  JOIN users         spu ON p.service_provider_pm_id = spu.id
-       LEFT  JOIN users         plu ON p.practice_lead_id = plu.id
-       LEFT  JOIN users         cpu ON p.client_partner_id  = cpu.id
+       LEFT  JOIN users         ou  ON p.owner_id = ou.id OR LOWER(p.owner_id) = LOWER(ou.email)
+       LEFT  JOIN employee_master em_ou ON p.owner_id = em_ou.id OR (ou.email IS NOT NULL AND LOWER(em_ou.email) = LOWER(ou.email))
+       LEFT  JOIN users         spu ON p.service_provider_pm_id = spu.id OR LOWER(p.service_provider_pm_id) = LOWER(spu.email)
+       LEFT  JOIN employee_master em_spu ON p.service_provider_pm_id = em_spu.id OR (spu.email IS NOT NULL AND LOWER(em_spu.email) = LOWER(spu.email))
+       LEFT  JOIN users         plu ON p.practice_lead_id = plu.id OR LOWER(p.practice_lead_id) = LOWER(plu.email)
+       LEFT  JOIN employee_master em_plu ON p.practice_lead_id = em_plu.id OR (plu.email IS NOT NULL AND LOWER(em_plu.email) = LOWER(plu.email))
+       LEFT  JOIN users         cpu ON p.client_partner_id  = cpu.id OR LOWER(p.client_partner_id) = LOWER(cpu.email)
+       LEFT  JOIN employee_master em_cpu ON p.client_partner_id = em_cpu.id OR (cpu.email IS NOT NULL AND LOWER(em_cpu.email) = LOWER(cpu.email))
        WHERE ${where}
        ORDER BY p.created_at DESC${limitClause}`,
       qParams,
