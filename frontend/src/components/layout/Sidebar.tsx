@@ -113,7 +113,17 @@ export const Sidebar: React.FC = () => {
   const activeServiceProvidersCount = (allServiceProviders ?? []).filter(sp => sp.isActive !== false).length;
   const totalStakeholdersCount = clientStakeholdersCount + activeServiceProvidersCount;
 
-  const risksAndIssuesCount = (allRisks ?? []).filter(r => matchesGlobalAccount(r.accountId, globalAccountId)).length;
+  const risksAndIssuesCount = (allRisks ?? []).filter(r => {
+    const effAccId = r.accountId || (r.projectId ? allProjects.find(p => p.id === r.projectId)?.accountId : '');
+    const matchesAccount = matchesGlobalAccount(effAccId, globalAccountId);
+    if (!matchesAccount) return false;
+    if (!can('accounts', 'view-all')) {
+      const isAccAccessible = effAccId ? allAccounts.some(a => a.id === effAccId) : false;
+      const isProjAccessible = r.projectId ? allProjects.some(p => p.id === r.projectId) : false;
+      return isAccAccessible || isProjAccessible;
+    }
+    return true;
+  }).length;
   const sqaCount = (allSqaRecords ?? []).filter(s => matchesGlobalAccount(s.accountId, globalAccountId)).length;
 
   const employeeAppreciationCount = (allEmployeeAppreciations ?? []).filter(e => matchesGlobalAccount(e.accountId, globalAccountId)).length;

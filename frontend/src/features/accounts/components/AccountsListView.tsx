@@ -247,8 +247,12 @@ export const AccountsListView: React.FC = () => {
     return matchesSearch && matchesGlobalScope && matchesType && matchesHealth && matchesIndustry && matchesLocation && matchesAccountManager && matchesOwner;
   });
 
-  const sortedAccounts = [...filteredAccounts].sort((a, b) =>
-    compareForSort((a as any)[sortField], (b as any)[sortField], sortDirection),
+  const sortedAccounts = useMemo(
+    () =>
+      [...filteredAccounts].sort((a, b) =>
+        compareForSort((a as any)[sortField], (b as any)[sortField], sortDirection),
+      ),
+    [filteredAccounts, sortField, sortDirection],
   );
 
   useEffect(() => {
@@ -494,9 +498,14 @@ export const AccountsListView: React.FC = () => {
                   return (
                     <TableRow key={acc.id}>
                       {displayedConfigs.map(col => {
+                        const stickyProps = {
+                          sticky: (col.isPinned ? 'left' : undefined) as 'left' | undefined,
+                          stickyLeft: pinnedOffsets[col.key],
+                        };
+
                         if (col.key === 'name') {
                           return (
-                            <TableCell key={col.key} onClick={() => handleRowClick(acc.id)} className="cursor-pointer">
+                            <TableCell key={col.key} {...stickyProps} onClick={() => handleRowClick(acc.id)} className="cursor-pointer">
                               <div className="flex items-center space-x-3">
                                 <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
                                   {acc.name.charAt(0)}
@@ -513,7 +522,7 @@ export const AccountsListView: React.FC = () => {
                         }
                         if (col.key === 'status') {
                           return (
-                            <TableCell key={col.key} onClick={(e) => e.stopPropagation()}>
+                            <TableCell key={col.key} {...stickyProps} onClick={(e) => e.stopPropagation()}>
                               <InlineSelectEditCell
                                 value={acc.status || 'Active'}
                                 options={['Active', 'Inactive', 'Prospect']}
@@ -525,7 +534,7 @@ export const AccountsListView: React.FC = () => {
                         }
                         if (col.key === 'health') {
                           return (
-                            <TableCell key={col.key} onClick={(e) => e.stopPropagation()}>
+                            <TableCell key={col.key} {...stickyProps} onClick={(e) => e.stopPropagation()}>
                               <InlineSelectEditCell
                                 value={acc.health}
                                 options={ACCOUNT_HEALTH_OPTIONS}
@@ -537,7 +546,7 @@ export const AccountsListView: React.FC = () => {
                         }
                         if (col.key === 'healthReason') {
                           return (
-                            <TableCell key={col.key} onClick={(e) => e.stopPropagation()}>
+                            <TableCell key={col.key} {...stickyProps} onClick={(e) => e.stopPropagation()}>
                               <InlineTextEditCell
                                 value={acc.healthReason || ''}
                                 placeholder="Add health reason..."
@@ -549,14 +558,14 @@ export const AccountsListView: React.FC = () => {
                         }
                         if (col.key === 'owner') {
                           return (
-                            <TableCell key={col.key} className="text-slate-600 font-medium">
+                            <TableCell key={col.key} {...stickyProps} className="text-slate-600 font-medium">
                               {acc.owner || '—'}
                             </TableCell>
                           );
                         }
                         if (col.key === 'accountManagerId') {
                           return (
-                            <TableCell key={col.key} onClick={(e) => e.stopPropagation()}>
+                            <TableCell key={col.key} {...stickyProps} onClick={(e) => e.stopPropagation()}>
                               <InlineSelectEditCell
                                 value={acc.accountManagerId || ''}
                                 options={accountManagerOptions}
@@ -570,7 +579,7 @@ export const AccountsListView: React.FC = () => {
                         }
                         if (col.key === 'practiceLeadId') {
                           return (
-                            <TableCell key={col.key} onClick={(e) => e.stopPropagation()}>
+                            <TableCell key={col.key} {...stickyProps} onClick={(e) => e.stopPropagation()}>
                               <InlineSelectEditCell
                                 value={acc.practiceLeadId || ''}
                                 options={practiceLeadOptions}
@@ -584,7 +593,7 @@ export const AccountsListView: React.FC = () => {
                         }
                         if (col.key === 'clientPartnerId') {
                           return (
-                            <TableCell key={col.key} onClick={(e) => e.stopPropagation()}>
+                            <TableCell key={col.key} {...stickyProps} onClick={(e) => e.stopPropagation()}>
                               <InlineSelectEditCell
                                 value={acc.clientPartnerId || ''}
                                 options={clientPartnerOptions}
@@ -598,7 +607,7 @@ export const AccountsListView: React.FC = () => {
                         }
                         if (col.key === 'verticalHeadId') {
                           return (
-                            <TableCell key={col.key} onClick={(e) => e.stopPropagation()}>
+                            <TableCell key={col.key} {...stickyProps} onClick={(e) => e.stopPropagation()}>
                               <InlineSelectEditCell
                                 value={acc.verticalHeadId || ''}
                                 options={verticalHeadOptions}
@@ -612,7 +621,7 @@ export const AccountsListView: React.FC = () => {
                         }
                         if (col.key === 'type') {
                           return (
-                            <TableCell key={col.key} onClick={(e) => e.stopPropagation()}>
+                            <TableCell key={col.key} {...stickyProps} onClick={(e) => e.stopPropagation()}>
                               <InlineSelectEditCell
                                 value={acc.type}
                                 options={ACCOUNT_TYPE_OPTIONS}
@@ -624,7 +633,7 @@ export const AccountsListView: React.FC = () => {
                         }
                         if (col.key === 'industry') {
                           return (
-                            <TableCell key={col.key} onClick={(e) => e.stopPropagation()}>
+                            <TableCell key={col.key} {...stickyProps} onClick={(e) => e.stopPropagation()}>
                               <div className="min-w-[150px]">
                                 <SearchableSelect
                                   value={acc.industry ?? ''}
@@ -640,7 +649,7 @@ export const AccountsListView: React.FC = () => {
                         }
                         if (col.key === 'since') {
                           return (
-                            <TableCell key={col.key} onClick={(e) => e.stopPropagation()}>
+                            <TableCell key={col.key} {...stickyProps} onClick={(e) => e.stopPropagation()}>
                               <InlineSelectEditCell
                                 value={acc.since || ''}
                                 options={getCustomerSinceYearOptions()}
@@ -653,7 +662,7 @@ export const AccountsListView: React.FC = () => {
                         }
                         if (col.key === 'location') {
                           return (
-                            <TableCell key={col.key} onClick={(e) => e.stopPropagation()}>
+                            <TableCell key={col.key} {...stickyProps} onClick={(e) => e.stopPropagation()}>
                               <InlineSelectEditCell
                                 value={acc.location || ''}
                                 options={LOCATION_OPTIONS}
@@ -666,7 +675,7 @@ export const AccountsListView: React.FC = () => {
                         }
                         if (col.key === 'revenue') {
                           return (
-                            <TableCell key={col.key} align="right" onClick={(e) => e.stopPropagation()}>
+                            <TableCell key={col.key} {...stickyProps} align="right" onClick={(e) => e.stopPropagation()}>
                               <InlineTextEditCell
                                 type="number"
                                 value={acc.revenue}
@@ -680,7 +689,7 @@ export const AccountsListView: React.FC = () => {
 
                         if (col.key === 'tower') {
                           return (
-                            <TableCell key={col.key} onClick={(e) => e.stopPropagation()}>
+                            <TableCell key={col.key} {...stickyProps} onClick={(e) => e.stopPropagation()}>
                               <InlineSelectEditCell
                                 value={acc.tower || ''}
                                 options={TOWER_OPTIONS}
@@ -695,7 +704,7 @@ export const AccountsListView: React.FC = () => {
                       // Dynamic Render for custom columns/fields
                       const rawVal = acc[col.key] ?? (col.type === 'boolean' ? false : '');
                       return (
-                        <TableCell key={col.key} onClick={(e) => e.stopPropagation()}>
+                        <TableCell key={col.key} {...stickyProps} onClick={(e) => e.stopPropagation()}>
                           {col.type === 'boolean' ? (
                             <div className="flex items-center">
                               <input

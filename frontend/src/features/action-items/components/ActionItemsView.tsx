@@ -303,13 +303,22 @@ export const ActionItemsView: React.FC = () => {
     return baseRawActionItems.filter(matchesCommonFilters);
   }, [baseRawActionItems, matchesCommonFilters]);
 
-  const sortedActionItems = [...filteredActionItems].sort((a, b) =>
-    compareForSort(getSortValue(a, sortField), getSortValue(b, sortField), sortDirection),
+  const sortedActionItems = useMemo(
+    () =>
+      [...filteredActionItems].sort((a, b) =>
+        compareForSort(getSortValue(a, sortField), getSortValue(b, sortField), sortDirection),
+      ),
+    [filteredActionItems, sortField, sortDirection],
+  );
+
+  const exportActionItems = useMemo(
+    () => sortedActionItems.filter((ai) => !ai.projectId),
+    [sortedActionItems],
   );
 
   useEffect(() => {
-    setActiveExportRows('actionItems', sortedActionItems.filter((ai) => !ai.projectId));
-  }, [sortedActionItems, setActiveExportRows]);
+    setActiveExportRows('actionItems', exportActionItems);
+  }, [exportActionItems, setActiveExportRows]);
 
   // Clamp the page so filter changes never leave the user on an empty page.
   const totalPages = Math.max(1, Math.ceil(sortedActionItems.length / pageSize));

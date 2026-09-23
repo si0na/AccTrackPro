@@ -423,7 +423,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const currentUserId = jwtUser?.id ?? '';
 
   // Operational data — independent of the reporting period selector.
-  const crmData = useCRMData(currentUser, currentUserId, isLoggedIn);
+  const crmData = useCRMData(currentUser, currentUserId, isLoggedIn, permissionsLoaded, permissionSet);
 
   // ── Initial State Parsers (Deep Linking) ────────────────────────────────────
   const getInitialView = (): ViewType => {
@@ -498,7 +498,26 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [activeExportRows, setActiveExportRowsState] = useState<Partial<Record<IEModuleKey, any[]>>>({});
   const setActiveExportRows = useCallback((module: IEModuleKey, rows: any[]) => {
-    setActiveExportRowsState((prev) => ({ ...prev, [module]: rows }));
+    setActiveExportRowsState((prev) => {
+      const existing = prev[module];
+      if (existing === rows) return prev;
+      if (existing && existing.length === rows.length) {
+        const isSame = existing.every((item, idx) => {
+          const nextItem = rows[idx];
+          if (item === nextItem) return true;
+          if (!item || !nextItem) return false;
+          return (
+            item.id === nextItem.id &&
+            item.updatedAt === nextItem.updatedAt &&
+            item.name === nextItem.name &&
+            item.title === nextItem.title &&
+            item.status === nextItem.status
+          );
+        });
+        if (isSame) return prev;
+      }
+      return { ...prev, [module]: rows };
+    });
   }, []);
 
   // ── UI state ──────────────────────────────────────────────────────────────────
