@@ -88,6 +88,7 @@ export const ActionItemsView: React.FC = () => {
     setActionItemDetailsSourceView,
     currentView,
     setActiveExportRows,
+    globalAccountId: selectedAccountFilter,
   } = useCRM();
 
   const handleSelectActionItem = (item: ActionItem) => {
@@ -150,7 +151,6 @@ export const ActionItemsView: React.FC = () => {
 
   // Module-specific filter states (operational — never fiscal-period-based)
   const [searchQuery, setSearchQuery] = useState('');
-  const [selectedAccountFilter, setSelectedAccountFilter] = useState<string>('All');
   const [selectedOwner, setSelectedOwner] = useState<string>('All');
   const [selectedOpportunityFilter, setSelectedOpportunityFilter] = useState<string>('All');
   const [selectedProjectFilter, setSelectedProjectFilter] = useState<string>('All');
@@ -256,7 +256,11 @@ export const ActionItemsView: React.FC = () => {
   const matchesCommonFilters = useCallback((ai: ActionItem) => {
     if (focusedActionItemId && ai.id !== focusedActionItemId) return false;
 
-    const effAccId = ai.accountId || (ai.projectId ? projects.find(p => p.id === ai.projectId)?.accountId : '') || '';
+    const effAccId =
+      ai.accountId ||
+      (ai.projectId ? projects.find(p => p.id === ai.projectId)?.accountId : '') ||
+      (ai.opportunityId ? opportunities.find(o => o.id === ai.opportunityId)?.accountId : '') ||
+      '';
     if (!matchesGlobalAccount(effAccId, selectedAccountFilter)) return false;
 
     if (searchQuery) {
@@ -295,7 +299,7 @@ export const ActionItemsView: React.FC = () => {
     focusedActionItemId, selectedAccountFilter, searchQuery, selectedOwner,
     selectedOpportunityFilter, selectedProjectFilter, selectedStatus, selectedPriority, selectedType,
     dueFilter, dueThisWeekFilter, openActionItemsFilter, overdueActionItemsFilter,
-    todayStr, projects, resolveAccount
+    todayStr, projects, opportunities, resolveAccount
   ]);
 
   // Operational task list — module-specific filters only, never fiscal-period-based.
