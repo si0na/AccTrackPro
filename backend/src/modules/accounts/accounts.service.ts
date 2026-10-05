@@ -281,8 +281,8 @@ export class AccountsService {
       if (!existingStks.length) {
         await this.db.query(
           `INSERT INTO stakeholders
-             (id, name, account_id, designation, influence, relationship, email, phone, stakeholder_type, department)
-           VALUES (gen_random_uuid()::TEXT, $1, $2, $3, $4, $5, $6, $7, 'CLIENT', $8)`,
+             (id, name, account_id, designation, influence, relationship, email, phone, stakeholder_type, department, level)
+           VALUES (gen_random_uuid()::TEXT, $1, $2, $3, $4, $5, $6, $7, 'CLIENT', $8, $9)`,
           [
             draft.name,
             account.id,
@@ -292,6 +292,7 @@ export class AccountsService {
             draft.email || '',
             draft.phone || '',
             draft.department || '',
+            draft.level || 'Level 3',
           ],
         );
         this.logger.log(`Created new client stakeholder [name=${draft.name} accountId=${account.id}]`);
@@ -420,8 +421,8 @@ export class AccountsService {
       const draft = data.clientStakeholderDraft;
       await this.db.query(
         `INSERT INTO stakeholders
-           (id, name, account_id, designation, influence, relationship, email, phone, stakeholder_type, department)
-         VALUES (gen_random_uuid()::TEXT, $1, $2, $3, $4, $5, $6, $7, 'CLIENT', $8)`,
+           (id, name, account_id, designation, influence, relationship, email, phone, stakeholder_type, department, level)
+         VALUES (gen_random_uuid()::TEXT, $1, $2, $3, $4, $5, $6, $7, 'CLIENT', $8, $9)`,
         [
           draft.name,
           account.id,
@@ -431,6 +432,7 @@ export class AccountsService {
           draft.email || '',
           draft.phone || '',
           draft.department || '',
+          draft.level || 'Level 3',
         ],
       );
       this.logger.log(`Created new client stakeholder [name=${draft.name} accountId=${account.id}]`);

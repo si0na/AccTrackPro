@@ -6,7 +6,7 @@ export type AccountType = 'Strategic' | 'Non Strategic' | 'New' | 'Internal';
 export type AccountHealth = 'Green' | 'Amber' | 'Red';
 export type OpportunityStage =
   | 'Lead' | 'Qualified' | 'Proposal' | 'Negotiation' | 'Verbal Agreement' | 'Won'
-  | 'Blocked' | 'Delayed' | 'Hold' | 'Lost';
+  | 'Blocked' | 'Delayed' | 'Hold' | 'Lost' | 'Cancelled';
 export type OpportunityType = 'Growth' | 'Pursuit' | 'Whitespace' | 'New' | 'Extension';
 export type ServiceLine = (typeof SERVICE_LINE_OPTIONS)[number];
 export type OpportunityHealth = 'Green' | 'Amber' | 'Red';
@@ -36,6 +36,14 @@ export type ActionItemType =
 export type InfluenceLevel = 'High' | 'Medium' | 'Low';
 export type RelationshipStatus = 'Strong' | 'Neutral' | 'Weak';
 export type StakeholderType = 'CLIENT' | 'SERVICE_PROVIDER';
+export type StakeholderLevel =
+  | 'Level 0'
+  | 'Level 1'
+  | 'Level 2'
+  | 'Level 3'
+  | 'Level 4'
+  | 'Level 5'
+  | 'Level 6+';
 export type ProjectStatus = 'Active' | 'On Hold' | 'Completed' | 'Cancelled';
 export type ProjectMethodology = 'Agile' | 'Waterfall';
 export type ProjectHealth = 'Green' | 'Amber' | 'Red';
@@ -96,6 +104,8 @@ export interface Opportunity {
   nextStep: string;
   /** Known risks or blocking dependencies for this opportunity. */
   risksAndDependencies: string;
+  /** Current impediments or blockers for this opportunity. */
+  impediments?: string;
   /** Why the deal was Won or Lost; required when the stage transitions to a closed state. */
   closeReason: string;
   /** Why the opportunity cannot currently progress; only meaningful while stage is 'Blocked'. Separate from risksAndDependencies. */
@@ -589,6 +599,7 @@ export interface Stakeholder {
   designation: string;
   influence: InfluenceLevel;
   relationship: RelationshipStatus;
+  level: StakeholderLevel;
   email: string;
   phone: string;
   stakeholderType: StakeholderType;

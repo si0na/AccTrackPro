@@ -27,6 +27,7 @@ import {
   FilterBar,
   FilterChip,
   FilterSelect,
+  MultiSelectFilter,
   PageHeader,
   Pagination,
   PRIORITY_COLORS,
@@ -154,7 +155,7 @@ export const ActionItemsView: React.FC = () => {
   const [selectedOwner, setSelectedOwner] = useState<string>('All');
   const [selectedOpportunityFilter, setSelectedOpportunityFilter] = useState<string>('All');
   const [selectedProjectFilter, setSelectedProjectFilter] = useState<string>('All');
-  const [selectedStatus, setSelectedStatus] = useState<string>('All');
+  const [selectedStatus, setSelectedStatus] = useState<string[]>([]);
   const [selectedPriority, setSelectedPriority] = useState<string>('All');
   const [selectedType, setSelectedType] = useState<string>('All');
   /** Quick due-date filter: All | Overdue | Due Today | Due This Week */
@@ -279,7 +280,10 @@ export const ActionItemsView: React.FC = () => {
     if (selectedOwner !== 'All' && (ai.ownerName || ai.owner || '').trim().toLowerCase() !== selectedOwner.trim().toLowerCase()) return false;
     if (selectedOpportunityFilter !== 'All' && ai.opportunityId !== selectedOpportunityFilter) return false;
     if (selectedProjectFilter !== 'All' && ai.projectId !== selectedProjectFilter) return false;
-    if (selectedStatus !== 'All' && ai.status !== selectedStatus) return false;
+    const statusSel = Array.isArray(selectedStatus)
+      ? selectedStatus
+      : (!selectedStatus || selectedStatus === 'All' ? [] : [selectedStatus]);
+    if (statusSel.length > 0 && !statusSel.includes('All') && !statusSel.includes(ai.status)) return false;
     if (selectedPriority !== 'All' && ai.priority !== selectedPriority) return false;
     if (selectedType !== 'All' && ai.actionItemType !== selectedType) return false;
 
@@ -536,15 +540,14 @@ export const ActionItemsView: React.FC = () => {
           ]}
         />
 
-        <FilterSelect
+        <MultiSelectFilter
           label="Status"
           hideLabel
-          value={selectedStatus}
+          selectedValues={Array.isArray(selectedStatus) ? selectedStatus : (!selectedStatus || selectedStatus === 'All' ? [] : [selectedStatus])}
           onChange={setSelectedStatus}
-          options={[
-            { value: 'All', label: 'All Statuses' },
-            ...ACTION_ITEM_STATUS_OPTIONS.map(s => ({ value: s, label: s })),
-          ]}
+          className="w-full"
+          options={ACTION_ITEM_STATUS_OPTIONS}
+          allLabel="All Statuses"
         />
 
         <FilterSelect

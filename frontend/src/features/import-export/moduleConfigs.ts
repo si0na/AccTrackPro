@@ -14,6 +14,7 @@ import {
   BILLING_MODEL_OPTIONS,
   PRIORITY_OPTIONS,
   INDUSTRY_OPTIONS,
+  STAKEHOLDER_LEVEL_OPTIONS,
 } from '@/constants';
 import { cleanOwnerName, formatCommentTimestamp } from '@/utils';
 import type { IEModuleKey, ModuleIEConfig, RefData } from './types';
@@ -113,6 +114,7 @@ const opportunitiesConfig: ModuleIEConfig = {
     { key: 'dealCloseDate', header: 'Deal Close Date', type: 'date' },
     { key: 'nextStep', header: 'Next Step', type: 'string' },
     { key: 'risksAndDependencies', header: 'Risks & Dependencies', type: 'string' },
+    { key: 'impediments', header: 'Impediments', type: 'string' },
     { key: 'description', header: 'Description', type: 'string' },
     { key: 'opportunityHealth', header: 'Opportunity Health', type: 'enum', options: OPPORTUNITY_HEALTH_OPTIONS, example: 'Green' },
     { key: 'location', header: 'Location', type: 'string', example: 'United States' },
@@ -143,6 +145,7 @@ const opportunitiesConfig: ModuleIEConfig = {
     { key: 'quarter', header: 'Quarter', value: (e) => e.quarter ?? '' },
     { key: 'nextStep', header: 'Next Step', value: (e) => e.nextStep ?? '' },
     { key: 'risksAndDependencies', header: 'Risks & Dependencies', value: (e) => e.risksAndDependencies ?? '' },
+    { key: 'impediments', header: 'Impediments', value: (e) => e.impediments ?? '' },
     { key: 'description', header: 'Description', value: (e) => e.description ?? '' },
     { key: 'opportunityHealth', header: 'Opportunity Health', value: (e) => e.opportunityHealth ?? '' },
     { key: 'location', header: 'Location', value: (e) => e.location ?? '' },
@@ -167,6 +170,7 @@ const stakeholdersConfig: ModuleIEConfig = {
     { key: 'stakeholderType', header: 'Stakeholder Type', headerAliases: ['Type'], type: 'enum', options: ['CLIENT', 'SERVICE_PROVIDER'], required: true, default: 'CLIENT', example: 'CLIENT' },
     { key: 'influence', header: 'Influence Level', headerAliases: ['Influence'], type: 'enum', options: INFLUENCE, required: true, example: 'High' },
     { key: 'relationship', header: 'Relationship', type: 'enum', options: RELATIONSHIP, required: true, example: 'Strong' },
+    { key: 'level', header: 'Level', type: 'enum', options: STAKEHOLDER_LEVEL_OPTIONS, required: false, default: 'Level 3', example: 'Level 3' },
     { key: 'designation', header: 'Designation', type: 'string', example: 'CTO' },
     { key: 'department', header: 'Department', type: 'string', example: 'Engineering' },
     { key: 'email', header: 'Email', type: 'string', format: 'email', example: 'jane@acme.com', hint: 'Unique within the account' },
@@ -179,6 +183,7 @@ const stakeholdersConfig: ModuleIEConfig = {
     { key: 'stakeholderType', header: 'Stakeholder Type', value: (e) => e.stakeholderType ?? 'CLIENT' },
     { key: 'influence', header: 'Influence Level', value: (e) => e.influence ?? '' },
     { key: 'relationship', header: 'Relationship', value: (e) => e.relationship ?? '' },
+    { key: 'level', header: 'Level', value: (e) => e.level ?? 'Level 3' },
     { key: 'designation', header: 'Designation', value: (e) => e.designation ?? '' },
     { key: 'department', header: 'Department', value: (e) => e.department ?? '' },
     { key: 'email', header: 'Email', value: (e) => e.email ?? '' },

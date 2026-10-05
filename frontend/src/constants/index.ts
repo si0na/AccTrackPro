@@ -1,5 +1,5 @@
 import type { ViewType } from '@/contexts/CRMContext';
-import type { OpportunityStage } from '@/types';
+import type { OpportunityStage, StakeholderLevel } from '@/types';
 
 /** Maps every ViewType to its canonical URL path */
 export const VIEW_PATHS: Record<ViewType, string> = {
@@ -77,7 +77,7 @@ export const PROJECT_HEALTH_CHOICES = [
   { value: 'Red',   label: '🔴 Red' },
 ] as const;
 export const OPPORTUNITY_STAGE_OPTIONS = [
-  'Blocked', 'Delayed', 'Hold', 'Lead', 'Lost', 'Negotiation', 'Proposal', 'Qualified', 'Verbal Agreement', 'Won',
+  'Lead', 'Qualified', 'Proposal', 'Negotiation', 'Verbal Agreement', 'Won', 'Blocked', 'Delayed', 'Hold', 'Lost', 'Cancelled',
 ] as const;
 /** Deal outcome derived from stage (Won/Lost stages are closed; everything else is Open). */
 export const OPPORTUNITY_OUTCOME_OPTIONS = ['Lost', 'Open', 'Won'] as const;
@@ -111,6 +111,7 @@ export const OPPORTUNITY_STAGE_STYLE: Record<
   Delayed:            { bar: 'bg-amber-500',   iconBg: 'bg-amber-100',   iconText: 'text-amber-600',   hex: '#f59e0b' },
   Hold:               { bar: 'bg-zinc-500',    iconBg: 'bg-zinc-100',    iconText: 'text-zinc-600',    hex: '#71717a' },
   Lost:               { bar: 'bg-red-500',     iconBg: 'bg-red-100',     iconText: 'text-red-600',     hex: '#ef4444' },
+  Cancelled:          { bar: 'bg-orange-800',  iconBg: 'bg-orange-100',  iconText: 'text-orange-800',  hex: '#9a3412' },
 };
 
 /**
@@ -129,6 +130,7 @@ export const STAGE_DEFAULT_PROBABILITY: Partial<Record<OpportunityStage, number>
   'Verbal Agreement': 90,
   Won: 100,
   Lost: 0,
+  Cancelled: 0,
 };
 
 /**
@@ -345,5 +347,15 @@ export const PROJECT_DEPENDENCY_TYPE_OPTIONS = [
   'Schedule / Milestone Dependency',
   'Technical Dependency',
   'Vendor / Third-Party Dependency',
+] as const;
+
+export const STAKEHOLDER_LEVEL_OPTIONS: readonly StakeholderLevel[] = [
+  'Level 0',
+  'Level 1',
+  'Level 2',
+  'Level 3',
+  'Level 4',
+  'Level 5',
+  'Level 6+',
 ] as const;
 

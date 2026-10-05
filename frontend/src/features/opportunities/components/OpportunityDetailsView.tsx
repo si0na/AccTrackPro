@@ -537,7 +537,7 @@ export const OpportunityDetailsView: React.FC = () => {
               )
             ) : (
               <>
-                {opp.stage !== 'Lost' && (
+                {opp.stage !== 'Lost' && opp.stage !== 'Cancelled' && (
                   <Button
                     variant="danger"
                     icon={<X className="w-3.5 h-3.5" aria-hidden="true" />}
@@ -719,7 +719,7 @@ export const OpportunityDetailsView: React.FC = () => {
             <Card
               title="Pipeline Progress"
               actions={
-                <div className="flex flex-wrap items-center justify-end gap-x-4 gap-y-2">
+                <div className="flex flex-wrap sm:flex-nowrap items-center justify-end gap-3">
                   {currentStageIdx === -1 ? (
                     <StatusBadge value={opp.stage} colorMap={STAGE_COLORS} />
                   ) : (
@@ -727,40 +727,38 @@ export const OpportunityDetailsView: React.FC = () => {
                       {Math.round(((currentStageIdx + 1) / stages.length) * 100)}% Complete
                     </span>
                   )}
-                  <div className="flex items-center gap-2">
-                    <label className="text-label font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">Update Stage:</label>
-                    <select
-                      value={opp.stage}
-                      disabled={!!opp.projectId}
-                      title={opp.projectId ? 'This opportunity has been converted to a project and its stage cannot be changed.' : undefined}
-                      onChange={(e) => {
-                        const stage = e.target.value as OpportunityStage;
-                        if (opp.projectId && stage !== opp.stage) {
-                          showToast({
-                            kind: 'error',
-                            message: 'This opportunity has been converted to a project and its stage cannot be changed.',
-                          });
-                          return;
-                        }
-                        if (stage === 'Won' || stage === 'Lost') {
-                          // Winning/losing the deal captures a win/loss reason in the close-out dialog.
-                          setCloseReasonDraft(opp.closeReason || '');
-                          setCloseDialog({ outcome: stage, stage });
-                        } else if (stage === 'Blocked' || stage === 'Delayed') {
-                          // Blocked/Delayed capture an optional reason in a dedicated dialog.
-                          setStageReasonDraft((stage === 'Blocked' ? opp.blockedReason : opp.delayedReason) || '');
-                          setStageReasonDialog({ stage });
-                        } else {
-                          updateOpportunity({ ...opp, ...stageChangePatch(stage) });
-                        }
-                      }}
-                      className="text-xs border border-slate-200 rounded-lg p-2 bg-white font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {OPPORTUNITY_STAGE_OPTIONS.map(stg => (
-                        <option key={stg} value={stg}>{stg}</option>
-                      ))}
-                    </select>
-                  </div>
+                  <label className="text-label font-semibold text-slate-500 uppercase tracking-wide whitespace-nowrap">Update Stage:</label>
+                  <select
+                    value={opp.stage}
+                    disabled={!!opp.projectId}
+                    title={opp.projectId ? 'This opportunity has been converted to a project and its stage cannot be changed.' : undefined}
+                    onChange={(e) => {
+                      const stage = e.target.value as OpportunityStage;
+                      if (opp.projectId && stage !== opp.stage) {
+                        showToast({
+                          kind: 'error',
+                          message: 'This opportunity has been converted to a project and its stage cannot be changed.',
+                        });
+                        return;
+                      }
+                      if (stage === 'Won' || stage === 'Lost') {
+                        // Winning/losing the deal captures a win/loss reason in the close-out dialog.
+                        setCloseReasonDraft(opp.closeReason || '');
+                        setCloseDialog({ outcome: stage, stage });
+                      } else if (stage === 'Blocked' || stage === 'Delayed') {
+                        // Blocked/Delayed capture an optional reason in a dedicated dialog.
+                        setStageReasonDraft((stage === 'Blocked' ? opp.blockedReason : opp.delayedReason) || '');
+                        setStageReasonDialog({ stage });
+                      } else {
+                        updateOpportunity({ ...opp, ...stageChangePatch(stage) });
+                      }
+                    }}
+                    className="text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white font-semibold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {OPPORTUNITY_STAGE_OPTIONS.map(stg => (
+                      <option key={stg} value={stg}>{stg}</option>
+                    ))}
+                  </select>
                 </div>
               }
               padding="compact"

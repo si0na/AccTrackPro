@@ -39,8 +39,8 @@ export function isRawIdStr(s: string): boolean {
  * closed, everything else is still open. There is no separate status field —
  * Won/Lost is just another stage value.
  */
-export function deriveOppStatus(stage: OpportunityStage | string): 'Open' | 'Won' | 'Lost' {
-  return stage === 'Won' || stage === 'Lost' ? stage : 'Open';
+export function deriveOppStatus(stage: OpportunityStage | string): 'Open' | 'Won' | 'Lost' | 'Cancelled' {
+  return stage === 'Won' || stage === 'Lost' || stage === 'Cancelled' ? stage : 'Open';
 }
 
 /**

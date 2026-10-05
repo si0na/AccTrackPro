@@ -52,6 +52,8 @@ const DEFAULT_OPPORTUNITIES_COLUMNS: ColumnConfig[] = [
   { key: 'deliveryModel',        name: 'Delivery Model',             isStandard: true, isPinned: false, isDisplayed: false, type: 'text'   },
   { key: 'billingModel',         name: 'Billing Model',              isStandard: true, isPinned: false, isDisplayed: false, type: 'text'   },
   { key: 'tower',                name: 'Tower',                      isStandard: true, isPinned: false, isDisplayed: false, type: 'text'   },
+  { key: 'nextStep',            name: 'Next Action',                isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
+  { key: 'impediments',         name: 'Impediments',                isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
   { key: 'risksAndDependencies', name: 'Risks & Dependencies',       isStandard: true, isPinned: false, isDisplayed: false, type: 'text'   },
 ];
 

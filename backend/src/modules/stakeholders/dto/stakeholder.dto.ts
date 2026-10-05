@@ -16,6 +16,9 @@ export class CreateStakeholderDto {
   @IsIn(['High', 'Medium', 'Low']) influence!: string;
   @IsIn(['Strong', 'Neutral', 'Weak']) relationship!: string;
   @IsIn(['CLIENT', 'SERVICE_PROVIDER']) stakeholderType!: string;
+  @IsIn(['Level 0', 'Level 1', 'Level 2', 'Level 3', 'Level 4', 'Level 5', 'Level 6+'])
+  @IsOptional()
+  level?: string;
 
   @EmptyToUndefined()
   @IsOptional() @IsEmail({}, { message: 'email must be a valid email address' }) @MaxLength(200)

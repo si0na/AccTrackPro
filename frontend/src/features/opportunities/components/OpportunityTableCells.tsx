@@ -6,9 +6,9 @@
 import React from 'react';
 import { TrendingUp, FolderKanban } from 'lucide-react';
 import type { ColumnConfig, Opportunity, OpportunityStage, OpportunityHealth, PriorityLevel } from '@/types';
-import { ExpandableTextCell, STAGE_COLORS, StatusBadge, HEALTH_COLORS, InlineTextEditCell, InlineSelectEditCell } from '@/components/ui';
+import { ExpandableTextCell, STAGE_COLORS, StatusBadge, HEALTH_COLORS, InlineTextEditCell, InlineSelectEditCell, InlineTextareaEditCell } from '@/components/ui';
 import { showToast } from '@/components/common/ToastHost';
-import { LOCATION_OPTIONS, OPPORTUNITY_TYPE_OPTIONS, SERVICE_LINE_OPTIONS, DELIVERY_MODEL_OPTIONS, BILLING_MODEL_OPTIONS, TOWER_OPTIONS } from '@/constants';
+import { LOCATION_OPTIONS, OPPORTUNITY_STAGE_OPTIONS, OPPORTUNITY_TYPE_OPTIONS, SERVICE_LINE_OPTIONS, DELIVERY_MODEL_OPTIONS, BILLING_MODEL_OPTIONS, TOWER_OPTIONS } from '@/constants';
 
 import { isRawIdStr, serviceProviderOptionLabel } from '@/utils';
 import type { ServiceProviderUser } from '@/types';
@@ -97,7 +97,7 @@ const InlineStageSelector: React.FC<InlineStageSelectorProps> = ({ opp, onStageC
             Change Stage
           </div>
           <div className="max-h-48 overflow-y-auto py-1">
-            {(Object.keys(STAGE_COLORS) as OpportunityStage[]).map((stageVal) => {
+            {OPPORTUNITY_STAGE_OPTIONS.map((stageVal) => {
               const isSelected = opp.stage === stageVal;
               return (
                 <button
@@ -479,6 +479,36 @@ export const renderOpportunityCell = (
       <span className="font-bold text-slate-700 font-mono text-[11px]">{opp.grossMargin}%</span>
     ) : (
       <span className="text-slate-400 font-mono text-[11px]">—</span>
+    );
+  }
+
+  if (col.key === 'nextStep') {
+    return onUpdateOpp ? (
+      <div onClick={(e) => e.stopPropagation()}>
+        <InlineTextareaEditCell
+          value={opp.nextStep}
+          label="Next Action"
+          placeholder="— None —"
+          onSave={(v) => onUpdateOpp(opp, { nextStep: v })}
+        />
+      </div>
+    ) : (
+      <span className="text-slate-600 font-medium">{opp.nextStep || '—'}</span>
+    );
+  }
+
+  if (col.key === 'impediments') {
+    return onUpdateOpp ? (
+      <div onClick={(e) => e.stopPropagation()}>
+        <InlineTextareaEditCell
+          value={opp.impediments}
+          label="Impediments"
+          placeholder="— None —"
+          onSave={(v) => onUpdateOpp(opp, { impediments: v })}
+        />
+      </div>
+    ) : (
+      <span className="text-slate-600 font-medium">{opp.impediments || '—'}</span>
     );
   }
 

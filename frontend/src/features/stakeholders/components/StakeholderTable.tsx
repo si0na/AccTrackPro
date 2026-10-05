@@ -5,8 +5,9 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
-import { Account, Stakeholder, StakeholderType } from '@/types';
+import { Account, Stakeholder, StakeholderLevel, StakeholderType } from '@/types';
 import { Mail, Phone, Linkedin, User } from 'lucide-react';
+import { STAKEHOLDER_LEVEL_OPTIONS } from '@/constants';
 import {
   Card,
   EmptyRow,
@@ -90,6 +91,7 @@ export const StakeholderTable: React.FC<StakeholderTableProps> = ({
     return s.name.toLowerCase().includes(q) ||
       s.designation.toLowerCase().includes(q) ||
       (s.department || '').toLowerCase().includes(q) ||
+      (s.level || '').toLowerCase().includes(q) ||
       (s.email || '').toLowerCase().includes(q) ||
       (s.phone || '').toLowerCase().includes(q) ||
       (account?.name || '').toLowerCase().includes(q);
@@ -110,8 +112,8 @@ export const StakeholderTable: React.FC<StakeholderTableProps> = ({
   const currentPage = Math.min(page, totalPages);
   const paged = sorted.slice((currentPage - 1) * pageSize, currentPage * pageSize);
 
-  // Columns: Name, [Account], Department, Designation, [Influence, Relationship, Primary Owner, Secondary Owner, Third Owner], Email, Phone, LinkedIn, Actions
-  let colSpan = isServiceProvider ? 8 : 13;
+  // Columns: Name, [Account], Department, Designation, [Level, Influence, Relationship, Primary Owner, Secondary Owner, Third Owner], Email, Phone, LinkedIn, Actions
+  let colSpan = isServiceProvider ? 8 : 14;
   if (hideAccountColumn) colSpan -= 1;
 
   return (
@@ -139,6 +141,7 @@ export const StakeholderTable: React.FC<StakeholderTableProps> = ({
               <TableHeadCell><SortableHeader label="Designation" field="designation" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} /></TableHeadCell>
               {!isServiceProvider && (
                 <>
+                  <TableHeadCell align="center"><SortableHeader label="Level" field="level" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="justify-center w-full" /></TableHeadCell>
                   <TableHeadCell align="center"><SortableHeader label="Influence Level" field="influence" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="justify-center w-full" /></TableHeadCell>
                   <TableHeadCell align="center"><SortableHeader label="Relationship" field="relationship" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} className="justify-center w-full" /></TableHeadCell>
                   <TableHeadCell><SortableHeader label="Primary Owner" field="primaryOwnerName" sortField={sortField} sortDirection={sortDirection} onSort={handleSort} /></TableHeadCell>
@@ -207,6 +210,16 @@ export const StakeholderTable: React.FC<StakeholderTableProps> = ({
                       </TableCell>
                       {!isServiceProvider && (
                         <>
+                          <TableCell align="center">
+                            <InlineSelectEditCell
+                              value={s.level || 'Level 3'}
+                              options={STAKEHOLDER_LEVEL_OPTIONS}
+                              disabled={!canEdit}
+                              onSave={async (val) => {
+                                await updateStakeholder({ ...s, level: val as StakeholderLevel });
+                              }}
+                            />
+                          </TableCell>
                           <TableCell align="center">
                             <InlineSelectEditCell
                               value={s.influence}

@@ -55,6 +55,7 @@ import {
   TableCell,
   TableRow,
 } from '@/components/ui';
+import { OPPORTUNITY_STAGE_OPTIONS } from '@/constants';
 
 interface PanelProps {
   opportunityId: string;
@@ -277,7 +278,7 @@ export const OpportunityActionsCommentsPanel: React.FC<PanelProps> = ({ opportun
                   onChange={(e) => setOppEditForm({ ...oppEditForm, stage: e.target.value as any })}
                   className="w-full text-xs p-2 border border-slate-200 rounded-lg bg-white font-semibold text-slate-800"
                 >
-                  {Object.keys(STAGE_COLORS).map(s => (
+                  {OPPORTUNITY_STAGE_OPTIONS.map(s => (
                     <option key={s} value={s}>{s}</option>
                   ))}
                 </select>

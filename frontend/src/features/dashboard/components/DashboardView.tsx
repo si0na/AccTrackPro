@@ -5,7 +5,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
-import { OPPORTUNITY_STAGE_STYLE } from '@/constants';
+import { OPPORTUNITY_STAGE_STYLE, OPPORTUNITY_STAGE_OPTIONS } from '@/constants';
 import { deriveOppStatus, isDueThisWeek, isOpenActionItemStatus, matchesGlobalAccount } from '@/utils';
 import {
   Building2,
@@ -41,7 +41,7 @@ import {
 } from '@/components/ui';
 
 // Every valid `stage` value, shown as its own bar in the pipeline below.
-const STAGE_ORDER = ['Lead', 'Qualified', 'Proposal', 'Negotiation', 'Verbal Agreement', 'Won', 'Blocked', 'Delayed', 'Hold', 'Lost'] as const;
+const STAGE_ORDER = OPPORTUNITY_STAGE_OPTIONS;
 
 // Per-stage descriptions for the pipeline rows. Colours come from the shared
 // OPPORTUNITY_STAGE_STYLE token so the Dashboard and Reports pipelines stay in
@@ -57,6 +57,7 @@ const STAGE_DESCRIPTION: Record<(typeof STAGE_ORDER)[number], string> = {
   Delayed:            'Delayed opportunities',
   Hold:               'On hold',
   Lost:               'Unsuccessful',
+  Cancelled:          'Cancelled deals',
 };
 
 // Every bar gets a floor width so a small-but-nonzero count still renders a
@@ -197,7 +198,7 @@ export const DashboardView: React.FC = () => {
   const wonCount = opportunities.filter(o => o.stage === 'Won').length;
   const conversionRate = opportunities.length > 0 ? Math.round((wonCount / opportunities.length) * 100) : 0;
   const forecastValue = opportunities
-    .filter(o => o.stage !== 'Lost')
+    .filter(o => o.stage !== 'Lost' && o.stage !== 'Cancelled')
     .reduce((sum, o) => sum + o.value * (o.probability / 100), 0);
 
   // Account Health distribution.
