@@ -99,7 +99,7 @@ export const formatFullDate = (d?: string | null): string => {
  * lost deal never realises, so it forecasts $0. This is DERIVED, never entered.
  */
 export const computeForecastRevenue = (opp: Opportunity): number => {
-  if (opp.stage === 'Lost') return 0;
+  if (opp.stage === 'Lost' || opp.stage === 'Cancelled') return 0;
   return (opp.value ?? 0) * (opp.probability ?? 0) / 100;
 };
 
@@ -397,7 +397,7 @@ export const derivePortfolioMetrics = (opps: Opportunity[]): PortfolioMetrics =>
     totalActual += actual;
 
     const outcome = deriveOppStatus(opp.stage);
-    if (outcome === 'Won') wonCount++; else if (outcome === 'Lost') lostCount++; else openCount++;
+    if (outcome === 'Won') wonCount++; else if (outcome === 'Lost') lostCount++; else if (outcome === 'Cancelled') { /* terminal closed state */ } else openCount++;
     if (has) { realizedCount++; absError += Math.abs(actual - forecast); forecastOfRealized += forecast; }
 
     // By stage

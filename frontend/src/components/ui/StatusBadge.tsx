@@ -71,6 +71,7 @@ export const STAGE_COLORS: Record<OpportunityStage, string> = {
   Delayed: 'bg-amber-100 text-amber-700',
   Hold: 'bg-zinc-100 text-zinc-700',
   Lost: 'bg-red-100 text-red-700',
+  Cancelled: 'bg-orange-200/90 text-orange-900',
 };
 
 export const PRIORITY_COLORS: Record<PriorityLevel, string> = {

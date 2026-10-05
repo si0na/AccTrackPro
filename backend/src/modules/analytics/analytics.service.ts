@@ -141,7 +141,7 @@ export class AnalyticsService {
       FROM opportunities o
       INNER JOIN accounts a ON o.account_id = a.id AND a.is_deleted = FALSE
       LEFT  JOIN opportunity_forecasts fc ON fc.opportunity_id = o.id
-      WHERE o.is_deleted = FALSE AND o.stage <> 'Lost'
+      WHERE o.is_deleted = FALSE AND o.stage NOT IN ('Lost', 'Cancelled')
     `;
 
     // ── KPI summary ───────────────────────────────────────────────────────────
@@ -182,7 +182,7 @@ export class AnalyticsService {
           AND SUBSTRING(o.allocation_end_date::TEXT FROM 1 FOR 10) BETWEEN qd.q_start AND qd.q_end
         )
         INNER JOIN accounts a ON o.account_id = a.id AND a.is_deleted = FALSE
-        WHERE o.is_deleted = FALSE AND o.stage <> 'Lost'
+        WHERE o.is_deleted = FALSE AND o.stage NOT IN ('Lost', 'Cancelled')
           ${fyWhere}
       )
       SELECT

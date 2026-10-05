@@ -19,7 +19,7 @@ import { BulkModuleAdapter } from '../import-export/bulk-adapter';
 const KNOWN = new Set([
   'id', 'name', 'accountId', 'accountName', 'stage', 'value', 'probability', 'ownerId',
   'allocationStartDate', 'allocationEndDate', 'dealStartDate', 'dealCloseDate', 'crmValue', 'description', 'nextStep',
-  'risksAndDependencies',
+  'risksAndDependencies', 'impediments',
   'closeReason', 'blockedReason', 'delayedReason', 'closedAt',
   'tags', 'team', 'financialYear', 'quarter',
   'clientStakeholderId', 'clientStakeholderName', 'clientStakeholderDesignation',
@@ -36,7 +36,7 @@ const KNOWN = new Set([
 ]);
 
 /** Deal outcome is now tracked solely via pipeline stage — no separate status field. */
-const CLOSED_STAGES = new Set(['Won', 'Lost']);
+const CLOSED_STAGES = new Set(['Won', 'Lost', 'Cancelled']);
 
 function rowToOpportunity(
   row: any,
@@ -45,7 +45,7 @@ function rowToOpportunity(
   const {
     custom_data, is_deleted, created_at, updated_at,
     account_id, account_name, allocation_start_date, allocation_end_date, deal_start_date, deal_close_date, crm_value, next_step,
-    risks_and_dependencies,
+    risks_and_dependencies, impediments,
     close_reason, blocked_reason, delayed_reason, closed_at,
     owner_id, owner_name,
     client_stakeholder_id, client_stakeholder_name, client_stakeholder_designation,
@@ -73,6 +73,7 @@ function rowToOpportunity(
     crmValue: Number(crm_value),
     nextStep: next_step,
     risksAndDependencies: risks_and_dependencies ?? '',
+    impediments: impediments ?? '',
     closeReason: close_reason ?? '',
     blockedReason: blocked_reason ?? '',
     delayedReason: delayed_reason ?? '',
@@ -459,13 +460,13 @@ ${OPP_FORECAST_SELECT}${totalCol}
       `INSERT INTO opportunities
          (id, name, account_id, stage, value, probability, owner_id,
           allocation_start_date, allocation_end_date, deal_start_date, deal_close_date, crm_value, description, next_step,
-          risks_and_dependencies,
+          risks_and_dependencies, impediments,
           close_reason, blocked_reason, delayed_reason, closed_at, tags, team, custom_data,
           client_stakeholder_id, service_provider_stakeholder_id, service_provider_pm_id,
           aop_available, aop_year, opportunity_type, service_line,
           opportunity_health, location, cost, gross_margin, priority,
           delivery_model, billing_model, tower)
-       VALUES (gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36)
+       VALUES (gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,$37)
        RETURNING id`,
       [
         data.name, data.accountId, stage,
@@ -473,7 +474,7 @@ ${OPP_FORECAST_SELECT}${totalCol}
         data.ownerId ?? null,
         data.allocationStartDate || null, data.allocationEndDate ?? null, data.dealStartDate ?? null, data.dealCloseDate ?? null,
         data.crmValue ?? 0, data.description ?? '', data.nextStep ?? '',
-        data.risksAndDependencies ?? '',
+        data.risksAndDependencies ?? '', data.impediments ?? '',
         closeReason, blockedReason, delayedReason, closedAt,
         data.tags ?? [], data.team ?? [], JSON.stringify(cd),
         data.clientStakeholderId ?? null, data.serviceProviderStakeholderId ?? null, data.serviceProviderPmId ?? null,
@@ -580,17 +581,17 @@ ${OPP_FORECAST_SELECT}${totalCol}
          name=$1, account_id=$2, stage=$3, value=$4, probability=$5,
          owner_id=$6,
          allocation_start_date=$7, allocation_end_date=$8, deal_start_date=$9, deal_close_date=$10, crm_value=$11,
-         description=$12, next_step=$13, risks_and_dependencies=$14, close_reason=$15,
-         blocked_reason=$16, delayed_reason=$17, closed_at=$18,
-         tags=$19, team=$20,
-         custom_data=$21,
-         client_stakeholder_id=$22, service_provider_stakeholder_id=$23, service_provider_pm_id=$24,
-         aop_available=$25, aop_year=$26, opportunity_type=$27,
-         service_line=$28,
-         opportunity_health=$29, location=$30, cost=$31, gross_margin=$32,
-         priority=$33, delivery_model=$34, billing_model=$35, tower=$36,
+         description=$12, next_step=$13, risks_and_dependencies=$14, impediments=$15, close_reason=$16,
+         blocked_reason=$17, delayed_reason=$18, closed_at=$19,
+         tags=$20, team=$21,
+         custom_data=$22,
+         client_stakeholder_id=$23, service_provider_stakeholder_id=$24, service_provider_pm_id=$25,
+         aop_available=$26, aop_year=$27, opportunity_type=$28,
+         service_line=$29,
+         opportunity_health=$30, location=$31, cost=$32, gross_margin=$33,
+         priority=$34, delivery_model=$35, billing_model=$36, tower=$37,
          updated_at=NOW()
-       WHERE id=$37 AND is_deleted=FALSE`,
+       WHERE id=$38 AND is_deleted=FALSE`,
       [
         data.name, data.accountId, stage,
         data.value ?? existing.value ?? 0, data.probability ?? existing.probability ?? 0,
@@ -598,6 +599,7 @@ ${OPP_FORECAST_SELECT}${totalCol}
         data.allocationStartDate || null, data.allocationEndDate ?? null, data.dealStartDate ?? null, data.dealCloseDate ?? null,
         data.crmValue ?? 0, data.description ?? '', data.nextStep ?? '',
         data.risksAndDependencies ?? '',
+        data.impediments !== undefined ? (data.impediments ?? '') : (existing.impediments ?? ''),
         closeReason, blockedReason, delayedReason, closedAt,
         data.tags ?? [], data.team ?? [], JSON.stringify(cd),
         data.clientStakeholderId ?? null, data.serviceProviderStakeholderId ?? null, pmId,
@@ -618,13 +620,15 @@ ${OPP_FORECAST_SELECT}${totalCol}
     if (opp.ownerId) {
       if (existing.stage !== opp.stage && CLOSED_STAGES.has(opp.stage)) {
         this.logger.log(`Emitting Opportunity:StageChanged [userId=${opp.ownerId} ${existing.stage}→${opp.stage}]`);
+        const stageTitle = opp.stage === 'Won' ? 'Opportunity Won' : opp.stage === 'Cancelled' ? 'Opportunity Cancelled' : 'Opportunity Lost';
+        const stageSeverity = opp.stage === 'Won' ? 'Success' : opp.stage === 'Cancelled' ? 'Info' : 'Warning';
         this.bus.emit({
           userId: opp.ownerId,
           type: 'Opportunity',
           eventType: 'StageChanged',
-          title: opp.stage === 'Won' ? 'Opportunity Won' : 'Opportunity Lost',
-          message: `Opportunity "${opp.name}" was closed as ${opp.stage}. Reason: ${opp.closeReason}`,
-          severity: opp.stage === 'Won' ? 'Success' : 'Warning',
+          title: stageTitle,
+          message: `Opportunity "${opp.name}" was closed as ${opp.stage}.${opp.closeReason ? ` Reason: ${opp.closeReason}` : ''}`,
+          severity: stageSeverity,
           notificationCategory: 'BUSINESS',
           accountId: opp.accountId,
           opportunityId: opp.id,

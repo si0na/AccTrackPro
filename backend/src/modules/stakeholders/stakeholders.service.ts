@@ -20,6 +20,7 @@ function rowToStakeholder(row: any): Stakeholder {
   } = row;
   return {
     ...base,
+    level: row.level ?? 'Level 3',
     accountId: account_id,
     accountName: account_name ?? undefined,
     stakeholderType: stakeholder_type,
@@ -200,14 +201,16 @@ export class StakeholdersService {
         ? data.thirdOwnerId
         : (data.tertiary_owner_id && String(data.tertiary_owner_id).trim() ? data.tertiary_owner_id : null));
 
+    const level = data.level && String(data.level).trim() ? data.level : 'Level 3';
+
     const { rows } = await this.db.query(
-      `INSERT INTO stakeholders (id, name, account_id, designation, influence, relationship, email, phone, stakeholder_type, department, linkedin_profile_url, primary_owner_id, secondary_owner_id, tertiary_owner_id)
-       VALUES (gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+      `INSERT INTO stakeholders (id, name, account_id, designation, influence, relationship, email, phone, stakeholder_type, department, linkedin_profile_url, primary_owner_id, secondary_owner_id, tertiary_owner_id, level)
+       VALUES (gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
        RETURNING *`,
       [data.name, accountId, data.designation ?? '', data.influence,
       data.relationship, data.email ?? '', data.phone ?? '',
       data.stakeholderType, data.department ?? null, data.linkedinProfileUrl ?? null,
-        primaryOwnerId, secondaryOwnerId, tertiaryOwnerId],
+        primaryOwnerId, secondaryOwnerId, tertiaryOwnerId, level],
     );
     const stk = await this.findOne(rows[0].id, userId);
     this.logger.log(`Stakeholder created [id=${stk.id} name="${stk.name}" accountId=${stk.accountId ?? 'NULL'}]`);
@@ -252,17 +255,20 @@ export class StakeholdersService {
       : (data.thirdOwnerId !== undefined
         ? (data.thirdOwnerId && String(data.thirdOwnerId).trim() ? data.thirdOwnerId : null)
         : (existing.tertiaryOwnerId ?? null));
+    const level = data.level !== undefined
+      ? (data.level && String(data.level).trim() ? data.level : 'Level 3')
+      : (existing.level ?? 'Level 3');
 
     const { rows } = await this.db.query(
       `UPDATE stakeholders SET
          name=$1, account_id=$2, designation=$3, influence=$4,
          relationship=$5, email=$6, phone=$7, stakeholder_type=$8, department=$9, linkedin_profile_url=$10,
-         primary_owner_id=$11, secondary_owner_id=$12, tertiary_owner_id=$13, updated_at=NOW()
-       WHERE id=$14 AND is_deleted=FALSE RETURNING *`,
+         primary_owner_id=$11, secondary_owner_id=$12, tertiary_owner_id=$13, level=$14, updated_at=NOW()
+       WHERE id=$15 AND is_deleted=FALSE RETURNING *`,
       [data.name, data.accountId, data.designation ?? '', data.influence,
       data.relationship, data.email ?? '', data.phone ?? '',
       data.stakeholderType, data.department ?? null, data.linkedinProfileUrl ?? null,
-        primaryOwnerId, secondaryOwnerId, tertiaryOwnerId, id],
+        primaryOwnerId, secondaryOwnerId, tertiaryOwnerId, level, id],
     );
     const stk = await this.findOne(rows[0].id, userId);
     await this.log(`Updated Stakeholder '${stk.name}'`, stk.accountId);

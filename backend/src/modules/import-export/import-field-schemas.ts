@@ -12,7 +12,7 @@ import { AOP_YEAR_OPTIONS, SERVICE_LINE_OPTIONS } from '../../common/utils/dto-t
 // Enum option sets — kept in step with the Create DTO `@IsIn(...)` lists.
 const ACCOUNT_TYPE = ['Internal', 'New', 'Non Strategic', 'Strategic'] as const;
 const ACCOUNT_HEALTH = ['Green', 'Amber', 'Red'] as const;
-const OPPORTUNITY_STAGE = ['Lead', 'Qualified', 'Proposal', 'Negotiation', 'Verbal Agreement', 'Won', 'Blocked', 'Delayed', 'Hold', 'Lost'] as const;
+const OPPORTUNITY_STAGE = ['Lead', 'Qualified', 'Proposal', 'Negotiation', 'Verbal Agreement', 'Won', 'Blocked', 'Delayed', 'Hold', 'Lost', 'Cancelled'] as const;
 const OPPORTUNITY_TYPE = ['Growth', 'Pursuit', 'Whitespace', 'New', 'Extension'] as const;
 const SERVICE_LINE = SERVICE_LINE_OPTIONS;
 const OPPORTUNITY_HEALTH = ['Green', 'Amber', 'Red'] as const;
@@ -43,6 +43,7 @@ const PRIORITY = ['High', 'Medium', 'Low'] as const;
 const INFLUENCE = ['High', 'Medium', 'Low'] as const;
 const RELATIONSHIP = ['Strong', 'Neutral', 'Weak'] as const;
 const STAKEHOLDER_TYPE = ['CLIENT', 'SERVICE_PROVIDER'] as const;
+const STAKEHOLDER_LEVEL = ['Level 0', 'Level 1', 'Level 2', 'Level 3', 'Level 4', 'Level 5', 'Level 6+'] as const;
 const TOWER = ['Others', 'Tower 1', 'Tower 2'] as const;
 const DELIVERY_MODEL = ['Staff Aug', 'Fixed Bid', 'Managed', 'Fixed Capacity', 'Others'] as const;
 const BILLING_MODEL = ['T&M', 'Milestone Based', 'Monthly Fixed', 'Others'] as const;
@@ -108,6 +109,7 @@ export const OPPORTUNITY_FIELDS: ImportFieldDef[] = [
   { key: 'dealCloseDate', header: 'Deal Close Date', type: 'date' },
   { key: 'nextStep', header: 'Next Step', type: 'string' },
   { key: 'risksAndDependencies', header: 'Risks & Dependencies', type: 'string' },
+  { key: 'impediments', header: 'Impediments', type: 'string' },
   { key: 'description', header: 'Description', type: 'string' },
   { key: 'opportunityHealth', header: 'Opportunity Health', type: 'enum', options: OPPORTUNITY_HEALTH },
   { key: 'location', header: 'Location', type: 'string' },
@@ -138,6 +140,7 @@ export const STAKEHOLDER_FIELDS: ImportFieldDef[] = [
   { key: 'stakeholderType', header: 'Stakeholder Type', headerAliases: ['Type'], type: 'enum', options: STAKEHOLDER_TYPE, required: true, default: 'CLIENT' },
   { key: 'influence', header: 'Influence Level', headerAliases: ['Influence'], type: 'enum', options: INFLUENCE, required: true },
   { key: 'relationship', header: 'Relationship', type: 'enum', options: RELATIONSHIP, required: true },
+  { key: 'level', header: 'Level', type: 'enum', options: STAKEHOLDER_LEVEL, default: 'Level 3' },
   { key: 'designation', header: 'Designation', type: 'string' },
   { key: 'department', header: 'Department', type: 'string' },
   { key: 'email', header: 'Email', type: 'string', format: 'email' },

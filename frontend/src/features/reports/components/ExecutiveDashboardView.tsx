@@ -24,7 +24,7 @@ import {
   toStageRevenueSection,
 } from '../utils/revenueReportCalculations';
 import { matchesGlobalAccount } from '@/utils';
-import { OPPORTUNITY_STAGE_STYLE } from '@/constants';
+import { OPPORTUNITY_STAGE_STYLE, OPPORTUNITY_STAGE_OPTIONS } from '@/constants';
 import type { OpportunityStage } from '@/types';
 import { PageHeader, CardSkeleton } from '@/components/ui';
 import {
@@ -62,7 +62,7 @@ export const ExecutiveDashboardView: React.FC = () => {
   // Pipeline/Forecast cards: same base set, PLUS the original hardcoded Lost
   // exclusion — unchanged behavior from before this feature.
   const filteredOpps = useMemo(
-    () => filteredOppsAll.filter((o) => o.stage !== 'Lost'),
+    () => filteredOppsAll.filter((o) => o.stage !== 'Lost' && o.stage !== 'Cancelled'),
     [filteredOppsAll],
   );
 
@@ -91,7 +91,7 @@ export const ExecutiveDashboardView: React.FC = () => {
   // token so this pipeline stays identical to the Dashboard pipeline. The full
   // 9-stage list still feeds the PDF/Excel export; the chart itself only
   // renders stages that actually hold value, so it never shows empty bars.
-  const stages: OpportunityStage[] = ['Lead', 'Qualified', 'Proposal', 'Negotiation', 'Verbal Agreement', 'Won', 'Blocked', 'Delayed', 'Hold', 'Lost'];
+  const stages = OPPORTUNITY_STAGE_OPTIONS;
   const stageData = stages.map((stage) => {
     const stageOpps = filteredOpps.filter(o => o.stage === stage);
     const value = stageOpps.reduce((sum, o) => sum + o.value, 0);

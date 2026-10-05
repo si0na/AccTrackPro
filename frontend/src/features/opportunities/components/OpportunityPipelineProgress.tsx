@@ -17,6 +17,7 @@ import {
   Hourglass,
   PauseCircle,
   XCircle,
+  Ban,
 } from 'lucide-react';
 
 /** The linear business pipeline — the only stages the strip ever renders.
@@ -41,7 +42,7 @@ const CORE_META: Record<string, { icon: React.ComponentType<{ className?: string
  * (Blocked / Delayed / Hold / Lost). Each has its own colour, icon, ribbon and
  * descriptive message so a user can tell them apart without reading a label.
  */
-type OverlayState = 'Won' | 'Blocked' | 'Delayed' | 'Hold' | 'Lost';
+type OverlayState = 'Won' | 'Blocked' | 'Delayed' | 'Hold' | 'Lost' | 'Cancelled';
 
 interface OverlayStyle {
   icon: React.ComponentType<{ className?: string }>;
@@ -145,10 +146,25 @@ const OVERLAY_STYLES: Record<OverlayState, OverlayStyle> = {
     secondary: 'This deal is closed and can no longer progress through the pipeline.',
     reasonLabel: 'Loss reason',
   },
+  Cancelled: {
+    icon: Ban,
+    emoji: '🚫',
+    label: 'Cancelled',
+    frame: 'border-orange-300 bg-orange-50/50 shadow-sm shadow-orange-900/10',
+    ribbon: 'bg-orange-200/80 border-orange-300 text-orange-900',
+    node: 'bg-orange-50 border-orange-800 text-orange-800 scale-110 shadow-md shadow-orange-900/25',
+    nodeLabel: 'text-orange-900',
+    ring: '',
+    banner: 'bg-orange-50 border-orange-200 text-orange-950',
+    bannerIcon: 'text-orange-800',
+    headline: 'Opportunity has been Cancelled',
+    secondary: 'This deal has been cancelled and will not progress further.',
+    reasonLabel: 'Cancellation reason',
+  },
 };
 
-const isException = (stage: OpportunityStage): stage is 'Blocked' | 'Delayed' | 'Hold' | 'Lost' =>
-  stage === 'Blocked' || stage === 'Delayed' || stage === 'Hold' || stage === 'Lost';
+const isException = (stage: OpportunityStage): stage is 'Blocked' | 'Delayed' | 'Hold' | 'Lost' | 'Cancelled' =>
+  stage === 'Blocked' || stage === 'Delayed' || stage === 'Hold' || stage === 'Lost' || stage === 'Cancelled';
 
 /**
  * Best-effort mapping of an opportunity's probability onto the business stage
@@ -220,7 +236,7 @@ export const OpportunityPipelineProgress: React.FC<OpportunityPipelineProgressPr
   // Each state draws its reason from its own dedicated field — Blocked/Delayed
   // are kept independent of Risks & Dependencies by design.
   const reason =
-    overlay === 'Won' || overlay === 'Lost'
+    overlay === 'Won' || overlay === 'Lost' || overlay === 'Cancelled'
       ? closeReason
       : overlay === 'Blocked'
         ? blockedReason
@@ -253,9 +269,9 @@ export const OpportunityPipelineProgress: React.FC<OpportunityPipelineProgressPr
             const Icon = CORE_META[id].icon;
             const isCurrent = i === activeIdx;
             const isCompleted = i < activeIdx;
-            // For Lost, stages beyond where the deal died are explicitly greyed
+            // For Lost/Cancelled, stages beyond where the deal died are explicitly greyed
             // to show the pipeline can no longer advance.
-            const isDead = exception === 'Lost' && i > activeIdx;
+            const isDead = (exception === 'Lost' || exception === 'Cancelled') && i > activeIdx;
 
             const nodeCls = isCurrent
               ? style

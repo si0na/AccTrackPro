@@ -14,7 +14,7 @@ export class CreateOpportunityDto {
   accountId!: string;
 
   @IsString() @IsNotEmpty({ message: 'Stage is required' })
-  @IsIn(['Lead', 'Qualified', 'Proposal', 'Negotiation', 'Verbal Agreement', 'Won', 'Blocked', 'Delayed', 'Hold', 'Lost'])
+  @IsIn(['Lead', 'Qualified', 'Proposal', 'Negotiation', 'Verbal Agreement', 'Won', 'Blocked', 'Delayed', 'Hold', 'Lost', 'Cancelled'])
   stage!: string;
 
   @IsNumber() @IsOptional() @Min(0, { message: 'Value cannot be negative' })
@@ -55,6 +55,7 @@ export class CreateOpportunityDto {
   @IsString() @IsOptional() @MaxLength(5000) description?: string;
   @IsString() @IsOptional() @MaxLength(1000) nextStep?: string;
   @IsString() @IsOptional() @MaxLength(5000) risksAndDependencies?: string;
+  @IsString() @IsOptional() @MaxLength(5000) impediments?: string;
 
   @IsArray() @IsOptional() @IsString({ each: true }) @MaxLength(100, { each: true })
   tags?: string[];

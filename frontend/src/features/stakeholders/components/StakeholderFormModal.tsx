@@ -5,8 +5,9 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
-import { Account, InfluenceLevel, RelationshipStatus, Stakeholder, StakeholderType } from '@/types';
+import { Account, InfluenceLevel, RelationshipStatus, Stakeholder, StakeholderLevel, StakeholderType } from '@/types';
 import { Pencil, Users } from 'lucide-react';
+import { STAKEHOLDER_LEVEL_OPTIONS } from '@/constants';
 import { serviceProviderOptionLabel } from '@/utils';
 import {
   FormField,
@@ -25,6 +26,7 @@ const EMPTY_STAKEHOLDER: Omit<Stakeholder, 'id'> = {
   designation: '',
   influence: '' as InfluenceLevel,
   relationship: '' as RelationshipStatus,
+  level: 'Level 3' as StakeholderLevel,
   email: '',
   phone: '',
   stakeholderType: '' as StakeholderType,
@@ -151,7 +153,10 @@ export const StakeholderFormModal: React.FC<StakeholderFormModalProps> = ({
     if (!isOpen) return;
     if (isEdit && stakeholder) {
       const { id: _id, ...rest } = stakeholder;
-      setDraft(rest);
+      setDraft({
+        ...rest,
+        level: rest.level || 'Level 3',
+      });
     } else {
       setDraft({
         ...EMPTY_STAKEHOLDER,
@@ -172,8 +177,8 @@ export const StakeholderFormModal: React.FC<StakeholderFormModalProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!draft.name.trim() || (!lockedAccount && !draft.accountId) || !draft.stakeholderType) return;
-    // Influence & relationship are only required for Client stakeholders.
-    if (!isServiceProvider && (!draft.influence || !draft.relationship)) return;
+    // Influence, relationship & level are only required for Client stakeholders.
+    if (!isServiceProvider && (!draft.influence || !draft.relationship || !draft.level)) return;
     setIsSubmitting(true);
     try {
       // Service Providers have no Relationship section, but the backend still
@@ -185,8 +190,12 @@ export const StakeholderFormModal: React.FC<StakeholderFormModalProps> = ({
             ...draft,
             influence: (draft.influence || 'Medium') as InfluenceLevel,
             relationship: (draft.relationship || 'Neutral') as RelationshipStatus,
+            level: (draft.level || 'Level 3') as StakeholderLevel,
           }
-        : { ...draft };
+        : {
+            ...draft,
+            level: (draft.level || 'Level 3') as StakeholderLevel,
+          };
 
       // Auto-resolve system user selection for owner fields
       const resolveOwnerId = async (ownerId: string | undefined): Promise<string | undefined> => {
@@ -330,7 +339,22 @@ export const StakeholderFormModal: React.FC<StakeholderFormModalProps> = ({
         {!isServiceProvider && (
           <>
             <FormSection title="Relationship">
-              <FormGrid>
+              <FormGrid columns={3}>
+                <FormField label="Level" required>
+                  <select
+                    required
+                    value={draft.level || 'Level 3'}
+                    onChange={(e) => setDraft({ ...draft, level: e.target.value as StakeholderLevel })}
+                    className={selectCls}
+                  >
+                    {STAKEHOLDER_LEVEL_OPTIONS.map((lvl) => (
+                      <option key={lvl} value={lvl}>
+                        {lvl}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+
                 <FormField label="Influence Level" required>
                   <select
                     required
