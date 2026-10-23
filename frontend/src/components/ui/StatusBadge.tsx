@@ -8,6 +8,8 @@ import type {
   PriorityLevel,
   RelationshipStatus,
   StakeholderType,
+  NextConnectStatus,
+  StakeholderRoleInDecision,
 } from '@/types';
 
 export type BadgeShape = 'pill' | 'rounded';
@@ -95,9 +97,28 @@ export const INFLUENCE_COLORS: Record<InfluenceLevel, string> = {
 };
 
 export const RELATIONSHIP_COLORS: Record<RelationshipStatus, string> = {
-  Strong: 'bg-green-100 text-green-700',
-  Neutral: 'bg-slate-100 text-slate-600',
-  Weak: 'bg-red-100 text-red-700',
+  Strong: 'bg-green-100 text-green-800 border-green-300',
+  Weak: 'bg-rose-50 text-rose-700 border-rose-200',
+  Neutral: 'bg-slate-100 text-slate-700 border-slate-300',
+  'No Relationship': 'bg-red-100 text-red-800 border-red-300',
+};
+
+export const NEXT_CONNECT_STATUS_COLORS: Record<NextConnectStatus, string> = {
+  Scheduled: 'bg-blue-100 text-blue-700 border-blue-200',
+  'Follow up required': 'bg-amber-100 text-amber-700 border-amber-200',
+  Rescheduled: 'bg-orange-100 text-orange-700 border-orange-200',
+  'Yet to Schedule': 'bg-slate-100 text-slate-700 border-slate-200',
+  Cancelled: 'bg-rose-100 text-rose-700 border-rose-200',
+};
+
+export const ROLE_IN_DECISION_COLORS: Record<StakeholderRoleInDecision, string> = {
+  'Decision Maker': 'bg-purple-100 text-purple-700 border-purple-200',
+  Sponsor: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+  Influencer: 'bg-indigo-100 text-indigo-700 border-indigo-200',
+  User: 'bg-sky-100 text-sky-700 border-sky-200',
+  Procurement: 'bg-amber-100 text-amber-700 border-amber-200',
+  Gatekeeper: 'bg-orange-100 text-orange-700 border-orange-200',
+  Other: 'bg-slate-100 text-slate-600 border-slate-200',
 };
 
 /** Human-readable labels for the raw stakeholder_type enum stored in the DB. */

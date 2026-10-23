@@ -359,3 +359,48 @@ export const STAKEHOLDER_LEVEL_OPTIONS: readonly StakeholderLevel[] = [
   'Level 6+',
 ] as const;
 
+export const STAKEHOLDER_RELATIONSHIP_OPTIONS = [
+  'Strong',
+  'Weak',
+  'Neutral',
+  'No Relationship',
+] as const;
+
+export const STAKEHOLDER_INFLUENCE_OPTIONS = [
+  'High',
+  'Medium',
+  'Low',
+] as const;
+
+export const STAKEHOLDER_AREA_OPTIONS = [
+  'AI',
+  'Cloud',
+  'Cyber Security',
+  'Data',
+  'Application Development',
+  'GCC',
+  'Application Support/AMS',
+  'SharePoint',
+  'QA',
+  'Projects',
+  'Others',
+] as const;
+
+export const NEXT_CONNECT_STATUS_OPTIONS = [
+  'Scheduled',
+  'Cancelled',
+  'Rescheduled',
+  'Follow up required',
+  'Yet to Schedule',
+] as const;
+
+export const ROLE_IN_DECISION_OPTIONS = [
+  'Decision Maker',
+  'Sponsor',
+  'Influencer',
+  'User',
+  'Procurement',
+  'Gatekeeper',
+  'Other',
+] as const;
+

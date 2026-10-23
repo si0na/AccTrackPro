@@ -147,6 +147,33 @@ const DEFAULT_PROJECT_ACTION_ITEMS_COLUMNS: ColumnConfig[] = [
   { key: 'comments',      name: 'Comments',          isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
 ];
 
+const DEFAULT_STAKEHOLDERS_COLUMNS: ColumnConfig[] = [
+  { key: 'name',                     name: 'Name',                     isStandard: true, isPinned: true,  isDisplayed: true,  type: 'text'     },
+  { key: 'accountId',                name: 'Client Account',           isStandard: true, isPinned: false, isDisplayed: true,  type: 'text'     },
+  { key: 'department',               name: 'Department',               isStandard: true, isPinned: false, isDisplayed: true,  type: 'text'     },
+  { key: 'designation',              name: 'Designation',              isStandard: true, isPinned: false, isDisplayed: true,  type: 'text'     },
+  { key: 'area',                     name: 'Area',                     isStandard: true, isPinned: false, isDisplayed: true,  type: 'text'     },
+  { key: 'roleInDecision',           name: 'Role in Decision',         isStandard: true, isPinned: false, isDisplayed: true,  type: 'text'     },
+  { key: 'nextConnect',              name: 'Next Connect',             isStandard: true, isPinned: false, isDisplayed: true,  type: 'date'     },
+  { key: 'nextConnectStatus',        name: 'Next Connect Status',      isStandard: true, isPinned: false, isDisplayed: true,  type: 'text'     },
+  { key: 'level',                    name: 'Level',                    isStandard: true, isPinned: false, isDisplayed: true,  type: 'text'     },
+  { key: 'influence',                name: 'Influence Level',          isStandard: true, isPinned: false, isDisplayed: true,  type: 'text'     },
+  { key: 'relationship',             name: 'Relationship',             isStandard: true, isPinned: false, isDisplayed: true,  type: 'text'     },
+  { key: 'primaryOwnerName',         name: 'Primary Owner',            isStandard: true, isPinned: false, isDisplayed: true,  type: 'text'     },
+  { key: 'secondaryOwnerName',       name: 'Secondary Owner',          isStandard: true, isPinned: false, isDisplayed: true,  type: 'text'     },
+  { key: 'tertiaryOwnerName',        name: 'Third Owner',              isStandard: true, isPinned: false, isDisplayed: true,  type: 'text'     },
+  { key: 'email',                    name: 'Email',                    isStandard: true, isPinned: false, isDisplayed: true,  type: 'text'     },
+  { key: 'phone',                    name: 'Phone',                    isStandard: true, isPinned: false, isDisplayed: true,  type: 'text'     },
+  { key: 'linkedinProfileUrl',       name: 'LinkedIn',                 isStandard: true, isPinned: false, isDisplayed: true,  type: 'text'     },
+  { key: 'keyPriorities',            name: 'Key Priorities',           isStandard: true, isPinned: false, isDisplayed: false, type: 'text'     },
+  { key: 'painPointsInsights',       name: 'Pain Points/Insights',     isStandard: true, isPinned: false, isDisplayed: false, type: 'text'     },
+  { key: 'actionFollowUps',          name: 'Action/Follow-ups',        isStandard: true, isPinned: false, isDisplayed: false, type: 'text'     },
+  { key: 'comments',                 name: 'Comments',                 isStandard: true, isPinned: false, isDisplayed: false, type: 'text'     },
+  { key: 'country',                  name: 'Country',                  isStandard: true, isPinned: false, isDisplayed: false, type: 'text'     },
+  { key: 'location',                 name: 'Location / City',          isStandard: true, isPinned: false, isDisplayed: false, type: 'text'     },
+  { key: 'estimatedBudgetAvailable', name: 'Estimated Budget',         isStandard: true, isPinned: false, isDisplayed: false, type: 'number'   },
+];
+
 function getMergedConfig(
   module: CustomColumnModule,
   savedConfig: ColumnConfig[],
@@ -158,6 +185,7 @@ function getMergedConfig(
     : module === 'actionItems' ? DEFAULT_ACTION_ITEMS_COLUMNS
     : module === 'projects' ? DEFAULT_PROJECTS_COLUMNS
     : module === 'projectActionItems' ? DEFAULT_PROJECT_ACTION_ITEMS_COLUMNS
+    : module === 'stakeholders' ? DEFAULT_STAKEHOLDERS_COLUMNS
     : DEFAULT_PERFORMANCE_EVALUATION_COLUMNS;
 
   let current = savedConfig?.length > 0 ? [...savedConfig] : [...defaults];
@@ -241,6 +269,14 @@ export const useCRMData = (
   const [rawPerformanceEvaluationConfig, setRawPerformanceEvaluationConfig] = useState<ColumnConfig[]>([]);
   const [rawProjectsConfig, setRawProjectsConfig] = useState<ColumnConfig[]>([]);
   const [rawProjectActionItemsConfig, setRawProjectActionItemsConfig] = useState<ColumnConfig[]>([]);
+  const [rawStakeholdersConfig, setRawStakeholdersConfig] = useState<ColumnConfig[]>(() => {
+    try {
+      const saved = localStorage.getItem('acctrack_col_config_stakeholders');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
   const [financialYears, setFinancialYears] = useState<FinancialYear[]>([]);
   const [financialCalendar, setFinancialCalendar] = useState<FinancialCalendar | null>(null);
   const [adminSettings, setAdminSettings] = useState<AdminSettings | null>(null);
@@ -411,6 +447,21 @@ export const useCRMData = (
   const performanceEvaluationColumnConfig = getMergedConfig('performanceEvaluation', rawPerformanceEvaluationConfig, performanceEvaluationColumns);
   const projectsColumnConfig = getMergedConfig('projects', rawProjectsConfig, []);
   const projectActionItemsColumnConfig = getMergedConfig('projectActionItems', rawProjectActionItemsConfig, actionItemColumns);
+  const stakeholdersColumnConfig = getMergedConfig('stakeholders', rawStakeholdersConfig, []);
+
+  // Sync user-scoped stakeholders column config when currentUserId is available
+  useEffect(() => {
+    if (!currentUserId) return;
+    try {
+      const scopedKey = `acctrack_col_config_stakeholders_${currentUserId}`;
+      const saved = localStorage.getItem(scopedKey) || localStorage.getItem('acctrack_col_config_stakeholders');
+      if (saved) {
+        setRawStakeholdersConfig(JSON.parse(saved));
+      }
+    } catch (e) {
+      console.error('[useCRMData] Failed to load stakeholders column config from localStorage:', e);
+    }
+  }, [currentUserId]);
 
   // ─── Column config actions ─────────────────────────────────────────────────
 
@@ -420,6 +471,16 @@ export const useCRMData = (
     else if (module === 'actionItems') { setRawActionItemsConfig(config); await columnConfigsApi.save({ rawActionItemsConfig: config }); }
     else if (module === 'projects') { setRawProjectsConfig(config); await columnConfigsApi.save({ rawProjectsConfig: config } as any); }
     else if (module === 'projectActionItems') { setRawProjectActionItemsConfig(config); await columnConfigsApi.save({ rawProjectActionItemsConfig: config } as any); }
+    else if (module === 'stakeholders') {
+      setRawStakeholdersConfig(config);
+      try {
+        const scopedKey = `acctrack_col_config_stakeholders_${currentUserId || 'default'}`;
+        localStorage.setItem(scopedKey, JSON.stringify(config));
+        localStorage.setItem('acctrack_col_config_stakeholders', JSON.stringify(config));
+      } catch (err) {
+        console.error('[useCRMData] Failed to save stakeholders column config:', err);
+      }
+    }
     else { setRawPerformanceEvaluationConfig(config); await columnConfigsApi.save({ rawPerformanceEvaluationConfig: config }); }
   };
 
@@ -429,6 +490,16 @@ export const useCRMData = (
     else if (module === 'actionItems') { setRawActionItemsConfig(DEFAULT_ACTION_ITEMS_COLUMNS); await columnConfigsApi.save({ rawActionItemsConfig: DEFAULT_ACTION_ITEMS_COLUMNS }); }
     else if (module === 'projects') { setRawProjectsConfig(DEFAULT_PROJECTS_COLUMNS); await columnConfigsApi.save({ rawProjectsConfig: DEFAULT_PROJECTS_COLUMNS } as any); }
     else if (module === 'projectActionItems') { setRawProjectActionItemsConfig(DEFAULT_PROJECT_ACTION_ITEMS_COLUMNS); await columnConfigsApi.save({ rawProjectActionItemsConfig: DEFAULT_PROJECT_ACTION_ITEMS_COLUMNS } as any); }
+    else if (module === 'stakeholders') {
+      setRawStakeholdersConfig(DEFAULT_STAKEHOLDERS_COLUMNS);
+      try {
+        const scopedKey = `acctrack_col_config_stakeholders_${currentUserId || 'default'}`;
+        localStorage.removeItem(scopedKey);
+        localStorage.removeItem('acctrack_col_config_stakeholders');
+      } catch (err) {
+        console.error('[useCRMData] Failed to reset stakeholders column config:', err);
+      }
+    }
     else { setRawPerformanceEvaluationConfig(DEFAULT_PERFORMANCE_EVALUATION_COLUMNS); await columnConfigsApi.save({ rawPerformanceEvaluationConfig: DEFAULT_PERFORMANCE_EVALUATION_COLUMNS }); }
   };
 
@@ -826,7 +897,7 @@ export const useCRMData = (
     accountColumns, opportunityColumns, actionItemColumns, performanceEvaluationColumns,
     projectColumns: [], projectActionItemColumns: actionItemColumns,
     accountsColumnConfig, opportunitiesColumnConfig, actionItemsColumnConfig, performanceEvaluationColumnConfig,
-    projectsColumnConfig, projectActionItemsColumnConfig,
+    projectsColumnConfig, projectActionItemsColumnConfig, stakeholdersColumnConfig,
     loading,
     unreadNotificationCount,
     refreshUnreadCount: useCallback(() => {

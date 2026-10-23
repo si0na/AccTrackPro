@@ -6,9 +6,10 @@
 import React, { useState } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
 import { Account, Stakeholder, StakeholderType } from '@/types';
-import { X, Users } from 'lucide-react';
+import { X, Users, Settings2, Plus } from 'lucide-react';
 import {
   BackButton,
+  Button,
   ConfirmDialog,
   DeactivatedSection,
   INFLUENCE_COLORS,
@@ -26,6 +27,7 @@ import {
 import { StakeholderFormModal } from './StakeholderFormModal';
 import { StakeholderTabs } from './StakeholderTabs';
 import { LoadingState } from '@/components/common/LoadingState';
+import { CustomizeColumnsSidebar } from '@/components/table/CustomizeColumnsSidebar';
 
 export const StakeholdersView: React.FC = () => {
   const {
@@ -63,6 +65,7 @@ export const StakeholdersView: React.FC = () => {
     : undefined;
 
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Stakeholder | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<{ id: string; label: string } | null>(null);
 
@@ -106,6 +109,35 @@ export const StakeholdersView: React.FC = () => {
       <PageHeader
         title="Stakeholders Directory"
         subtitle="Client executives and internal service providers, kept in clearly separated registers."
+        actions={
+          <>
+            <Button
+              variant="secondary"
+              size="md"
+              icon={<Settings2 className="w-4.5 h-4.5 text-slate-500" aria-hidden="true" />}
+              onClick={() => setIsSidebarOpen(true)}
+            >
+              Customize Columns
+            </Button>
+            {canCreate && (
+              <Button
+                icon={<Plus className="w-3.5 h-3.5" />}
+                onClick={() => {
+                  setCreateType('CLIENT');
+                  setIsModalOpen(true);
+                }}
+              >
+                Add Client Stakeholder
+              </Button>
+            )}
+          </>
+        }
+      />
+
+      <CustomizeColumnsSidebar
+        module="stakeholders"
+        isOpen={isSidebarOpen}
+        onClose={() => setIsSidebarOpen(false)}
       />
 
       {/* Single-record focus banner (arrived here from a notification) */}
@@ -133,6 +165,7 @@ export const StakeholdersView: React.FC = () => {
         serviceProviders={serviceProviders}
         resolveAccount={resolveAccount}
         hideSpAdd={true}
+        hideAdd={true}
         storageKeyPrefix="stakeholders"
         focusTab={focusedStakeholder?.stakeholderType ?? null}
         clientCount={clientCount}

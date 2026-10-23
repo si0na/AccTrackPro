@@ -6,6 +6,7 @@ import { AccountsModule } from '../accounts/accounts.module';
 import { StakeholdersModule } from '../stakeholders/stakeholders.module';
 import { OpportunitiesModule } from '../opportunities/opportunities.module';
 import { ActionItemsModule } from '../action-items/action-items.module';
+import { ServiceProviderModule } from '../service-provider/service-provider.module';
 
 /**
  * Global Import/Export. Imports the four CRM modules so the orchestrator can
@@ -13,7 +14,7 @@ import { ActionItemsModule } from '../action-items/action-items.module';
  * logic), and owns the shared import/export audit trail.
  */
 @Module({
-  imports: [AccountsModule, StakeholdersModule, OpportunitiesModule, ActionItemsModule],
+  imports: [AccountsModule, StakeholdersModule, OpportunitiesModule, ActionItemsModule, ServiceProviderModule],
   controllers: [ImportExportController],
   providers: [GlobalImportExportService, ImportExportAuditService],
 })

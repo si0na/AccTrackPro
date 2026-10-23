@@ -15,13 +15,16 @@ import {
   PRIORITY_OPTIONS,
   INDUSTRY_OPTIONS,
   STAKEHOLDER_LEVEL_OPTIONS,
+  STAKEHOLDER_AREA_OPTIONS,
+  NEXT_CONNECT_STATUS_OPTIONS,
+  ROLE_IN_DECISION_OPTIONS,
 } from '@/constants';
 import { cleanOwnerName, formatCommentTimestamp } from '@/utils';
 import type { IEModuleKey, ModuleIEConfig, RefData } from './types';
 
 const PRIORITY = ['High', 'Medium', 'Low'] as const;
 const INFLUENCE = ['High', 'Medium', 'Low'] as const;
-const RELATIONSHIP = ['Strong', 'Neutral', 'Weak'] as const;
+const RELATIONSHIP = ['Strong', 'Weak', 'Neutral', 'No Relationship'] as const;
 
 const accName = (id: string, ref: RefData) => ref.accounts.find((a) => a.id === id)?.name ?? '';
 const oppName = (id: string, ref: RefData) => ref.opportunities.find((o) => o.id === id)?.name ?? '';
@@ -176,6 +179,21 @@ const stakeholdersConfig: ModuleIEConfig = {
     { key: 'email', header: 'Email', type: 'string', format: 'email', example: 'jane@acme.com', hint: 'Unique within the account' },
     { key: 'phone', header: 'Phone', type: 'string', format: 'phone' },
     { key: 'linkedinProfileUrl', header: 'LinkedIn Profile URL', headerAliases: ['LinkedIn', 'LinkedIn Profile', 'LinkedIn URL'], type: 'string', format: 'website', example: 'https://linkedin.com/in/janedoe' },
+    { key: 'primaryOwnerId', header: 'Primary Owner', type: 'reference', reference: 'stakeholder', example: 'Sarah Johnson', hint: 'Service Provider on the account or System User' },
+    { key: 'secondaryOwnerId', header: 'Secondary Owner', type: 'reference', reference: 'stakeholder', example: 'John Smith', hint: 'Service Provider on the account or System User' },
+    { key: 'tertiaryOwnerId', header: 'Third Owner', headerAliases: ['Tertiary Owner'], type: 'reference', reference: 'stakeholder', example: 'Mike Brown', hint: 'Service Provider on the account or System User' },
+    { key: 'area', header: 'Area', type: 'enum', options: STAKEHOLDER_AREA_OPTIONS, example: 'Cloud' },
+    { key: 'keyPriorities', header: 'Key Priorities', type: 'string', example: 'Cloud migration and core modernization' },
+    { key: 'painPointsInsights', header: 'Pain Points / Insights', headerAliases: ['Pain Points', 'Insights', 'Pain Points and Insights'], type: 'string', example: 'Legacy system performance bottlenecks' },
+    { key: 'lastConnect', header: 'Last Connect', headerAliases: ['Last Connect Date'], type: 'date', example: '2026-03-15' },
+    { key: 'nextConnect', header: 'Next Connect', headerAliases: ['Next Connect Date'], type: 'date', example: '2026-04-15' },
+    { key: 'nextConnectStatus', header: 'Next Connect Status', type: 'enum', options: NEXT_CONNECT_STATUS_OPTIONS, example: 'Scheduled' },
+    { key: 'actionFollowUps', header: 'Action / Follow-ups', headerAliases: ['Action Follow-ups', 'Action Items / Follow-ups', 'Actions / Follow-ups'], type: 'string', example: 'Send revised architecture proposal' },
+    { key: 'comments', header: 'Comments', headerAliases: ['Notes'], type: 'string', example: 'Key decision sponsor for Q2 initiative' },
+    { key: 'country', header: 'Country', type: 'string', example: 'United States' },
+    { key: 'location', header: 'Location', type: 'string', example: 'Austin, TX' },
+    { key: 'estimatedBudgetAvailable', header: 'Estimated Budget Available', headerAliases: ['Estimated Budget', 'Budget Available'], type: 'number', example: '500000' },
+    { key: 'roleInDecision', header: 'Role in Decision', type: 'enum', options: ROLE_IN_DECISION_OPTIONS, example: 'Decision Maker' },
   ],
   exportColumns: [
     { key: 'name', header: 'Name', value: (e) => e.name ?? '' },
@@ -189,6 +207,21 @@ const stakeholdersConfig: ModuleIEConfig = {
     { key: 'email', header: 'Email', value: (e) => e.email ?? '' },
     { key: 'phone', header: 'Phone', value: (e) => e.phone ?? '' },
     { key: 'linkedinProfileUrl', header: 'LinkedIn Profile URL', value: (e) => e.linkedinProfileUrl ?? '' },
+    { key: 'primaryOwnerId', header: 'Primary Owner', value: (e) => e.primaryOwnerName ?? '' },
+    { key: 'secondaryOwnerId', header: 'Secondary Owner', value: (e) => e.secondaryOwnerName ?? '' },
+    { key: 'tertiaryOwnerId', header: 'Third Owner', value: (e) => e.tertiaryOwnerName ?? e.thirdOwnerName ?? '' },
+    { key: 'area', header: 'Area', value: (e) => e.area ?? '' },
+    { key: 'keyPriorities', header: 'Key Priorities', value: (e) => e.keyPriorities ?? '' },
+    { key: 'painPointsInsights', header: 'Pain Points / Insights', value: (e) => e.painPointsInsights ?? '' },
+    { key: 'lastConnect', header: 'Last Connect', value: (e) => e.lastConnect ?? '' },
+    { key: 'nextConnect', header: 'Next Connect', value: (e) => e.nextConnect ?? '' },
+    { key: 'nextConnectStatus', header: 'Next Connect Status', value: (e) => e.nextConnectStatus ?? '' },
+    { key: 'actionFollowUps', header: 'Action / Follow-ups', value: (e) => e.actionFollowUps ?? '' },
+    { key: 'comments', header: 'Comments', value: (e) => e.comments ?? '' },
+    { key: 'country', header: 'Country', value: (e) => e.country ?? '' },
+    { key: 'location', header: 'Location', value: (e) => e.location ?? '' },
+    { key: 'estimatedBudgetAvailable', header: 'Estimated Budget Available', value: (e) => e.estimatedBudgetAvailable != null ? String(e.estimatedBudgetAvailable) : '' },
+    { key: 'roleInDecision', header: 'Role in Decision', value: (e) => e.roleInDecision ?? '' },
   ],
 };
 

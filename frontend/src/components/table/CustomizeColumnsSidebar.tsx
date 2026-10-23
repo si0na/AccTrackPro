@@ -13,7 +13,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 
 interface CustomizeColumnsSidebarProps {
-  module: 'accounts' | 'opportunities' | 'actionItems' | 'performanceEvaluation' | 'projects' | 'projectActionItems';
+  module: 'accounts' | 'opportunities' | 'actionItems' | 'performanceEvaluation' | 'projects' | 'projectActionItems' | 'stakeholders';
   isOpen: boolean;
   onClose: () => void;
 }
@@ -30,6 +30,7 @@ export const CustomizeColumnsSidebar: React.FC<CustomizeColumnsSidebarProps> = (
     performanceEvaluationColumnConfig,
     projectsColumnConfig,
     projectActionItemsColumnConfig,
+    stakeholdersColumnConfig,
     updateColumnConfig,
     resetColumnConfig,
     addCustomColumn,
@@ -47,8 +48,9 @@ export const CustomizeColumnsSidebar: React.FC<CustomizeColumnsSidebarProps> = (
     if (module === 'actionItems') return actionItemsColumnConfig;
     if (module === 'projects') return projectsColumnConfig;
     if (module === 'projectActionItems') return projectActionItemsColumnConfig;
+    if (module === 'stakeholders') return stakeholdersColumnConfig;
     return performanceEvaluationColumnConfig;
-  }, [module, accountsColumnConfig, opportunitiesColumnConfig, actionItemsColumnConfig, performanceEvaluationColumnConfig, projectsColumnConfig, projectActionItemsColumnConfig]);
+  }, [module, accountsColumnConfig, opportunitiesColumnConfig, actionItemsColumnConfig, performanceEvaluationColumnConfig, projectsColumnConfig, projectActionItemsColumnConfig, stakeholdersColumnConfig]);
 
   // Local temp copy for changes inside sidebar before clicking "Apply"
   const [tempColumns, setTempColumns] = useState<ColumnConfig[]>([]);
@@ -252,6 +254,7 @@ export const CustomizeColumnsSidebar: React.FC<CustomizeColumnsSidebarProps> = (
       module === 'accounts' ? accountColumns :
       module === 'opportunities' ? opportunityColumns :
       module === 'actionItems' ? actionItemColumns :
+      module === 'stakeholders' ? [] :
       performanceEvaluationColumns;
 
     const col = customList.find(c => c.key === key);
@@ -353,6 +356,7 @@ export const CustomizeColumnsSidebar: React.FC<CustomizeColumnsSidebarProps> = (
               </div>
 
               {/* Add New Custom Column collapsed trigger */}
+              {module !== 'projects' && module !== 'stakeholders' && (
               <div className="border border-blue-100 bg-blue-50/50 rounded-xl overflow-hidden">
                 <button
                   onClick={() => setIsAddFormOpen(!isAddFormOpen)}
@@ -419,6 +423,7 @@ export const CustomizeColumnsSidebar: React.FC<CustomizeColumnsSidebarProps> = (
                   )}
                 </AnimatePresence>
               </div>
+              )}
 
               {/* Search bar (only on Columns tab) */}
               {activeTab === 'columns' && (

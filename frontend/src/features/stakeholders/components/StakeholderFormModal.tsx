@@ -5,9 +5,26 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
-import { Account, InfluenceLevel, RelationshipStatus, Stakeholder, StakeholderLevel, StakeholderType } from '@/types';
+import {
+  Account,
+  InfluenceLevel,
+  NextConnectStatus,
+  RelationshipStatus,
+  Stakeholder,
+  StakeholderArea,
+  StakeholderLevel,
+  StakeholderRoleInDecision,
+  StakeholderType,
+} from '@/types';
 import { Pencil, Users } from 'lucide-react';
-import { STAKEHOLDER_LEVEL_OPTIONS } from '@/constants';
+import {
+  LOCATION_OPTIONS,
+  NEXT_CONNECT_STATUS_OPTIONS,
+  ROLE_IN_DECISION_OPTIONS,
+  STAKEHOLDER_AREA_OPTIONS,
+  STAKEHOLDER_LEVEL_OPTIONS,
+  STAKEHOLDER_RELATIONSHIP_OPTIONS,
+} from '@/constants';
 import { serviceProviderOptionLabel } from '@/utils';
 import {
   FormField,
@@ -17,6 +34,7 @@ import {
   INPUT_CLS,
   INPUT_CLS_AMBER,
   PhoneInput,
+  SearchableSelect,
   STAKEHOLDER_TYPE_LABELS,
 } from '@/components/ui';
 
@@ -36,6 +54,18 @@ const EMPTY_STAKEHOLDER: Omit<Stakeholder, 'id'> = {
   secondaryOwnerId: undefined,
   tertiaryOwnerId: undefined,
   thirdOwnerId: undefined,
+  area: undefined,
+  keyPriorities: '',
+  painPointsInsights: '',
+  lastConnect: '',
+  nextConnect: '',
+  nextConnectStatus: undefined,
+  actionFollowUps: '',
+  comments: '',
+  country: '',
+  location: '',
+  estimatedBudgetAvailable: undefined,
+  roleInDecision: undefined,
 };
 
 export interface StakeholderFormModalProps {
@@ -289,8 +319,6 @@ export const StakeholderFormModal: React.FC<StakeholderFormModalProps> = ({
 
             <FormField label="Stakeholder Type" required>
               {isTypeLocked ? (
-                // Fixed by the inline-create flow — shown read-only so the user
-                // sees the context without being able to change it.
                 <input
                   type="text"
                   value={STAKEHOLDER_TYPE_LABELS[lockedType!]}
@@ -307,7 +335,6 @@ export const StakeholderFormModal: React.FC<StakeholderFormModalProps> = ({
                 >
                   <option value="" disabled>Select stakeholder type…</option>
                   <option value="CLIENT">Client Stakeholder</option>
-                  {/* SERVICE_PROVIDER is auto-managed from System Users — not manually creatable */}
                 </select>
               )}
             </FormField>
@@ -332,13 +359,67 @@ export const StakeholderFormModal: React.FC<StakeholderFormModalProps> = ({
                 className={inputCls}
               />
             </FormField>
+
+            {!isServiceProvider && (
+              <>
+                <FormField label="Area">
+                  <select
+                    value={draft.area ?? ''}
+                    onChange={(e) => setDraft({ ...draft, area: (e.target.value as any) || undefined })}
+                    className={selectCls}
+                  >
+                    <option value="">Select area…</option>
+                    {STAKEHOLDER_AREA_OPTIONS.map((a) => (
+                      <option key={a} value={a}>
+                        {a}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+
+                <FormField label="Role in Decision">
+                  <select
+                    value={draft.roleInDecision ?? ''}
+                    onChange={(e) => setDraft({ ...draft, roleInDecision: (e.target.value as any) || undefined })}
+                    className={selectCls}
+                  >
+                    <option value="">Select role in decision…</option>
+                    {ROLE_IN_DECISION_OPTIONS.map((r) => (
+                      <option key={r} value={r}>
+                        {r}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+
+                <FormField label="Country">
+                  <SearchableSelect
+                    value={draft.country ?? ''}
+                    onChange={(val) => setDraft({ ...draft, country: val || undefined })}
+                    options={LOCATION_OPTIONS}
+                    placeholder="Select country…"
+                    tone={isEdit ? 'amber' : 'blue'}
+                  />
+                </FormField>
+
+                <FormField label="Location / City">
+                  <input
+                    type="text"
+                    value={draft.location ?? ''}
+                    onChange={(e) => setDraft({ ...draft, location: e.target.value })}
+                    placeholder="e.g., New York, NY"
+                    className={inputCls}
+                  />
+                </FormField>
+              </>
+            )}
           </FormGrid>
         </FormSection>
 
-        {/* Relationship & Ownership section — Client stakeholders only. */}
+        {/* Relationship & Strategy section — Client stakeholders only. */}
         {!isServiceProvider && (
           <>
-            <FormSection title="Relationship">
+            <FormSection title="Relationship & Strategy">
               <FormGrid columns={3}>
                 <FormField label="Level" required>
                   <select
@@ -377,9 +458,61 @@ export const StakeholderFormModal: React.FC<StakeholderFormModalProps> = ({
                     className={selectCls}
                   >
                     <option value="" disabled>Select relationship…</option>
-                    <option value="Neutral">Neutral</option>
-                    <option value="Strong">Strong</option>
-                    <option value="Weak">Weak</option>
+                    {STAKEHOLDER_RELATIONSHIP_OPTIONS.map((rel) => (
+                      <option key={rel} value={rel}>
+                        {rel}
+                      </option>
+                    ))}
+                  </select>
+                </FormField>
+
+                <FormField label="Estimated Budget Available ($)">
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    value={draft.estimatedBudgetAvailable ?? ''}
+                    onChange={(e) =>
+                      setDraft({
+                        ...draft,
+                        estimatedBudgetAvailable: e.target.value !== '' ? Number(e.target.value) : undefined,
+                      })
+                    }
+                    placeholder="e.g., 250000"
+                    className={inputCls}
+                  />
+                </FormField>
+
+                <FormField label="Last Connect Date">
+                  <input
+                    type="date"
+                    value={draft.lastConnect ? draft.lastConnect.slice(0, 10) : ''}
+                    onChange={(e) => setDraft({ ...draft, lastConnect: e.target.value || undefined })}
+                    className={inputCls}
+                  />
+                </FormField>
+
+                <FormField label="Next Connect Date">
+                  <input
+                    type="date"
+                    value={draft.nextConnect ? draft.nextConnect.slice(0, 10) : ''}
+                    onChange={(e) => setDraft({ ...draft, nextConnect: e.target.value || undefined })}
+                    className={inputCls}
+                  />
+                </FormField>
+
+                <FormField label="Next Connect Status">
+                  <select
+                    value={draft.nextConnectStatus ?? ''}
+                    onChange={(e) => setDraft({ ...draft, nextConnectStatus: (e.target.value as any) || undefined })}
+                    className={selectCls}
+                  >
+                    <option value="">Select next connect status…</option>
+                    {NEXT_CONNECT_STATUS_OPTIONS.map((st) => (
+                      <option key={st} value={st}>
+                        {st}
+                      </option>
+                    ))}
                   </select>
                 </FormField>
               </FormGrid>
@@ -425,7 +558,13 @@ export const StakeholderFormModal: React.FC<StakeholderFormModalProps> = ({
                       draft.thirdOwnerId ??
                       ''
                     }
-                    onChange={(e) => setDraft({ ...draft, tertiaryOwnerId: e.target.value || undefined, thirdOwnerId: e.target.value || undefined })}
+                    onChange={(e) =>
+                      setDraft({
+                        ...draft,
+                        tertiaryOwnerId: e.target.value || undefined,
+                        thirdOwnerId: e.target.value || undefined,
+                      })
+                    }
                     className={selectCls}
                   >
                     <option value="">None / Select Third Owner…</option>
@@ -435,6 +574,50 @@ export const StakeholderFormModal: React.FC<StakeholderFormModalProps> = ({
                       </option>
                     ))}
                   </select>
+                </FormField>
+              </FormGrid>
+            </FormSection>
+
+            <FormSection title="Engagement & Strategy Notes">
+              <FormGrid columns={2}>
+                <FormField label="Key Priorities">
+                  <textarea
+                    rows={3}
+                    value={draft.keyPriorities ?? ''}
+                    onChange={(e) => setDraft({ ...draft, keyPriorities: e.target.value })}
+                    placeholder="Strategic goals and key priorities for this stakeholder…"
+                    className={`${inputCls} resize-none`}
+                  />
+                </FormField>
+
+                <FormField label="Pain Points / Insights">
+                  <textarea
+                    rows={3}
+                    value={draft.painPointsInsights ?? ''}
+                    onChange={(e) => setDraft({ ...draft, painPointsInsights: e.target.value })}
+                    placeholder="Observed pain points, business challenges, or insights…"
+                    className={`${inputCls} resize-none`}
+                  />
+                </FormField>
+
+                <FormField label="Action / Follow-ups">
+                  <textarea
+                    rows={3}
+                    value={draft.actionFollowUps ?? ''}
+                    onChange={(e) => setDraft({ ...draft, actionFollowUps: e.target.value })}
+                    placeholder="Agreed action items and follow-up points…"
+                    className={`${inputCls} resize-none`}
+                  />
+                </FormField>
+
+                <FormField label="Comments">
+                  <textarea
+                    rows={3}
+                    value={draft.comments ?? ''}
+                    onChange={(e) => setDraft({ ...draft, comments: e.target.value })}
+                    placeholder="Internal notes or context regarding this stakeholder…"
+                    className={`${inputCls} resize-none`}
+                  />
                 </FormField>
               </FormGrid>
             </FormSection>

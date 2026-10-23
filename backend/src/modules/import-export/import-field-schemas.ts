@@ -41,9 +41,38 @@ const ACTION_ITEM_TYPE = [
 ] as const;
 const PRIORITY = ['High', 'Medium', 'Low'] as const;
 const INFLUENCE = ['High', 'Medium', 'Low'] as const;
-const RELATIONSHIP = ['Strong', 'Neutral', 'Weak'] as const;
+const RELATIONSHIP = ['Strong', 'Weak', 'Neutral', 'No Relationship'] as const;
 const STAKEHOLDER_TYPE = ['CLIENT', 'SERVICE_PROVIDER'] as const;
 const STAKEHOLDER_LEVEL = ['Level 0', 'Level 1', 'Level 2', 'Level 3', 'Level 4', 'Level 5', 'Level 6+'] as const;
+const STAKEHOLDER_AREA = [
+  'AI',
+  'Cloud',
+  'Cyber Security',
+  'Data',
+  'Application Development',
+  'GCC',
+  'Application Support/AMS',
+  'SharePoint',
+  'QA',
+  'Projects',
+  'Others',
+] as const;
+const NEXT_CONNECT_STATUS = [
+  'Scheduled',
+  'Cancelled',
+  'Rescheduled',
+  'Follow up required',
+  'Yet to Schedule',
+] as const;
+const ROLE_IN_DECISION = [
+  'Decision Maker',
+  'Sponsor',
+  'Influencer',
+  'User',
+  'Procurement',
+  'Gatekeeper',
+  'Other',
+] as const;
 const TOWER = ['Others', 'Tower 1', 'Tower 2'] as const;
 const DELIVERY_MODEL = ['Staff Aug', 'Fixed Bid', 'Managed', 'Fixed Capacity', 'Others'] as const;
 const BILLING_MODEL = ['T&M', 'Milestone Based', 'Monthly Fixed', 'Others'] as const;
@@ -146,6 +175,21 @@ export const STAKEHOLDER_FIELDS: ImportFieldDef[] = [
   { key: 'email', header: 'Email', type: 'string', format: 'email' },
   { key: 'phone', header: 'Phone', type: 'string', format: 'phone' },
   { key: 'linkedinProfileUrl', header: 'LinkedIn Profile URL', headerAliases: ['LinkedIn', 'LinkedIn Profile', 'LinkedIn URL'], type: 'string', format: 'website' },
+  { key: 'primaryOwnerId', header: 'Primary Owner', type: 'reference', reference: 'stakeholder_owner' },
+  { key: 'secondaryOwnerId', header: 'Secondary Owner', type: 'reference', reference: 'stakeholder_owner' },
+  { key: 'tertiaryOwnerId', header: 'Third Owner', headerAliases: ['Tertiary Owner'], type: 'reference', reference: 'stakeholder_owner' },
+  { key: 'area', header: 'Area', type: 'enum', options: STAKEHOLDER_AREA },
+  { key: 'keyPriorities', header: 'Key Priorities', type: 'string' },
+  { key: 'painPointsInsights', header: 'Pain Points / Insights', headerAliases: ['Pain Points', 'Insights', 'Pain Points and Insights'], type: 'string' },
+  { key: 'lastConnect', header: 'Last Connect', headerAliases: ['Last Connect Date'], type: 'date' },
+  { key: 'nextConnect', header: 'Next Connect', headerAliases: ['Next Connect Date'], type: 'date' },
+  { key: 'nextConnectStatus', header: 'Next Connect Status', type: 'enum', options: NEXT_CONNECT_STATUS },
+  { key: 'actionFollowUps', header: 'Action / Follow-ups', headerAliases: ['Action Follow-ups', 'Action Items / Follow-ups', 'Actions / Follow-ups'], type: 'string' },
+  { key: 'comments', header: 'Comments', headerAliases: ['Notes'], type: 'string' },
+  { key: 'country', header: 'Country', type: 'string' },
+  { key: 'location', header: 'Location', type: 'string' },
+  { key: 'estimatedBudgetAvailable', header: 'Estimated Budget Available', headerAliases: ['Estimated Budget', 'Budget Available'], type: 'number' },
+  { key: 'roleInDecision', header: 'Role in Decision', type: 'enum', options: ROLE_IN_DECISION },
 ];
 
 export const ACTION_ITEM_FIELDS: ImportFieldDef[] = [

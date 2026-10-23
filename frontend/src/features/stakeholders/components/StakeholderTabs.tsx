@@ -41,6 +41,8 @@ export interface StakeholderTabsProps {
   resolveAccount: (id: string) => Account | undefined;
   /** Hide the Add button on the Service Providers tab */
   hideSpAdd?: boolean;
+  /** Hide the Add button (e.g. when hoisted to PageHeader) */
+  hideAdd?: boolean;
   /** Hide the Account column (single-account / single-opportunity scopes). */
   hideAccountColumn?: boolean;
   /** Distinguishes storage keys + empty-state copy per usage. */
@@ -96,6 +98,7 @@ export const StakeholderTabs: React.FC<StakeholderTabsProps> = ({
   serviceProviderRows,
   resolveAccount,
   hideSpAdd = false,
+  hideAdd = false,
   hideAccountColumn = false,
   storageKeyPrefix,
   title,
@@ -119,7 +122,7 @@ export const StakeholderTabs: React.FC<StakeholderTabsProps> = ({
     if (focusTab) setActiveTab(focusTab);
   }, [focusTab]);
 
-  const showAdd = canCreate && !!onAdd && (activeTab === 'CLIENT' || (!hideSpAdd && activeTab === 'SERVICE_PROVIDER'));
+  const showAdd = !hideAdd && canCreate && !!onAdd && (activeTab === 'CLIENT' || (!hideSpAdd && activeTab === 'SERVICE_PROVIDER'));
 
   // SP tab: prefer system users list, fall back to legacy stakeholder rows
   const hasSystemUsers = serviceProviders !== undefined;
