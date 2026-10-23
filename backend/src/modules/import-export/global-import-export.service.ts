@@ -29,6 +29,7 @@ import { AccountsService } from '../accounts/accounts.service';
 import { StakeholdersService } from '../stakeholders/stakeholders.service';
 import { OpportunitiesService } from '../opportunities/opportunities.service';
 import { ActionItemsService } from '../action-items/action-items.service';
+import { ServiceProviderService } from '../service-provider/service-provider.service';
 
 /** One worksheet's parsed contents (client parses the .xlsx; backend validates). */
 export interface WorkbookSheet {
@@ -62,6 +63,10 @@ class ParentIndex {
   private readonly stkByKey = new Map<string, ParentRef>(); // `${accountId}::${lcName}`
   private readonly stkById = new Map<string, ParentRef & { accountId: string }>();
   private readonly pendingStk = new Map<string, ParentRef>(); // `${accountId}::${lcName}`
+  private readonly spByKey = new Map<string, ParentRef>(); // `${accountId}::${norm(name)}`
+  private readonly spByEmail = new Map<string, ParentRef>(); // `${accountId}::${norm(email)}`
+  private readonly spById = new Map<string, ParentRef & { accountId: string }>();
+  private readonly pendingSp = new Map<string, ParentRef>(); // `${accountId}::${norm(name)}`
   private readonly userByName = new Map<string, ParentRef>();
   private readonly userByEmail = new Map<string, ParentRef>();
   private readonly userById = new Map<string, ParentRef>();
@@ -80,6 +85,12 @@ class ParentIndex {
   seedStakeholder(id: string, name: string, accountId: string): void {
     this.stkByKey.set(`${accountId}::${norm(name)}`, { id, name });
     this.stkById.set(id, { id, name, accountId });
+  }
+  seedServiceProvider(id: string, name: string, accountId: string, email?: string): void {
+    const ref = { id, name };
+    if (name) this.spByKey.set(`${accountId}::${norm(name)}`, ref);
+    if (email) this.spByEmail.set(`${accountId}::${norm(email)}`, ref);
+    this.spById.set(id, { id, name, accountId });
   }
   seedUser(id: string, name: string, email: string): void {
     const ref = { id, name };
@@ -105,10 +116,14 @@ class ParentIndex {
     this.pendingOpp.set(key, { id: pendingOpportunityId(name), name });
   }
   /** A NEW stakeholder defined in the workbook, under a (real or pending) account. */
-  addPendingStakeholder(name: string, accountId: string): void {
+  addPendingStakeholder(name: string, accountId: string, isServiceProvider?: boolean): void {
     const key = `${accountId}::${norm(name)}`;
     if (this.stkByKey.has(key) || this.pendingStk.has(key)) return;
-    this.pendingStk.set(key, { id: pendingStakeholderId(name), name });
+    const ref = { id: pendingStakeholderId(name), name };
+    this.pendingStk.set(key, ref);
+    if (isServiceProvider) {
+      this.pendingSp.set(key, ref);
+    }
   }
 
   resolveAccount(raw: string): ParentRef | null {
@@ -130,6 +145,16 @@ class ParentIndex {
     if (this.stkByKey.has(key)) return this.stkByKey.get(key)!;
     if (this.pendingStk.has(key)) return this.pendingStk.get(key)!;
     const byId = this.stkById.get(raw.trim());
+    if (byId && byId.accountId === accountId) return byId;
+    return null;
+  }
+  resolveServiceProvider(raw: string, accountId: string): ParentRef | null {
+    const lc = norm(raw);
+    const key = `${accountId}::${lc}`;
+    if (this.spByKey.has(key)) return this.spByKey.get(key)!;
+    if (this.spByEmail.has(key)) return this.spByEmail.get(key)!;
+    if (this.pendingSp.has(key)) return this.pendingSp.get(key)!;
+    const byId = this.spById.get(raw.trim());
     if (byId && byId.accountId === accountId) return byId;
     return null;
   }
@@ -170,6 +195,7 @@ export class GlobalImportExportService {
     private readonly stakeholders: StakeholdersService,
     private readonly opportunities: OpportunitiesService,
     private readonly actionItems: ActionItemsService,
+    private readonly serviceProviderService: ServiceProviderService,
   ) {}
 
   private adapterFor(module: IEModuleKey, userId: string): BulkModuleAdapter {
@@ -252,6 +278,29 @@ export class GlobalImportExportService {
           }
           payload[f.key] = stk.id;
           refNames[f.key] = stk.name;
+        } else if (f.reference === 'stakeholder_owner') {
+          if (!raw) continue; // optional
+          if (!resolvedAccountId) continue; // account error already reported
+
+          // Stage 1: Resolve against the account's existing Service Provider stakeholders
+          const sp = parents.resolveServiceProvider(raw, resolvedAccountId);
+          if (sp) {
+            payload[f.key] = sp.id;
+            refNames[f.key] = sp.name;
+            continue;
+          }
+
+          // Stage 2: Check if referenced owner exists as a System User
+          const usr = parents.resolveUser(raw);
+          if (usr) {
+            // Found as a System User. Use pending marker so commit auto-associates via resolveOrCreate
+            payload[f.key] = `__PENDING_USER_OWNER:${usr.id}::${usr.name}__`;
+            refNames[f.key] = usr.name;
+            continue;
+          }
+
+          // Stage 3: Neither Service Provider nor System User -> reject row with clear error
+          errors.push(`Owner "${raw}" was not found as a Service Provider or System User`);
         } else if (f.reference === 'user') {
           if (!raw) continue;
           const usr = parents.resolveUser(raw);
@@ -297,7 +346,8 @@ export class GlobalImportExportService {
         }
       } else if (module === 'stakeholders') {
         if (row.payload.name && row.payload.accountId) {
-          parents.addPendingStakeholder(String(row.payload.name), String(row.payload.accountId));
+          const isSp = row.payload.stakeholderType === 'SERVICE_PROVIDER';
+          parents.addPendingStakeholder(String(row.payload.name), String(row.payload.accountId), isSp);
         }
       }
     }
@@ -327,13 +377,21 @@ export class GlobalImportExportService {
       const adapter = this.adapterFor(module, userId);
 
       // Resolve pending markers; split resolvable rows from ones whose parent is gone.
+      const userOwnerCache = new Map<string, string>();
       const prepared: { payload: Record<string, any>; originalIndex: number }[] = [];
       const preFailures: BulkRowResult[] = [];
-      rows.forEach((payload, index) => {
-        const err = this.resolveMarkers(module, payload, committedAccounts, committedOpps, committedStakeholders);
+      for (const [index, payload] of rows.entries()) {
+        const err = await this.resolveMarkers(
+          module,
+          payload,
+          committedAccounts,
+          committedOpps,
+          committedStakeholders,
+          userOwnerCache,
+        );
         if (err) preFailures.push({ index, status: 'failed', message: err });
         else prepared.push({ payload, originalIndex: index });
-      });
+      }
 
       const outcome = await runBulkImport(prepared.map((p) => p.payload), {
         duplicateMode,
@@ -364,13 +422,14 @@ export class GlobalImportExportService {
   }
 
   /** Swaps PENDING markers for committed ids in place; returns an error message or null. */
-  private resolveMarkers(
+  private async resolveMarkers(
     module: IEModuleKey,
     payload: Record<string, any>,
     accounts: Map<string, string>,
     opps: Map<string, string>,
     stakeholders: Map<string, string>,
-  ): string | null {
+    userOwnerCache: Map<string, string>,
+  ): Promise<string | null> {
     const fields = FIELDS_BY_MODULE[module];
     const accField = fields.find((f) => f.reference === 'account');
     if (accField && isPendingId(payload[accField.key])) {
@@ -394,6 +453,43 @@ export class GlobalImportExportService {
       const id = accountId ? stakeholders.get(`${accountId}::${name}`) : undefined;
       if (!id) return `Referenced stakeholder was not imported (it may have been removed or failed to import)`;
       payload[stkField.key] = id;
+    }
+
+    if (module === 'stakeholders') {
+      const accountId = accField ? payload[accField.key] : undefined;
+      const ownerFields = fields.filter((f) => f.reference === 'stakeholder_owner');
+      for (const of of ownerFields) {
+        const val = payload[of.key];
+        if (!val) continue;
+
+        // Check if referencing a pending stakeholder from the same workbook
+        if (isPendingId(val)) {
+          const { name } = parsePendingId(val);
+          const id = accountId ? stakeholders.get(`${accountId}::${name}`) : undefined;
+          if (id) {
+            payload[of.key] = id;
+            continue;
+          }
+        }
+
+        // Check if referencing a system user that needs auto-association as a Service Provider
+        if (typeof val === 'string' && val.startsWith('__PENDING_USER_OWNER:')) {
+          const match = val.match(/^__PENDING_USER_OWNER:(.+?)::(.*)__$/);
+          if (match && accountId) {
+            const userId = match[1];
+            const cacheKey = `${accountId}::${userId}`;
+            let spId = userOwnerCache.get(cacheKey);
+            if (!spId) {
+              spId = (await this.serviceProviderService.resolveOrCreate(userId, accountId)) ?? undefined;
+              if (spId) userOwnerCache.set(cacheKey, spId);
+            }
+            if (!spId) {
+              return `Failed to auto-associate owner "${match[2] || userId}" as Service Provider on this account`;
+            }
+            payload[of.key] = spId;
+          }
+        }
+      }
     }
     return null;
   }
@@ -435,11 +531,16 @@ export class GlobalImportExportService {
     for (const r of oppRes.rows) index.seedOpportunity(r.id, r.name, r.account_id);
 
     const stkRes = await this.db.query(
-      `SELECT s.id, s.name, s.account_id FROM stakeholders s
+      `SELECT s.id, s.name, s.email, s.account_id, s.stakeholder_type FROM stakeholders s
        INNER JOIN accounts a ON s.account_id = a.id
        WHERE s.is_deleted = FALSE AND a.is_deleted = FALSE`,
     );
-    for (const r of stkRes.rows) index.seedStakeholder(r.id, r.name, r.account_id);
+    for (const r of stkRes.rows) {
+      index.seedStakeholder(r.id, r.name, r.account_id);
+      if (r.stakeholder_type === 'SERVICE_PROVIDER') {
+        index.seedServiceProvider(r.id, r.name, r.account_id, r.email);
+      }
+    }
 
     const userRes = await this.db.query(
       `SELECT id, name, email FROM users WHERE is_active = TRUE`,

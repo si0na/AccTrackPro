@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useMemo, useCall
 import { useCRMData } from '@/hooks/useCRMData';
 import { authApi, rbacApi, serviceProvidersApi, projectManagersApi, practiceLeadsApi, clientPartnersApi, verticalHeadsApi, accountManagersApi, type IEModuleKey } from '@/api/crm.api';
 import type {
-  Account, Opportunity, ActionItem, Stakeholder, Activity, Comment, CustomColumn, ColumnConfig,
+  Account, Opportunity, ActionItem, Stakeholder, Activity, Comment, CustomColumn, CustomColumnModule, ColumnConfig,
   User, FinancialYear, FinancialCalendar, AdminSettings, Project, MyPermissions, ServiceProviderUser,
   EmployeeAppreciation, EmployeeRewardsRecognition, SqaRecord, NormalizedRisk, PerformanceEvaluation,
 } from '@/types';
@@ -204,8 +204,8 @@ interface CRMContextProps {
   performanceEvaluationColumns: CustomColumn[];
   projectColumns: CustomColumn[];
   projectActionItemColumns: CustomColumn[];
-  addCustomColumn: (module: 'accounts' | 'opportunities' | 'actionItems' | 'performanceEvaluation' | 'projects' | 'projectActionItems', name: string, type: 'text' | 'number' | 'date' | 'boolean') => Promise<void>;
-  deleteCustomColumn: (module: 'accounts' | 'opportunities' | 'actionItems' | 'performanceEvaluation' | 'projects' | 'projectActionItems', id: string) => Promise<void>;
+  addCustomColumn: (module: CustomColumnModule, name: string, type: 'text' | 'number' | 'date' | 'boolean') => Promise<void>;
+  deleteCustomColumn: (module: CustomColumnModule, id: string) => Promise<void>;
 
   // Column configs
   accountsColumnConfig: ColumnConfig[];
@@ -214,8 +214,9 @@ interface CRMContextProps {
   performanceEvaluationColumnConfig: ColumnConfig[];
   projectsColumnConfig: ColumnConfig[];
   projectActionItemsColumnConfig: ColumnConfig[];
-  updateColumnConfig: (module: 'accounts' | 'opportunities' | 'actionItems' | 'performanceEvaluation' | 'projects' | 'projectActionItems', config: ColumnConfig[]) => Promise<void>;
-  resetColumnConfig: (module: 'accounts' | 'opportunities' | 'actionItems' | 'performanceEvaluation' | 'projects' | 'projectActionItems') => Promise<void>;
+  stakeholdersColumnConfig: ColumnConfig[];
+  updateColumnConfig: (module: CustomColumnModule, config: ColumnConfig[]) => Promise<void>;
+  resetColumnConfig: (module: CustomColumnModule) => Promise<void>;
 
   // Notifications
   unreadNotificationCount: number;

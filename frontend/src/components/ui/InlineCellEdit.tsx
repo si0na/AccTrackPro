@@ -129,6 +129,7 @@ export const InlineSelectEditCell: React.FC<{
   fallbackLabel?: string;
   disabled?: boolean;
   className?: string;
+  colorMap?: Record<string, string>;
   onSave: (val: string) => Promise<void> | void;
 }> = ({
   value = '',
@@ -137,6 +138,7 @@ export const InlineSelectEditCell: React.FC<{
   fallbackLabel,
   disabled = false,
   className = '',
+  colorMap,
   onSave,
 }) => {
   const [saving, setSaving] = useState(false);
@@ -207,6 +209,8 @@ export const InlineSelectEditCell: React.FC<{
     }
   };
 
+  const colorCls = colorMap && strVal ? colorMap[strVal] : undefined;
+
   if (disabled) {
     const selectedOpt = formattedOptions.find((o) => o.value === strVal);
     const displayLabel =
@@ -214,13 +218,16 @@ export const InlineSelectEditCell: React.FC<{
       effectiveLabel ||
       placeholder;
     return (
-      <span className="text-slate-600 font-medium">
+      <span className={colorCls ? `inline-block px-2 py-0.5 text-xs font-semibold rounded border ${colorCls}` : 'text-slate-600 font-medium'}>
         {displayLabel}
       </span>
     );
   }
 
   const hasOptionForStrVal = formattedOptions.some((o) => o.value === strVal);
+  const selectStyleCls = colorCls
+    ? `border ${colorCls} hover:brightness-95 focus:outline-none focus:ring-1 focus:ring-blue-500/30`
+    : 'border border-slate-200 bg-white hover:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-500/30';
 
   return (
     <div onClick={(e) => e.stopPropagation()} className="inline-flex items-center max-w-full">
@@ -228,16 +235,16 @@ export const InlineSelectEditCell: React.FC<{
         value={strVal}
         disabled={saving}
         onChange={handleChange}
-        className={`text-xs font-semibold border border-slate-200 rounded-md py-1 px-1.5 bg-white cursor-pointer hover:border-blue-400 focus:outline-none focus:ring-1 focus:ring-blue-500/30 transition-colors ${className}`}
+        className={`text-xs font-semibold rounded-md py-1 px-1.5 cursor-pointer transition-colors ${selectStyleCls} ${className}`}
       >
         {placeholder && !formattedOptions.some((o) => o.value === '') && (
-          <option value="">{placeholder}</option>
+          <option value="" className="bg-white text-slate-800">{placeholder}</option>
         )}
         {strVal && !hasOptionForStrVal && (
-          <option value={strVal}>{effectiveLabel || strVal}</option>
+          <option value={strVal} className="bg-white text-slate-800">{effectiveLabel || strVal}</option>
         )}
         {formattedOptions.map((opt) => (
-          <option key={opt.value} value={opt.value}>
+          <option key={opt.value} value={opt.value} className="bg-white text-slate-800">
             {opt.label}
           </option>
         ))}

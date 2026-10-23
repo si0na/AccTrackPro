@@ -9,6 +9,13 @@ import { CreateStakeholderDto } from './dto/stakeholder.dto';
 import { STAKEHOLDER_FIELDS } from '../import-export/import-field-schemas';
 import { BulkModuleAdapter } from '../import-export/bulk-adapter';
 
+function formatDate(d: any): string | undefined {
+  if (!d) return undefined;
+  if (typeof d === 'string') return d.slice(0, 10);
+  if (d instanceof Date) return d.toISOString().slice(0, 10);
+  return String(d).slice(0, 10);
+}
+
 function rowToStakeholder(row: any): Stakeholder {
   const {
     is_deleted, created_at, updated_at, account_id, account_name,
@@ -16,10 +23,24 @@ function rowToStakeholder(row: any): Stakeholder {
     primary_owner_id, primary_owner_name,
     secondary_owner_id, secondary_owner_name,
     tertiary_owner_id, tertiary_owner_name,
+    key_priorities, pain_points_insights, last_connect, next_connect, next_connect_status,
+    action_follow_ups, estimated_budget_available, role_in_decision,
     ...base
   } = row;
   return {
     ...base,
+    area: row.area ?? undefined,
+    keyPriorities: key_priorities ?? undefined,
+    painPointsInsights: pain_points_insights ?? undefined,
+    lastConnect: formatDate(last_connect),
+    nextConnect: formatDate(next_connect),
+    nextConnectStatus: next_connect_status ?? undefined,
+    actionFollowUps: action_follow_ups ?? undefined,
+    comments: row.comments ?? undefined,
+    country: row.country ?? undefined,
+    location: row.location ?? undefined,
+    estimatedBudgetAvailable: estimated_budget_available != null && !isNaN(Number(estimated_budget_available)) ? Number(estimated_budget_available) : undefined,
+    roleInDecision: role_in_decision ?? undefined,
     level: row.level ?? 'Level 3',
     accountId: account_id,
     accountName: account_name ?? undefined,
@@ -72,6 +93,10 @@ export class StakeholdersService {
    * by email within the account (case-insensitive), scoped to the requesting
    * user's accounts. The Account reference (name → id, incl. a parent defined in
    * the same workbook) is resolved centrally by the global service beforehand.
+   *
+   * For updates during bulk import, omitted columns and blank cells preserve
+   * existing database values, while manual edit operations continue to allow
+   * explicitly clearing values.
    */
   bulkAdapter(userId: string): BulkModuleAdapter {
     return {
@@ -82,8 +107,27 @@ export class StakeholdersService {
         row.accountId && row.email ? `${row.accountId}::${String(row.email).trim().toLowerCase()}` : null,
       findExistingId: (row) => this.findActiveByEmail(row.accountId, row.email, userId),
       create: (row) => this.create({ stakeholderType: 'CLIENT', ...row }, userId),
-      update: (id, row) => this.update(id, { stakeholderType: 'CLIENT', ...row }, userId),
+      update: async (id, row) => {
+        const existing = await this.findOne(id, userId);
+        const merged = this.mergeImportRowWithExisting(existing, row);
+        return this.update(id, merged, userId);
+      },
     };
+  }
+
+  private mergeImportRowWithExisting(existing: Stakeholder, row: any): any {
+    const isBlank = (val: any) =>
+      val === undefined || val === null || (typeof val === 'string' && val.trim() === '');
+    const merged: Record<string, any> = { ...existing, stakeholderType: 'CLIENT' };
+
+    for (const [key, val] of Object.entries(row)) {
+      if (isBlank(val)) {
+        // Blank cell or omitted value -> preserve existing value from DB
+        continue;
+      }
+      merged[key] = val;
+    }
+    return merged;
   }
 
   private async findActiveByEmail(
@@ -203,14 +247,39 @@ export class StakeholdersService {
 
     const level = data.level && String(data.level).trim() ? data.level : 'Level 3';
 
+    const area = data.area && String(data.area).trim() ? data.area.trim() : null;
+    const keyPriorities = data.keyPriorities && String(data.keyPriorities).trim() ? data.keyPriorities.trim() : null;
+    const painPointsInsights = data.painPointsInsights && String(data.painPointsInsights).trim() ? data.painPointsInsights.trim() : null;
+    const lastConnect = data.lastConnect && String(data.lastConnect).trim() ? String(data.lastConnect).trim().slice(0, 10) : null;
+    const nextConnect = data.nextConnect && String(data.nextConnect).trim() ? String(data.nextConnect).trim().slice(0, 10) : null;
+    const nextConnectStatus = data.nextConnectStatus && String(data.nextConnectStatus).trim() ? data.nextConnectStatus.trim() : null;
+    const actionFollowUps = data.actionFollowUps && String(data.actionFollowUps).trim() ? data.actionFollowUps.trim() : null;
+    const comments = data.comments && String(data.comments).trim() ? data.comments.trim() : null;
+    const country = data.country && String(data.country).trim() ? data.country.trim() : null;
+    const location = data.location && String(data.location).trim() ? data.location.trim() : null;
+    const estimatedBudgetAvailable = data.estimatedBudgetAvailable != null && data.estimatedBudgetAvailable !== '' && !isNaN(Number(data.estimatedBudgetAvailable)) ? Number(data.estimatedBudgetAvailable) : null;
+    const roleInDecision = data.roleInDecision && String(data.roleInDecision).trim() ? data.roleInDecision.trim() : null;
+
     const { rows } = await this.db.query(
-      `INSERT INTO stakeholders (id, name, account_id, designation, influence, relationship, email, phone, stakeholder_type, department, linkedin_profile_url, primary_owner_id, secondary_owner_id, tertiary_owner_id, level)
-       VALUES (gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+      `INSERT INTO stakeholders (
+         id, name, account_id, designation, influence, relationship, email, phone,
+         stakeholder_type, department, linkedin_profile_url, primary_owner_id, secondary_owner_id, tertiary_owner_id, level,
+         area, key_priorities, pain_points_insights, last_connect, next_connect, next_connect_status,
+         action_follow_ups, comments, country, location, estimated_budget_available, role_in_decision
+       )
+       VALUES (
+         gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,
+         $15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26
+       )
        RETURNING *`,
-      [data.name, accountId, data.designation ?? '', data.influence,
-      data.relationship, data.email ?? '', data.phone ?? '',
-      data.stakeholderType, data.department ?? null, data.linkedinProfileUrl ?? null,
-        primaryOwnerId, secondaryOwnerId, tertiaryOwnerId, level],
+      [
+        data.name, accountId, data.designation ?? '', data.influence,
+        data.relationship, data.email ?? '', data.phone ?? '',
+        data.stakeholderType, data.department ?? null, data.linkedinProfileUrl ?? null,
+        primaryOwnerId, secondaryOwnerId, tertiaryOwnerId, level,
+        area, keyPriorities, painPointsInsights, lastConnect, nextConnect, nextConnectStatus,
+        actionFollowUps, comments, country, location, estimatedBudgetAvailable, roleInDecision,
+      ],
     );
     const stk = await this.findOne(rows[0].id, userId);
     this.logger.log(`Stakeholder created [id=${stk.id} name="${stk.name}" accountId=${stk.accountId ?? 'NULL'}]`);
@@ -239,10 +308,21 @@ export class StakeholdersService {
   async update(id: string, data: any, userId?: string): Promise<Stakeholder> {
     const existing = await this.findOne(id, userId);
     const accountId = data.accountId && String(data.accountId).trim() ? data.accountId : null;
-    if (accountId !== existing.accountId) {
+    if (accountId !== null && accountId !== existing.accountId) {
       await this.assertAccountExists(accountId, userId);
     }
-    await this.assertEmailAvailable(accountId, data.email, id);
+    await this.assertEmailAvailable(accountId ?? existing.accountId, data.email, id);
+
+    const name = data.name !== undefined ? data.name : existing.name;
+    const targetAccountId = accountId !== null ? accountId : existing.accountId;
+    const designation = data.designation !== undefined ? (data.designation ?? '') : (existing.designation ?? '');
+    const influence = data.influence !== undefined ? data.influence : existing.influence;
+    const relationship = data.relationship !== undefined ? data.relationship : existing.relationship;
+    const email = data.email !== undefined ? (data.email ?? '') : (existing.email ?? '');
+    const phone = data.phone !== undefined ? (data.phone ?? '') : (existing.phone ?? '');
+    const stakeholderType = data.stakeholderType !== undefined ? data.stakeholderType : existing.stakeholderType;
+    const department = data.department !== undefined ? (data.department && String(data.department).trim() ? data.department.trim() : null) : (existing.department ?? null);
+    const linkedinProfileUrl = data.linkedinProfileUrl !== undefined ? (data.linkedinProfileUrl && String(data.linkedinProfileUrl).trim() ? data.linkedinProfileUrl.trim() : null) : (existing.linkedinProfileUrl ?? null);
 
     const primaryOwnerId = data.primaryOwnerId !== undefined
       ? (data.primaryOwnerId && String(data.primaryOwnerId).trim() ? data.primaryOwnerId : null)
@@ -259,16 +339,62 @@ export class StakeholdersService {
       ? (data.level && String(data.level).trim() ? data.level : 'Level 3')
       : (existing.level ?? 'Level 3');
 
+    // Manual edits allow intentionally clearing fields (sending null or empty string evaluates to null)
+    const area = data.area !== undefined
+      ? (data.area && String(data.area).trim() ? data.area.trim() : null)
+      : (existing.area ?? null);
+    const keyPriorities = data.keyPriorities !== undefined
+      ? (data.keyPriorities && String(data.keyPriorities).trim() ? data.keyPriorities.trim() : null)
+      : (existing.keyPriorities ?? null);
+    const painPointsInsights = data.painPointsInsights !== undefined
+      ? (data.painPointsInsights && String(data.painPointsInsights).trim() ? data.painPointsInsights.trim() : null)
+      : (existing.painPointsInsights ?? null);
+    const lastConnect = data.lastConnect !== undefined
+      ? (data.lastConnect && String(data.lastConnect).trim() ? String(data.lastConnect).trim().slice(0, 10) : null)
+      : (existing.lastConnect ?? null);
+    const nextConnect = data.nextConnect !== undefined
+      ? (data.nextConnect && String(data.nextConnect).trim() ? String(data.nextConnect).trim().slice(0, 10) : null)
+      : (existing.nextConnect ?? null);
+    const nextConnectStatus = data.nextConnectStatus !== undefined
+      ? (data.nextConnectStatus && String(data.nextConnectStatus).trim() ? data.nextConnectStatus.trim() : null)
+      : (existing.nextConnectStatus ?? null);
+    const actionFollowUps = data.actionFollowUps !== undefined
+      ? (data.actionFollowUps && String(data.actionFollowUps).trim() ? data.actionFollowUps.trim() : null)
+      : (existing.actionFollowUps ?? null);
+    const comments = data.comments !== undefined
+      ? (data.comments && String(data.comments).trim() ? data.comments.trim() : null)
+      : (existing.comments ?? null);
+    const country = data.country !== undefined
+      ? (data.country && String(data.country).trim() ? data.country.trim() : null)
+      : (existing.country ?? null);
+    const location = data.location !== undefined
+      ? (data.location && String(data.location).trim() ? data.location.trim() : null)
+      : (existing.location ?? null);
+    const estimatedBudgetAvailable = data.estimatedBudgetAvailable !== undefined
+      ? (data.estimatedBudgetAvailable != null && data.estimatedBudgetAvailable !== '' && !isNaN(Number(data.estimatedBudgetAvailable)) ? Number(data.estimatedBudgetAvailable) : null)
+      : (existing.estimatedBudgetAvailable ?? null);
+    const roleInDecision = data.roleInDecision !== undefined
+      ? (data.roleInDecision && String(data.roleInDecision).trim() ? data.roleInDecision.trim() : null)
+      : (existing.roleInDecision ?? null);
+
     const { rows } = await this.db.query(
       `UPDATE stakeholders SET
          name=$1, account_id=$2, designation=$3, influence=$4,
          relationship=$5, email=$6, phone=$7, stakeholder_type=$8, department=$9, linkedin_profile_url=$10,
-         primary_owner_id=$11, secondary_owner_id=$12, tertiary_owner_id=$13, level=$14, updated_at=NOW()
-       WHERE id=$15 AND is_deleted=FALSE RETURNING *`,
-      [data.name, data.accountId, data.designation ?? '', data.influence,
-      data.relationship, data.email ?? '', data.phone ?? '',
-      data.stakeholderType, data.department ?? null, data.linkedinProfileUrl ?? null,
-        primaryOwnerId, secondaryOwnerId, tertiaryOwnerId, level, id],
+         primary_owner_id=$11, secondary_owner_id=$12, tertiary_owner_id=$13, level=$14,
+         area=$15, key_priorities=$16, pain_points_insights=$17, last_connect=$18, next_connect=$19,
+         next_connect_status=$20, action_follow_ups=$21, comments=$22, country=$23, location=$24,
+         estimated_budget_available=$25, role_in_decision=$26, updated_at=NOW()
+       WHERE id=$27 AND is_deleted=FALSE RETURNING *`,
+      [
+        name, targetAccountId, designation, influence,
+        relationship, email, phone,
+        stakeholderType, department, linkedinProfileUrl,
+        primaryOwnerId, secondaryOwnerId, tertiaryOwnerId, level,
+        area, keyPriorities, painPointsInsights, lastConnect, nextConnect,
+        nextConnectStatus, actionFollowUps, comments, country, location,
+        estimatedBudgetAvailable, roleInDecision, id,
+      ],
     );
     const stk = await this.findOne(rows[0].id, userId);
     await this.log(`Updated Stakeholder '${stk.name}'`, stk.accountId);

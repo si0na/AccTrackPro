@@ -34,7 +34,33 @@ export type ActionItemType =
   | 'Stakeholder connect'
   | 'Task';
 export type InfluenceLevel = 'High' | 'Medium' | 'Low';
-export type RelationshipStatus = 'Strong' | 'Neutral' | 'Weak';
+export type RelationshipStatus = 'Strong' | 'Weak' | 'Neutral' | 'No Relationship';
+export type StakeholderArea =
+  | 'AI'
+  | 'Cloud'
+  | 'Cyber Security'
+  | 'Data'
+  | 'Application Development'
+  | 'GCC'
+  | 'Application Support/AMS'
+  | 'SharePoint'
+  | 'QA'
+  | 'Projects'
+  | 'Others';
+export type NextConnectStatus =
+  | 'Scheduled'
+  | 'Cancelled'
+  | 'Rescheduled'
+  | 'Follow up required'
+  | 'Yet to Schedule';
+export type StakeholderRoleInDecision =
+  | 'Decision Maker'
+  | 'Sponsor'
+  | 'Influencer'
+  | 'User'
+  | 'Procurement'
+  | 'Gatekeeper'
+  | 'Other';
 export type StakeholderType = 'CLIENT' | 'SERVICE_PROVIDER';
 export type StakeholderLevel =
   | 'Level 0'
@@ -613,6 +639,18 @@ export interface Stakeholder {
   tertiaryOwnerName?: string;
   thirdOwnerId?: string;
   thirdOwnerName?: string;
+  area?: StakeholderArea;
+  keyPriorities?: string;
+  painPointsInsights?: string;
+  lastConnect?: string;
+  nextConnect?: string;
+  nextConnectStatus?: NextConnectStatus;
+  actionFollowUps?: string;
+  comments?: string;
+  country?: string;
+  location?: string;
+  estimatedBudgetAvailable?: number;
+  roleInDecision?: StakeholderRoleInDecision;
   /** Set on auto-registered Service Provider stakeholders — links back to the user they represent. */
   userId?: string;
   /** Whitelist (employee_master) row this Service Provider represents, set even before they register. */
