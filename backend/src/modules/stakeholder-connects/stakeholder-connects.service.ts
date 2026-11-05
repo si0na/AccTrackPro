@@ -162,6 +162,16 @@ export class StakeholderConnectsService {
         sc.updated_at AS "updatedAt",
         COALESCE(
           (
+            SELECT string_agg(DISTINCT s.name, ', ' ORDER BY s.name ASC)
+            FROM stakeholder_connect_attendees sca
+            JOIN stakeholders s ON s.id = sca.stakeholder_id
+            WHERE sca.connect_id = sc.id
+              AND s.stakeholder_type = 'CLIENT'
+          ),
+          ''
+        ) AS "clientStakeholderNames",
+        COALESCE(
+          (
             SELECT json_agg(
               json_build_object(
                 'id', s.id,
@@ -177,6 +187,30 @@ export class StakeholderConnectsService {
           ),
           '[]'::json
         ) AS attendees,
+        COALESCE(
+          (
+            SELECT json_agg(
+              json_build_object(
+                'id', d.id,
+                'connectId', d.connect_id,
+                'title', d.title,
+                'description', d.description,
+                'suggestedOwnerId', d.suggested_owner_id,
+                'suggestedOwnerName', s.name,
+                'convertedAt', d.converted_at,
+                'convertedActionItemId', d.converted_action_item_id,
+                'actionItemNumber', ai.action_item_number,
+                'createdAt', d.created_at,
+                'updatedAt', d.updated_at
+              ) ORDER BY d.created_at ASC
+            )
+            FROM stakeholder_connect_draft_follow_ups d
+            LEFT JOIN stakeholders s ON s.id = d.suggested_owner_id
+            LEFT JOIN action_items ai ON ai.id = d.converted_action_item_id
+            WHERE d.connect_id = sc.id
+          ),
+          '[]'::json
+        ) AS "draftFollowUps",
         (
           SELECT COUNT(*)::INTEGER
           FROM stakeholder_connect_draft_follow_ups d
@@ -245,6 +279,16 @@ export class StakeholderConnectsService {
         sc.updated_at AS "updatedAt",
         COALESCE(
           (
+            SELECT string_agg(DISTINCT s.name, ', ' ORDER BY s.name ASC)
+            FROM stakeholder_connect_attendees sca
+            JOIN stakeholders s ON s.id = sca.stakeholder_id
+            WHERE sca.connect_id = sc.id
+              AND s.stakeholder_type = 'CLIENT'
+          ),
+          ''
+        ) AS "clientStakeholderNames",
+        COALESCE(
+          (
             SELECT json_agg(
               json_build_object(
                 'id', s.id,
@@ -259,7 +303,31 @@ export class StakeholderConnectsService {
             WHERE sca.connect_id = sc.id
           ),
           '[]'::json
-        ) AS attendees${totalCol}
+        ) AS attendees,
+        COALESCE(
+          (
+            SELECT json_agg(
+              json_build_object(
+                'id', d.id,
+                'connectId', d.connect_id,
+                'title', d.title,
+                'description', d.description,
+                'suggestedOwnerId', d.suggested_owner_id,
+                'suggestedOwnerName', s.name,
+                'convertedAt', d.converted_at,
+                'convertedActionItemId', d.converted_action_item_id,
+                'actionItemNumber', ai.action_item_number,
+                'createdAt', d.created_at,
+                'updatedAt', d.updated_at
+              ) ORDER BY d.created_at ASC
+            )
+            FROM stakeholder_connect_draft_follow_ups d
+            LEFT JOIN stakeholders s ON s.id = d.suggested_owner_id
+            LEFT JOIN action_items ai ON ai.id = d.converted_action_item_id
+            WHERE d.connect_id = sc.id
+          ),
+          '[]'::json
+        ) AS "draftFollowUps"${totalCol}
       FROM stakeholder_connects sc
       JOIN accounts a ON a.id = sc.account_id
       JOIN users u ON u.id = sc.owner_id
@@ -395,8 +463,15 @@ export class StakeholderConnectsService {
       [id],
     );
 
+    const clientStakeholderNames = attendees
+      .filter((a: any) => a.stakeholderType === 'CLIENT')
+      .map((a: any) => a.name)
+      .filter(Boolean)
+      .join(', ');
+
     return {
       ...meeting,
+      clientStakeholderNames,
       mom: meeting.momNotes,
       momNotes: meeting.momNotes,
       attendees,
@@ -651,7 +726,14 @@ export class StakeholderConnectsService {
       }
 
       const title = data.title !== undefined ? data.title.trim() : existing.title;
-      const ownerId = data.ownerId !== undefined ? data.ownerId : existing.ownerId;
+      let ownerId = existing.ownerId;
+      if (data.ownerId !== undefined) {
+        const { rows: hostRows } = await client.query(`SELECT id, name FROM users WHERE id = $1`, [data.ownerId]);
+        if (!hostRows.length) {
+          throw new BadRequestException('The selected primary host user does not exist.');
+        }
+        ownerId = data.ownerId;
+      }
       const rawMom = data.momNotes !== undefined ? data.momNotes : data.mom;
       const momNotes = rawMom !== undefined ? rawMom : existing.momNotes;
       const cancellationReason = data.cancellationReason !== undefined ? data.cancellationReason : existing.cancellationReason;

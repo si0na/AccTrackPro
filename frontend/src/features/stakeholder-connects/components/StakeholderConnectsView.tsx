@@ -61,6 +61,7 @@ export const StakeholderConnectsView: React.FC = () => {
     serviceProviders,
     actionItems,
     currentUser,
+    currentUserId,
     globalAccountId,
     cameFromDashboard,
     setView,
@@ -154,7 +155,29 @@ export const StakeholderConnectsView: React.FC = () => {
             (a.email || '').toLowerCase().includes(q) ||
             (a.designation || '').toLowerCase().includes(q)
         );
-        if (!matchesTitle && !matchesAccount && !matchesOwner && !matchesMom && !matchesAttendee) {
+        const matchesClientStakeholders = (
+          c.clientStakeholderNames ||
+          (c.attendees || [])
+            .filter((a) => a.stakeholderType === 'CLIENT')
+            .map((a) => a.name)
+            .join(', ')
+        )
+          .toLowerCase()
+          .includes(q);
+        const matchesFollowUps = (c.draftFollowUps || []).some(
+          (f) =>
+            (f.title || '').toLowerCase().includes(q) ||
+            (f.description || '').toLowerCase().includes(q)
+        );
+        if (
+          !matchesTitle &&
+          !matchesAccount &&
+          !matchesOwner &&
+          !matchesMom &&
+          !matchesAttendee &&
+          !matchesClientStakeholders &&
+          !matchesFollowUps
+        ) {
           return false;
         }
       }
@@ -170,6 +193,12 @@ export const StakeholderConnectsView: React.FC = () => {
       if (sortField === 'meetingDate') {
         aVal = `${a.meetingDate} ${a.meetingTime || ''}`;
         bVal = `${b.meetingDate} ${b.meetingTime || ''}`;
+      } else if (sortField === 'clientStakeholders') {
+        aVal = a.clientStakeholderNames || (a.attendees || []).filter(at => at.stakeholderType === 'CLIENT').map(at => at.name).join(', ');
+        bVal = b.clientStakeholderNames || (b.attendees || []).filter(at => at.stakeholderType === 'CLIENT').map(at => at.name).join(', ');
+      } else if (sortField === 'followups') {
+        aVal = (a.draftFollowUps || []).map((f) => f.title).join(', ');
+        bVal = (b.draftFollowUps || []).map((f) => f.title).join(', ');
       }
       return compareForSort(aVal, bVal, sortDirection);
     });
@@ -412,6 +441,15 @@ export const StakeholderConnectsView: React.FC = () => {
                   onSort={handleSort}
                 />
               </TableHeadCell>
+              <TableHeadCell columnId="clientStakeholders">
+                <SortableHeader
+                  label="Client Stakeholders"
+                  field="clientStakeholders"
+                  sortField={sortField}
+                  sortDirection={sortDirection}
+                  onSort={handleSort}
+                />
+              </TableHeadCell>
               <TableHeadCell columnId="attendees">Attendees</TableHeadCell>
               <TableHeadCell columnId="ownerName">
                 <SortableHeader
@@ -431,21 +469,54 @@ export const StakeholderConnectsView: React.FC = () => {
                   onSort={handleSort}
                 />
               </TableHeadCell>
-              <TableHeadCell columnId="followups">Follow-ups</TableHeadCell>
+              <TableHeadCell columnId="followups">
+                <SortableHeader
+                  label="Follow-ups"
+                  field="followups"
+                  sortField={sortField}
+                  sortDirection={sortDirection}
+                  onSort={handleSort}
+                />
+              </TableHeadCell>
               <TableHeadCell align="center" sticky="right">Actions</TableHeadCell>
             </TableHead>
 
             <tbody className="divide-y divide-slate-100">
               {paginated.length === 0 ? (
                 <EmptyRow
-                  colSpan={8}
+                  colSpan={9}
                   message="No stakeholder connects match your search or filter criteria."
                 />
               ) : (
                 paginated.map((c) => {
                   const attendeeCount = c.attendees?.length || 0;
-                  const draftCount = c.draftFollowUps?.length || 0;
-                  const linkedCount = c.linkedActionItems?.length || 0;
+                  const clientNames =
+                    c.clientStakeholderNames && c.clientStakeholderNames.trim().length > 0
+                      ? c.clientStakeholderNames
+                      : (c.attendees || [])
+                        .filter((a) => a.stakeholderType === 'CLIENT')
+                        .map((a) => a.name)
+                        .filter(Boolean)
+                        .join(', ');
+                  const followUps = c.draftFollowUps || [];
+                  const followUpCount = followUps.length;
+                  const followUpTitles = followUps
+                    .map((f) => f.title?.trim())
+                    .filter(Boolean)
+                    .join(', ');
+
+                  const followUpTooltip = followUpCount > 0
+                    ? followUps
+                      .map((f, i) => {
+                        const title = f.title?.trim() || 'Follow-up';
+                        const desc = f.description?.trim() ? ` — ${f.description.trim()}` : '';
+                        const converted = f.convertedAt
+                          ? ` (Converted${f.actionItemNumber ? ` to ${f.actionItemNumber}` : ''})`
+                          : '';
+                        return `${followUpCount > 1 ? `${i + 1}. ` : ''}${title}${desc}${converted}`;
+                      })
+                      .join('\n')
+                    : undefined;
 
                   return (
                     <TableRow
@@ -480,6 +551,16 @@ export const StakeholderConnectsView: React.FC = () => {
                         {c.accountName || 'Unknown Account'}
                       </TableCell>
 
+                      <TableCell className="max-w-[240px] text-slate-700" title={clientNames || undefined}>
+                        {clientNames ? (
+                          <span className="truncate block font-medium text-slate-800">
+                            {clientNames}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
+                      </TableCell>
+
                       <TableCell>
                         <div className="flex items-center gap-1.5">
                           <Users className="w-3.5 h-3.5 text-slate-400" />
@@ -505,22 +586,24 @@ export const StakeholderConnectsView: React.FC = () => {
                         />
                       </TableCell>
 
-                      <TableCell>
-                        <div className="flex items-center gap-2 text-xs">
-                          {draftCount > 0 && (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded" title={`${draftCount} draft follow-ups`}>
-                              {draftCount} draft
+                      <TableCell className="max-w-[240px] text-slate-700" title={followUpTooltip}>
+                        {followUpCount > 0 ? (
+                          <div className="flex items-center gap-1.5">
+                            <span className="truncate block font-medium text-slate-800">
+                              {followUpTitles || `${followUpCount} follow-up${followUpCount === 1 ? '' : 's'}`}
                             </span>
-                          )}
-                          {linkedCount > 0 && (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded" title={`${linkedCount} linked action items`}>
-                              {linkedCount} linked
-                            </span>
-                          )}
-                          {draftCount === 0 && linkedCount === 0 && (
-                            <span className="text-slate-400 text-xs">—</span>
-                          )}
-                        </div>
+                            {followUpCount > 1 && (
+                              <span
+                                className="inline-flex items-center text-[10px] font-semibold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded-full shrink-0"
+                                title={`${followUpCount} follow-ups`}
+                              >
+                                {followUpCount}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-slate-400">—</span>
+                        )}
                       </TableCell>
 
                       <TableCell align="center" sticky="right" onClick={(e) => e.stopPropagation()}>
@@ -631,7 +714,7 @@ export const StakeholderConnectsView: React.FC = () => {
           accounts={accounts}
           stakeholders={stakeholders}
           serviceProviders={serviceProviders}
-          currentUserId={currentUser}
+          currentUserId={currentUserId}
           initialAccountId={globalAccountId !== 'All' ? globalAccountId : undefined}
         />
       )}
@@ -647,7 +730,7 @@ export const StakeholderConnectsView: React.FC = () => {
           accounts={accounts}
           stakeholders={stakeholders}
           serviceProviders={serviceProviders}
-          currentUserId={currentUser}
+          currentUserId={currentUserId}
           editConnect={editConnect}
         />
       )}
@@ -664,7 +747,7 @@ export const StakeholderConnectsView: React.FC = () => {
           actionItems={actionItems}
           canEdit={canEdit}
           canDelete={canDelete}
-          currentUserId={currentUser}
+          currentUserId={currentUserId}
           onConnectChanged={async () => {
             await fetchConnects();
             await refreshData();

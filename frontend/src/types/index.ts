@@ -1306,6 +1306,7 @@ export interface StakeholderConnectDraftFollowUp {
   suggestedDueDate?: string;
   suggestedPriority?: 'High' | 'Medium' | 'Low';
   convertedActionItemId?: string;
+  actionItemNumber?: string;
   convertedAt?: string;
   createdAt: string;
   updatedAt: string;
@@ -1352,6 +1353,7 @@ export interface StakeholderConnect {
   title: string;
   ownerId: string;
   ownerName?: string;
+  clientStakeholderNames?: string;
   status: ConnectStatus;
   mom?: string;
   momNotes?: string;

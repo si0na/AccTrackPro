@@ -209,6 +209,55 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
         attendees: ['stk-client-1'],
       };
 
+      it('rejects meeting creation when primary host does not exist in users (e.g. display name passed instead of UUID)', async () => {
+        mockDb.query.mockImplementation((sql: string) => {
+          if (sql.includes('FROM users WHERE id = $1')) return { rows: [] };
+          return { rows: [] };
+        });
+
+        await expect(
+          service.create({ ...baseCreateDto, ownerId: 'Gayathri H N' }, 'user-1'),
+        ).rejects.toThrow(new BadRequestException('The selected primary host user does not exist.'));
+      });
+
+      it('rejects meeting creation when primary host is nonexistent user ID', async () => {
+        mockDb.query.mockImplementation((sql: string) => {
+          if (sql.includes('FROM users WHERE id = $1')) return { rows: [] };
+          return { rows: [] };
+        });
+
+        await expect(
+          service.create({ ...baseCreateDto, ownerId: 'nonexistent-uuid' }, 'user-1'),
+        ).rejects.toThrow(new BadRequestException('The selected primary host user does not exist.'));
+      });
+
+      it('rejects meeting update when newly selected primary host does not exist in users', async () => {
+        mockAccess.getContext.mockResolvedValue({ canViewAllAccounts: true, permissions: new Set() });
+        mockDb.query.mockImplementation((sql: string) => {
+          if (sql.includes('FROM stakeholder_connects') && sql.includes('FOR UPDATE')) {
+            return {
+              rows: [{
+                id: 'conn-1',
+                accountId: 'acc-1',
+                ownerId: 'user-host',
+                status: 'Scheduled',
+                meetingDate: '2026-11-20',
+                meetingTime: '10:00:00',
+                isDeleted: false,
+              }],
+            };
+          }
+          if (sql.includes('FROM users WHERE id = $1')) {
+            return { rows: [] };
+          }
+          return { rows: [] };
+        });
+
+        await expect(
+          service.update('conn-1', { ownerId: 'NonExistentUser' }, 'user-1'),
+        ).rejects.toThrow(new BadRequestException('The selected primary host user does not exist.'));
+      });
+
       it('rejects meeting creation when attendees list is empty', async () => {
         mockDb.query.mockImplementation((sql: string) => {
           if (sql.includes('FROM users WHERE id = $1')) return { rows: [{ id: 'user-host', name: 'Host' }] };
@@ -537,6 +586,252 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
         await expect(service.findOne('conn-11', 'user-scoped')).rejects.toThrow(
           new ForbiddenException('You do not have permission to access the selected account.'),
         );
+      });
+    });
+
+    // ─── Client Stakeholder Names Aggregation & Formatting ───────────────────
+    describe('Client Stakeholder Names Aggregation & Formatting', () => {
+      it('findAll includes clientStakeholderNames in query and returns formatted client names', async () => {
+        mockAccess.getContext.mockResolvedValue({ canViewAllAccounts: true, permissions: new Set() });
+        mockDb.query.mockImplementation((sql: string) => {
+          if (sql.includes('FROM stakeholder_connects sc')) {
+            return {
+              rows: [
+                {
+                  id: 'conn-multi-clients',
+                  accountId: 'acc-1',
+                  accountName: 'Acme Corp',
+                  ownerId: 'user-host',
+                  ownerName: 'Host User',
+                  title: 'Multi Client Meeting',
+                  meetingDate: '2026-11-20',
+                  meetingTime: '10:00:00',
+                  status: 'Scheduled',
+                  isDeleted: false,
+                  clientStakeholderNames: 'Alice Client, Bob Client',
+                  attendees: [
+                    { id: 'stk-1', name: 'Alice Client', stakeholderType: 'CLIENT' },
+                    { id: 'stk-2', name: 'Bob Client', stakeholderType: 'CLIENT' },
+                    { id: 'stk-sp', name: 'SP Dave', stakeholderType: 'SERVICE_PROVIDER' },
+                  ],
+                },
+              ],
+            };
+          }
+          return { rows: [] };
+        });
+
+        const results = (await service.findAll({ userId: 'user-1', accountId: 'acc-1' })) as any[];
+        expect(Array.isArray(results)).toBe(true);
+        expect(results.length).toBe(1);
+        expect(results[0].clientStakeholderNames).toBe('Alice Client, Bob Client');
+
+        const querySql = mockDb.query.mock.calls[0][0];
+        expect(querySql).toContain('clientStakeholderNames');
+        expect(querySql).toContain("s.stakeholder_type = 'CLIENT'");
+      });
+
+      it('findOne formats clientStakeholderNames for CLIENT attendees and excludes SERVICE_PROVIDER attendees', async () => {
+        mockAccess.getContext.mockResolvedValue({ canViewAllAccounts: true, permissions: new Set() });
+        mockDb.query.mockImplementation((sql: string) => {
+          if (sql.includes('WHERE sc.id = $1')) {
+            return {
+              rows: [
+                {
+                  id: 'conn-mixed',
+                  accountId: 'acc-1',
+                  accountName: 'Acme Corp',
+                  ownerId: 'user-host',
+                  ownerName: 'Host User',
+                  title: 'Mixed Meeting',
+                  meetingDate: '2026-11-20',
+                  meetingTime: '10:00:00',
+                  status: 'Scheduled',
+                  isDeleted: false,
+                },
+              ],
+            };
+          }
+          if (sql.includes('FROM stakeholder_connect_attendees sca')) {
+            return {
+              rows: [
+                { id: 'stk-client-1', name: 'John Smith', stakeholderType: 'CLIENT' },
+                { id: 'stk-sp-1', name: 'Internal Host', stakeholderType: 'SERVICE_PROVIDER' },
+                { id: 'stk-client-2', name: 'Lisa Davis', stakeholderType: 'CLIENT' },
+              ],
+            };
+          }
+          return { rows: [] };
+        });
+
+        const result = await service.findOne('conn-mixed', 'user-1');
+        expect(result.id).toBe('conn-mixed');
+        expect(result.clientStakeholderNames).toBe('John Smith, Lisa Davis');
+      });
+
+      it('returns empty clientStakeholderNames when no client stakeholders are attendees', async () => {
+        mockAccess.getContext.mockResolvedValue({ canViewAllAccounts: true, permissions: new Set() });
+        mockDb.query.mockImplementation((sql: string) => {
+          if (sql.includes('WHERE sc.id = $1')) {
+            return {
+              rows: [
+                {
+                  id: 'conn-sp-only',
+                  accountId: 'acc-1',
+                  accountName: 'Acme Corp',
+                  ownerId: 'user-host',
+                  ownerName: 'Host User',
+                  title: 'Internal Only Meeting',
+                  meetingDate: '2026-11-20',
+                  meetingTime: '10:00:00',
+                  status: 'Scheduled',
+                  isDeleted: false,
+                },
+              ],
+            };
+          }
+          if (sql.includes('FROM stakeholder_connect_attendees sca')) {
+            return {
+              rows: [
+                { id: 'stk-sp-1', name: 'Internal Host', stakeholderType: 'SERVICE_PROVIDER' },
+              ],
+            };
+          }
+          return { rows: [] };
+        });
+
+        const result = await service.findOne('conn-sp-only', 'user-1');
+        expect(result.clientStakeholderNames).toBe('');
+      });
+    });
+
+    // ─── Draft Follow-ups Aggregation & Display ──────────────────────────────
+    describe('Draft Follow-ups Aggregation & Display', () => {
+      it('findAll includes draftFollowUps json_agg in query and returns follow-ups with converted status', async () => {
+        mockAccess.getContext.mockResolvedValue({ canViewAllAccounts: true, permissions: new Set() });
+        mockDb.query.mockImplementation((sql: string) => {
+          if (sql.includes('FROM stakeholder_connects sc')) {
+            return {
+              rows: [
+                {
+                  id: 'conn-with-drafts',
+                  accountId: 'acc-1',
+                  accountName: 'Acme Corp',
+                  ownerId: 'user-host',
+                  ownerName: 'Host User',
+                  title: 'Meeting with Follow-ups',
+                  meetingDate: '2026-11-20',
+                  meetingTime: '10:00:00',
+                  status: 'Scheduled',
+                  isDeleted: false,
+                  clientStakeholderNames: 'Alice Client',
+                  attendees: [
+                    { id: 'stk-1', name: 'Alice Client', stakeholderType: 'CLIENT' },
+                  ],
+                  draftFollowUps: [
+                    {
+                      id: 'draft-1',
+                      connectId: 'conn-with-drafts',
+                      title: 'Follow-up 1',
+                      description: 'First follow-up task',
+                      convertedAt: null,
+                      convertedActionItemId: null,
+                      actionItemNumber: null,
+                    },
+                    {
+                      id: 'draft-2',
+                      connectId: 'conn-with-drafts',
+                      title: 'Follow-up 2',
+                      description: 'Second follow-up task',
+                      convertedAt: '2026-11-21T10:00:00Z',
+                      convertedActionItemId: 'ai-123',
+                      actionItemNumber: 'ACT-001',
+                    },
+                  ],
+                  draftsCount: 2,
+                },
+              ],
+            };
+          }
+          return { rows: [] };
+        });
+
+        const results = (await service.findAll({ userId: 'user-1', accountId: 'acc-1' })) as any[];
+        expect(Array.isArray(results)).toBe(true);
+        expect(results.length).toBe(1);
+        expect(results[0].draftFollowUps.length).toBe(2);
+        expect(results[0].draftFollowUps[0].title).toBe('Follow-up 1');
+        expect(results[0].draftFollowUps[1].title).toBe('Follow-up 2');
+        expect(results[0].draftFollowUps[1].convertedAt).toBe('2026-11-21T10:00:00Z');
+        expect(results[0].draftFollowUps[1].actionItemNumber).toBe('ACT-001');
+
+        const querySql = mockDb.query.mock.calls[0][0];
+        expect(querySql).toContain('draftFollowUps');
+        expect(querySql).toContain('FROM stakeholder_connect_draft_follow_ups d');
+      });
+
+      it('findAll returns empty draftFollowUps array when meeting has no follow-ups', async () => {
+        mockAccess.getContext.mockResolvedValue({ canViewAllAccounts: true, permissions: new Set() });
+        mockDb.query.mockImplementation((sql: string) => {
+          if (sql.includes('FROM stakeholder_connects sc')) {
+            return {
+              rows: [
+                {
+                  id: 'conn-no-drafts',
+                  accountId: 'acc-1',
+                  accountName: 'Acme Corp',
+                  ownerId: 'user-host',
+                  ownerName: 'Host User',
+                  title: 'Meeting without Follow-ups',
+                  meetingDate: '2026-11-20',
+                  meetingTime: '10:00:00',
+                  status: 'Scheduled',
+                  isDeleted: false,
+                  clientStakeholderNames: 'Alice Client',
+                  attendees: [{ id: 'stk-1', name: 'Alice Client', stakeholderType: 'CLIENT' }],
+                  draftFollowUps: [],
+                  draftsCount: 0,
+                },
+              ],
+            };
+          }
+          return { rows: [] };
+        });
+
+        const results = (await service.findAll({ userId: 'user-1', accountId: 'acc-1' })) as any[];
+        expect(results[0].draftFollowUps).toEqual([]);
+      });
+
+      it('findAllDeactivated includes draftFollowUps in query', async () => {
+        mockAccess.getContext.mockResolvedValue({ canViewAllAccounts: true, permissions: new Set() });
+        mockDb.query.mockImplementation((sql: string) => {
+          if (sql.includes('sc.is_deleted = TRUE')) {
+            return {
+              rows: [
+                {
+                  id: 'conn-deact-drafts',
+                  accountId: 'acc-1',
+                  title: 'Deactivated Meeting',
+                  isDeleted: true,
+                  attendees: [],
+                  draftFollowUps: [
+                    { id: 'd-1', title: 'Archived task', convertedAt: null },
+                  ],
+                },
+              ],
+            };
+          }
+          return { rows: [] };
+        });
+
+        const deactivated = (await service.findAllDeactivated({ userId: 'user-1', accountId: 'acc-1' })) as any[];
+        expect(deactivated[0].draftFollowUps.length).toBe(1);
+
+        const querySql = mockDb.query.mock.calls.find((c: any) =>
+          String(c[0]).includes('sc.is_deleted = TRUE'),
+        )[0];
+        expect(querySql).toContain('draftFollowUps');
+        expect(querySql).toContain('FROM stakeholder_connect_draft_follow_ups d');
       });
     });
 

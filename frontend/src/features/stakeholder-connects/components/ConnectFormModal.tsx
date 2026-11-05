@@ -59,8 +59,37 @@ export const ConnectFormModal: React.FC<ConnectFormModalProps> = ({
   const [meetingTime, setMeetingTime] = useState(
     editConnect?.meetingTime ? editConnect.meetingTime.slice(0, 5) : '10:00'
   );
-  const [ownerId, setOwnerId] = useState(
-    editConnect?.ownerId || currentUserId || (serviceProviders[0]?.id ?? '')
+  // Helper to resolve candidate host value to a registered user UUID
+  const resolveHostId = (candidateId?: string): string => {
+    if (!candidateId) {
+      const firstActive = serviceProviders.find((sp) => !sp.isPending && sp.isActive);
+      return firstActive?.id || serviceProviders.find((sp) => !sp.isPending)?.id || '';
+    }
+    // 1. Direct match by id
+    const byId = serviceProviders.find((sp) => sp.id === candidateId && !sp.isPending);
+    if (byId) return byId.id;
+
+    // 2. Match by display name or email (in case user display name was passed or stored)
+    const byName = serviceProviders.find(
+      (sp) =>
+        !sp.isPending &&
+        (sp.name?.trim().toLowerCase() === candidateId.trim().toLowerCase() ||
+          sp.email?.trim().toLowerCase() === candidateId.trim().toLowerCase()),
+    );
+    if (byName) return byName.id;
+
+    // 3. If candidateId is a valid UUID string, return it
+    if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(candidateId)) {
+      return candidateId;
+    }
+
+    // 4. Fallback to first active registered user
+    const fallback = serviceProviders.find((sp) => !sp.isPending && sp.isActive);
+    return fallback?.id || serviceProviders.find((sp) => !sp.isPending)?.id || '';
+  };
+
+  const [ownerId, setOwnerId] = useState(() =>
+    resolveHostId(editConnect?.ownerId || currentUserId)
   );
   const [status, setStatus] = useState<ConnectStatus>(editConnect?.status || 'Scheduled');
   const [mom, setMom] = useState(editConnect?.mom || editConnect?.momNotes || '');
@@ -93,7 +122,7 @@ export const ConnectFormModal: React.FC<ConnectFormModalProps> = ({
       setTitle(editConnect.title);
       setMeetingDate(editConnect.meetingDate);
       setMeetingTime(editConnect.meetingTime ? editConnect.meetingTime.slice(0, 5) : '10:00');
-      setOwnerId(editConnect.ownerId);
+      setOwnerId(resolveHostId(editConnect.ownerId));
       setStatus(editConnect.status);
       setMom(editConnect.mom || editConnect.momNotes || '');
       setRescheduleReason('');
@@ -107,7 +136,7 @@ export const ConnectFormModal: React.FC<ConnectFormModalProps> = ({
       setTitle('');
       setMeetingDate(getTodayISODate());
       setMeetingTime('10:00');
-      setOwnerId(currentUserId || (serviceProviders[0]?.id ?? ''));
+      setOwnerId(resolveHostId(currentUserId));
       setStatus('Scheduled');
       setMom('');
       setRescheduleReason('');
@@ -197,6 +226,12 @@ export const ConnectFormModal: React.FC<ConnectFormModalProps> = ({
       return;
     }
 
+    const finalOwnerId = resolveHostId(ownerId);
+    if (!finalOwnerId) {
+      setError('Please select a valid meeting host.');
+      return;
+    }
+
     setIsSubmitting(true);
     setError(null);
 
@@ -208,7 +243,7 @@ export const ConnectFormModal: React.FC<ConnectFormModalProps> = ({
           title: title.trim(),
           meetingDate,
           meetingTime: formattedTime,
-          ownerId,
+          ownerId: finalOwnerId,
           status: isDateTimeChanged ? undefined : (status === editConnect.status ? undefined : status),
           momNotes: mom.trim() || undefined,
           mom: mom.trim() || undefined,
@@ -228,7 +263,7 @@ export const ConnectFormModal: React.FC<ConnectFormModalProps> = ({
           title: title.trim(),
           meetingDate,
           meetingTime: formattedTime,
-          ownerId,
+          ownerId: finalOwnerId,
           status: status === 'Rescheduled' ? 'Scheduled' : status,
           momNotes: mom.trim() || undefined,
           mom: mom.trim() || undefined,
@@ -293,11 +328,13 @@ export const ConnectFormModal: React.FC<ConnectFormModalProps> = ({
               onChange={(e) => setOwnerId(e.target.value)}
             >
               <option value="" disabled>Select host…</option>
-              {serviceProviders.map((sp) => (
-                <option key={sp.id} value={sp.id}>
-                  {sp.name || sp.email} {sp.designation ? `(${sp.designation})` : ''}
-                </option>
-              ))}
+              {serviceProviders
+                .filter((sp) => !sp.isPending && (sp.isActive || sp.id === ownerId))
+                .map((sp) => (
+                  <option key={sp.id} value={sp.id}>
+                    {sp.name || sp.email} {sp.designation ? `(${sp.designation})` : ''}{!sp.isActive ? ' (Inactive)' : ''}
+                  </option>
+                ))}
             </select>
           </FormField>
         </FormGrid>
