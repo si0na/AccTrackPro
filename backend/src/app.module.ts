@@ -32,6 +32,7 @@ import { EmployeeAppreciationModule } from './modules/employee-appreciation/empl
 import { EmployeeRewardsRecognitionModule } from './modules/employee-rewards-recognition/employee-rewards-recognition.module';
 import { RisksModule } from './modules/risks/risks.module';
 import { AccountGrowthModule } from './modules/account-growth/account-growth.module';
+import { StakeholderConnectsModule } from './modules/stakeholder-connects/stakeholder-connects.module';
 
 @Module({
   imports: [
@@ -60,6 +61,7 @@ import { AccountGrowthModule } from './modules/account-growth/account-growth.mod
     AccountGrowthModule,
     ActionItemsModule,
     StakeholdersModule,
+    StakeholderConnectsModule,
     ActivitiesModule,
     CommentsModule,
     CustomColumnsModule,

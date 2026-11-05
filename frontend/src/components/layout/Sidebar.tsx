@@ -32,6 +32,7 @@ import {
   ClipboardList,
   Truck,
   Settings2,
+  CalendarCheck,
 } from 'lucide-react';
 
 import { ReflectOneLogo } from '@/components/common/ReflectOneLogo';
@@ -139,6 +140,7 @@ export const Sidebar: React.FC = () => {
         { id: 'opportunities', label: 'Opportunities', icon: TrendingUp, badge: opportunities.length },
         { id: 'actionItems', label: 'Action Items', icon: CheckSquare, badge: normalActionItemsCount },
         { id: 'stakeholders', label: 'Stakeholders', icon: Users, badge: totalStakeholdersCount },
+        { id: 'stakeholderConnects', label: 'Stakeholder Connects', icon: CalendarCheck, badge: null },
         { id: 'risks', label: 'Risks & Issues', icon: AlertTriangle, badge: risksAndIssuesCount },
       ],
     },

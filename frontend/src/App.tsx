@@ -21,6 +21,7 @@ import { SqaDetailsView } from '@/features/sqa/components/SqaDetailsView';
 import { ActionItemsView } from '@/features/action-items/components/ActionItemsView';
 import { ActionItemDetailsView } from '@/features/action-items/components/ActionItemDetailsView';
 import { StakeholdersView } from '@/features/stakeholders/components/StakeholdersView';
+import { StakeholderConnectsView } from '@/features/stakeholder-connects/components/StakeholderConnectsView';
 import { ExecutiveDashboardView } from '@/features/reports/components/ExecutiveDashboardView';
 import { AuditLogView } from '@/features/reports/components/AuditLogView';
 import { PerformanceEvaluationView } from '@/features/reports/components/PerformanceEvaluationView';
@@ -306,6 +307,7 @@ const InnerLayout: React.FC = () => {
           {currentView === 'projectActionItems'     && <ActionItemsView />}
           {(currentView === 'action-item-details' || currentView === 'project-action-item-details') && <ActionItemDetailsView key={selectedActionItemId} />}
           {currentView === 'stakeholders'           && <StakeholdersView />}
+          {currentView === 'stakeholderConnects'    && <StakeholderConnectsView />}
           {currentView === 'forecast'               && <OpportunityForecastView mode="portfolio" />}
           {currentView === 'executive'              && <ExecutiveDashboardView />}
           {currentView === 'reports'                && <ExecutiveDashboardView />}

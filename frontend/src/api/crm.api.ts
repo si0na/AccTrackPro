@@ -13,6 +13,8 @@ import type {
   AccountGrowthWorkspace, AccountGrowthClientPriority, AccountGrowthIndustryTrend,
   AccountGrowthBudgetPositioning, AccountGrowthWalletSharePlan, AccountGrowthSuccessParameter,
   AccountGrowthOutsourcingSplit, AccountGrowthSwot, AccountGrowthCompetitor, AccountGrowthActionPlan,
+  StakeholderConnect, StakeholderConnectAttendee, StakeholderConnectDraftFollowUp,
+  StakeholderConnectLinkedActionItem, StakeholderConnectRescheduleHistory, ConnectStatus,
 } from '@/types';
 
 /** Attributes an administrator can pre-assign / edit on a user or whitelist row. */
@@ -863,5 +865,161 @@ export const accountGrowthApi = {
   deleteActionPlan: (id: string, accountId: string) =>
     apiClient.post<{ success: boolean }>(`/account-growth/action-plans/${id}/delete`, { accountId }).then((r) => r.data),
 };
+
+// ─── Stakeholder Connects API ──────────────────────────────────────────────────
+
+export interface ConnectFilter {
+  accountId?: string;
+  status?: ConnectStatus;
+  from?: string;
+  to?: string;
+  ownerId?: string;
+  search?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface CreateConnectInput {
+  accountId: string;
+  meetingDate: string;
+  meetingTime: string;
+  title: string;
+  ownerId: string;
+  attendees: string[];
+  stakeholderIds?: string[];
+  momNotes?: string;
+  mom?: string;
+  status?: ConnectStatus;
+}
+
+export interface UpdateConnectInput {
+  title?: string;
+  meetingDate?: string;
+  meetingTime?: string;
+  ownerId?: string;
+  status?: ConnectStatus;
+  momNotes?: string;
+  mom?: string;
+  cancellationReason?: string;
+  rescheduleReason?: string;
+  attendees?: string[];
+}
+
+export interface RescheduleConnectInput {
+  meetingDate?: string;
+  meetingTime?: string;
+  newDate?: string;
+  newTime?: string;
+  reason?: string;
+}
+
+function normalizeDateString(dateStr?: string): string {
+  if (!dateStr || typeof dateStr !== 'string') return '';
+  const trimmed = dateStr.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+  const dmyMatch = trimmed.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+  if (dmyMatch) {
+    return `${dmyMatch[3]}-${dmyMatch[2].padStart(2, '0')}-${dmyMatch[1].padStart(2, '0')}`;
+  }
+  if (/^\d{4}-\d{2}-\d{2}T/.test(trimmed)) return trimmed.slice(0, 10);
+  return trimmed;
+}
+
+export interface CancelConnectInput {
+  reason?: string;
+}
+
+export interface CreateDraftInput {
+  title: string;
+  description?: string;
+  suggestedAssigneeStakeholderId?: string;
+  suggestedDueDate?: string;
+  suggestedPriority?: 'High' | 'Medium' | 'Low';
+}
+
+export interface ConvertDraftInput {
+  title?: string;
+  description?: string;
+  ownerStakeholderId: string;
+  priority: 'High' | 'Medium' | 'Low';
+  openDate: string;
+  dueDate: string;
+  type?: string;
+  comments?: string;
+}
+
+export const stakeholderConnectsApi = {
+  getAll: (filter?: ConnectFilter) =>
+    apiClient.get<StakeholderConnect[]>('/stakeholder-connects', { params: filter }).then((r) => r.data),
+  getDeactivated: (filter?: { accountId?: string; page?: number; pageSize?: number }) =>
+    apiClient.get<StakeholderConnect[]>('/stakeholder-connects/deactivated', { params: filter }).then((r) => r.data),
+  getById: (id: string) =>
+    apiClient.get<StakeholderConnect>(`/stakeholder-connects/${id}`).then((r) => r.data),
+  create: (data: CreateConnectInput) => {
+    const rawList = data.attendees || data.stakeholderIds || [];
+    const attendees: string[] = rawList
+      .map((item: any) => (typeof item === 'string' ? item : item?.id || item?.stakeholderId))
+      .filter((id): id is string => typeof id === 'string' && id.trim().length > 0);
+
+    const payload = {
+      accountId: data.accountId,
+      title: data.title,
+      ownerId: data.ownerId,
+      meetingDate: normalizeDateString(data.meetingDate),
+      meetingTime: data.meetingTime?.length === 5 ? `${data.meetingTime}:00` : data.meetingTime,
+      status: data.status,
+      momNotes: data.momNotes ?? data.mom,
+      mom: data.mom ?? data.momNotes,
+      attendees,
+    };
+    return apiClient.post<StakeholderConnect>('/stakeholder-connects', payload).then((r) => r.data);
+  },
+  update: (id: string, data: UpdateConnectInput) => {
+    const payload = {
+      ...data,
+      meetingDate: data.meetingDate ? normalizeDateString(data.meetingDate) : undefined,
+      momNotes: data.momNotes ?? data.mom,
+      mom: data.mom ?? data.momNotes,
+    };
+    return apiClient.patch<StakeholderConnect>(`/stakeholder-connects/${id}`, payload).then((r) => r.data);
+  },
+  complete: (id: string) =>
+    apiClient.post<StakeholderConnect>(`/stakeholder-connects/${id}/complete`).then((r) => r.data),
+  reschedule: (id: string, data: RescheduleConnectInput) => {
+    const rawDate = data.newDate || data.meetingDate || '';
+    const rawTime = data.newTime || data.meetingTime || '';
+    const newDate = normalizeDateString(rawDate);
+    const newTime = rawTime.length === 5 ? `${rawTime}:00` : rawTime;
+    const payload = {
+      newDate,
+      newTime,
+      reason: data.reason?.trim() || undefined,
+    };
+    return apiClient.post<StakeholderConnect>(`/stakeholder-connects/${id}/reschedule`, payload).then((r) => r.data);
+  },
+  cancel: (id: string, data: CancelConnectInput) =>
+    apiClient.post<StakeholderConnect>(`/stakeholder-connects/${id}/cancel`, data).then((r) => r.data),
+  delete: (id: string) =>
+    apiClient.post<{ success: boolean }>(`/stakeholder-connects/${id}/delete`).then((r) => r.data),
+  restore: (id: string) =>
+    apiClient.post<StakeholderConnect>(`/stakeholder-connects/${id}/restore`).then((r) => r.data),
+  addAttendee: (id: string, stakeholderId: string) =>
+    apiClient.post<StakeholderConnectAttendee>(`/stakeholder-connects/${id}/attendees`, { stakeholderId }).then((r) => r.data),
+  removeAttendee: (id: string, stakeholderId: string) =>
+    apiClient.post<{ success: boolean }>(`/stakeholder-connects/${id}/attendees/${stakeholderId}/delete`).then((r) => r.data),
+  createDraft: (id: string, data: CreateDraftInput) =>
+    apiClient.post<StakeholderConnectDraftFollowUp>(`/stakeholder-connects/${id}/drafts`, data).then((r) => r.data),
+  updateDraft: (id: string, draftId: string, data: Partial<CreateDraftInput>) =>
+    apiClient.post<StakeholderConnectDraftFollowUp>(`/stakeholder-connects/${id}/drafts/${draftId}/update`, data).then((r) => r.data),
+  deleteDraft: (id: string, draftId: string) =>
+    apiClient.post<{ success: boolean }>(`/stakeholder-connects/${id}/drafts/${draftId}/delete`).then((r) => r.data),
+  convertDraft: (id: string, draftId: string, data: ConvertDraftInput) =>
+    apiClient.post<{ draft: StakeholderConnectDraftFollowUp; actionItem: ActionItem }>(`/stakeholder-connects/${id}/drafts/${draftId}/convert`, data).then((r) => r.data),
+  linkActionItem: (id: string, actionItemId: string) =>
+    apiClient.post<StakeholderConnectLinkedActionItem>(`/stakeholder-connects/${id}/action-items`, { actionItemId }).then((r) => r.data),
+  unlinkActionItem: (id: string, actionItemId: string) =>
+    apiClient.post<{ success: boolean }>(`/stakeholder-connects/${id}/action-items/${actionItemId}/delete`).then((r) => r.data),
+};
+
 
 
