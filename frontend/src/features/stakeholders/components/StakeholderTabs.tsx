@@ -62,6 +62,8 @@ export interface StakeholderTabsProps {
   onDelete?: (s: Stakeholder) => void;
   /** Row / name click — used for a read-only "view details" affordance. */
   onRowClick?: (s: Stakeholder) => void;
+  /** Triggered when the user clicks "Schedule Connect" on a stakeholder row */
+  onScheduleConnect?: (s: Stakeholder) => void;
 
   /**
    * Forces the active tab (e.g. when arriving from a notification for a
@@ -109,6 +111,7 @@ export const StakeholderTabs: React.FC<StakeholderTabsProps> = ({
   onEdit,
   onDelete,
   onRowClick,
+  onScheduleConnect,
   focusTab,
   clientCount,
   serviceProviderCount,
@@ -196,6 +199,7 @@ export const StakeholderTabs: React.FC<StakeholderTabsProps> = ({
           onEdit={onEdit}
           onDelete={onDelete}
           onRowClick={onRowClick}
+          onScheduleConnect={onScheduleConnect}
           storageKey={`${storageKeyPrefix}-client`}
           emptyMessage={clientRows.length === 0
             ? clientEmptyMessage
@@ -221,6 +225,7 @@ export const StakeholderTabs: React.FC<StakeholderTabsProps> = ({
             onEdit={onEdit}
             onDelete={onDelete}
             onRowClick={onRowClick}
+            onScheduleConnect={onScheduleConnect}
             storageKey={`${storageKeyPrefix}-sp`}
             emptyMessage={(serviceProviderRows?.length ?? 0) === 0
               ? serviceProviderEmptyMessage

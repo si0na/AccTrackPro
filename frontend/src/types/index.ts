@@ -1279,4 +1279,93 @@ export interface AccountGrowthWorkspace {
   actionPlans: AccountGrowthActionPlan[];
 }
 
+// ─── Stakeholder Connects Interfaces ──────────────────────────────────────────
+
+export type ConnectStatus = 'Scheduled' | 'Completed' | 'Cancelled' | 'Rescheduled';
+
+export interface StakeholderConnectAttendee {
+  id: string;
+  connectId: string;
+  stakeholderId: string;
+  createdAt: string;
+  name?: string;
+  email?: string;
+  designation?: string;
+  department?: string;
+  stakeholderType?: string;
+  level?: string;
+}
+
+export interface StakeholderConnectDraftFollowUp {
+  id: string;
+  connectId: string;
+  title: string;
+  description?: string;
+  suggestedAssigneeStakeholderId?: string;
+  suggestedAssigneeName?: string;
+  suggestedDueDate?: string;
+  suggestedPriority?: 'High' | 'Medium' | 'Low';
+  convertedActionItemId?: string;
+  convertedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StakeholderConnectLinkedActionItem {
+  id: string;
+  connectId?: string;
+  actionItemId: string;
+  createdAt?: string;
+  actionItemNumber?: string;
+  title?: string;
+  status?: string;
+  priority?: string;
+  dueDate?: string;
+  ownerName?: string;
+  ownerStakeholderId?: string;
+  ownerStakeholderName?: string;
+  isDeleted?: boolean;
+}
+
+export interface StakeholderConnectRescheduleHistory {
+  id: string;
+  connectId: string;
+  previousDate?: string;
+  oldDate?: string;
+  previousTime?: string;
+  oldTime?: string;
+  newDate: string;
+  newTime: string;
+  reason?: string;
+  rescheduledBy?: string;
+  rescheduledById?: string;
+  rescheduledByName?: string;
+  createdAt: string;
+}
+
+export interface StakeholderConnect {
+  id: string;
+  accountId: string;
+  accountName?: string;
+  meetingDate: string;
+  meetingTime: string;
+  title: string;
+  ownerId: string;
+  ownerName?: string;
+  status: ConnectStatus;
+  mom?: string;
+  momNotes?: string;
+  cancellationReason?: string;
+  createdAt: string;
+  updatedAt: string;
+  attendees?: StakeholderConnectAttendee[];
+  draftFollowUps?: StakeholderConnectDraftFollowUp[];
+  drafts?: StakeholderConnectDraftFollowUp[];
+  linkedActionItems?: StakeholderConnectLinkedActionItem[];
+  actionItems?: StakeholderConnectLinkedActionItem[];
+  rescheduleHistory?: StakeholderConnectRescheduleHistory[];
+}
+
+
+
 

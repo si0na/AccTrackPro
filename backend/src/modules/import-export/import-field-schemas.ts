@@ -90,6 +90,7 @@ const INDUSTRY = [
   'Oil & Gas',
   'Others',
   'Professional Services',
+  'Radiology and Oncology Services',
   'Retail',
   'Technology & Software',
   'Telecommunications',

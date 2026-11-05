@@ -9,7 +9,7 @@ export interface PermissionRequirement {
 }
 
 /**
- * Declares the RBAC permission a route requires. The global PermissionsGuard
+ * Declares the RBAC permission(s) a route requires. The global PermissionsGuard
  * reads this metadata and calls PermissionsService.can(user, module, permission).
  *
  * Routes without this decorator are not permission-gated (they remain protected
@@ -17,8 +17,25 @@ export interface PermissionRequirement {
  *
  * Usage:
  *   @RequirePermission('accounts', 'delete')
- *   @Delete(':id')
- *   remove(...) { ... }
+ *   @RequirePermissions(
+ *     { module: 'stakeholder-connects', permission: 'update' },
+ *     { module: 'action-items', permission: 'create' },
+ *   )
  */
-export const RequirePermission = (module: string, permission: string) =>
-  SetMetadata(REQUIRE_PERMISSION_KEY, { module, permission } as PermissionRequirement);
+export function RequirePermission(module: string, permission: string): any;
+export function RequirePermission(requirements: PermissionRequirement[]): any;
+export function RequirePermission(
+  moduleOrRequirements: string | PermissionRequirement[],
+  permission?: string,
+): any {
+  if (Array.isArray(moduleOrRequirements)) {
+    return SetMetadata(REQUIRE_PERMISSION_KEY, moduleOrRequirements);
+  }
+  return SetMetadata(REQUIRE_PERMISSION_KEY, {
+    module: moduleOrRequirements,
+    permission: permission!,
+  } as PermissionRequirement);
+}
+
+export const RequirePermissions = (...requirements: PermissionRequirement[]): any =>
+  SetMetadata(REQUIRE_PERMISSION_KEY, requirements);

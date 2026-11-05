@@ -35,6 +35,7 @@ export type ViewType =
   | 'projectActionItems'
   | 'project-action-item-details'
   | 'stakeholders'
+  | 'stakeholderConnects'
   | 'forecast'
   | 'executive'
   | 'reports'

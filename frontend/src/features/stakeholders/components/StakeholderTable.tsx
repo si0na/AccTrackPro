@@ -6,7 +6,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
 import { Account, NextConnectStatus, Stakeholder, StakeholderLevel, StakeholderType } from '@/types';
-import { Mail, Phone, Linkedin, User } from 'lucide-react';
+import { Mail, Phone, Linkedin, User, CalendarCheck } from 'lucide-react';
 import { NEXT_CONNECT_STATUS_OPTIONS, STAKEHOLDER_LEVEL_OPTIONS, STAKEHOLDER_RELATIONSHIP_OPTIONS } from '@/constants';
 import {
   Card,
@@ -20,6 +20,7 @@ import {
   Pagination,
   RELATIONSHIP_COLORS,
   ROLE_IN_DECISION_COLORS,
+  RowActionButton,
   SearchBar,
   SortableHeader,
   StatusBadge,
@@ -32,6 +33,7 @@ import {
   computePinnedOffsets,
 } from '@/components/ui';
 import { compareForSort, SortDirection } from '@/utils';
+import { ConnectFormModal } from '@/features/stakeholder-connects/components/ConnectFormModal';
 
 export interface StakeholderTableProps {
   rows: Stakeholder[];
@@ -43,6 +45,8 @@ export interface StakeholderTableProps {
   onDelete?: (s: Stakeholder) => void;
   /** Row / name click — renders the name as a button (read-only "view details"). */
   onRowClick?: (s: Stakeholder) => void;
+  /** Triggered when the user clicks "Schedule Connect" on a stakeholder row */
+  onScheduleConnect?: (s: Stakeholder) => void;
   /** Message shown when there are no rows to display. */
   emptyMessage: string;
   /** Hide the Account column (used inside a single account's detail page). */
@@ -74,12 +78,30 @@ export const StakeholderTable: React.FC<StakeholderTableProps> = ({
   onEdit,
   onDelete,
   onRowClick,
+  onScheduleConnect,
   emptyMessage,
   hideAccountColumn = false,
   storageKey,
 }) => {
-  const { updateStakeholder, setActiveExportRows, stakeholdersColumnConfig } = useCRM();
+  const {
+    updateStakeholder,
+    setActiveExportRows,
+    stakeholdersColumnConfig,
+    can,
+    accounts: crmAccounts,
+    stakeholders: crmStakeholders,
+    serviceProviders: crmServiceProviders,
+  } = useCRM();
   const isServiceProvider = type === 'SERVICE_PROVIDER';
+  const [scheduleConnectTarget, setScheduleConnectTarget] = useState<Stakeholder | null>(null);
+
+  const handleScheduleConnect = (s: Stakeholder) => {
+    if (onScheduleConnect) {
+      onScheduleConnect(s);
+    } else {
+      setScheduleConnectTarget(s);
+    }
+  };
 
   const [searchQuery, setSearchQuery] = useState('');
   const [page, setPage] = useState(1);
@@ -821,11 +843,21 @@ export const StakeholderTable: React.FC<StakeholderTableProps> = ({
                           </div>
                         </TableCell>
                         <TableCell align="center" sticky="right">
-                          <TableActions
-                            entityLabel={`stakeholder ${s.name}`}
-                            onEdit={canEdit && onEdit ? () => onEdit(s) : undefined}
-                            onDelete={canDelete && onDelete ? () => onDelete(s) : undefined}
-                          />
+                          <div className="flex items-center justify-center gap-1.5 whitespace-nowrap">
+                            {s.accountId && can('stakeholder-connects', 'create') && (
+                              <RowActionButton
+                                intent="neutral"
+                                label={`Schedule Connect with ${s.name}`}
+                                icon={<CalendarCheck className="w-3.5 h-3.5 text-indigo-600" />}
+                                onClick={() => handleScheduleConnect(s)}
+                              />
+                            )}
+                            <TableActions
+                              entityLabel={`stakeholder ${s.name}`}
+                              onEdit={canEdit && onEdit ? () => onEdit(s) : undefined}
+                              onDelete={canDelete && onDelete ? () => onDelete(s) : undefined}
+                            />
+                          </div>
                         </TableCell>
                       </TableRow>
                     );
@@ -835,11 +867,21 @@ export const StakeholderTable: React.FC<StakeholderTableProps> = ({
                     <TableRow key={s.id} className="hover:bg-slate-50/50">
                       {displayedConfigs.map((col) => renderClientCell(s, account, col))}
                       <TableCell align="center" sticky="right">
-                        <TableActions
-                          entityLabel={`stakeholder ${s.name}`}
-                          onEdit={canEdit && onEdit ? () => onEdit(s) : undefined}
-                          onDelete={canDelete && onDelete ? () => onDelete(s) : undefined}
-                        />
+                        <div className="flex items-center justify-center gap-1.5 whitespace-nowrap">
+                          {s.accountId && can('stakeholder-connects', 'create') && (
+                            <RowActionButton
+                              intent="neutral"
+                              label={`Schedule Connect with ${s.name}`}
+                              icon={<CalendarCheck className="w-3.5 h-3.5 text-indigo-600" />}
+                              onClick={() => handleScheduleConnect(s)}
+                            />
+                          )}
+                          <TableActions
+                            entityLabel={`stakeholder ${s.name}`}
+                            onEdit={canEdit && onEdit ? () => onEdit(s) : undefined}
+                            onDelete={canDelete && onDelete ? () => onDelete(s) : undefined}
+                          />
+                        </div>
                       </TableCell>
                     </TableRow>
                   );
@@ -861,6 +903,19 @@ export const StakeholderTable: React.FC<StakeholderTableProps> = ({
           itemLabel={isServiceProvider ? 'service providers' : 'stakeholders'}
         />
       </Card>
+
+      {scheduleConnectTarget && (
+        <ConnectFormModal
+          isOpen={!!scheduleConnectTarget}
+          onClose={() => setScheduleConnectTarget(null)}
+          onSuccess={() => setScheduleConnectTarget(null)}
+          accounts={crmAccounts}
+          stakeholders={crmStakeholders}
+          serviceProviders={crmServiceProviders}
+          initialAccountId={scheduleConnectTarget.accountId}
+          initialStakeholderId={scheduleConnectTarget.id}
+        />
+      )}
     </div>
   );
 };

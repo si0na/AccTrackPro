@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { PoolClient } from 'pg';
 import { DatabaseService } from '../../database/database.service';
 import { FilterContextService, FilterParams, FiscalContext } from '../../common/services/filter-context.service';
 import { AccessScopeService } from '../rbac/access-scope.service';
@@ -246,14 +247,18 @@ export class ActionItemsService {
     return rows.map(await this.mapper());
   }
 
-  async findOne(id: string, userId?: string): Promise<ActionItem> {
+  async findOne(id: string, userId?: string, client?: PoolClient): Promise<ActionItem> {
     const { conditions, params } = await this.childScope(userId ?? null, 2);
     const scopeClause = conditions.length ? ` AND ${conditions.join(' AND ')}` : '';
-    const { rows } = await this.db.query(
+    const dbClient = client ?? this.db;
+    const { rows } = await dbClient.query(
       `${AI_SELECT} WHERE ai.id = $1 AND ai.is_deleted = FALSE${scopeClause}`,
       [id, ...params],
     );
-    if (!rows.length) throw new NotFoundException(`ActionItem "${id}" not found`);
+    if (!rows.length) {
+      this.logger.warn(`Action item not found [id=${id}]`);
+      throw new NotFoundException('Action item not found');
+    }
     return (await this.mapper())(rows[0]);
   }
 
@@ -270,7 +275,10 @@ export class ActionItemsService {
 
   async assertUpdatePermission(id: string, updateData: any, requestingUserId: string): Promise<void> {
     const existing = await this.findOneRaw(id);
-    if (!existing) throw new NotFoundException(`ActionItem "${id}" not found`);
+    if (!existing) {
+      this.logger.warn(`Action item not found [id=${id}]`);
+      throw new NotFoundException('Action item not found');
+    }
 
     const sourceModule = existing.projectId ? 'project-action-items' : 'action-items';
     const targetProjectId = 'projectId' in updateData ? updateData.projectId : existing.projectId;
@@ -300,7 +308,7 @@ export class ActionItemsService {
     }
   }
 
-  async create(data: any, requestingUserId?: string): Promise<ActionItem> {
+  async create(data: any, requestingUserId?: string, externalClient?: PoolClient): Promise<ActionItem> {
     this.logger.log(`Creating action item [title="${data.title}" accountId=${data.accountId} ownerId=${data.ownerId ?? 'MISSING'}]`);
 
     if (!data.ownerId) {
@@ -317,11 +325,12 @@ export class ActionItemsService {
     const cd = extractCustomData(data, KNOWN);
 
     // Fetch account name to derive prefix
-    const { rows: acctRows } = await this.db.query(`SELECT name FROM accounts WHERE id = $1`, [data.accountId]);
+    const dbClient = externalClient ?? this.db;
+    const { rows: acctRows } = await dbClient.query(`SELECT name FROM accounts WHERE id = $1`, [data.accountId]);
     const accountName = acctRows[0]?.name ?? '';
     const prefix = generateAccountPrefix(accountName);
 
-    const createdId = await this.db.withTransaction(async (client) => {
+    const executeTransaction = async (client: PoolClient) => {
       // Lock and increment sequence counter row per account prefix atomically
       const { rows: seqRows } = await client.query(
         `INSERT INTO action_item_sequences (prefix, last_seq)
@@ -351,11 +360,15 @@ export class ActionItemsService {
         ],
       );
       return rows[0].id;
-    });
+    };
 
-    const item = await this.findOne(createdId);
+    const createdId = externalClient
+      ? await executeTransaction(externalClient)
+      : await this.db.withTransaction(executeTransaction);
+
+    const item = await this.findOne(createdId, undefined, externalClient);
     this.logger.log(`Action item created [id=${item.id} ownerId=${item.ownerId ?? 'NULL'}]`);
-    await this.log(`Created Action Item '${item.title}'`, item.accountId, data.ownerId);
+    await this.log(`Created Action Item '${item.title}'`, item.accountId, data.ownerId, externalClient);
 
     if (item.ownerId) {
       this.logger.log(`Emitting ActionItem:Created notification [userId=${item.ownerId} actionItemId=${item.id}]`);
@@ -605,9 +618,10 @@ export class ActionItemsService {
     if (!rows.length) throw new BadRequestException('The selected Owner is not a valid active stakeholder');
   }
 
-  private async log(text: string, accountId?: string, userId?: string): Promise<void> {
+  private async log(text: string, accountId?: string, userId?: string, client?: PoolClient): Promise<void> {
     try {
-      await this.db.query(
+      const dbClient = client ?? this.db;
+      await dbClient.query(
         `INSERT INTO activities (id, type, text, user_id, user_name, account_id)
          VALUES (gen_random_uuid()::TEXT, 'actionItem', $1, $2, 'System', $3)`,
         [text, userId ?? null, accountId ?? null],

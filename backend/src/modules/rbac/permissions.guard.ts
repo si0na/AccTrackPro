@@ -20,21 +20,23 @@ export class PermissionsGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const requirement = this.reflector.getAllAndOverride<PermissionRequirement | undefined>(
-      REQUIRE_PERMISSION_KEY,
-      [context.getHandler(), context.getClass()],
-    );
-    if (!requirement) return true;
+    const raw = this.reflector.getAllAndOverride<
+      PermissionRequirement | PermissionRequirement[] | undefined
+    >(REQUIRE_PERMISSION_KEY, [context.getHandler(), context.getClass()]);
+    if (!raw) return true;
 
     const req = context.switchToHttp().getRequest();
     const userId: string | undefined = req.user?.sub;
     if (!userId) throw new ForbiddenException('Authentication required');
 
-    const allowed = await this.permissions.can(userId, requirement.module, requirement.permission);
-    if (!allowed) {
-      throw new ForbiddenException(
-        `You do not have permission to ${requirement.permission} ${requirement.module}.`,
-      );
+    const requirements = Array.isArray(raw) ? raw : [raw];
+    for (const requirement of requirements) {
+      const allowed = await this.permissions.can(userId, requirement.module, requirement.permission);
+      if (!allowed) {
+        throw new ForbiddenException(
+          `You do not have permission to ${requirement.permission} ${requirement.module}.`,
+        );
+      }
     }
     return true;
   }

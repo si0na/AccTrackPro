@@ -31,9 +31,11 @@ const getDefaultColWidth = (id: string | null, cell: HTMLTableCellElement, index
     if (lower.includes('actionitemnumber') || lower.includes('actionitem#') || lower === 'number') return 110;
     if (lower.includes('name') || lower.includes('title')) return 220;
     if (lower.includes('account') || lower.includes('opportunity') || lower.includes('project')) return 160;
-    if (lower.includes('owner') || lower.includes('user') || lower.includes('stakeholder')) return 150;
+    if (lower.includes('meeting') || lower.includes('connect')) return 180;
+    if (lower.includes('owner') || lower.includes('user') || lower.includes('stakeholder') || lower.includes('attendee')) return 150;
     if (lower.includes('desc') || lower.includes('note') || lower.includes('risk') || lower.includes('issue') || lower.includes('address') || lower.includes('nextaction') || lower.includes('impediment')) return 240;
     if (lower.includes('status') || lower.includes('health') || lower.includes('stage') || lower.includes('priority') || lower.includes('type')) return 120;
+    if (lower.includes('followup') || lower.includes('follow-up')) return 140;
     if (lower.includes('date') || lower.includes('time') || lower.includes('year') || lower.includes('quarter')) return 110;
     if (lower.includes('revenue') || lower.includes('value') || lower.includes('cost') || lower.includes('margin') || lower.includes('prob')) return 110;
   }
@@ -42,9 +44,11 @@ const getDefaultColWidth = (id: string | null, cell: HTMLTableCellElement, index
   if (text.includes('actions')) return 180;
   if (text.includes('name') || text.includes('title')) return 220;
   if (text.includes('account') || text.includes('opportunity') || text.includes('project')) return 160;
-  if (text.includes('owner')) return 150;
+  if (text.includes('meeting') || text.includes('connect')) return 180;
+  if (text.includes('owner') || text.includes('attendee')) return 150;
   if (text.includes('description') || text.includes('notes') || text.includes('risks') || text.includes('impediments')) return 240;
   if (text.includes('status') || text.includes('priority') || text.includes('stage') || text.includes('type')) return 120;
+  if (text.includes('follow-up') || text.includes('followup')) return 140;
   if (text.includes('date')) return 110;
   return 180;
 };
@@ -69,6 +73,11 @@ const applyColumnWidths = (table: HTMLTableElement, widths: number[]) => {
         (td as HTMLElement).style.left = `${currentStickyLeft}px`;
       });
       currentStickyLeft += widths[i];
+    } else if (cell.dataset.sticky === 'right') {
+      const bodyCells = table.querySelectorAll(`tbody tr > td:nth-child(${i + 1})`);
+      bodyCells.forEach((td) => {
+        (td as HTMLElement).style.width = `${widths[i]}px`;
+      });
     }
   });
 
@@ -321,7 +330,7 @@ export const TableHeadCell: React.FC<TableHeadCellProps> = ({
 
   const stickyCls =
     sticky === 'right'
-      ? 'sticky right-0 z-30 bg-slate-50 border-l border-slate-200 shadow-[-8px_0_8px_-8px_rgba(15,23,42,0.15)] min-w-[140px] w-[140px]'
+      ? 'sticky right-0 z-30 bg-slate-50 border-l border-slate-200 shadow-[-8px_0_8px_-8px_rgba(15,23,42,0.15)] min-w-[180px] w-[180px]'
       : sticky === 'left'
       ? 'sticky z-30 bg-slate-50 border-r border-slate-200 shadow-[4px_0_8px_-4px_rgba(15,23,42,0.1)]'
       : 'relative';
@@ -409,7 +418,7 @@ export const TableCell: React.FC<TableCellProps> = ({
 
   const stickyCls =
     sticky === 'right'
-      ? `sticky right-0 z-20 border-l border-slate-100 shadow-[-8px_0_8px_-8px_rgba(15,23,42,0.12)] min-w-[140px] w-[140px] ${
+      ? `sticky right-0 z-20 border-l border-slate-100 shadow-[-8px_0_8px_-8px_rgba(15,23,42,0.12)] min-w-[180px] w-[180px] ${
           /(^|\s)bg-/.test(className) ? '' : 'bg-white group-hover/row:bg-slate-50'
         }`
       : sticky === 'left'

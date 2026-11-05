@@ -43,6 +43,7 @@ export {
   RETENTION_RISK_COLORS,
   STAKEHOLDER_TYPE_LABELS,
   STAKEHOLDER_TYPE_COLORS,
+  CONNECT_STATUS_COLORS,
 } from './StatusBadge';
 export type { StatusBadgeProps } from './StatusBadge';
 

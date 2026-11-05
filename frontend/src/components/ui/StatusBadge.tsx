@@ -154,3 +154,12 @@ export const RETENTION_RISK_COLORS: Record<string, string> = {
   Medium: 'bg-amber-100 text-amber-700',
   Low: 'bg-emerald-100 text-emerald-700',
 };
+
+/** Stakeholder Connect status colors. */
+export const CONNECT_STATUS_COLORS: Record<string, string> = {
+  Scheduled: 'bg-blue-100 text-blue-700 border border-blue-200',
+  Completed: 'bg-emerald-100 text-emerald-700 border border-emerald-200',
+  Cancelled: 'bg-rose-100 text-rose-700 border border-rose-200',
+  Rescheduled: 'bg-purple-100 text-purple-700 border border-purple-200',
+};
+
