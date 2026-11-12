@@ -2,8 +2,6 @@ import {
   Controller,
   Get,
   Post,
-  Patch,
-  Delete,
   Body,
   Param,
   Query,
@@ -78,19 +76,10 @@ export class StakeholderConnectsController {
     return this.service.create(body, authUser.sub, authUser.name);
   }
 
-  @Patch(':id')
-  @RequirePermission('stakeholder-connects', 'update')
-  async update(
-    @Param('id') id: string,
-    @Body() body: UpdateStakeholderConnectDto,
-    @AuthUser() authUser: JwtPayload,
-  ) {
-    return this.service.update(id, body, authUser.sub, authUser.name);
-  }
-
   @Post(':id/update')
   @RequirePermission('stakeholder-connects', 'update')
-  async updatePost(
+  @HttpCode(HttpStatus.OK)
+  async update(
     @Param('id') id: string,
     @Body() body: UpdateStakeholderConnectDto,
     @AuthUser() authUser: JwtPayload,
@@ -100,12 +89,14 @@ export class StakeholderConnectsController {
 
   @Post(':id/complete')
   @RequirePermission('stakeholder-connects', 'update')
+  @HttpCode(HttpStatus.OK)
   async complete(@Param('id') id: string, @AuthUser() authUser: JwtPayload) {
     return this.service.complete(id, authUser.sub, authUser.name);
   }
 
   @Post(':id/reschedule')
   @RequirePermission('stakeholder-connects', 'update')
+  @HttpCode(HttpStatus.OK)
   async reschedule(
     @Param('id') id: string,
     @Body() body: RescheduleConnectDto,
@@ -116,6 +107,7 @@ export class StakeholderConnectsController {
 
   @Post(':id/cancel')
   @RequirePermission('stakeholder-connects', 'update')
+  @HttpCode(HttpStatus.OK)
   async cancel(
     @Param('id') id: string,
     @Body() body: CancelConnectDto,
@@ -124,20 +116,16 @@ export class StakeholderConnectsController {
     return this.service.cancel(id, body, authUser.sub, authUser.name);
   }
 
-  @Delete(':id')
-  @RequirePermission('stakeholder-connects', 'delete')
-  async remove(@Param('id') id: string, @AuthUser() authUser: JwtPayload) {
-    return this.service.remove(id, authUser.sub, authUser.name);
-  }
-
   @Post(':id/delete')
   @RequirePermission('stakeholder-connects', 'delete')
-  async removePost(@Param('id') id: string, @AuthUser() authUser: JwtPayload) {
+  @HttpCode(HttpStatus.OK)
+  async remove(@Param('id') id: string, @AuthUser() authUser: JwtPayload) {
     return this.service.remove(id, authUser.sub, authUser.name);
   }
 
   @Post(':id/restore')
   @RequirePermission('stakeholder-connects', 'delete')
+  @HttpCode(HttpStatus.OK)
   async restore(@Param('id') id: string, @AuthUser() authUser: JwtPayload) {
     return this.service.restore(id, authUser.sub, authUser.name);
   }
@@ -154,8 +142,9 @@ export class StakeholderConnectsController {
     return this.service.addAttendee(id, stakeholderId, authUser.sub, authUser.name);
   }
 
-  @Delete(':id/attendees/:stakeholderId')
+  @Post(':id/attendees/:stakeholderId/delete')
   @RequirePermission('stakeholder-connects', 'update')
+  @HttpCode(HttpStatus.OK)
   async removeAttendee(
     @Param('id') id: string,
     @Param('stakeholderId') stakeholderId: string,
@@ -177,8 +166,9 @@ export class StakeholderConnectsController {
     return this.service.createDraft(id, body, authUser.sub);
   }
 
-  @Patch(':id/drafts/:draftId')
+  @Post(':id/drafts/:draftId/update')
   @RequirePermission('stakeholder-connects', 'update')
+  @HttpCode(HttpStatus.OK)
   async updateDraft(
     @Param('id') id: string,
     @Param('draftId') draftId: string,
@@ -188,30 +178,10 @@ export class StakeholderConnectsController {
     return this.service.updateDraft(id, draftId, body, authUser.sub);
   }
 
-  @Post(':id/drafts/:draftId/update')
-  @RequirePermission('stakeholder-connects', 'update')
-  async updateDraftPost(
-    @Param('id') id: string,
-    @Param('draftId') draftId: string,
-    @Body() body: UpdateDraftFollowUpDto,
-    @AuthUser() authUser: JwtPayload,
-  ) {
-    return this.service.updateDraft(id, draftId, body, authUser.sub);
-  }
-
-  @Delete(':id/drafts/:draftId')
-  @RequirePermission('stakeholder-connects', 'update')
-  async deleteDraft(
-    @Param('id') id: string,
-    @Param('draftId') draftId: string,
-    @AuthUser() authUser: JwtPayload,
-  ) {
-    return this.service.deleteDraft(id, draftId, authUser.sub);
-  }
-
   @Post(':id/drafts/:draftId/delete')
   @RequirePermission('stakeholder-connects', 'update')
-  async deleteDraftPost(
+  @HttpCode(HttpStatus.OK)
+  async deleteDraft(
     @Param('id') id: string,
     @Param('draftId') draftId: string,
     @AuthUser() authUser: JwtPayload,
@@ -261,16 +231,7 @@ export class StakeholderConnectsController {
 
   @Post(':id/action-items/:actionItemId/delete')
   @RequirePermission('stakeholder-connects', 'update')
-  async unlinkActionItemPost(
-    @Param('id') id: string,
-    @Param('actionItemId') actionItemId: string,
-    @AuthUser() authUser: JwtPayload,
-  ) {
-    return this.service.unlinkActionItem(id, actionItemId, authUser.sub, authUser.name);
-  }
-
-  @Delete(':id/action-items/:actionItemId')
-  @RequirePermission('stakeholder-connects', 'update')
+  @HttpCode(HttpStatus.OK)
   async unlinkActionItem(
     @Param('id') id: string,
     @Param('actionItemId') actionItemId: string,

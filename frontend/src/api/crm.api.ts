@@ -13,7 +13,7 @@ import type {
   AccountGrowthWorkspace, AccountGrowthClientPriority, AccountGrowthIndustryTrend,
   AccountGrowthBudgetPositioning, AccountGrowthWalletSharePlan, AccountGrowthSuccessParameter,
   AccountGrowthOutsourcingSplit, AccountGrowthSwot, AccountGrowthCompetitor, AccountGrowthActionPlan,
-  StakeholderConnect, StakeholderConnectAttendee, StakeholderConnectDraftFollowUp,
+  StakeholderConnect, StakeholderConnectDraftFollowUp,
   StakeholderConnectLinkedActionItem, StakeholderConnectRescheduleHistory, ConnectStatus,
 } from '@/types';
 
@@ -958,7 +958,7 @@ export const stakeholderConnectsApi = {
   create: (data: CreateConnectInput) => {
     const rawList = data.attendees || data.stakeholderIds || [];
     const attendees: string[] = rawList
-      .map((item: any) => (typeof item === 'string' ? item : item?.id || item?.stakeholderId))
+      .map((item: any) => (typeof item === 'string' ? item : item?.id))
       .filter((id): id is string => typeof id === 'string' && id.trim().length > 0);
 
     const payload = {
@@ -981,7 +981,7 @@ export const stakeholderConnectsApi = {
       momNotes: data.momNotes ?? data.mom,
       mom: data.mom ?? data.momNotes,
     };
-    return apiClient.patch<StakeholderConnect>(`/stakeholder-connects/${id}`, payload).then((r) => r.data);
+    return apiClient.post<StakeholderConnect>(`/stakeholder-connects/${id}/update`, payload).then((r) => r.data);
   },
   complete: (id: string) =>
     apiClient.post<StakeholderConnect>(`/stakeholder-connects/${id}/complete`).then((r) => r.data),
@@ -1004,9 +1004,9 @@ export const stakeholderConnectsApi = {
   restore: (id: string) =>
     apiClient.post<StakeholderConnect>(`/stakeholder-connects/${id}/restore`).then((r) => r.data),
   addAttendee: (id: string, stakeholderId: string) =>
-    apiClient.post<StakeholderConnectAttendee>(`/stakeholder-connects/${id}/attendees`, { stakeholderId }).then((r) => r.data),
+    apiClient.post<StakeholderConnect>(`/stakeholder-connects/${id}/attendees`, { stakeholderId }).then((r) => r.data),
   removeAttendee: (id: string, stakeholderId: string) =>
-    apiClient.post<{ success: boolean }>(`/stakeholder-connects/${id}/attendees/${stakeholderId}/delete`).then((r) => r.data),
+    apiClient.post<StakeholderConnect>(`/stakeholder-connects/${id}/attendees/${stakeholderId}/delete`).then((r) => r.data),
   createDraft: (id: string, data: CreateDraftInput) =>
     apiClient.post<StakeholderConnectDraftFollowUp>(`/stakeholder-connects/${id}/drafts`, data).then((r) => r.data),
   updateDraft: (id: string, draftId: string, data: Partial<CreateDraftInput>) =>

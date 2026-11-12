@@ -127,7 +127,7 @@ export const ConnectFormModal: React.FC<ConnectFormModalProps> = ({
       setMom(editConnect.mom || editConnect.momNotes || '');
       setRescheduleReason('');
       const existingIds = editConnect.attendees?.map((a: any) =>
-        typeof a === 'string' ? a : (a.stakeholderId || a.id)
+        typeof a === 'string' ? a : a.id
       ).filter((id): id is string => typeof id === 'string' && id.trim().length > 0) || [];
       setSelectedStakeholderIds(existingIds);
     } else {
@@ -164,7 +164,7 @@ export const ConnectFormModal: React.FC<ConnectFormModalProps> = ({
 
     setSelectedStakeholderIds((prev) => {
       const normalizedPrev = prev.map((item: any) =>
-        typeof item === 'string' ? item : item?.id || item?.stakeholderId
+        typeof item === 'string' ? item : item?.id
       ).filter((id): id is string => typeof id === 'string' && id.trim().length > 0);
 
       setError(null);
@@ -200,7 +200,7 @@ export const ConnectFormModal: React.FC<ConnectFormModalProps> = ({
     }
 
     const attendeeIds: string[] = selectedStakeholderIds
-      .map((item: any) => (typeof item === 'string' ? item : item?.id || item?.stakeholderId))
+      .map((item: any) => (typeof item === 'string' ? item : item?.id))
       .filter((id): id is string => typeof id === 'string' && id.trim().length > 0);
 
     const selectedStks = stakeholders.filter((s) => attendeeIds.includes(s.id));

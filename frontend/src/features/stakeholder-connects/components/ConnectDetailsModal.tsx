@@ -140,7 +140,7 @@ export const ConnectDetailsModal: React.FC<ConnectDetailsModalProps> = ({
   const availableAttendees = useMemo(() => {
     if (!connect) return [];
     const currentAttendeeIds = new Set(
-      connect.attendees?.map((a: any) => a.stakeholderId || a.id) || []
+      connect.attendees?.map((a) => a.id).filter(Boolean) || []
     );
     return stakeholders.filter(
       (s) =>
@@ -234,7 +234,7 @@ export const ConnectDetailsModal: React.FC<ConnectDetailsModalProps> = ({
   };
 
   const handleRemoveAttendee = async (stakeholderId: string) => {
-    if (!connect) return;
+    if (!connect || !stakeholderId) return;
     if ((connect.attendees?.length || 0) <= 1) {
       setError('Cannot remove attendee: A meeting must have at least one attendee.');
       return;
@@ -661,7 +661,7 @@ export const ConnectDetailsModal: React.FC<ConnectDetailsModalProps> = ({
                       <button
                         type="button"
                         title="Remove attendee"
-                        onClick={() => handleRemoveAttendee(att.stakeholderId)}
+                        onClick={() => handleRemoveAttendee(att.id)}
                         className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
                       >
                         <Trash2 className="w-3.5 h-3.5" />

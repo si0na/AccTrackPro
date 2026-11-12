@@ -1,5 +1,14 @@
+import 'reflect-metadata';
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
-import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  HttpStatus,
+  NotFoundException,
+  RequestMethod,
+} from '@nestjs/common';
+import { HTTP_CODE_METADATA, METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants';
 import { Reflector } from '@nestjs/core';
 import { StakeholderConnectsService } from '../stakeholder-connects.service';
 import { StakeholderConnectsController } from '../stakeholder-connects.controller';
@@ -866,7 +875,7 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
         ).rejects.toThrow(new BadRequestException('A meeting must retain at least one client attendee from the account.'));
       });
 
-      it('successfully removes attendee when meeting retains at least one client attendee', async () => {
+      it('successfully removes attendee using id while preserving other attendees and stakeholder records', async () => {
         jest.spyOn(service, 'findOne')
           .mockResolvedValueOnce({
             id: 'conn-1',
@@ -886,11 +895,91 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
 
         mockDb.query.mockResolvedValue({ rows: [] });
 
-        const result = await service.removeAttendee('conn-1', 'stk-1', 'user-1');
-        expect(result.attendees.length).toBe(1);
+        const result = await service.removeAttendee('conn-1', 'stk-1', 'user-1', 'Tester');
+        expect(result.attendees).toEqual([
+          { id: 'stk-2', name: 'Attendee 2', stakeholderType: 'CLIENT' },
+        ]);
         expect(mockDb.query).toHaveBeenCalledWith(
-          expect.stringContaining('DELETE FROM stakeholder_connect_attendees'),
+          expect.stringContaining('DELETE FROM stakeholder_connect_attendees WHERE connect_id = $1 AND stakeholder_id = $2'),
           ['conn-1', 'stk-1'],
+        );
+        const deleteStakeholderCalls = mockDb.query.mock.calls.filter((c: any) =>
+          String(c[0]).includes('DELETE FROM stakeholders'),
+        );
+        expect(deleteStakeholderCalls.length).toBe(0);
+      });
+
+      it('rejects removing attendee when stakeholderId is missing or literal undefined', async () => {
+        await expect(
+          service.removeAttendee('conn-1', '', 'user-1'),
+        ).rejects.toThrow(new BadRequestException('Valid attendee stakeholder ID is required.'));
+
+        await expect(
+          service.removeAttendee('conn-1', 'undefined', 'user-1'),
+        ).rejects.toThrow(new BadRequestException('Valid attendee stakeholder ID is required.'));
+
+        expect(mockDb.query).not.toHaveBeenCalled();
+      });
+
+      it('rejects removing attendee when stakeholderId is not associated with the meeting', async () => {
+        jest.spyOn(service, 'findOne').mockResolvedValue({
+          id: 'conn-1',
+          accountId: 'acc-1',
+          title: 'Group Meeting',
+          attendees: [
+            { id: 'stk-1', name: 'Attendee 1', stakeholderType: 'CLIENT' },
+            { id: 'stk-2', name: 'Attendee 2', stakeholderType: 'CLIENT' },
+          ],
+        });
+
+        await expect(
+          service.removeAttendee('conn-1', 'stk-nonexistent', 'user-1'),
+        ).rejects.toThrow(new NotFoundException('Attendee is not associated with this meeting.'));
+
+        const deleteCalls = mockDb.query.mock.calls.filter((c: any) =>
+          String(c[0]).includes('DELETE FROM stakeholder_connect_attendees'),
+        );
+        expect(deleteCalls.length).toBe(0);
+      });
+
+      it('successfully adds an eligible attendee to an existing meeting', async () => {
+        jest.spyOn(service, 'findOne')
+          .mockResolvedValueOnce({
+            id: 'conn-1',
+            accountId: 'acc-1',
+            title: 'Group Meeting',
+            attendees: [{ id: 'stk-1', name: 'Attendee 1', stakeholderType: 'CLIENT' }],
+          })
+          .mockResolvedValueOnce({
+            id: 'conn-1',
+            accountId: 'acc-1',
+            title: 'Group Meeting',
+            attendees: [
+              { id: 'stk-1', name: 'Attendee 1', stakeholderType: 'CLIENT' },
+              { id: 'stk-2', name: 'Attendee 2', stakeholderType: 'CLIENT' },
+            ],
+          });
+
+        mockDb.query.mockImplementation((sql: string) => {
+          if (sql.includes('FROM stakeholders WHERE id = $1')) {
+            return {
+              rows: [{
+                id: 'stk-2',
+                name: 'Attendee 2',
+                account_id: 'acc-1',
+                stakeholder_type: 'CLIENT',
+                is_deleted: false,
+              }],
+            };
+          }
+          return { rows: [] };
+        });
+
+        const result = await service.addAttendee('conn-1', 'stk-2', 'user-1', 'Tester');
+        expect(result.attendees.length).toBe(2);
+        expect(mockDb.query).toHaveBeenCalledWith(
+          expect.stringContaining('INSERT INTO stakeholder_connect_attendees'),
+          ['conn-1', 'stk-2'],
         );
       });
 
@@ -1153,6 +1242,117 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
 
         await expect(service.restore('conn-1', 'user-1')).rejects.toThrow(
           new BadRequestException('Cannot restore meeting because an attendee belongs to a different account.'),
+        );
+      });
+
+      it('successfully restores a soft-deleted meeting when parent account and attendees are valid', async () => {
+        mockDb.query.mockImplementation((sql: string) => {
+          if (sql.includes('FROM stakeholder_connects sc') && sql.includes('accounts a')) {
+            return {
+              rows: [{ id: 'conn-1', accountId: 'acc-1', title: 'Archived Meeting', accountDeleted: false }],
+            };
+          }
+          if (sql.includes('FROM accounts a WHERE a.id = $1')) {
+            return { rows: [{ id: 'acc-1' }] };
+          }
+          if (sql.includes('FROM stakeholder_connect_attendees sca')) {
+            return {
+              rows: [
+                {
+                  stakeholder_id: 'stk-1',
+                  is_deleted: false,
+                  account_id: 'acc-1',
+                  stakeholder_type: 'CLIENT',
+                },
+              ],
+            };
+          }
+          return { rows: [] };
+        });
+
+        jest.spyOn(service, 'findOne').mockResolvedValue({
+          id: 'conn-1',
+          accountId: 'acc-1',
+          title: 'Archived Meeting',
+          isDeleted: false,
+        });
+
+        const restored = await service.restore('conn-1', 'user-1', 'Tester');
+        expect(restored.isDeleted).toBe(false);
+        expect(mockDb.query).toHaveBeenCalledWith(
+          expect.stringContaining('SET is_deleted = FALSE'),
+          ['user-1', 'conn-1'],
+        );
+      });
+    });
+
+    // ─── Draft Follow-Up Update and Deletion ─────────────────────────────────
+    describe('Draft Follow-Up Update & Deletion', () => {
+      it('updates an unconverted draft follow-up', async () => {
+        jest.spyOn(service, 'findOne').mockResolvedValue({
+          id: 'conn-1',
+          accountId: 'acc-1',
+          title: 'Meeting 1',
+        });
+
+        mockDb.query.mockImplementation((sql: string) => {
+          if (sql.includes('SELECT * FROM stakeholder_connect_draft_follow_ups')) {
+            return {
+              rows: [{
+                id: 'draft-1',
+                connect_id: 'conn-1',
+                title: 'Old Draft',
+                description: 'Old Desc',
+                suggested_owner_id: null,
+                converted_at: null,
+              }],
+            };
+          }
+          if (sql.includes('UPDATE stakeholder_connect_draft_follow_ups')) {
+            return {
+              rows: [{
+                id: 'draft-1',
+                connect_id: 'conn-1',
+                title: 'Updated Draft',
+                description: 'Updated Desc',
+              }],
+            };
+          }
+          return { rows: [] };
+        });
+
+        const updated = await service.updateDraft(
+          'conn-1',
+          'draft-1',
+          { title: 'Updated Draft', description: 'Updated Desc' },
+          'user-1',
+        );
+        expect(updated.title).toBe('Updated Draft');
+        expect(mockDb.query).toHaveBeenCalledWith(
+          expect.stringContaining('UPDATE stakeholder_connect_draft_follow_ups'),
+          ['Updated Draft', 'Updated Desc', null, 'draft-1'],
+        );
+      });
+
+      it('deletes an unconverted draft follow-up', async () => {
+        jest.spyOn(service, 'findOne').mockResolvedValue({
+          id: 'conn-1',
+          accountId: 'acc-1',
+          title: 'Meeting 1',
+        });
+
+        mockDb.query.mockImplementation((sql: string) => {
+          if (sql.includes('SELECT id, converted_at FROM stakeholder_connect_draft_follow_ups')) {
+            return { rows: [{ id: 'draft-1', converted_at: null }] };
+          }
+          return { rows: [] };
+        });
+
+        const result = await service.deleteDraft('conn-1', 'draft-1', 'user-1');
+        expect(result).toEqual({ success: true });
+        expect(mockDb.query).toHaveBeenCalledWith(
+          expect.stringContaining('DELETE FROM stakeholder_connect_draft_follow_ups WHERE id = $1 AND connect_id = $2'),
+          ['draft-1', 'conn-1'],
         );
       });
     });
@@ -1549,7 +1749,7 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
     });
   });
 
-  // ─── 4. Controller Route Registration & Disambiguation ─────────────────────
+  // ─── 4. Controller Route Registration, HTTP Methods & Disambiguation ──────
   describe('StakeholderConnectsController Route Registration & Disambiguation', () => {
     let controller: StakeholderConnectsController;
     let mockService: any;
@@ -1559,8 +1759,57 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
         findAll: jest.fn<any>().mockResolvedValue([]),
         findAllDeactivated: jest.fn<any>().mockResolvedValue([{ id: 'deact-1', isDeleted: true }]),
         findOne: jest.fn<any>().mockImplementation((id: string) => Promise.resolve({ id, title: 'Sample Meeting' })),
+        create: jest.fn<any>().mockResolvedValue({ id: 'conn-new', title: 'New Meeting' }),
+        update: jest.fn<any>().mockImplementation((id: string, dto: any) => Promise.resolve({ id, ...dto })),
+        complete: jest.fn<any>().mockResolvedValue({ id: 'conn-1', status: 'Completed' }),
+        reschedule: jest.fn<any>().mockResolvedValue({ id: 'conn-1', status: 'Rescheduled' }),
+        cancel: jest.fn<any>().mockResolvedValue({ id: 'conn-1', status: 'Cancelled' }),
+        remove: jest.fn<any>().mockResolvedValue({ success: true }),
+        restore: jest.fn<any>().mockResolvedValue({ id: 'conn-1', isDeleted: false }),
+        addAttendee: jest.fn<any>().mockResolvedValue({ id: 'conn-1', attendees: [{ id: 'stk-1' }, { id: 'stk-2' }] }),
+        removeAttendee: jest.fn<any>().mockResolvedValue({ id: 'conn-1', attendees: [{ id: 'stk-2' }] }),
+        createDraft: jest.fn<any>().mockResolvedValue({ id: 'draft-1', title: 'Draft 1' }),
+        updateDraft: jest.fn<any>().mockResolvedValue({ id: 'draft-1', title: 'Draft Updated' }),
+        deleteDraft: jest.fn<any>().mockResolvedValue({ success: true }),
+        convertDraft: jest.fn<any>().mockResolvedValue({ draft: { id: 'draft-1' }, actionItem: { id: 'ai-1' } }),
+        linkActionItem: jest.fn<any>().mockResolvedValue({ id: 'conn-1', success: true }),
+        unlinkActionItem: jest.fn<any>().mockResolvedValue({ id: 'conn-1', success: true }),
       };
       controller = new StakeholderConnectsController(mockService);
+    });
+
+    it('standardizes all controller routes exclusively to GET and POST (no PATCH/PUT/DELETE)', () => {
+      const proto = StakeholderConnectsController.prototype;
+      const methodNames = Object.getOwnPropertyNames(proto).filter(
+        (name) => name !== 'constructor' && typeof (proto as any)[name] === 'function',
+      );
+
+      const registeredRoutes = methodNames.map((name) => {
+        const handler = (proto as any)[name];
+        const httpMethod: RequestMethod = Reflect.getMetadata(METHOD_METADATA, handler);
+        const path: string = Reflect.getMetadata(PATH_METADATA, handler);
+        const httpCode: number | undefined = Reflect.getMetadata(HTTP_CODE_METADATA, handler);
+        return { name, httpMethod, path, httpCode };
+      });
+
+      expect(registeredRoutes.length).toBe(19);
+      for (const route of registeredRoutes) {
+        expect([RequestMethod.GET, RequestMethod.POST]).toContain(route.httpMethod);
+      }
+
+      const routeMap = Object.fromEntries(registeredRoutes.map((r) => [r.name, r]));
+      expect(routeMap.update).toMatchObject({ httpMethod: RequestMethod.POST, path: ':id/update', httpCode: HttpStatus.OK });
+      expect(routeMap.complete).toMatchObject({ httpMethod: RequestMethod.POST, path: ':id/complete', httpCode: HttpStatus.OK });
+      expect(routeMap.reschedule).toMatchObject({ httpMethod: RequestMethod.POST, path: ':id/reschedule', httpCode: HttpStatus.OK });
+      expect(routeMap.cancel).toMatchObject({ httpMethod: RequestMethod.POST, path: ':id/cancel', httpCode: HttpStatus.OK });
+      expect(routeMap.remove).toMatchObject({ httpMethod: RequestMethod.POST, path: ':id/delete', httpCode: HttpStatus.OK });
+      expect(routeMap.restore).toMatchObject({ httpMethod: RequestMethod.POST, path: ':id/restore', httpCode: HttpStatus.OK });
+      expect(routeMap.addAttendee).toMatchObject({ httpMethod: RequestMethod.POST, path: ':id/attendees' });
+      expect(routeMap.removeAttendee).toMatchObject({ httpMethod: RequestMethod.POST, path: ':id/attendees/:stakeholderId/delete', httpCode: HttpStatus.OK });
+      expect(routeMap.createDraft).toMatchObject({ httpMethod: RequestMethod.POST, path: ':id/drafts', httpCode: HttpStatus.CREATED });
+      expect(routeMap.updateDraft).toMatchObject({ httpMethod: RequestMethod.POST, path: ':id/drafts/:draftId/update', httpCode: HttpStatus.OK });
+      expect(routeMap.deleteDraft).toMatchObject({ httpMethod: RequestMethod.POST, path: ':id/drafts/:draftId/delete', httpCode: HttpStatus.OK });
+      expect(routeMap.unlinkActionItem).toMatchObject({ httpMethod: RequestMethod.POST, path: ':id/action-items/:actionItemId/delete', httpCode: HttpStatus.OK });
     });
 
     it('routes GET deactivated to findAllDeactivated, not findOne', async () => {
@@ -1583,8 +1832,33 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
       expect(result.id).toBe(meetingId);
     });
 
+    it('routes POST :id/update for MoM-only update to update on service', async () => {
+      const authUser = { sub: 'user-1', name: 'Tester', email: 'test@example.com' } as any;
+      const payload = { mom: 'Updated MoM notes', momNotes: 'Updated MoM notes' };
+      const result = await controller.update('conn-1', payload, authUser);
+
+      expect(mockService.update).toHaveBeenCalledWith('conn-1', payload, 'user-1', 'Tester');
+      expect(result.momNotes).toBe('Updated MoM notes');
+    });
+
+    it('routes POST :id/update for full connect edit to update on service', async () => {
+      const authUser = { sub: 'user-1', name: 'Tester', email: 'test@example.com' } as any;
+      const payload = {
+        title: 'Q4 Executive Sync',
+        meetingDate: '2026-12-01',
+        meetingTime: '14:30:00',
+        ownerId: 'user-2',
+        momNotes: 'Agenda & outcomes',
+        mom: 'Agenda & outcomes',
+        attendees: ['stk-1', 'stk-2'],
+      };
+      const result = await controller.update('conn-1', payload, authUser);
+
+      expect(mockService.update).toHaveBeenCalledWith('conn-1', payload, 'user-1', 'Tester');
+      expect(result.title).toBe('Q4 Executive Sync');
+    });
+
     it('routes POST :id/complete to complete method on service', async () => {
-      mockService.complete = jest.fn<any>().mockResolvedValue({ id: 'conn-1', status: 'Completed' });
       const authUser = { sub: 'user-1', name: 'Tester', email: 'test@example.com' } as any;
       const result = await controller.complete('conn-1', authUser);
 
@@ -1592,8 +1866,40 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
       expect(result.status).toBe('Completed');
     });
 
+    it('routes POST :id/delete and POST :id/restore to remove and restore on service', async () => {
+      const authUser = { sub: 'user-1', name: 'Tester', email: 'test@example.com' } as any;
+      const delRes = await controller.remove('conn-1', authUser);
+      expect(mockService.remove).toHaveBeenCalledWith('conn-1', 'user-1', 'Tester');
+      expect(delRes).toEqual({ success: true });
+
+      const restoreRes = await controller.restore('conn-1', authUser);
+      expect(mockService.restore).toHaveBeenCalledWith('conn-1', 'user-1', 'Tester');
+      expect(restoreRes.isDeleted).toBe(false);
+    });
+
+    it('routes POST :id/attendees and POST :id/attendees/:stakeholderId/delete to attendee handlers on service', async () => {
+      const authUser = { sub: 'user-1', name: 'Tester', email: 'test@example.com' } as any;
+      const added = await controller.addAttendee('conn-1', 'stk-2', authUser);
+      expect(mockService.addAttendee).toHaveBeenCalledWith('conn-1', 'stk-2', 'user-1', 'Tester');
+      expect(added.attendees.length).toBe(2);
+
+      const removed = await controller.removeAttendee('conn-1', 'stk-1', authUser);
+      expect(mockService.removeAttendee).toHaveBeenCalledWith('conn-1', 'stk-1', 'user-1', 'Tester');
+      expect(removed.attendees).toEqual([{ id: 'stk-2' }]);
+    });
+
+    it('routes POST :id/drafts/:draftId/update and POST :id/drafts/:draftId/delete to draft handlers on service', async () => {
+      const authUser = { sub: 'user-1', name: 'Tester', email: 'test@example.com' } as any;
+      const updated = await controller.updateDraft('conn-1', 'draft-1', { title: 'Draft Updated' }, authUser);
+      expect(mockService.updateDraft).toHaveBeenCalledWith('conn-1', 'draft-1', { title: 'Draft Updated' }, 'user-1');
+      expect(updated.title).toBe('Draft Updated');
+
+      const deleted = await controller.deleteDraft('conn-1', 'draft-1', authUser);
+      expect(mockService.deleteDraft).toHaveBeenCalledWith('conn-1', 'draft-1', 'user-1');
+      expect(deleted).toEqual({ success: true });
+    });
+
     it('routes POST :id/action-items with body to linkActionItem on service', async () => {
-      mockService.linkActionItem = jest.fn<any>().mockResolvedValue({ id: 'conn-1', success: true });
       const authUser = { sub: 'user-1', name: 'Tester', email: 'test@example.com' } as any;
       const result = await controller.linkActionItemFromBody('conn-1', 'ai-123', authUser);
 
@@ -1609,7 +1915,6 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
     });
 
     it('routes POST :id/action-items/:actionItemId to linkActionItem on service', async () => {
-      mockService.linkActionItem = jest.fn<any>().mockResolvedValue({ id: 'conn-1', success: true });
       const authUser = { sub: 'user-1', name: 'Tester', email: 'test@example.com' } as any;
       const result = await controller.linkActionItem('conn-1', 'ai-123', authUser);
 
@@ -1618,16 +1923,6 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
     });
 
     it('routes POST :id/action-items/:actionItemId/delete to unlinkActionItem on service', async () => {
-      mockService.unlinkActionItem = jest.fn<any>().mockResolvedValue({ id: 'conn-1', success: true });
-      const authUser = { sub: 'user-1', name: 'Tester', email: 'test@example.com' } as any;
-      const result = await controller.unlinkActionItemPost('conn-1', 'ai-123', authUser);
-
-      expect(mockService.unlinkActionItem).toHaveBeenCalledWith('conn-1', 'ai-123', 'user-1', 'Tester');
-      expect(result.success).toBe(true);
-    });
-
-    it('routes DELETE :id/action-items/:actionItemId to unlinkActionItem on service', async () => {
-      mockService.unlinkActionItem = jest.fn<any>().mockResolvedValue({ id: 'conn-1', success: true });
       const authUser = { sub: 'user-1', name: 'Tester', email: 'test@example.com' } as any;
       const result = await controller.unlinkActionItem('conn-1', 'ai-123', authUser);
 

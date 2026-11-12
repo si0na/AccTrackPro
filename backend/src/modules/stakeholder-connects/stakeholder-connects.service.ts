@@ -1058,10 +1058,20 @@ export class StakeholderConnectsService {
   }
 
   async removeAttendee(connectId: string, stakeholderId: string, userId: string, userName?: string): Promise<any> {
+    if (!stakeholderId || !stakeholderId.trim() || stakeholderId === 'undefined') {
+      throw new BadRequestException('Valid attendee stakeholder ID is required.');
+    }
+
     const meeting = await this.findOne(connectId, userId);
     await this.assertAccountAccess(meeting.accountId, userId, 'write');
 
-    const remainingAttendees = (meeting.attendees || []).filter((a: any) => a.id !== stakeholderId);
+    const attendees = meeting.attendees || [];
+    const targetAttendee = attendees.find((a: any) => a.id === stakeholderId);
+    if (!targetAttendee) {
+      throw new NotFoundException('Attendee is not associated with this meeting.');
+    }
+
+    const remainingAttendees = attendees.filter((a: any) => a.id !== stakeholderId);
     if (remainingAttendees.length === 0) {
       throw new BadRequestException('A meeting must retain at least one attendee.');
     }
@@ -1073,8 +1083,6 @@ export class StakeholderConnectsService {
       throw new BadRequestException('A meeting must retain at least one client attendee from the account.');
     }
 
-    const stk = meeting.attendees.find((a: any) => a.id === stakeholderId);
-
     await this.db.query(
       `DELETE FROM stakeholder_connect_attendees WHERE connect_id = $1 AND stakeholder_id = $2`,
       [connectId, stakeholderId],
@@ -1082,7 +1090,7 @@ export class StakeholderConnectsService {
 
     await this.logActivity(
       this.db,
-      `Removed attendee ${stk?.name || stakeholderId} from meeting "${meeting.title}" [meetingId=${connectId}, stakeholderId=${stakeholderId}]`,
+      `Removed attendee ${targetAttendee.name || stakeholderId} from meeting "${meeting.title}" [meetingId=${connectId}, stakeholderId=${stakeholderId}]`,
       meeting.accountId,
       userId,
       userName,

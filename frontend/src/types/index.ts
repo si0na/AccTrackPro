@@ -1285,14 +1285,12 @@ export type ConnectStatus = 'Scheduled' | 'Completed' | 'Cancelled' | 'Reschedul
 
 export interface StakeholderConnectAttendee {
   id: string;
-  connectId: string;
-  stakeholderId: string;
-  createdAt: string;
   name?: string;
   email?: string;
   designation?: string;
   department?: string;
   stakeholderType?: string;
+  joinedAt?: string;
   level?: string;
 }
 
