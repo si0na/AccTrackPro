@@ -12,6 +12,19 @@ const apiClient = axios.create({
   withCredentials: true, // Always send cookies (HttpOnly auth cookies)
 });
 
+// Allow the browser/Axios to auto-generate the multipart/form-data boundary
+// whenever FormData is sent instead of inheriting the JSON default header.
+apiClient.interceptors.request.use((config) => {
+  if (typeof FormData !== 'undefined' && config.data instanceof FormData && config.headers) {
+    if (typeof (config.headers as any).delete === 'function') {
+      (config.headers as any).delete('Content-Type');
+    } else {
+      delete (config.headers as any)['Content-Type'];
+    }
+  }
+  return config;
+});
+
 // ── Silent token refresh ───────────────────────────────────────────────────────
 // When the 15-minute access token expires, automatically exchange the
 // refresh token for a new pair before retrying the original request.

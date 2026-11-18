@@ -1342,6 +1342,19 @@ export interface StakeholderConnectRescheduleHistory {
   createdAt: string;
 }
 
+export interface StakeholderConnectMomAttachment {
+  id: string;
+  connectId: string;
+  originalFilename: string;
+  mimeType: string;
+  fileExtension: string;
+  fileSize: number;
+  uploadedBy?: string;
+  uploadedByName?: string;
+  uploadedAt: string;
+  createdAt: string;
+}
+
 export interface StakeholderConnect {
   id: string;
   accountId: string;
@@ -1364,6 +1377,7 @@ export interface StakeholderConnect {
   linkedActionItems?: StakeholderConnectLinkedActionItem[];
   actionItems?: StakeholderConnectLinkedActionItem[];
   rescheduleHistory?: StakeholderConnectRescheduleHistory[];
+  momAttachments?: StakeholderConnectMomAttachment[];
 }
 
 

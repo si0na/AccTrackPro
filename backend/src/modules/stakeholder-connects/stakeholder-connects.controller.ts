@@ -5,13 +5,25 @@ import {
   Body,
   Param,
   Query,
+  Res,
+  StreamableFile,
+  UploadedFiles,
+  UseInterceptors,
   HttpCode,
   HttpStatus,
   BadRequestException,
   UsePipes,
   ValidationPipe,
 } from '@nestjs/common';
+import { FilesInterceptor } from '@nestjs/platform-express';
+import { createReadStream } from 'fs';
+import type { Response } from 'express';
 import { StakeholderConnectsService } from './stakeholder-connects.service';
+import {
+  buildSafeContentDisposition,
+  getMomMaxFileSizeBytes,
+  getMomMaxFilesPerUpload,
+} from './mom-attachment.util';
 import { CreateStakeholderConnectDto } from './dto/create-stakeholder-connect.dto';
 import { UpdateStakeholderConnectDto } from './dto/update-stakeholder-connect.dto';
 import { RescheduleConnectDto } from './dto/reschedule-connect.dto';
@@ -249,5 +261,69 @@ export class StakeholderConnectsController {
     @AuthUser() authUser: JwtPayload,
   ) {
     return this.service.unlinkActionItem(id, actionItemId, authUser.sub, authUser.name);
+  }
+
+  // ─── MoM Document Attachments ─────────────────────────────────────────────
+
+  @Get(':id/mom-attachments')
+  @RequirePermission('stakeholder-connects', 'view')
+  async listMomAttachments(
+    @Param('id') id: string,
+    @AuthUser() authUser: JwtPayload,
+  ) {
+    return this.service.listMomAttachments(id, authUser.sub);
+  }
+
+  @Post(':id/mom-attachments')
+  @RequirePermission('stakeholder-connects', 'update')
+  @HttpCode(HttpStatus.CREATED)
+  @UseInterceptors(
+    FilesInterceptor('files', getMomMaxFilesPerUpload(), {
+      limits: {
+        fileSize: getMomMaxFileSizeBytes(),
+        files: getMomMaxFilesPerUpload(),
+      },
+    }),
+  )
+  async uploadMomAttachments(
+    @Param('id') id: string,
+    @UploadedFiles() files: any[],
+    @AuthUser() authUser: JwtPayload,
+  ) {
+    return this.service.uploadMomAttachments(id, files, authUser.sub, authUser.name);
+  }
+
+  @Get(':id/mom-attachments/:attachmentId/download')
+  @RequirePermission('stakeholder-connects', 'view')
+  async downloadMomAttachment(
+    @Param('id') id: string,
+    @Param('attachmentId') attachmentId: string,
+    @Res({ passthrough: true }) res: Response,
+    @AuthUser() authUser: JwtPayload,
+  ): Promise<StreamableFile> {
+    const { attachment, filePath } = await this.service.getMomAttachmentDownload(
+      id,
+      attachmentId,
+      authUser.sub,
+    );
+    res.set({
+      'Content-Type': attachment.mimeType,
+      'Content-Disposition': buildSafeContentDisposition(attachment.originalFilename),
+      'Content-Length': String(attachment.fileSize),
+      'X-Content-Type-Options': 'nosniff',
+      'Cache-Control': 'private, no-store',
+    });
+    return new StreamableFile(createReadStream(filePath));
+  }
+
+  @Post(':id/mom-attachments/:attachmentId/delete')
+  @RequirePermission('stakeholder-connects', 'update')
+  @HttpCode(HttpStatus.OK)
+  async deleteMomAttachment(
+    @Param('id') id: string,
+    @Param('attachmentId') attachmentId: string,
+    @AuthUser() authUser: JwtPayload,
+  ) {
+    return this.service.deleteMomAttachment(id, attachmentId, authUser.sub, authUser.name);
   }
 }

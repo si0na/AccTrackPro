@@ -9,9 +9,11 @@ import type {
   Stakeholder,
   ActionItem,
   StakeholderConnectDraftFollowUp,
+  StakeholderConnectMomAttachment,
   PriorityLevel,
 } from '@/types';
 import { stakeholderConnectsApi } from '@/api/crm.api';
+import { MomAttachmentsSection } from './MomAttachmentsSection';
 import {
   Modal,
   Button,
@@ -95,6 +97,13 @@ export const ConnectDetailsModal: React.FC<ConnectDetailsModalProps> = ({
   const [momText, setMomText] = useState('');
   const [isSavingMom, setIsSavingMom] = useState(false);
 
+  // MoM attachments state
+  const [pendingMomFiles, setPendingMomFiles] = useState<File[]>([]);
+  const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [busyAttachmentId, setBusyAttachmentId] = useState<string | null>(null);
+
   // New Draft inline state
   const [showAddDraft, setShowAddDraft] = useState(false);
   const [draftTitle, setDraftTitle] = useState('');
@@ -132,12 +141,14 @@ export const ConnectDetailsModal: React.FC<ConnectDetailsModalProps> = ({
         setIsEditingMom(false);
         setShowAddDraft(false);
         setEditingDraftId(null);
+        setPendingMomFiles([]);
       }
     } catch (err: any) {
       setConnect(null);
       setIsEditingMom(false);
       setShowAddDraft(false);
       setEditingDraftId(null);
+      setPendingMomFiles([]);
       setError(err?.response?.data?.message || err?.message || 'Failed to load connect details.');
     } finally {
       setLoading(false);
@@ -150,9 +161,15 @@ export const ConnectDetailsModal: React.FC<ConnectDetailsModalProps> = ({
       setIsEditingMom(false);
       setShowAddDraft(false);
       setEditingDraftId(null);
+      setPendingMomFiles([]);
+      setAttachmentError(null);
+      setUploadProgress(null);
     } else {
       setConnect(null);
       setEditingDraftId(null);
+      setPendingMomFiles([]);
+      setAttachmentError(null);
+      setUploadProgress(null);
     }
   }, [isOpen, connectId]);
 
@@ -196,10 +213,79 @@ export const ConnectDetailsModal: React.FC<ConnectDetailsModalProps> = ({
     );
   }, [connect, actionItems]);
 
+  const refreshMomAttachments = async (id: string) => {
+    const attachments = await stakeholderConnectsApi.listMomAttachments(id);
+    setConnect((prev) => (prev && prev.id === id ? { ...prev, momAttachments: attachments } : prev));
+  };
+
+  const handleUploadMomAttachments = async (): Promise<boolean> => {
+    if (!connect || pendingMomFiles.length === 0) return true;
+    setIsUploadingAttachments(true);
+    setUploadProgress(0);
+    setAttachmentError(null);
+    try {
+      await stakeholderConnectsApi.uploadMomAttachments(
+        connect.id,
+        pendingMomFiles,
+        setUploadProgress,
+      );
+      setPendingMomFiles([]);
+      await refreshMomAttachments(connect.id);
+      showToast({ kind: 'success', message: 'MoM attachments uploaded successfully.' });
+      onConnectChanged();
+      return true;
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || err?.message || 'Failed to upload MoM attachments.';
+      setAttachmentError(Array.isArray(msg) ? msg.join('. ') : String(msg));
+      return false;
+    } finally {
+      setIsUploadingAttachments(false);
+      setUploadProgress(null);
+    }
+  };
+
+  const handleDownloadMomAttachment = async (att: StakeholderConnectMomAttachment) => {
+    if (!connect || busyAttachmentId) return;
+    setBusyAttachmentId(att.id);
+    setAttachmentError(null);
+    try {
+      const blob = await stakeholderConnectsApi.downloadMomAttachment(connect.id, att.id);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = att.originalFilename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err: any) {
+      setAttachmentError(err?.response?.data?.message || `Could not download "${att.originalFilename}".`);
+    } finally {
+      setBusyAttachmentId(null);
+    }
+  };
+
+  const handleDeleteMomAttachment = async (att: StakeholderConnectMomAttachment) => {
+    if (!connect || busyAttachmentId) return;
+    setBusyAttachmentId(att.id);
+    setAttachmentError(null);
+    try {
+      await stakeholderConnectsApi.deleteMomAttachment(connect.id, att.id);
+      await refreshMomAttachments(connect.id);
+      showToast({ kind: 'success', message: `Removed attachment "${att.originalFilename}".` });
+      onConnectChanged();
+    } catch (err: any) {
+      setAttachmentError(err?.response?.data?.message || `Could not remove "${att.originalFilename}".`);
+    } finally {
+      setBusyAttachmentId(null);
+    }
+  };
+
   const handleSaveMom = async () => {
     if (!connect) return;
     setIsSavingMom(true);
     setError(null);
+    setAttachmentError(null);
     try {
       const updated = await stakeholderConnectsApi.update(connect.id, {
         mom: momText.trim() || undefined,
@@ -207,9 +293,19 @@ export const ConnectDetailsModal: React.FC<ConnectDetailsModalProps> = ({
       });
       setConnect(updated);
       setMomText(updated.mom || updated.momNotes || '');
+
+      if (pendingMomFiles.length > 0) {
+        const uploadedOk = await handleUploadMomAttachments();
+        if (!uploadedOk) {
+          // MoM text was saved; keep queued files and editor intact so user can fix/retry attachment upload
+          onConnectChanged();
+          return;
+        }
+      } else {
+        showToast({ kind: 'success', message: 'Minutes of Meeting saved successfully.' });
+        onConnectChanged();
+      }
       setIsEditingMom(false);
-      showToast({ kind: 'success', message: 'Minutes of Meeting saved successfully.' });
-      onConnectChanged();
     } catch (err: any) {
       setError(err?.response?.data?.message || err?.message || 'Failed to save Minutes of Meeting.');
     } finally {
@@ -657,6 +753,27 @@ export const ConnectDetailsModal: React.FC<ConnectDetailsModalProps> = ({
                   )}
                 </div>
               )}
+
+              {/* MoM Document Attachments (integrated into MoM section; independent of MoM text edits) */}
+              <MomAttachmentsSection
+                existingAttachments={connect?.momAttachments || []}
+                pendingFiles={pendingMomFiles}
+                onPendingFilesChange={setPendingMomFiles}
+                canMutate={canEditMom}
+                isUploading={isUploadingAttachments}
+                uploadProgress={uploadProgress}
+                error={attachmentError}
+                onDismissError={() => setAttachmentError(null)}
+                onUploadPending={handleUploadMomAttachments}
+                onDownload={handleDownloadMomAttachment}
+                onDelete={handleDeleteMomAttachment}
+                busyAttachmentId={busyAttachmentId}
+                hint={
+                  connect?.status === 'Cancelled'
+                    ? 'This meeting is Cancelled. Existing MoM attachments remain available to view and download.'
+                    : undefined
+                }
+              />
             </div>
           )}
 

@@ -1853,7 +1853,7 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
         return { name, httpMethod, path, httpCode };
       });
 
-      expect(registeredRoutes.length).toBe(19);
+      expect(registeredRoutes.length).toBe(23);
       for (const route of registeredRoutes) {
         expect([RequestMethod.GET, RequestMethod.POST]).toContain(route.httpMethod);
       }

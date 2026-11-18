@@ -14,7 +14,8 @@ import type {
   AccountGrowthBudgetPositioning, AccountGrowthWalletSharePlan, AccountGrowthSuccessParameter,
   AccountGrowthOutsourcingSplit, AccountGrowthSwot, AccountGrowthCompetitor, AccountGrowthActionPlan,
   StakeholderConnect, StakeholderConnectDraftFollowUp,
-  StakeholderConnectLinkedActionItem, StakeholderConnectRescheduleHistory, ConnectStatus,
+  StakeholderConnectLinkedActionItem, StakeholderConnectRescheduleHistory,
+  StakeholderConnectMomAttachment, ConnectStatus,
 } from '@/types';
 
 /** Attributes an administrator can pre-assign / edit on a user or whitelist row. */
@@ -1026,6 +1027,37 @@ export const stakeholderConnectsApi = {
     apiClient.post<StakeholderConnectLinkedActionItem>(`/stakeholder-connects/${id}/action-items`, { actionItemId }).then((r) => r.data),
   unlinkActionItem: (id: string, actionItemId: string) =>
     apiClient.post<{ success: boolean }>(`/stakeholder-connects/${id}/action-items/${actionItemId}/delete`).then((r) => r.data),
+  listMomAttachments: (id: string) =>
+    apiClient.get<StakeholderConnectMomAttachment[]>(`/stakeholder-connects/${id}/mom-attachments`).then((r) => r.data),
+  uploadMomAttachments: (
+    id: string,
+    files: File[],
+    onUploadProgress?: (percent: number) => void,
+  ) => {
+    const fd = new FormData();
+    files.forEach((file) => fd.append('files', file));
+    return apiClient
+      .post<StakeholderConnectMomAttachment[]>(`/stakeholder-connects/${id}/mom-attachments`, fd, {
+        onUploadProgress: onUploadProgress
+          ? (evt) => {
+              if (evt.total && evt.total > 0) {
+                onUploadProgress(Math.min(100, Math.round((evt.loaded * 100) / evt.total)));
+              }
+            }
+          : undefined,
+      })
+      .then((r) => r.data);
+  },
+  downloadMomAttachment: (id: string, attachmentId: string) =>
+    apiClient
+      .get<Blob>(`/stakeholder-connects/${id}/mom-attachments/${attachmentId}/download`, {
+        responseType: 'blob',
+      })
+      .then((r) => r.data),
+  deleteMomAttachment: (id: string, attachmentId: string) =>
+    apiClient
+      .post<{ success: boolean }>(`/stakeholder-connects/${id}/mom-attachments/${attachmentId}/delete`)
+      .then((r) => r.data),
 };
 
 

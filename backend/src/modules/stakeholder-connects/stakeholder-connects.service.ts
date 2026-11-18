@@ -5,7 +5,10 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  InternalServerErrorException,
 } from '@nestjs/common';
+import * as fs from 'fs';
+import { randomUUID } from 'crypto';
 import { PoolClient } from 'pg';
 import { DatabaseService, TransactionContext } from '../../database/database.service';
 import { AccessScopeService } from '../rbac/access-scope.service';
@@ -25,6 +28,13 @@ import {
   normalizeDateToIso,
   normalizeTimeToStandard,
 } from './date-time.util';
+import {
+  MOM_ATTACHMENTS_SUBDIR,
+  UploadedMomFileInput,
+  getMomAttachmentsBaseDir,
+  resolveMomAttachmentDiskPath,
+  validateMomAttachmentBatch,
+} from './mom-attachment.util';
 
 export interface StakeholderConnectFilter {
   userId: string;
@@ -561,6 +571,26 @@ export class StakeholderConnectsService {
       [id],
     );
 
+    // MoM document attachments (metadata only — never expose storage_path or stored_filename)
+    const { rows: momAttachments } = await this.db.query(
+      `SELECT
+         a.id,
+         a.connect_id AS "connectId",
+         a.original_filename AS "originalFilename",
+         a.mime_type AS "mimeType",
+         a.file_extension AS "fileExtension",
+         a.file_size::BIGINT AS "fileSize",
+         a.uploaded_by AS "uploadedBy",
+         COALESCE(NULLIF(u.name, ''), u.email) AS "uploadedByName",
+         a.uploaded_at AS "uploadedAt",
+         a.created_at AS "createdAt"
+       FROM stakeholder_connect_mom_attachments a
+       LEFT JOIN users u ON u.id = a.uploaded_by
+       WHERE a.connect_id = $1
+       ORDER BY a.uploaded_at DESC, a.created_at DESC`,
+      [id],
+    );
+
     const clientStakeholderNames = attendees
       .filter((a: any) => a.stakeholderType === 'CLIENT')
       .map((a: any) => a.name)
@@ -578,6 +608,10 @@ export class StakeholderConnectsService {
       actionItems,
       linkedActionItems: actionItems,
       rescheduleHistory: history,
+      momAttachments: momAttachments.map((att: any) => ({
+        ...att,
+        fileSize: Number(att.fileSize),
+      })),
     };
   }
 
@@ -1507,5 +1541,280 @@ export class StakeholderConnectsService {
       success: true,
       actionItemId,
     };
+  }
+
+  // ─── MoM Document Attachments ─────────────────────────────────────────────
+
+  private async loadConnectForAttachmentOp(
+    connectId: string,
+    userId: string,
+    accessMode: 'read' | 'write',
+    lifecycleAction: 'view' | 'edit_mom',
+  ): Promise<{ id: string; accountId: string; title: string; status: string; isDeleted: boolean }> {
+    const { rows } = await this.db.query(
+      `SELECT id, account_id AS "accountId", title, status, is_deleted AS "isDeleted"
+       FROM stakeholder_connects
+       WHERE id = $1`,
+      [connectId],
+    );
+    if (!rows.length) {
+      throw new NotFoundException('Stakeholder Connect not found.');
+    }
+    const meeting = rows[0];
+    // Always check account-level access BEFORE lifecycle/deleted state to prevent state oracles
+    await this.assertAccountAccess(meeting.accountId, userId, accessMode);
+    this.assertLifecycleAllowed(meeting, lifecycleAction);
+    return meeting;
+  }
+
+  private async cleanupDiskFiles(paths: string[]): Promise<void> {
+    await Promise.allSettled(
+      paths.map(async (filePath) => {
+        try {
+          await fs.promises.unlink(filePath);
+        } catch (err: any) {
+          if (err?.code !== 'ENOENT') {
+            this.logger.warn(`Failed to clean up attachment file [path=${filePath}]: ${err?.message || err}`);
+          }
+        }
+      }),
+    );
+  }
+
+  async listMomAttachments(connectId: string, userId: string): Promise<any[]> {
+    await this.loadConnectForAttachmentOp(connectId, userId, 'read', 'view');
+
+    const { rows } = await this.db.query(
+      `SELECT
+         a.id,
+         a.connect_id AS "connectId",
+         a.original_filename AS "originalFilename",
+         a.mime_type AS "mimeType",
+         a.file_extension AS "fileExtension",
+         a.file_size::BIGINT AS "fileSize",
+         a.uploaded_by AS "uploadedBy",
+         COALESCE(NULLIF(u.name, ''), u.email) AS "uploadedByName",
+         a.uploaded_at AS "uploadedAt",
+         a.created_at AS "createdAt"
+       FROM stakeholder_connect_mom_attachments a
+       LEFT JOIN users u ON u.id = a.uploaded_by
+       WHERE a.connect_id = $1
+       ORDER BY a.uploaded_at DESC, a.created_at DESC`,
+      [connectId],
+    );
+
+    return rows.map((row: any) => ({
+      ...row,
+      fileSize: Number(row.fileSize),
+    }));
+  }
+
+  async uploadMomAttachments(
+    connectId: string,
+    files: UploadedMomFileInput[],
+    userId: string,
+    userName?: string,
+  ): Promise<any[]> {
+    const meeting = await this.loadConnectForAttachmentOp(connectId, userId, 'write', 'edit_mom');
+    const validatedFiles = validateMomAttachmentBatch(files);
+
+    const momDir = getMomAttachmentsBaseDir();
+    const prepared = validatedFiles.map((file) => {
+      const storedFilename = `${randomUUID()}${file.fileExtension}`;
+      const storagePath = `${MOM_ATTACHMENTS_SUBDIR}/${storedFilename}`;
+      const diskPath = resolveMomAttachmentDiskPath(storagePath);
+      return { ...file, storedFilename, storagePath, diskPath };
+    });
+
+    const writtenDiskPaths: string[] = [];
+
+    try {
+      await fs.promises.mkdir(momDir, { recursive: true });
+      for (const item of prepared) {
+        await fs.promises.writeFile(item.diskPath, item.buffer);
+        writtenDiskPaths.push(item.diskPath);
+      }
+    } catch (err: any) {
+      await this.cleanupDiskFiles(writtenDiskPaths);
+      this.logger.error(
+        `Failed to write MoM attachment(s) to disk [connectId=${connectId}]`,
+        err instanceof Error ? err.stack : String(err),
+      );
+      throw new InternalServerErrorException('Failed to store attachment files. Please try again.');
+    }
+
+    try {
+      const inserted = await this.db.withTransaction(async (client) => {
+        const insertedIds: string[] = [];
+        for (const item of prepared) {
+          const { rows } = await client.query(
+            `INSERT INTO stakeholder_connect_mom_attachments
+               (id, connect_id, original_filename, stored_filename, storage_path, mime_type, file_extension, file_size, uploaded_by)
+             VALUES
+               (gen_random_uuid()::TEXT, $1, $2, $3, $4, $5, $6, $7, $8)
+             RETURNING id`,
+            [
+              connectId,
+              item.originalFilename,
+              item.storedFilename,
+              item.storagePath,
+              item.mimeType,
+              item.fileExtension,
+              item.fileSize,
+              userId,
+            ],
+          );
+          insertedIds.push(rows[0].id);
+        }
+
+        await this.logActivity(
+          client,
+          `Uploaded ${prepared.length} MoM attachment(s) to meeting "${meeting.title}" [meetingId=${connectId}]`,
+          meeting.accountId,
+          userId,
+          userName,
+        );
+
+        const { rows: metadataRows } = await client.query(
+          `SELECT
+             a.id,
+             a.connect_id AS "connectId",
+             a.original_filename AS "originalFilename",
+             a.mime_type AS "mimeType",
+             a.file_extension AS "fileExtension",
+             a.file_size::BIGINT AS "fileSize",
+             a.uploaded_by AS "uploadedBy",
+             COALESCE(NULLIF(u.name, ''), u.email) AS "uploadedByName",
+             a.uploaded_at AS "uploadedAt",
+             a.created_at AS "createdAt"
+           FROM stakeholder_connect_mom_attachments a
+           LEFT JOIN users u ON u.id = a.uploaded_by
+           WHERE a.id = ANY($1)
+           ORDER BY a.uploaded_at DESC, a.created_at DESC`,
+          [insertedIds],
+        );
+
+        return metadataRows.map((row: any) => ({
+          ...row,
+          fileSize: Number(row.fileSize),
+        }));
+      });
+
+      return inserted;
+    } catch (err) {
+      await this.cleanupDiskFiles(writtenDiskPaths);
+      throw err;
+    }
+  }
+
+  async getMomAttachmentDownload(
+    connectId: string,
+    attachmentId: string,
+    userId: string,
+  ): Promise<{
+    attachment: {
+      id: string;
+      connectId: string;
+      originalFilename: string;
+      mimeType: string;
+      fileSize: number;
+    };
+    filePath: string;
+  }> {
+    await this.loadConnectForAttachmentOp(connectId, userId, 'read', 'view');
+
+    const { rows } = await this.db.query(
+      `SELECT
+         id,
+         connect_id AS "connectId",
+         original_filename AS "originalFilename",
+         storage_path AS "storagePath",
+         mime_type AS "mimeType",
+         file_size::BIGINT AS "fileSize"
+       FROM stakeholder_connect_mom_attachments
+       WHERE id = $1 AND connect_id = $2`,
+      [attachmentId, connectId],
+    );
+    if (!rows.length) {
+      throw new NotFoundException('Attachment not found for this meeting.');
+    }
+
+    const row = rows[0];
+    const filePath = resolveMomAttachmentDiskPath(row.storagePath);
+
+    try {
+      await fs.promises.access(filePath, fs.constants.R_OK);
+    } catch {
+      throw new NotFoundException('Attachment file data not found on server.');
+    }
+
+    return {
+      attachment: {
+        id: row.id,
+        connectId: row.connectId,
+        originalFilename: row.originalFilename,
+        mimeType: row.mimeType,
+        fileSize: Number(row.fileSize),
+      },
+      filePath,
+    };
+  }
+
+  async deleteMomAttachment(
+    connectId: string,
+    attachmentId: string,
+    userId: string,
+    userName?: string,
+  ): Promise<{ success: boolean }> {
+    const meeting = await this.loadConnectForAttachmentOp(connectId, userId, 'write', 'edit_mom');
+
+    let diskPathToDelete: string | null = null;
+    let deferredToAfterCommit = false;
+
+    await this.db.withTransaction(async (client, tx?: TransactionContext) => {
+      const { rows } = await client.query(
+        `SELECT
+           id,
+           original_filename AS "originalFilename",
+           storage_path AS "storagePath"
+         FROM stakeholder_connect_mom_attachments
+         WHERE id = $1 AND connect_id = $2
+         FOR UPDATE`,
+        [attachmentId, connectId],
+      );
+      if (!rows.length) {
+        throw new NotFoundException('Attachment not found for this meeting.');
+      }
+
+      const att = rows[0];
+      diskPathToDelete = resolveMomAttachmentDiskPath(att.storagePath);
+
+      await client.query(
+        `DELETE FROM stakeholder_connect_mom_attachments WHERE id = $1 AND connect_id = $2`,
+        [attachmentId, connectId],
+      );
+
+      await this.logActivity(
+        client,
+        `Removed MoM attachment "${att.originalFilename}" from meeting "${meeting.title}" [meetingId=${connectId}, attachmentId=${attachmentId}]`,
+        meeting.accountId,
+        userId,
+        userName,
+      );
+
+      if (tx?.afterCommit && diskPathToDelete) {
+        const targetPath = diskPathToDelete;
+        deferredToAfterCommit = true;
+        tx.afterCommit(async () => {
+          await this.cleanupDiskFiles([targetPath]);
+        });
+      }
+    });
+
+    if (!deferredToAfterCommit && diskPathToDelete) {
+      await this.cleanupDiskFiles([diskPathToDelete]);
+    }
+
+    return { success: true };
   }
 }
