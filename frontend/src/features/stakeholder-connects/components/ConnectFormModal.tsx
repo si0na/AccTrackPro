@@ -176,8 +176,16 @@ export const ConnectFormModal: React.FC<ConnectFormModalProps> = ({
     });
   };
 
+  const isNonEditableStatus = Boolean(
+    isEditing && editConnect && (editConnect.status === 'Completed' || editConnect.status === 'Cancelled'),
+  );
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isNonEditableStatus) {
+      setError(`Meeting details cannot be edited when the connect is ${editConnect?.status}.`);
+      return;
+    }
     if (!accountId) {
       setError('Account selection is required.');
       return;
@@ -292,6 +300,11 @@ export const ConnectFormModal: React.FC<ConnectFormModalProps> = ({
       maxWidth="max-w-2xl"
     >
       <div className="space-y-4">
+        {isNonEditableStatus && (
+          <ErrorBanner
+            message={`Meeting details cannot be edited when the connect is ${editConnect?.status}.`}
+          />
+        )}
         {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
 
         <FormGrid columns={2}>

@@ -1,5 +1,24 @@
-import { IsString, IsNotEmpty, IsOptional, MaxLength } from 'class-validator';
-import { EmptyToUndefined } from '../../../common/utils/dto-transforms.util';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsIn,
+  MaxLength,
+  Matches,
+  ValidateIf,
+} from 'class-validator';
+import { Transform } from 'class-transformer';
+import { EmptyToUndefined, ISO_DATE_RE, ISO_DATE_MSG } from '../../../common/utils/dto-transforms.util';
+
+export const DRAFT_PRIORITIES = ['High', 'Medium', 'Low'] as const;
+export type DraftPriority = (typeof DRAFT_PRIORITIES)[number];
+
+/** Normalizes cleared update strings ('') to null so optional fields can be unset explicitly. */
+function EmptyToNull(): PropertyDecorator {
+  return Transform(({ value }) =>
+    typeof value === 'string' && value.trim() === '' ? null : value,
+  );
+}
 
 export class CreateDraftFollowUpDto {
   @IsString()
@@ -16,22 +35,43 @@ export class CreateDraftFollowUpDto {
   @IsOptional()
   @IsString()
   suggestedOwnerId?: string;
+
+  @EmptyToUndefined()
+  @IsOptional()
+  @Matches(ISO_DATE_RE, { message: `suggestedDueDate ${ISO_DATE_MSG}` })
+  suggestedDueDate?: string;
+
+  @EmptyToUndefined()
+  @IsOptional()
+  @IsIn(DRAFT_PRIORITIES)
+  suggestedPriority?: DraftPriority;
 }
 
 export class UpdateDraftFollowUpDto {
   @EmptyToUndefined()
   @IsOptional()
   @IsString()
+  @IsNotEmpty({ message: 'Title cannot be empty' })
   @MaxLength(255)
   title?: string;
 
-  @EmptyToUndefined()
-  @IsOptional()
+  @EmptyToNull()
+  @ValidateIf((_o, v) => v !== null && v !== undefined)
   @IsString()
-  description?: string;
+  description?: string | null;
 
-  @EmptyToUndefined()
-  @IsOptional()
+  @EmptyToNull()
+  @ValidateIf((_o, v) => v !== null && v !== undefined)
   @IsString()
-  suggestedOwnerId?: string;
+  suggestedOwnerId?: string | null;
+
+  @EmptyToNull()
+  @ValidateIf((_o, v) => v !== null && v !== undefined)
+  @Matches(ISO_DATE_RE, { message: `suggestedDueDate ${ISO_DATE_MSG}` })
+  suggestedDueDate?: string | null;
+
+  @EmptyToNull()
+  @ValidateIf((_o, v) => v !== null && v !== undefined)
+  @IsIn(DRAFT_PRIORITIES)
+  suggestedPriority?: DraftPriority | null;
 }

@@ -15,6 +15,10 @@ types.setTypeParser(types.builtins.INT8, (v) => parseInt(v, 10));
 // to the previous day whenever the server's local timezone is ahead of UTC.
 types.setTypeParser(types.builtins.DATE, (v) => v);
 
+export interface TransactionContext {
+  afterCommit: (fn: () => void | Promise<void>) => void;
+}
+
 @Injectable()
 export class DatabaseService implements OnModuleDestroy {
   private readonly logger = new Logger(DatabaseService.name);
@@ -55,19 +59,45 @@ export class DatabaseService implements OnModuleDestroy {
     return this.pool.query(text, params);
   }
 
-  async withTransaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
+  async withTransaction<T>(
+    fn: (client: PoolClient, tx: TransactionContext) => Promise<T>,
+  ): Promise<T> {
     const client = await this.pool.connect();
+    const afterCommitHooks: Array<() => void | Promise<void>> = [];
+    const tx: TransactionContext = {
+      afterCommit: (hook) => {
+        afterCommitHooks.push(hook);
+      },
+    };
+
+    let result: T;
+    let committed = false;
     try {
       await client.query('BEGIN');
-      const result = await fn(client);
+      result = await fn(client, tx);
       await client.query('COMMIT');
-      return result;
+      committed = true;
     } catch (err) {
       await client.query('ROLLBACK');
       throw err;
     } finally {
       client.release();
     }
+
+    if (committed && afterCommitHooks.length > 0) {
+      for (const hook of afterCommitHooks) {
+        try {
+          await hook();
+        } catch (err) {
+          this.logger.error(
+            'Post-commit hook failed',
+            err instanceof Error ? err.stack : String(err),
+          );
+        }
+      }
+    }
+
+    return result;
   }
 
   /**

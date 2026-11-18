@@ -932,20 +932,27 @@ export interface CancelConnectInput {
 export interface CreateDraftInput {
   title: string;
   description?: string;
-  suggestedAssigneeStakeholderId?: string;
+  suggestedOwnerId?: string;
   suggestedDueDate?: string;
   suggestedPriority?: 'High' | 'Medium' | 'Low';
 }
 
+export interface UpdateDraftInput {
+  title?: string;
+  description?: string | null;
+  suggestedOwnerId?: string | null;
+  suggestedDueDate?: string | null;
+  suggestedPriority?: 'High' | 'Medium' | 'Low' | null;
+}
+
 export interface ConvertDraftInput {
   title?: string;
-  description?: string;
+  notes?: string;
   ownerStakeholderId: string;
   priority: 'High' | 'Medium' | 'Low';
   openDate: string;
   dueDate: string;
-  type?: string;
-  comments?: string;
+  actionItemType?: string;
 }
 
 export const stakeholderConnectsApi = {
@@ -1009,7 +1016,7 @@ export const stakeholderConnectsApi = {
     apiClient.post<StakeholderConnect>(`/stakeholder-connects/${id}/attendees/${stakeholderId}/delete`).then((r) => r.data),
   createDraft: (id: string, data: CreateDraftInput) =>
     apiClient.post<StakeholderConnectDraftFollowUp>(`/stakeholder-connects/${id}/drafts`, data).then((r) => r.data),
-  updateDraft: (id: string, draftId: string, data: Partial<CreateDraftInput>) =>
+  updateDraft: (id: string, draftId: string, data: UpdateDraftInput) =>
     apiClient.post<StakeholderConnectDraftFollowUp>(`/stakeholder-connects/${id}/drafts/${draftId}/update`, data).then((r) => r.data),
   deleteDraft: (id: string, draftId: string) =>
     apiClient.post<{ success: boolean }>(`/stakeholder-connects/${id}/drafts/${draftId}/delete`).then((r) => r.data),

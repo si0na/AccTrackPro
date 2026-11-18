@@ -3,7 +3,7 @@ import {
 } from 'class-validator';
 import { EmptyToUndefined, ISO_DATE_RE, ISO_DATE_MSG } from '../../../common/utils/dto-transforms.util';
 
-const ACTION_ITEM_TYPES = [
+export const ACTION_ITEM_TYPES = [
   'Account mining',
   'Approval',
   'Board Meeting',
@@ -24,7 +24,16 @@ const ACTION_ITEM_TYPES = [
   'Risk Mitigation',
   'Stakeholder connect',
   'Task',
-];
+] as const;
+
+/**
+ * Subset of ACTION_ITEM_TYPES currently permitted by PostgreSQL constraint
+ * chk_action_item_type (Migration 105). Used by draft conversion validation so
+ * accepted API values cannot violate the DB CHECK constraint.
+ */
+export const DB_SUPPORTED_ACTION_ITEM_TYPES = ACTION_ITEM_TYPES.filter(
+  (t) => t !== 'CEO Connect',
+);
 
 export class CreateActionItemDto {
   @IsString() @IsNotEmpty({ message: 'Title is required' }) @MaxLength(200)

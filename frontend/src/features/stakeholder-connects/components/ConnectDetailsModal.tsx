@@ -104,6 +104,15 @@ export const ConnectDetailsModal: React.FC<ConnectDetailsModalProps> = ({
   const [draftPriority, setDraftPriority] = useState<PriorityLevel>('Medium');
   const [isSavingDraft, setIsSavingDraft] = useState(false);
 
+  // Edit Draft inline state
+  const [editingDraftId, setEditingDraftId] = useState<string | null>(null);
+  const [editDraftTitle, setEditDraftTitle] = useState('');
+  const [editDraftDescription, setEditDraftDescription] = useState('');
+  const [editDraftOwnerId, setEditDraftOwnerId] = useState('');
+  const [editDraftDueDate, setEditDraftDueDate] = useState('');
+  const [editDraftPriority, setEditDraftPriority] = useState<'' | PriorityLevel>('');
+  const [isUpdatingDraft, setIsUpdatingDraft] = useState(false);
+
   // Add Attendee inline state
   const [selectedNewAttendeeId, setSelectedNewAttendeeId] = useState('');
   const [isAddingAttendee, setIsAddingAttendee] = useState(false);
@@ -119,7 +128,16 @@ export const ConnectDetailsModal: React.FC<ConnectDetailsModalProps> = ({
       const data = await stakeholderConnectsApi.getById(id);
       setConnect(data);
       setMomText(data.mom || data.momNotes || '');
+      if (data.status === 'Cancelled') {
+        setIsEditingMom(false);
+        setShowAddDraft(false);
+        setEditingDraftId(null);
+      }
     } catch (err: any) {
+      setConnect(null);
+      setIsEditingMom(false);
+      setShowAddDraft(false);
+      setEditingDraftId(null);
       setError(err?.response?.data?.message || err?.message || 'Failed to load connect details.');
     } finally {
       setLoading(false);
@@ -131,10 +149,28 @@ export const ConnectDetailsModal: React.FC<ConnectDetailsModalProps> = ({
       fetchConnect(connectId);
       setIsEditingMom(false);
       setShowAddDraft(false);
+      setEditingDraftId(null);
     } else {
       setConnect(null);
+      setEditingDraftId(null);
     }
   }, [isOpen, connectId]);
+
+  const isActiveLifecycle = connect?.status === 'Scheduled' || connect?.status === 'Rescheduled';
+  const isCompletedLifecycle = connect?.status === 'Completed';
+  const canEditMeetingDetails = Boolean(canEdit && isActiveLifecycle);
+  const canEditMom = Boolean(canEdit && (isActiveLifecycle || isCompletedLifecycle));
+  const canManageAttendees = Boolean(canEdit && isActiveLifecycle);
+  const canManageDrafts = Boolean(canEdit && (isActiveLifecycle || isCompletedLifecycle));
+  const canConvertDraft = Boolean(canEdit && (isActiveLifecycle || isCompletedLifecycle));
+  const canManageActionItems = Boolean(canEdit && isActiveLifecycle);
+
+  const eligibleDraftStakeholders = useMemo(() => {
+    if (!connect) return [];
+    return stakeholders.filter(
+      (s) => s.accountId === connect.accountId || (s.stakeholderType === 'SERVICE_PROVIDER' && !s.accountId),
+    );
+  }, [connect, stakeholders]);
 
   // Account stakeholders available for attendee addition
   const availableAttendees = useMemo(() => {
@@ -259,7 +295,7 @@ export const ConnectDetailsModal: React.FC<ConnectDetailsModalProps> = ({
       await stakeholderConnectsApi.createDraft(connect.id, {
         title: draftTitle.trim(),
         description: draftDescription.trim() || undefined,
-        suggestedAssigneeStakeholderId: draftAssigneeId || undefined,
+        suggestedOwnerId: draftAssigneeId || undefined,
         suggestedDueDate: draftDueDate || undefined,
         suggestedPriority: draftPriority,
       });
@@ -276,6 +312,41 @@ export const ConnectDetailsModal: React.FC<ConnectDetailsModalProps> = ({
       setError(err?.response?.data?.message || err?.message || 'Failed to create draft follow-up.');
     } finally {
       setIsSavingDraft(false);
+    }
+  };
+
+  const startEditingDraft = (draft: StakeholderConnectDraftFollowUp) => {
+    setShowAddDraft(false);
+    setEditingDraftId(draft.id);
+    setEditDraftTitle(draft.title || '');
+    setEditDraftDescription(draft.description || '');
+    setEditDraftOwnerId(draft.suggestedOwnerId || '');
+    setEditDraftDueDate(draft.suggestedDueDate || '');
+    setEditDraftPriority(draft.suggestedPriority || '');
+    setError(null);
+  };
+
+  const handleUpdateDraft = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!connect || !editingDraftId || !editDraftTitle.trim()) return;
+    setIsUpdatingDraft(true);
+    setError(null);
+    try {
+      await stakeholderConnectsApi.updateDraft(connect.id, editingDraftId, {
+        title: editDraftTitle.trim(),
+        description: editDraftDescription.trim() ? editDraftDescription.trim() : null,
+        suggestedOwnerId: editDraftOwnerId || null,
+        suggestedDueDate: editDraftDueDate || null,
+        suggestedPriority: editDraftPriority || null,
+      });
+      setEditingDraftId(null);
+      await fetchConnect(connect.id);
+      showToast({ kind: 'success', message: 'Draft follow-up updated successfully.' });
+      onConnectChanged();
+    } catch (err: any) {
+      setError(err?.response?.data?.message || err?.message || 'Failed to update draft follow-up.');
+    } finally {
+      setIsUpdatingDraft(false);
     }
   };
 
@@ -369,7 +440,7 @@ export const ConnectDetailsModal: React.FC<ConnectDetailsModalProps> = ({
                 {connect.status === 'Completed' && (
                   <span className="text-xs px-3 py-1.5 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg font-medium flex items-center gap-1.5">
                     <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                    <span>Completed (View Only)</span>
+                    <span>Completed (Details Locked)</span>
                   </span>
                 )}
 
@@ -380,7 +451,7 @@ export const ConnectDetailsModal: React.FC<ConnectDetailsModalProps> = ({
                   </span>
                 )}
 
-                {canEdit && (connect.status === 'Scheduled' || connect.status === 'Rescheduled') && (
+                {canEditMeetingDetails && (
                   <>
                     <Button
                       variant="secondary"
@@ -511,7 +582,7 @@ export const ConnectDetailsModal: React.FC<ConnectDetailsModalProps> = ({
                     Discussion notes, key decisions, client feedback, and agreed objectives.
                   </p>
                 </div>
-                {!isEditingMom && canEdit && connect?.status !== 'Cancelled' && (
+                {!isEditingMom && canEditMom && (
                   <Button
                     variant="secondary"
                     size="sm"
@@ -527,7 +598,7 @@ export const ConnectDetailsModal: React.FC<ConnectDetailsModalProps> = ({
                 )}
               </div>
 
-              {isEditingMom ? (
+              {isEditingMom && canEditMom ? (
                 <div className="space-y-3 bg-slate-50/70 p-4 rounded-xl border border-slate-200">
                   <div>
                     <label className="block text-xs font-bold text-slate-700 mb-1.5">
@@ -581,7 +652,7 @@ export const ConnectDetailsModal: React.FC<ConnectDetailsModalProps> = ({
                     connect.mom || connect.momNotes
                   ) : (
                     <span className="text-slate-400 italic">
-                      No Minutes of Meeting recorded yet. Click &quot;Edit MoM&quot; to add notes.
+                      No Minutes of Meeting recorded yet.{canEditMom ? ' Click "Edit MoM" to add notes.' : ''}
                     </span>
                   )}
                 </div>
@@ -600,7 +671,7 @@ export const ConnectDetailsModal: React.FC<ConnectDetailsModalProps> = ({
                   </p>
                 </div>
 
-                {canEdit && availableAttendees.length > 0 && (
+                {canManageAttendees && availableAttendees.length > 0 && (
                   <div className="flex items-center gap-2">
                     <select
                       className="text-xs border border-slate-300 rounded-lg px-2.5 py-1.5 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
@@ -657,7 +728,7 @@ export const ConnectDetailsModal: React.FC<ConnectDetailsModalProps> = ({
                       )}
                     </div>
 
-                    {canEdit && (connect.attendees?.length || 0) > 1 && (
+                    {canManageAttendees && (connect.attendees?.length || 0) > 1 && (
                       <button
                         type="button"
                         title="Remove attendee"
@@ -683,11 +754,14 @@ export const ConnectDetailsModal: React.FC<ConnectDetailsModalProps> = ({
                     Potential tasks and action points identified during the meeting. Convert them atomically into formal Action Items when ready.
                   </p>
                 </div>
-                {canEdit && !showAddDraft && (
+                {canManageDrafts && !showAddDraft && (
                   <Button
                     variant="primary"
                     size="sm"
-                    onClick={() => setShowAddDraft(true)}
+                    onClick={() => {
+                      setEditingDraftId(null);
+                      setShowAddDraft(true);
+                    }}
                     className="gap-1.5"
                   >
                     <Plus className="w-3.5 h-3.5" />
@@ -697,7 +771,7 @@ export const ConnectDetailsModal: React.FC<ConnectDetailsModalProps> = ({
               </div>
 
               {/* Add Draft Form */}
-              {showAddDraft && (
+              {canManageDrafts && showAddDraft && (
                 <form
                   onSubmit={handleCreateDraft}
                   className="bg-slate-50/90 border border-slate-200 rounded-xl p-4 space-y-3"
@@ -740,13 +814,11 @@ export const ConnectDetailsModal: React.FC<ConnectDetailsModalProps> = ({
                       onChange={(e) => setDraftAssigneeId(e.target.value)}
                     >
                       <option value="">Suggested Stakeholder…</option>
-                      {stakeholders
-                        .filter((s) => s.accountId === connect?.accountId)
-                        .map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {s.name} ({s.stakeholderType})
-                          </option>
-                        ))}
+                      {eligibleDraftStakeholders.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.name} ({s.stakeholderType})
+                        </option>
+                      ))}
                     </select>
 
                     <input
@@ -786,6 +858,7 @@ export const ConnectDetailsModal: React.FC<ConnectDetailsModalProps> = ({
                 <div className="space-y-2.5">
                   {connect.draftFollowUps.map((draft) => {
                     const isConverted = !!draft.convertedAt;
+                    const isEditingThisDraft = editingDraftId === draft.id && !isConverted && canManageDrafts;
                     return (
                       <div
                         key={draft.id}
@@ -795,70 +868,172 @@ export const ConnectDetailsModal: React.FC<ConnectDetailsModalProps> = ({
                             : 'bg-white border-slate-200 shadow-xs'
                         }`}
                       >
-                        <div className="flex flex-wrap items-start justify-between gap-3">
-                          <div className="space-y-1 flex-1">
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-bold text-slate-800">{draft.title}</span>
-                              {isConverted ? (
-                                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
-                                  <CheckCircle2 className="w-3 h-3" /> Converted to Action Item
-                                </span>
-                              ) : (
-                                <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
-                                  Draft Follow-up
-                                </span>
-                              )}
-                              {draft.suggestedPriority && (
-                                <StatusBadge
-                                  value={draft.suggestedPriority}
-                                  colorMap={PRIORITY_COLORS}
-                                />
-                              )}
+                        {isEditingThisDraft ? (
+                          <form onSubmit={handleUpdateDraft} className="space-y-3">
+                            <div className="flex items-center justify-between border-b border-slate-200 pb-2">
+                              <span className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                                <Pencil className="w-3.5 h-3.5 text-blue-600" /> Edit Draft Follow-up
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setEditingDraftId(null)}
+                                className="text-slate-400 hover:text-slate-600 text-xs"
+                              >
+                                Cancel
+                              </button>
                             </div>
 
-                            {draft.description && (
-                              <p className="text-xs text-slate-600">{draft.description}</p>
-                            )}
+                            <div className="space-y-2">
+                              <input
+                                type="text"
+                                required
+                                className="w-full text-xs border border-slate-300 rounded-lg p-2.5 bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                                placeholder="Follow-up title (required)…"
+                                value={editDraftTitle}
+                                onChange={(e) => setEditDraftTitle(e.target.value)}
+                              />
+                              <textarea
+                                rows={2}
+                                className="w-full text-xs border border-slate-300 rounded-lg p-2.5 bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500/20 resize-none"
+                                placeholder="Optional details or context…"
+                                value={editDraftDescription}
+                                onChange={(e) => setEditDraftDescription(e.target.value)}
+                              />
+                            </div>
 
-                            <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-400 pt-0.5">
-                              {draft.suggestedAssigneeName && (
-                                <span>Suggested: <strong className="text-slate-600">{draft.suggestedAssigneeName}</strong></span>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                              <select
+                                className="text-xs border border-slate-300 rounded-lg p-2 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                                value={editDraftOwnerId}
+                                onChange={(e) => setEditDraftOwnerId(e.target.value)}
+                              >
+                                <option value="">Suggested Stakeholder…</option>
+                                {eligibleDraftStakeholders.map((s) => (
+                                  <option key={s.id} value={s.id}>
+                                    {s.name} ({s.stakeholderType})
+                                  </option>
+                                ))}
+                              </select>
+
+                              <input
+                                type="date"
+                                className="text-xs border border-slate-300 rounded-lg p-2 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                                value={editDraftDueDate}
+                                onChange={(e) => setEditDraftDueDate(e.target.value)}
+                              />
+
+                              <select
+                                className="text-xs border border-slate-300 rounded-lg p-2 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                                value={editDraftPriority}
+                                onChange={(e) => setEditDraftPriority(e.target.value as '' | PriorityLevel)}
+                              >
+                                <option value="">No Priority</option>
+                                <option value="High">High Priority</option>
+                                <option value="Medium">Medium Priority</option>
+                                <option value="Low">Low Priority</option>
+                              </select>
+                            </div>
+
+                            <div className="flex justify-end gap-2 pt-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                type="button"
+                                onClick={() => setEditingDraftId(null)}
+                                disabled={isUpdatingDraft}
+                              >
+                                Cancel
+                              </Button>
+                              <Button
+                                variant="primary"
+                                size="sm"
+                                disabled={isUpdatingDraft || !editDraftTitle.trim()}
+                                type="submit"
+                              >
+                                {isUpdatingDraft ? 'Saving…' : 'Save Changes'}
+                              </Button>
+                            </div>
+                          </form>
+                        ) : (
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div className="space-y-1 flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-bold text-slate-800">{draft.title}</span>
+                                {isConverted ? (
+                                  <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">
+                                    <CheckCircle2 className="w-3 h-3" /> Converted to Action Item
+                                  </span>
+                                ) : (
+                                  <span className="text-[10px] font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
+                                    Draft Follow-up
+                                  </span>
+                                )}
+                                {draft.suggestedPriority && (
+                                  <StatusBadge
+                                    value={draft.suggestedPriority}
+                                    colorMap={PRIORITY_COLORS}
+                                  />
+                                )}
+                              </div>
+
+                              {draft.description && (
+                                <p className="text-xs text-slate-600">{draft.description}</p>
                               )}
-                              {draft.suggestedDueDate && (
-                                <span>Target: <strong className="text-slate-600">{draft.suggestedDueDate}</strong></span>
-                              )}
-                              {isConverted && draft.convertedAt && (
-                                <span className="text-emerald-700">
-                                  Converted on {new Date(draft.convertedAt).toLocaleDateString()}
-                                </span>
+
+                              <div className="flex flex-wrap items-center gap-3 text-[11px] text-slate-400 pt-0.5">
+                                {draft.suggestedOwnerName && (
+                                  <span>Suggested: <strong className="text-slate-600">{draft.suggestedOwnerName}</strong></span>
+                                )}
+                                {draft.suggestedDueDate && (
+                                  <span>Target: <strong className="text-slate-600">{draft.suggestedDueDate}</strong></span>
+                                )}
+                                {isConverted && draft.convertedAt && (
+                                  <span className="text-emerald-700">
+                                    Converted on {new Date(draft.convertedAt).toLocaleDateString()}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                              {!isConverted && (canConvertDraft || canManageDrafts) && (
+                                <>
+                                  {canConvertDraft && (
+                                    <Button
+                                      variant="primary"
+                                      size="sm"
+                                      onClick={() => setConvertTargetDraft(draft)}
+                                      className="gap-1 bg-emerald-600 hover:bg-emerald-700 text-white"
+                                    >
+                                      <ArrowRight className="w-3.5 h-3.5" />
+                                      <span>Convert</span>
+                                    </Button>
+                                  )}
+                                  {canManageDrafts && (
+                                    <>
+                                      <button
+                                        type="button"
+                                        title="Edit draft"
+                                        onClick={() => startEditingDraft(draft)}
+                                        className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 transition-colors cursor-pointer"
+                                      >
+                                        <Pencil className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        title="Delete draft"
+                                        onClick={() => handleDeleteDraft(draft.id)}
+                                        className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </>
+                                  )}
+                                </>
                               )}
                             </div>
                           </div>
-
-                          <div className="flex items-center gap-2 shrink-0">
-                            {!isConverted && canEdit && (
-                              <>
-                                <Button
-                                  variant="primary"
-                                  size="sm"
-                                  onClick={() => setConvertTargetDraft(draft)}
-                                  className="gap-1 bg-emerald-600 hover:bg-emerald-700 text-white"
-                                >
-                                  <ArrowRight className="w-3.5 h-3.5" />
-                                  <span>Convert</span>
-                                </Button>
-                                <button
-                                  type="button"
-                                  title="Delete draft"
-                                  onClick={() => handleDeleteDraft(draft.id)}
-                                  className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
-                                >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        </div>
+                        )}
                       </div>
                     );
                   })}
@@ -883,7 +1058,7 @@ export const ConnectDetailsModal: React.FC<ConnectDetailsModalProps> = ({
                   </p>
                 </div>
 
-                {canEdit && (
+                {canManageActionItems && (
                   <div className="flex flex-col sm:flex-row sm:items-center gap-2">
                     <label htmlFor="link-existing-action-item" className="text-xs font-semibold text-slate-700 whitespace-nowrap">
                       Link an existing Action Item:
@@ -963,7 +1138,7 @@ export const ConnectDetailsModal: React.FC<ConnectDetailsModalProps> = ({
                         </div>
                       </div>
 
-                      {canEdit && (
+                      {canManageActionItems && (
                         <Button
                           variant="ghost"
                           size="sm"
@@ -981,7 +1156,11 @@ export const ConnectDetailsModal: React.FC<ConnectDetailsModalProps> = ({
               ) : (
                 <EmptyState
                   title="No Action Items linked"
-                  hint="Link existing Action Items from this account or convert draft follow-ups above."
+                  hint={
+                    canManageActionItems
+                      ? 'Link existing Action Items from this account or convert draft follow-ups above.'
+                      : 'No Action Items are currently linked to this meeting.'
+                  }
                 />
               )}
             </div>
@@ -1090,7 +1269,7 @@ export const ConnectDetailsModal: React.FC<ConnectDetailsModalProps> = ({
           onClose={() => setConvertTargetDraft(null)}
           connect={connect}
           draft={convertTargetDraft}
-          accountStakeholders={stakeholders.filter((s) => s.accountId === connect.accountId)}
+          accountStakeholders={eligibleDraftStakeholders}
           onSuccess={async () => {
             await fetchConnect(connect.id);
             onConnectChanged();
@@ -1118,7 +1297,7 @@ export const ConnectDetailsModal: React.FC<ConnectDetailsModalProps> = ({
                 </p>
                 <div className="text-[11px] text-slate-500 bg-slate-50 border border-slate-200 rounded-lg p-2 mt-2">
                   <p>• Meeting Date: <span className="font-medium text-slate-700">{connect.meetingDate} at {connect.meetingTime?.slice(0, 5)}</span></p>
-                  <p className="mt-0.5">• Completed meetings are read-only and cannot be rescheduled or cancelled.</p>
+                  <p className="mt-0.5">• Completed meetings lock meeting details, attendees, and Action Item links while keeping MoM and draft follow-ups editable.</p>
                 </div>
               </div>
             </div>

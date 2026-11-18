@@ -8,6 +8,8 @@ import {
   HttpCode,
   HttpStatus,
   BadRequestException,
+  UsePipes,
+  ValidationPipe,
 } from '@nestjs/common';
 import { StakeholderConnectsService } from './stakeholder-connects.service';
 import { CreateStakeholderConnectDto } from './dto/create-stakeholder-connect.dto';
@@ -22,6 +24,12 @@ import { parsePagination } from '../../common/utils/pagination.util';
 
 @Controller('stakeholder-connects')
 export class StakeholderConnectsController {
+  private static readonly strictDtoPipe = new ValidationPipe({
+    whitelist: true,
+    transform: true,
+    forbidNonWhitelisted: true,
+  });
+
   constructor(private readonly service: StakeholderConnectsService) {}
 
   @Get()
@@ -157,6 +165,7 @@ export class StakeholderConnectsController {
 
   @Post(':id/drafts')
   @RequirePermission('stakeholder-connects', 'update')
+  @UsePipes(StakeholderConnectsController.strictDtoPipe)
   @HttpCode(HttpStatus.CREATED)
   async createDraft(
     @Param('id') id: string,
@@ -168,6 +177,7 @@ export class StakeholderConnectsController {
 
   @Post(':id/drafts/:draftId/update')
   @RequirePermission('stakeholder-connects', 'update')
+  @UsePipes(StakeholderConnectsController.strictDtoPipe)
   @HttpCode(HttpStatus.OK)
   async updateDraft(
     @Param('id') id: string,
@@ -195,6 +205,7 @@ export class StakeholderConnectsController {
     { module: 'stakeholder-connects', permission: 'update' },
     { module: 'action-items', permission: 'create' },
   )
+  @UsePipes(StakeholderConnectsController.strictDtoPipe)
   async convertDraft(
     @Param('id') id: string,
     @Param('draftId') draftId: string,

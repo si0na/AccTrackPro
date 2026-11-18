@@ -1299,8 +1299,8 @@ export interface StakeholderConnectDraftFollowUp {
   connectId: string;
   title: string;
   description?: string;
-  suggestedAssigneeStakeholderId?: string;
-  suggestedAssigneeName?: string;
+  suggestedOwnerId?: string;
+  suggestedOwnerName?: string;
   suggestedDueDate?: string;
   suggestedPriority?: 'High' | 'Medium' | 'Low';
   convertedActionItemId?: string;
