@@ -899,8 +899,8 @@ export interface UpdateConnectInput {
   meetingTime?: string;
   ownerId?: string;
   status?: ConnectStatus;
-  momNotes?: string;
-  mom?: string;
+  momNotes?: string | null;
+  mom?: string | null;
   cancellationReason?: string;
   rescheduleReason?: string;
   attendees?: string[];
@@ -983,11 +983,12 @@ export const stakeholderConnectsApi = {
     return apiClient.post<StakeholderConnect>('/stakeholder-connects', payload).then((r) => r.data);
   },
   update: (id: string, data: UpdateConnectInput) => {
+    const hasMom = data.momNotes !== undefined || data.mom !== undefined;
+    const normalizedMom = data.momNotes !== undefined ? data.momNotes : data.mom;
     const payload = {
       ...data,
       meetingDate: data.meetingDate ? normalizeDateString(data.meetingDate) : undefined,
-      momNotes: data.momNotes ?? data.mom,
-      mom: data.mom ?? data.momNotes,
+      ...(hasMom ? { momNotes: normalizedMom, mom: normalizedMom } : {}),
     };
     return apiClient.post<StakeholderConnect>(`/stakeholder-connects/${id}/update`, payload).then((r) => r.data);
   },

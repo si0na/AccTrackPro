@@ -235,12 +235,29 @@ export class StakeholderConnectsService {
     return rows[0] ?? null;
   }
 
+  /**
+   * Soft-deleted / deactivated Stakeholder Connects are restricted to users with
+   * elevated delete/restore permission (`stakeholder-connects:delete`).
+   */
+  private async assertCanViewDeleted(userId: string): Promise<void> {
+    const canAccessDeleted = await this.permissions.can(userId, 'stakeholder-connects', 'delete');
+    if (!canAccessDeleted) {
+      throw new ForbiddenException(
+        'You do not have permission to view deactivated stakeholder connects.',
+      );
+    }
+  }
+
   // ─── Query / Read Paths ───────────────────────────────────────────────────
 
   async findAll(
     params: StakeholderConnectFilter,
     pg: Pagination | null = null,
   ): Promise<any[] | Paginated<any>> {
+    if (params.includeDeleted) {
+      await this.assertCanViewDeleted(params.userId);
+    }
+
     const ctx = await this.access.getContext(params.userId);
     const scope = this.access.buildChildVisibility('sc', ctx, 1, 'stakeholder-connects');
 
@@ -369,6 +386,8 @@ export class StakeholderConnectsService {
     params: { userId: string; accountId?: string },
     pg: Pagination | null = null,
   ): Promise<any[] | Paginated<any>> {
+    await this.assertCanViewDeleted(params.userId);
+
     const ctx = await this.access.getContext(params.userId);
     const scope = this.access.buildChildVisibility('sc', ctx, 1, 'stakeholder-connects');
 
@@ -871,7 +890,12 @@ export class StakeholderConnectsService {
         ownerId = data.ownerId;
       }
       const rawMom = data.momNotes !== undefined ? data.momNotes : data.mom;
-      const momNotes = rawMom !== undefined ? rawMom : existing.momNotes;
+      const momNotes =
+        rawMom === undefined
+          ? existing.momNotes
+          : rawMom === null || rawMom.trim() === ''
+            ? null
+            : rawMom.trim();
       const cancellationReason = data.cancellationReason !== undefined ? data.cancellationReason : existing.cancellationReason;
 
       await client.query(
@@ -1095,7 +1119,7 @@ export class StakeholderConnectsService {
 
   async restore(id: string, userId: string, userName?: string): Promise<any> {
     const { rows } = await this.db.query(
-      `SELECT sc.id, sc.account_id AS "accountId", sc.title, a.is_deleted AS "accountDeleted"
+      `SELECT sc.id, sc.account_id AS "accountId", sc.title, sc.is_deleted AS "isDeleted", a.is_deleted AS "accountDeleted"
        FROM stakeholder_connects sc
        JOIN accounts a ON a.id = sc.account_id
        WHERE sc.id = $1`,
@@ -1105,6 +1129,10 @@ export class StakeholderConnectsService {
     const meeting = rows[0];
 
     await this.assertAccountAccess(meeting.accountId, userId, 'write');
+
+    if (!meeting.isDeleted) {
+      throw new BadRequestException('Cannot restore meeting because it is already active.');
+    }
 
     if (meeting.accountDeleted) {
       throw new BadRequestException('Cannot restore meeting because its parent account is deleted.');

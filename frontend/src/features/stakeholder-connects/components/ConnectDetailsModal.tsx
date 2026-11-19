@@ -287,9 +287,10 @@ export const ConnectDetailsModal: React.FC<ConnectDetailsModalProps> = ({
     setError(null);
     setAttachmentError(null);
     try {
+      const trimmedMom = momText.trim();
       const updated = await stakeholderConnectsApi.update(connect.id, {
-        mom: momText.trim() || undefined,
-        momNotes: momText.trim() || undefined,
+        mom: trimmedMom,
+        momNotes: trimmedMom,
       });
       setConnect(updated);
       setMomText(updated.mom || updated.momNotes || '');
@@ -1344,9 +1345,23 @@ export const ConnectDetailsModal: React.FC<ConnectDetailsModalProps> = ({
         <ConnectFormModal
           isOpen={isEditOpen}
           onClose={() => setIsEditOpen(false)}
+          onConnectPersisted={(updated) => {
+            setConnect(updated);
+            onConnectChanged();
+          }}
           onSuccess={async (updated) => {
             setConnect(updated);
             onConnectChanged();
+          }}
+          onAttachmentDeleted={(deletedId) => {
+            setConnect((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    momAttachments: (prev.momAttachments || []).filter((item) => item.id !== deletedId),
+                  }
+                : prev,
+            );
           }}
           accounts={accounts}
           stakeholders={stakeholders}

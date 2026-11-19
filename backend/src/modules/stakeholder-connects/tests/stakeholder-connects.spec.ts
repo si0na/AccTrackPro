@@ -6,14 +6,17 @@ import {
   ForbiddenException,
   HttpStatus,
   NotFoundException,
+  PayloadTooLargeException,
   RequestMethod,
   ValidationPipe,
 } from '@nestjs/common';
 import { HTTP_CODE_METADATA, METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants';
 import { Reflector } from '@nestjs/core';
+import { HttpExceptionFilter } from '../../../common/filters/http-exception.filter';
 import { StakeholderConnectsService } from '../stakeholder-connects.service';
 import { StakeholderConnectsController } from '../stakeholder-connects.controller';
 import { CONNECT_STATUSES, TIME_FORMAT_RE } from '../dto/create-stakeholder-connect.dto';
+import { UpdateStakeholderConnectDto } from '../dto/update-stakeholder-connect.dto';
 import { CreateDraftFollowUpDto, UpdateDraftFollowUpDto } from '../dto/draft-follow-up.dto';
 import { ConvertDraftToActionItemDto } from '../dto/convert-draft.dto';
 import { DB_SUPPORTED_ACTION_ITEM_TYPES } from '../../action-items/dto/action-item.dto';
@@ -1209,11 +1212,35 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
 
     // ─── Meeting Restoration Validation Constraints ──────────────────────────
     describe('Meeting Restoration Constraints', () => {
+      it('rejects restoration if meeting is already active (not soft-deleted) without updating or logging', async () => {
+        mockDb.query.mockImplementation((sql: string) => {
+          if (sql.includes('FROM stakeholder_connects sc') && sql.includes('accounts a')) {
+            return {
+              rows: [{ id: 'conn-1', accountId: 'acc-1', title: 'Active Meeting', isDeleted: false, accountDeleted: false }],
+            };
+          }
+          return { rows: [] };
+        });
+
+        await expect(service.restore('conn-1', 'user-1', 'Tester')).rejects.toThrow(
+          new BadRequestException('Cannot restore meeting because it is already active.'),
+        );
+
+        const updateCalls = mockDb.query.mock.calls.filter((c: any) =>
+          String(c[0]).includes('UPDATE stakeholder_connects'),
+        );
+        const activityCalls = mockDb.query.mock.calls.filter((c: any) =>
+          String(c[0]).includes('INSERT INTO activities'),
+        );
+        expect(updateCalls).toHaveLength(0);
+        expect(activityCalls).toHaveLength(0);
+      });
+
       it('rejects restoration if parent account is deleted', async () => {
         mockDb.query.mockImplementation((sql: string) => {
           if (sql.includes('FROM stakeholder_connects sc') && sql.includes('accounts a')) {
             return {
-              rows: [{ id: 'conn-1', accountId: 'acc-del', title: 'Deleted Account Meeting', accountDeleted: true }],
+              rows: [{ id: 'conn-1', accountId: 'acc-del', title: 'Deleted Account Meeting', isDeleted: true, accountDeleted: true }],
             };
           }
           return { rows: [] };
@@ -1228,7 +1255,7 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
         mockDb.query.mockImplementation((sql: string) => {
           if (sql.includes('FROM stakeholder_connects sc') && sql.includes('accounts a')) {
             return {
-              rows: [{ id: 'conn-1', accountId: 'acc-1', title: 'Meeting', accountDeleted: false }],
+              rows: [{ id: 'conn-1', accountId: 'acc-1', title: 'Meeting', isDeleted: true, accountDeleted: false }],
             };
           }
           if (sql.includes('FROM accounts a WHERE a.id = $1')) {
@@ -1258,7 +1285,7 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
         mockDb.query.mockImplementation((sql: string) => {
           if (sql.includes('FROM stakeholder_connects sc') && sql.includes('accounts a')) {
             return {
-              rows: [{ id: 'conn-1', accountId: 'acc-1', title: 'Meeting', accountDeleted: false }],
+              rows: [{ id: 'conn-1', accountId: 'acc-1', title: 'Meeting', isDeleted: true, accountDeleted: false }],
             };
           }
           if (sql.includes('FROM accounts a WHERE a.id = $1')) {
@@ -1288,7 +1315,7 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
         mockDb.query.mockImplementation((sql: string) => {
           if (sql.includes('FROM stakeholder_connects sc') && sql.includes('accounts a')) {
             return {
-              rows: [{ id: 'conn-1', accountId: 'acc-1', title: 'Archived Meeting', accountDeleted: false }],
+              rows: [{ id: 'conn-1', accountId: 'acc-1', title: 'Archived Meeting', isDeleted: true, accountDeleted: false }],
             };
           }
           if (sql.includes('FROM accounts a WHERE a.id = $1')) {
@@ -1807,6 +1834,21 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
         );
         expect(queryCall).toBeDefined();
       });
+
+      it('rejects findAllDeactivated and findAll(includeDeleted=true) before querying DB when user lacks delete permission', async () => {
+        mockPermissions.can.mockResolvedValue(false);
+
+        await expect(
+          service.findAllDeactivated({ userId: 'user-view-only', accountId: 'acc-1' }),
+        ).rejects.toThrow(ForbiddenException);
+
+        await expect(
+          service.findAll({ userId: 'user-view-only', accountId: 'acc-1', includeDeleted: true }),
+        ).rejects.toThrow(ForbiddenException);
+
+        // Neither call should execute any SQL against stakeholder_connects before permission check
+        expect(mockDb.query).not.toHaveBeenCalled();
+      });
     });
   });
 
@@ -1883,6 +1925,17 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
       );
       expect(mockService.findOne).not.toHaveBeenCalled();
       expect(result).toEqual([{ id: 'deact-1', isDeleted: true }]);
+    });
+
+    it('requires both stakeholder-connects:view and stakeholder-connects:delete on GET deactivated route', () => {
+      const perms = Reflect.getMetadata(
+        REQUIRE_PERMISSION_KEY,
+        StakeholderConnectsController.prototype.findAllDeactivated,
+      );
+      expect(perms).toEqual([
+        { module: 'stakeholder-connects', permission: 'view' },
+        { module: 'stakeholder-connects', permission: 'delete' },
+      ]);
     });
 
     it('routes GET :id with an actual meeting ID to findOne correctly', async () => {
@@ -3152,6 +3205,127 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
           if (prevDbUrl === undefined) delete process.env.DATABASE_URL;
           else process.env.DATABASE_URL = prevDbUrl;
         }
+      });
+    });
+
+    describe('M-3 MoM Clearing Semantics & L-3 HTTP 413 Status Mapping', () => {
+      it('UpdateStakeholderConnectDto preserves omitted MoM as undefined while preserving explicit empty/whitespace/null values', async () => {
+        const pipe = new ValidationPipe({ whitelist: true, transform: true });
+
+        const omitted = await pipe.transform(
+          { title: 'Title Only' },
+          { type: 'body', metatype: UpdateStakeholderConnectDto },
+        );
+        expect(omitted.mom).toBeUndefined();
+        expect(omitted.momNotes).toBeUndefined();
+
+        const clearedEmpty = await pipe.transform(
+          { mom: '', momNotes: '' },
+          { type: 'body', metatype: UpdateStakeholderConnectDto },
+        );
+        expect(clearedEmpty.mom).toBe('');
+        expect(clearedEmpty.momNotes).toBe('');
+
+        const clearedNull = await pipe.transform(
+          { mom: null, momNotes: null },
+          { type: 'body', metatype: UpdateStakeholderConnectDto },
+        );
+        expect(clearedNull.mom).toBeNull();
+        expect(clearedNull.momNotes).toBeNull();
+
+        const nonEmpty = await pipe.transform(
+          { mom: '  Final notes  ' },
+          { type: 'body', metatype: UpdateStakeholderConnectDto },
+        );
+        expect(nonEmpty.mom).toBe('  Final notes  ');
+      });
+
+      it('update() retains existing MoM when omitted, clears to NULL when empty/whitespace/null, trims non-empty, and preserves lifecycle rules', async () => {
+        const setupExisting = (status: 'Scheduled' | 'Completed' | 'Cancelled') => {
+          mockDb.query.mockReset();
+          mockDb.query.mockImplementation((sql: string) => {
+            if (sql.includes('FROM stakeholder_connects') && sql.includes('FOR UPDATE')) {
+              return {
+                rows: [{
+                  id: 'conn-1',
+                  accountId: 'acc-1',
+                  ownerId: 'user-host',
+                  title: 'Weekly Sync',
+                  meetingDate: '2025-10-01',
+                  meetingTime: '10:00:00',
+                  status,
+                  momNotes: 'Existing MoM text',
+                  cancellationReason: null,
+                  isDeleted: false,
+                }],
+              };
+            }
+            return { rows: [] };
+          });
+          jest.spyOn(service, 'findOne').mockResolvedValue({
+            id: 'conn-1',
+            accountId: 'acc-1',
+            status,
+            isDeleted: false,
+          });
+        };
+
+        // 1. Omitted MoM retains existing momNotes
+        setupExisting('Scheduled');
+        await service.update('conn-1', { title: 'Renamed Sync' }, 'user-1');
+        let updateCall = mockDb.query.mock.calls.find((c: any) => String(c[0]).includes('UPDATE stakeholder_connects'));
+        expect(updateCall[1][5]).toBe('Existing MoM text');
+
+        // 2. Explicit empty string clears mom_notes to null (allowed on Completed too)
+        setupExisting('Completed');
+        await service.update('conn-1', { mom: '', momNotes: '' }, 'user-1');
+        updateCall = mockDb.query.mock.calls.find((c: any) => String(c[0]).includes('UPDATE stakeholder_connects'));
+        expect(updateCall[1][5]).toBeNull();
+
+        // 3. Explicit whitespace-only string clears mom_notes to null
+        setupExisting('Completed');
+        await service.update('conn-1', { mom: '   \n\t  ' }, 'user-1');
+        updateCall = mockDb.query.mock.calls.find((c: any) => String(c[0]).includes('UPDATE stakeholder_connects'));
+        expect(updateCall[1][5]).toBeNull();
+
+        // 4. Explicit null clears mom_notes to null
+        setupExisting('Scheduled');
+        await service.update('conn-1', { momNotes: null }, 'user-1');
+        updateCall = mockDb.query.mock.calls.find((c: any) => String(c[0]).includes('UPDATE stakeholder_connects'));
+        expect(updateCall[1][5]).toBeNull();
+
+        // 5. Non-empty MoM is trimmed and stored
+        setupExisting('Completed');
+        await service.update('conn-1', { mom: '  Updated summary  ' }, 'user-1');
+        updateCall = mockDb.query.mock.calls.find((c: any) => String(c[0]).includes('UPDATE stakeholder_connects'));
+        expect(updateCall[1][5]).toBe('Updated summary');
+
+        // 6. Clearing MoM on a Cancelled meeting is still rejected by lifecycle policy
+        setupExisting('Cancelled');
+        await expect(service.update('conn-1', { mom: '' }, 'user-1')).rejects.toThrow(BadRequestException);
+      });
+
+      it('HttpExceptionFilter maps HTTP 413 PayloadTooLargeException to "Payload Too Large" while preserving status and message', () => {
+        const filter = new HttpExceptionFilter();
+        const json = jest.fn();
+        const status = jest.fn().mockReturnValue({ json });
+        const host = {
+          switchToHttp: () => ({
+            getRequest: () => ({ method: 'POST', url: '/api/stakeholder-connects/conn-1/mom-attachments', headers: {} }),
+            getResponse: () => ({ status }),
+          }),
+        } as any;
+
+        filter.catch(new PayloadTooLargeException('File too large'), host);
+
+        expect(status).toHaveBeenCalledWith(413);
+        expect(json).toHaveBeenCalledWith(
+          expect.objectContaining({
+            statusCode: 413,
+            error: 'Payload Too Large',
+            message: 'File too large',
+          }),
+        );
       });
     });
   });

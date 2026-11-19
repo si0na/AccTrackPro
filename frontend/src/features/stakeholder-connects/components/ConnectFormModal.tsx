@@ -29,7 +29,15 @@ import { MomAttachmentsSection } from './MomAttachmentsSection';
 export interface ConnectFormModalProps {
   isOpen: boolean;
   onClose: () => void;
+  /** Called once the full workflow (connect save + any queued attachment uploads) completes. */
   onSuccess: (savedConnect: StakeholderConnect) => void;
+  /**
+   * Called when the connect record itself was persisted on the server, but a subsequent
+   * attachment upload failed and the modal stays open in retry mode.
+   */
+  onConnectPersisted?: (savedConnect: StakeholderConnect) => void;
+  /** Called immediately after an existing MoM attachment is deleted inside the modal. */
+  onAttachmentDeleted?: (attachmentId: string, remainingAttachments: StakeholderConnectMomAttachment[]) => void;
   accounts: Account[];
   stakeholders: Stakeholder[];
   serviceProviders: ServiceProviderUser[];
@@ -43,6 +51,8 @@ export const ConnectFormModal: React.FC<ConnectFormModalProps> = ({
   isOpen,
   onClose,
   onSuccess,
+  onConnectPersisted,
+  onAttachmentDeleted,
   accounts,
   stakeholders,
   serviceProviders,
@@ -292,33 +302,42 @@ export const ConnectFormModal: React.FC<ConnectFormModalProps> = ({
 
     try {
       if (createdConnectForRetry) {
-        const uploadedOk = await uploadPendingForConnect(createdConnectForRetry.id);
-        if (!uploadedOk) return;
+        if (pendingMomFiles.length > 0) {
+          const uploadedOk = await uploadPendingForConnect(createdConnectForRetry.id);
+          if (!uploadedOk) return;
+        }
         const refreshed = await stakeholderConnectsApi
           .getById(createdConnectForRetry.id)
           .catch(() => createdConnectForRetry);
-        showToast({ kind: 'success', message: 'MoM attachments uploaded successfully.' });
+        showToast({
+          kind: 'success',
+          message:
+            pendingMomFiles.length > 0
+              ? 'MoM attachments uploaded successfully.'
+              : 'Stakeholder connect saved successfully.',
+        });
         onSuccess(refreshed);
         onClose();
         return;
       }
 
       if (isEditing && editConnect) {
+        const trimmedMom = mom.trim();
         const updated = await stakeholderConnectsApi.update(editConnect.id, {
           title: title.trim(),
           meetingDate,
           meetingTime: formattedTime,
           ownerId: finalOwnerId,
           status: isDateTimeChanged ? undefined : (status === editConnect.status ? undefined : status),
-          momNotes: mom.trim() || undefined,
-          mom: mom.trim() || undefined,
+          momNotes: trimmedMom,
+          mom: trimmedMom,
           rescheduleReason: isDateTimeChanged ? (rescheduleReason.trim() || undefined) : undefined,
           attendees: attendeeIds,
         });
         if (pendingMomFiles.length > 0 && status !== 'Cancelled') {
           const uploadedOk = await uploadPendingForConnect(editConnect.id);
           if (!uploadedOk) {
-            onSuccess(updated);
+            onConnectPersisted?.(updated);
             return;
           }
         }
@@ -352,7 +371,7 @@ export const ConnectFormModal: React.FC<ConnectFormModalProps> = ({
             setError(
               'Meeting was created, but uploading MoM attachments failed. Remove invalid files or submit again to retry uploading without creating a duplicate meeting.',
             );
-            onSuccess(created);
+            onConnectPersisted?.(created);
             return;
           }
           const refreshed = await stakeholderConnectsApi.getById(created.id).catch(() => created);
@@ -400,7 +419,9 @@ export const ConnectFormModal: React.FC<ConnectFormModalProps> = ({
     setAttachmentError(null);
     try {
       await stakeholderConnectsApi.deleteMomAttachment(targetId, att.id);
-      setExistingAttachments((prev) => prev.filter((item) => item.id !== att.id));
+      const remaining = existingAttachments.filter((item) => item.id !== att.id);
+      setExistingAttachments(remaining);
+      onAttachmentDeleted?.(att.id, remaining);
       showToast({ kind: 'success', message: `Removed attachment "${att.originalFilename}".` });
     } catch (err: any) {
       setAttachmentError(err?.response?.data?.message || `Could not remove "${att.originalFilename}".`);
