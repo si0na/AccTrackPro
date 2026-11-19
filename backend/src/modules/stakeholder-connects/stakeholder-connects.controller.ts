@@ -70,7 +70,10 @@ export class StakeholderConnectsController {
   }
 
   @Get('deactivated')
-  @RequirePermission('stakeholder-connects', 'view')
+  @RequirePermissions(
+    { module: 'stakeholder-connects', permission: 'view' },
+    { module: 'stakeholder-connects', permission: 'delete' },
+  )
   async findAllDeactivated(
     @AuthUser() authUser: JwtPayload,
     @Query('page') page?: string,

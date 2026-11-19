@@ -475,13 +475,19 @@ class InMemoryRbacDb {
       };
     }
 
-    // 5. restore lookup (includes accountDeleted)
+    // 5. restore lookup (includes isDeleted and accountDeleted)
     if (sql.includes('FROM stakeholder_connects sc') && sql.includes('a.is_deleted AS "accountDeleted"')) {
       const sc = this.connects.find((c) => c.id === params[0]);
       if (!sc) return { rows: [] };
       const acc = this.accounts.find((a) => a.id === sc.account_id)!;
       return {
-        rows: [{ id: sc.id, accountId: sc.account_id, title: sc.title, accountDeleted: acc.is_deleted }],
+        rows: [{
+          id: sc.id,
+          accountId: sc.account_id,
+          title: sc.title,
+          isDeleted: sc.is_deleted,
+          accountDeleted: acc.is_deleted,
+        }],
       };
     }
 
@@ -1274,6 +1280,126 @@ describe('Stakeholder Connects Account-Level RBAC & BOLA Regression Suite', () =
         // Soft-deleted connect returns 404 to authorized caller
         await expect(controller.findOne('conn-y-del', auth('u-am-a'))).rejects.toThrow(NotFoundException);
         await expect(controller.remove('conn-y-del', auth('u-am-a'))).rejects.toThrow(NotFoundException);
+      });
+    });
+
+    describe('Soft-Deleted / Deactivated Connect Authorization (M-2)', () => {
+      it('rejects view-only users on GET /deactivated and GET /?includeDeleted=true while preserving normal active listing', async () => {
+        // Roles with stakeholder-connects:view ONLY (no stakeholder-connects:delete)
+        const viewOnlyUsers = ['u-vh', 'u-pl', 'u-cp', 'u-sales', 'u-finance'];
+
+        for (const uid of viewOnlyUsers) {
+          // 1. Guard rejects GET /deactivated with 403 Forbidden
+          await expect(
+            enforceGuard('findAllDeactivated', uid, () => controller.findAllDeactivated(auth(uid), '1', '25')),
+          ).rejects.toThrow(ForbiddenException);
+
+          // 2. Service defense-in-depth also rejects direct findAllDeactivated call with 403 Forbidden
+          await expect(service.findAllDeactivated({ userId: uid })).rejects.toThrow(ForbiddenException);
+
+          // 3. GET /?includeDeleted=true is rejected with 403 Forbidden
+          await expect(
+            enforceGuard('findAll', uid, () =>
+              controller.findAll(auth(uid), '1', '25', undefined, undefined, undefined, undefined, undefined, 'true'),
+            ),
+          ).rejects.toThrow(ForbiddenException);
+
+          // 4. Normal active listing (includeDeleted omitted or 'false') continues to succeed and returns only active records
+          const activeList = await enforceGuard('findAll', uid, () =>
+            controller.findAll(auth(uid), '1', '25'),
+          );
+          expect(activeList.data.every((m: any) => !m.isDeleted)).toBe(true);
+          expect(activeList.data.length).toBeGreaterThan(0);
+
+          const activeExplicitFalse = await enforceGuard('findAll', uid, () =>
+            controller.findAll(auth(uid), '1', '25', undefined, undefined, undefined, undefined, undefined, 'false'),
+          );
+          expect(activeExplicitFalse.data.every((m: any) => !m.isDeleted)).toBe(true);
+        }
+      });
+
+      it('permits authorized Account Manager with delete permission to list deactivated & includeDeleted within own account scope only', async () => {
+        // AM A has delete permission and owns Accounts X & Y (not Account Z)
+        const deactivated = await enforceGuard('findAllDeactivated', 'u-am-a', () =>
+          controller.findAllDeactivated(auth('u-am-a'), '1', '25'),
+        );
+        expect(deactivated.total).toBe(1);
+        expect(deactivated.data.map((m: any) => m.id)).toEqual(['conn-y-del']);
+
+        const withDeleted = await enforceGuard('findAll', 'u-am-a', () =>
+          controller.findAll(auth('u-am-a'), '1', '25', undefined, undefined, undefined, undefined, undefined, 'true'),
+        );
+        expect(withDeleted.data.map((m: any) => m.id).sort()).toEqual(['conn-x', 'conn-y', 'conn-y-del']);
+        expect(withDeleted.data.some((m: any) => m.accountId === 'acc-z')).toBe(false);
+
+        // Cross-account query parameter tampering with includeDeleted=true returns 0 rows
+        const tamperedWithDeleted = await enforceGuard('findAll', 'u-am-a', () =>
+          controller.findAll(auth('u-am-a'), '1', '25', 'acc-z', undefined, undefined, undefined, undefined, 'true'),
+        );
+        expect(tamperedWithDeleted.total).toBe(0);
+        expect(tamperedWithDeleted.data).toEqual([]);
+      });
+
+      it('rejects Account Manager whose delete permission is revoked while keeping active list intact', async () => {
+        db.deniedPermsByUser.set('u-am-a', new Set(['stakeholder-connects:delete']));
+
+        await expect(
+          enforceGuard('findAllDeactivated', 'u-am-a', () => controller.findAllDeactivated(auth('u-am-a'), '1', '25')),
+        ).rejects.toThrow(ForbiddenException);
+
+        await expect(
+          enforceGuard('findAll', 'u-am-a', () =>
+            controller.findAll(auth('u-am-a'), '1', '25', undefined, undefined, undefined, undefined, undefined, 'true'),
+          ),
+        ).rejects.toThrow(ForbiddenException);
+
+        await expect(
+          enforceGuard('restore', 'u-am-a', () => controller.restore('conn-y-del', auth('u-am-a'))),
+        ).rejects.toThrow(ForbiddenException);
+
+        // Normal active listing still succeeds for AM A's authorized accounts
+        const activeList = await enforceGuard('findAll', 'u-am-a', () =>
+          controller.findAll(auth('u-am-a'), '1', '25'),
+        );
+        expect(activeList.total).toBe(2);
+        expect(activeList.data.map((m: any) => m.id).sort()).toEqual(['conn-x', 'conn-y']);
+      });
+
+      it('preserves Admin view-all deactivated access and authorized restore workflow', async () => {
+        const adminDeactivated = await enforceGuard('findAllDeactivated', 'u-admin', () =>
+          controller.findAllDeactivated(auth('u-admin'), '1', '25'),
+        );
+        expect(adminDeactivated.data.map((m: any) => m.id).sort()).toEqual([
+          'conn-y-del',
+          'conn-z-del',
+          'conn-z-parent-del',
+        ]);
+
+        // View-only user cannot restore
+        await expect(
+          enforceGuard('restore', 'u-sales', () => controller.restore('conn-y-del', auth('u-sales'))),
+        ).rejects.toThrow(ForbiddenException);
+
+        // Authorized AM A restores own deactivated connect (conn-y-del) and remains blocked on Account Z (conn-z-del)
+        await expect(
+          enforceGuard('restore', 'u-am-a', () => controller.restore('conn-z-del', auth('u-am-a'))),
+        ).rejects.toThrow(ForbiddenException);
+
+        const restored = await enforceGuard('restore', 'u-am-a', () =>
+          controller.restore('conn-y-del', auth('u-am-a')),
+        );
+        expect(restored.id).toBe('conn-y-del');
+        expect(restored.isDeleted).toBe(false);
+
+        // L-4: Restoring an already-active connect on authorized account is rejected with 400 Bad Request
+        await expect(
+          enforceGuard('restore', 'u-am-a', () => controller.restore('conn-x', auth('u-am-a'))),
+        ).rejects.toThrow(new BadRequestException('Cannot restore meeting because it is already active.'));
+
+        // L-4: Restoring an already-active connect on unauthorized Account Z still throws 403 Forbidden FIRST (no state leak)
+        await expect(
+          enforceGuard('restore', 'u-am-a', () => controller.restore('conn-z', auth('u-am-a'))),
+        ).rejects.toThrow(ForbiddenException);
       });
     });
   });
