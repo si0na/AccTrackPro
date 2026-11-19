@@ -308,7 +308,12 @@ export class ActionItemsService {
     }
   }
 
-  async create(data: any, requestingUserId?: string, externalClient?: PoolClient): Promise<ActionItem> {
+  async create(
+    data: any,
+    requestingUserId?: string,
+    externalClient?: PoolClient,
+    onAfterCommit?: (fn: () => void | Promise<void>) => void,
+  ): Promise<ActionItem> {
     this.logger.log(`Creating action item [title="${data.title}" accountId=${data.accountId} ownerId=${data.ownerId ?? 'MISSING'}]`);
 
     if (!data.ownerId) {
@@ -370,21 +375,35 @@ export class ActionItemsService {
     this.logger.log(`Action item created [id=${item.id} ownerId=${item.ownerId ?? 'NULL'}]`);
     await this.log(`Created Action Item '${item.title}'`, item.accountId, data.ownerId, externalClient);
 
-    if (item.ownerId) {
-      this.logger.log(`Emitting ActionItem:Created notification [userId=${item.ownerId} actionItemId=${item.id}]`);
-      this.bus.emit({
-        userId: item.ownerId,
-        type: 'ActionItem',
-        eventType: 'Created',
-        title: 'Action Item Created',
-        message: `Action item "${item.title}" has been created.`,
-        severity: 'Info',
-        notificationCategory: 'BUSINESS',
-        accountId: item.accountId,
-        actionItemId: item.id,
-      });
+    const emitCreatedNotification = () => {
+      if (item.ownerId) {
+        this.logger.log(`Emitting ActionItem:Created notification [userId=${item.ownerId} actionItemId=${item.id}]`);
+        this.bus.emit({
+          userId: item.ownerId,
+          type: 'ActionItem',
+          eventType: 'Created',
+          title: 'Action Item Created',
+          message: `Action item "${item.title}" has been created.`,
+          severity: 'Info',
+          notificationCategory: 'BUSINESS',
+          accountId: item.accountId,
+          actionItemId: item.id,
+        });
+      } else {
+        this.logger.warn(`ActionItem created without ownerId — notification suppressed [actionItemId=${item.id}]`);
+      }
+    };
+
+    if (externalClient) {
+      if (onAfterCommit) {
+        onAfterCommit(emitCreatedNotification);
+      } else {
+        this.logger.warn(
+          `ActionItem created inside external transaction without afterCommit hook — notification deferred/skipped [actionItemId=${item.id}]`,
+        );
+      }
     } else {
-      this.logger.warn(`ActionItem created without ownerId — notification suppressed [actionItemId=${item.id}]`);
+      emitCreatedNotification();
     }
     return item;
   }

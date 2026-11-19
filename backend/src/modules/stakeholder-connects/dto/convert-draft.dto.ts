@@ -7,11 +7,13 @@ import {
   Matches,
 } from 'class-validator';
 import { EmptyToUndefined, ISO_DATE_RE, ISO_DATE_MSG } from '../../../common/utils/dto-transforms.util';
+import { DB_SUPPORTED_ACTION_ITEM_TYPES } from '../../action-items/dto/action-item.dto';
 
 export class ConvertDraftToActionItemDto {
   @EmptyToUndefined()
   @IsOptional()
   @IsString()
+  @IsNotEmpty({ message: 'Title cannot be empty' })
   @MaxLength(200)
   title?: string;
 
@@ -38,12 +40,12 @@ export class ConvertDraftToActionItemDto {
 
   @EmptyToUndefined()
   @IsOptional()
-  @IsString()
+  @IsIn(DB_SUPPORTED_ACTION_ITEM_TYPES)
   actionItemType?: string;
 
-  @EmptyToUndefined()
   @IsOptional()
   @IsString()
+  @MaxLength(5000)
   notes?: string;
 
   @EmptyToUndefined()

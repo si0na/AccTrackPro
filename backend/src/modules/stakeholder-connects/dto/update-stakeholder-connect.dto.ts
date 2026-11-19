@@ -5,6 +5,7 @@ import {
   MaxLength,
   Matches,
   IsArray,
+  ValidateIf,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { EmptyToUndefined, ISO_DATE_RE, ISO_DATE_MSG } from '../../../common/utils/dto-transforms.util';
@@ -41,15 +42,15 @@ export class UpdateStakeholderConnectDto {
   @IsIn(CONNECT_STATUSES)
   status?: ConnectStatus;
 
-  @EmptyToUndefined()
   @IsOptional()
+  @ValidateIf((_o, v) => v !== null && v !== undefined)
   @IsString()
-  momNotes?: string;
+  momNotes?: string | null;
 
-  @EmptyToUndefined()
   @IsOptional()
+  @ValidateIf((_o, v) => v !== null && v !== undefined)
   @IsString()
-  mom?: string;
+  mom?: string | null;
 
   @EmptyToUndefined()
   @IsOptional()

@@ -6,6 +6,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import type { StakeholderConnect, StakeholderConnectDraftFollowUp, Stakeholder, PriorityLevel } from '@/types';
 import { stakeholderConnectsApi, type ConvertDraftInput } from '@/api/crm.api';
+import { ACTION_ITEM_TYPE_OPTIONS } from '@/constants';
 import { getTodayISODate } from '@/utils';
 import {
   FormModal,
@@ -27,6 +28,8 @@ export interface ConvertDraftModalProps {
   onSuccess: () => void;
 }
 
+const CONVERTIBLE_ACTION_ITEM_TYPES = ACTION_ITEM_TYPE_OPTIONS.filter((t) => t !== 'CEO Connect');
+
 export const ConvertDraftModal: React.FC<ConvertDraftModalProps> = ({
   isOpen,
   onClose,
@@ -41,14 +44,16 @@ export const ConvertDraftModal: React.FC<ConvertDraftModalProps> = ({
   const [openDate, setOpenDate] = useState(getTodayISODate());
   const [dueDate, setDueDate] = useState(draft.suggestedDueDate || getTodayISODate());
   const [ownerStakeholderId, setOwnerStakeholderId] = useState('');
-  const [type, setType] = useState('Client Action');
+  const [actionItemType, setActionItemType] = useState<string>('Stakeholder connect');
   const [comments, setComments] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Eligible stakeholders must strictly belong to the meeting's account
+  // Eligible stakeholders must belong to the meeting's account (or be global service providers)
   const eligibleStakeholders = useMemo(() => {
-    return accountStakeholders.filter((s) => s.accountId === connect.accountId);
+    return accountStakeholders.filter(
+      (s) => s.accountId === connect.accountId || (s.stakeholderType === 'SERVICE_PROVIDER' && !s.accountId),
+    );
   }, [accountStakeholders, connect.accountId]);
 
   useEffect(() => {
@@ -57,11 +62,13 @@ export const ConvertDraftModal: React.FC<ConvertDraftModalProps> = ({
     setPriority(draft.suggestedPriority || 'Medium');
     setOpenDate(getTodayISODate());
     setDueDate(draft.suggestedDueDate || getTodayISODate());
+    setActionItemType('Stakeholder connect');
+    setComments('');
     setError(null);
 
-    // If draft has a suggestedAssigneeStakeholderId and it exists in account stakeholders, prefill it
-    if (draft.suggestedAssigneeStakeholderId && eligibleStakeholders.some((s) => s.id === draft.suggestedAssigneeStakeholderId)) {
-      setOwnerStakeholderId(draft.suggestedAssigneeStakeholderId);
+    // If draft has a suggestedOwnerId and it exists in eligible stakeholders, prefill it
+    if (draft.suggestedOwnerId && eligibleStakeholders.some((s) => s.id === draft.suggestedOwnerId)) {
+      setOwnerStakeholderId(draft.suggestedOwnerId);
     } else if (eligibleStakeholders.length > 0) {
       setOwnerStakeholderId(eligibleStakeholders[0].id);
     } else {
@@ -88,15 +95,21 @@ export const ConvertDraftModal: React.FC<ConvertDraftModalProps> = ({
     setError(null);
 
     try {
+      const combinedNotes = [
+        description.trim(),
+        comments.trim() ? `Comments: ${comments.trim()}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n\n');
+
       const payload: ConvertDraftInput = {
         title: title.trim(),
-        description: description.trim() || undefined,
+        notes: combinedNotes,
         ownerStakeholderId,
         priority,
         openDate,
         dueDate,
-        type,
-        comments: comments.trim() || undefined,
+        actionItemType,
       };
 
       await stakeholderConnectsApi.convertDraft(connect.id, draft.id, payload);
@@ -210,13 +223,14 @@ export const ConvertDraftModal: React.FC<ConvertDraftModalProps> = ({
         <FormField label="Action Item Type">
           <select
             className={SELECT_CLS}
-            value={type}
-            onChange={(e) => setType(e.target.value)}
+            value={actionItemType}
+            onChange={(e) => setActionItemType(e.target.value)}
           >
-            <option value="Client Action">Client Action</option>
-            <option value="Internal Task">Internal Task</option>
-            <option value="Deliverable">Deliverable</option>
-            <option value="Follow-up">Follow-up</option>
+            {CONVERTIBLE_ACTION_ITEM_TYPES.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
           </select>
         </FormField>
 

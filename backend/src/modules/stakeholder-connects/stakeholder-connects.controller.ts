@@ -2,16 +2,28 @@ import {
   Controller,
   Get,
   Post,
-  Patch,
-  Delete,
   Body,
   Param,
   Query,
+  Res,
+  StreamableFile,
+  UploadedFiles,
+  UseInterceptors,
   HttpCode,
   HttpStatus,
   BadRequestException,
+  UsePipes,
+  ValidationPipe,
 } from '@nestjs/common';
+import { FilesInterceptor } from '@nestjs/platform-express';
+import { createReadStream } from 'fs';
+import type { Response } from 'express';
 import { StakeholderConnectsService } from './stakeholder-connects.service';
+import {
+  buildSafeContentDisposition,
+  getMomMaxFileSizeBytes,
+  getMomMaxFilesPerUpload,
+} from './mom-attachment.util';
 import { CreateStakeholderConnectDto } from './dto/create-stakeholder-connect.dto';
 import { UpdateStakeholderConnectDto } from './dto/update-stakeholder-connect.dto';
 import { RescheduleConnectDto } from './dto/reschedule-connect.dto';
@@ -24,6 +36,12 @@ import { parsePagination } from '../../common/utils/pagination.util';
 
 @Controller('stakeholder-connects')
 export class StakeholderConnectsController {
+  private static readonly strictDtoPipe = new ValidationPipe({
+    whitelist: true,
+    transform: true,
+    forbidNonWhitelisted: true,
+  });
+
   constructor(private readonly service: StakeholderConnectsService) {}
 
   @Get()
@@ -52,7 +70,10 @@ export class StakeholderConnectsController {
   }
 
   @Get('deactivated')
-  @RequirePermission('stakeholder-connects', 'view')
+  @RequirePermissions(
+    { module: 'stakeholder-connects', permission: 'view' },
+    { module: 'stakeholder-connects', permission: 'delete' },
+  )
   async findAllDeactivated(
     @AuthUser() authUser: JwtPayload,
     @Query('page') page?: string,
@@ -78,19 +99,10 @@ export class StakeholderConnectsController {
     return this.service.create(body, authUser.sub, authUser.name);
   }
 
-  @Patch(':id')
-  @RequirePermission('stakeholder-connects', 'update')
-  async update(
-    @Param('id') id: string,
-    @Body() body: UpdateStakeholderConnectDto,
-    @AuthUser() authUser: JwtPayload,
-  ) {
-    return this.service.update(id, body, authUser.sub, authUser.name);
-  }
-
   @Post(':id/update')
   @RequirePermission('stakeholder-connects', 'update')
-  async updatePost(
+  @HttpCode(HttpStatus.OK)
+  async update(
     @Param('id') id: string,
     @Body() body: UpdateStakeholderConnectDto,
     @AuthUser() authUser: JwtPayload,
@@ -100,12 +112,14 @@ export class StakeholderConnectsController {
 
   @Post(':id/complete')
   @RequirePermission('stakeholder-connects', 'update')
+  @HttpCode(HttpStatus.OK)
   async complete(@Param('id') id: string, @AuthUser() authUser: JwtPayload) {
     return this.service.complete(id, authUser.sub, authUser.name);
   }
 
   @Post(':id/reschedule')
   @RequirePermission('stakeholder-connects', 'update')
+  @HttpCode(HttpStatus.OK)
   async reschedule(
     @Param('id') id: string,
     @Body() body: RescheduleConnectDto,
@@ -116,6 +130,7 @@ export class StakeholderConnectsController {
 
   @Post(':id/cancel')
   @RequirePermission('stakeholder-connects', 'update')
+  @HttpCode(HttpStatus.OK)
   async cancel(
     @Param('id') id: string,
     @Body() body: CancelConnectDto,
@@ -124,20 +139,16 @@ export class StakeholderConnectsController {
     return this.service.cancel(id, body, authUser.sub, authUser.name);
   }
 
-  @Delete(':id')
-  @RequirePermission('stakeholder-connects', 'delete')
-  async remove(@Param('id') id: string, @AuthUser() authUser: JwtPayload) {
-    return this.service.remove(id, authUser.sub, authUser.name);
-  }
-
   @Post(':id/delete')
   @RequirePermission('stakeholder-connects', 'delete')
-  async removePost(@Param('id') id: string, @AuthUser() authUser: JwtPayload) {
+  @HttpCode(HttpStatus.OK)
+  async remove(@Param('id') id: string, @AuthUser() authUser: JwtPayload) {
     return this.service.remove(id, authUser.sub, authUser.name);
   }
 
   @Post(':id/restore')
   @RequirePermission('stakeholder-connects', 'delete')
+  @HttpCode(HttpStatus.OK)
   async restore(@Param('id') id: string, @AuthUser() authUser: JwtPayload) {
     return this.service.restore(id, authUser.sub, authUser.name);
   }
@@ -154,8 +165,9 @@ export class StakeholderConnectsController {
     return this.service.addAttendee(id, stakeholderId, authUser.sub, authUser.name);
   }
 
-  @Delete(':id/attendees/:stakeholderId')
+  @Post(':id/attendees/:stakeholderId/delete')
   @RequirePermission('stakeholder-connects', 'update')
+  @HttpCode(HttpStatus.OK)
   async removeAttendee(
     @Param('id') id: string,
     @Param('stakeholderId') stakeholderId: string,
@@ -168,6 +180,7 @@ export class StakeholderConnectsController {
 
   @Post(':id/drafts')
   @RequirePermission('stakeholder-connects', 'update')
+  @UsePipes(StakeholderConnectsController.strictDtoPipe)
   @HttpCode(HttpStatus.CREATED)
   async createDraft(
     @Param('id') id: string,
@@ -177,8 +190,10 @@ export class StakeholderConnectsController {
     return this.service.createDraft(id, body, authUser.sub);
   }
 
-  @Patch(':id/drafts/:draftId')
+  @Post(':id/drafts/:draftId/update')
   @RequirePermission('stakeholder-connects', 'update')
+  @UsePipes(StakeholderConnectsController.strictDtoPipe)
+  @HttpCode(HttpStatus.OK)
   async updateDraft(
     @Param('id') id: string,
     @Param('draftId') draftId: string,
@@ -188,30 +203,10 @@ export class StakeholderConnectsController {
     return this.service.updateDraft(id, draftId, body, authUser.sub);
   }
 
-  @Post(':id/drafts/:draftId/update')
-  @RequirePermission('stakeholder-connects', 'update')
-  async updateDraftPost(
-    @Param('id') id: string,
-    @Param('draftId') draftId: string,
-    @Body() body: UpdateDraftFollowUpDto,
-    @AuthUser() authUser: JwtPayload,
-  ) {
-    return this.service.updateDraft(id, draftId, body, authUser.sub);
-  }
-
-  @Delete(':id/drafts/:draftId')
-  @RequirePermission('stakeholder-connects', 'update')
-  async deleteDraft(
-    @Param('id') id: string,
-    @Param('draftId') draftId: string,
-    @AuthUser() authUser: JwtPayload,
-  ) {
-    return this.service.deleteDraft(id, draftId, authUser.sub);
-  }
-
   @Post(':id/drafts/:draftId/delete')
   @RequirePermission('stakeholder-connects', 'update')
-  async deleteDraftPost(
+  @HttpCode(HttpStatus.OK)
+  async deleteDraft(
     @Param('id') id: string,
     @Param('draftId') draftId: string,
     @AuthUser() authUser: JwtPayload,
@@ -225,6 +220,7 @@ export class StakeholderConnectsController {
     { module: 'stakeholder-connects', permission: 'update' },
     { module: 'action-items', permission: 'create' },
   )
+  @UsePipes(StakeholderConnectsController.strictDtoPipe)
   async convertDraft(
     @Param('id') id: string,
     @Param('draftId') draftId: string,
@@ -261,7 +257,8 @@ export class StakeholderConnectsController {
 
   @Post(':id/action-items/:actionItemId/delete')
   @RequirePermission('stakeholder-connects', 'update')
-  async unlinkActionItemPost(
+  @HttpCode(HttpStatus.OK)
+  async unlinkActionItem(
     @Param('id') id: string,
     @Param('actionItemId') actionItemId: string,
     @AuthUser() authUser: JwtPayload,
@@ -269,13 +266,67 @@ export class StakeholderConnectsController {
     return this.service.unlinkActionItem(id, actionItemId, authUser.sub, authUser.name);
   }
 
-  @Delete(':id/action-items/:actionItemId')
-  @RequirePermission('stakeholder-connects', 'update')
-  async unlinkActionItem(
+  // ─── MoM Document Attachments ─────────────────────────────────────────────
+
+  @Get(':id/mom-attachments')
+  @RequirePermission('stakeholder-connects', 'view')
+  async listMomAttachments(
     @Param('id') id: string,
-    @Param('actionItemId') actionItemId: string,
     @AuthUser() authUser: JwtPayload,
   ) {
-    return this.service.unlinkActionItem(id, actionItemId, authUser.sub, authUser.name);
+    return this.service.listMomAttachments(id, authUser.sub);
+  }
+
+  @Post(':id/mom-attachments')
+  @RequirePermission('stakeholder-connects', 'update')
+  @HttpCode(HttpStatus.CREATED)
+  @UseInterceptors(
+    FilesInterceptor('files', getMomMaxFilesPerUpload(), {
+      limits: {
+        fileSize: getMomMaxFileSizeBytes(),
+        files: getMomMaxFilesPerUpload(),
+      },
+    }),
+  )
+  async uploadMomAttachments(
+    @Param('id') id: string,
+    @UploadedFiles() files: any[],
+    @AuthUser() authUser: JwtPayload,
+  ) {
+    return this.service.uploadMomAttachments(id, files, authUser.sub, authUser.name);
+  }
+
+  @Get(':id/mom-attachments/:attachmentId/download')
+  @RequirePermission('stakeholder-connects', 'view')
+  async downloadMomAttachment(
+    @Param('id') id: string,
+    @Param('attachmentId') attachmentId: string,
+    @Res({ passthrough: true }) res: Response,
+    @AuthUser() authUser: JwtPayload,
+  ): Promise<StreamableFile> {
+    const { attachment, filePath } = await this.service.getMomAttachmentDownload(
+      id,
+      attachmentId,
+      authUser.sub,
+    );
+    res.set({
+      'Content-Type': attachment.mimeType,
+      'Content-Disposition': buildSafeContentDisposition(attachment.originalFilename),
+      'Content-Length': String(attachment.fileSize),
+      'X-Content-Type-Options': 'nosniff',
+      'Cache-Control': 'private, no-store',
+    });
+    return new StreamableFile(createReadStream(filePath));
+  }
+
+  @Post(':id/mom-attachments/:attachmentId/delete')
+  @RequirePermission('stakeholder-connects', 'update')
+  @HttpCode(HttpStatus.OK)
+  async deleteMomAttachment(
+    @Param('id') id: string,
+    @Param('attachmentId') attachmentId: string,
+    @AuthUser() authUser: JwtPayload,
+  ) {
+    return this.service.deleteMomAttachment(id, attachmentId, authUser.sub, authUser.name);
   }
 }

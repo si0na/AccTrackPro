@@ -1,9 +1,30 @@
+import 'reflect-metadata';
 import { describe, it, expect, beforeEach, jest } from '@jest/globals';
-import { BadRequestException, ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  HttpStatus,
+  NotFoundException,
+  PayloadTooLargeException,
+  RequestMethod,
+  ValidationPipe,
+} from '@nestjs/common';
+import { HTTP_CODE_METADATA, METHOD_METADATA, PATH_METADATA } from '@nestjs/common/constants';
 import { Reflector } from '@nestjs/core';
+import { HttpExceptionFilter } from '../../../common/filters/http-exception.filter';
 import { StakeholderConnectsService } from '../stakeholder-connects.service';
 import { StakeholderConnectsController } from '../stakeholder-connects.controller';
 import { CONNECT_STATUSES, TIME_FORMAT_RE } from '../dto/create-stakeholder-connect.dto';
+import { UpdateStakeholderConnectDto } from '../dto/update-stakeholder-connect.dto';
+import { CreateDraftFollowUpDto, UpdateDraftFollowUpDto } from '../dto/draft-follow-up.dto';
+import { ConvertDraftToActionItemDto } from '../dto/convert-draft.dto';
+import { DB_SUPPORTED_ACTION_ITEM_TYPES } from '../../action-items/dto/action-item.dto';
+import { DatabaseService } from '../../../database/database.service';
+import { ActionItemsService } from '../../action-items/action-items.service';
+import { NotificationEventBus } from '../../../common/events/notification-event-bus.service';
+import { NotificationsService } from '../../notifications/notifications.service';
+import { NotificationsListener } from '../../notifications/notifications.listener';
 import { PermissionsGuard } from '../../rbac/permissions.guard';
 import { REQUIRE_PERMISSION_KEY, RequirePermissions, RequirePermission } from '../../rbac/require-permission.decorator';
 
@@ -399,6 +420,23 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
         });
 
         mockDb.query.mockImplementation((sql: string) => {
+          if (sql.includes('FROM stakeholder_connect_draft_follow_ups d')) {
+            return {
+              rows: [{
+                id: 'draft-1',
+                connectId: 'conn-1',
+                title: 'Follow-up Item',
+                description: null,
+                suggestedOwnerId: null,
+                suggestedOwnerName: null,
+                suggestedDueDate: null,
+                suggestedPriority: null,
+                convertedActionItemId: 'ai-created-1',
+                actionItemNumber: null,
+                convertedAt: new Date().toISOString(),
+              }],
+            };
+          }
           if (sql.includes('FROM stakeholder_connect_draft_follow_ups')) {
             return {
               rows: [{ id: 'draft-1', connect_id: 'conn-1', title: 'Follow-up Item', converted_at: null }],
@@ -406,7 +444,7 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
           }
           if (sql.includes('FROM stakeholder_connects WHERE id = $1')) {
             return {
-              rows: [{ id: 'conn-1', account_id: 'acc-1', meeting_date: '2026-11-05', is_deleted: false }],
+              rows: [{ id: 'conn-1', account_id: 'acc-1', meeting_date: '2026-11-05', status: 'Scheduled', is_deleted: false }],
             };
           }
           if (sql.includes('FROM accounts a WHERE a.id = $1')) {
@@ -418,15 +456,7 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
             };
           }
           if (sql.includes('UPDATE stakeholder_connect_draft_follow_ups')) {
-            return {
-              rows: [
-                {
-                  id: 'draft-1',
-                  converted_at: new Date(),
-                  converted_action_item_id: 'ai-created-1',
-                },
-              ],
-            };
+            return { rows: [] };
           }
           return { rows: [] };
         });
@@ -435,7 +465,7 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
 
         const result = await service.convertDraft('conn-1', 'draft-1', draftPayload, 'user-1', 'User One');
         expect(result.actionItem.id).toBe('ai-created-1');
-        expect(result.draft.converted_action_item_id).toBe('ai-created-1');
+        expect(result.draft.convertedActionItemId).toBe('ai-created-1');
         expect(mockActionItems.create).toHaveBeenCalled();
       });
 
@@ -470,6 +500,11 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
       it('rejects concurrent/duplicate conversion if draft was already converted', async () => {
         mockPermissions.can.mockReturnValue(true);
         mockDb.query.mockImplementation((sql: string) => {
+          if (sql.includes('FROM stakeholder_connects WHERE id = $1')) {
+            return {
+              rows: [{ id: 'conn-1', account_id: 'acc-1', meeting_date: '2026-11-05', status: 'Scheduled', is_deleted: false }],
+            };
+          }
           if (sql.includes('FROM stakeholder_connect_draft_follow_ups')) {
             return {
               rows: [
@@ -497,6 +532,8 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
           id: 'conn-1',
           accountId: 'acc-1',
           title: 'Meeting 1',
+          status: 'Scheduled',
+          isDeleted: false,
         });
 
         mockDb.query.mockImplementation((sql: string) => {
@@ -842,6 +879,8 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
           id: 'conn-1',
           accountId: 'acc-1',
           title: 'Solo Meeting',
+          status: 'Scheduled',
+          isDeleted: false,
           attendees: [{ id: 'stk-sole', name: 'Sole Attendee' }],
         });
 
@@ -855,6 +894,8 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
           id: 'conn-1',
           accountId: 'acc-1',
           title: 'Meeting with Client and SP',
+          status: 'Scheduled',
+          isDeleted: false,
           attendees: [
             { id: 'stk-client', name: 'Jane Client', stakeholderType: 'CLIENT' },
             { id: 'stk-sp', name: 'John SP', stakeholderType: 'SERVICE_PROVIDER' },
@@ -866,12 +907,14 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
         ).rejects.toThrow(new BadRequestException('A meeting must retain at least one client attendee from the account.'));
       });
 
-      it('successfully removes attendee when meeting retains at least one client attendee', async () => {
+      it('successfully removes attendee using id while preserving other attendees and stakeholder records', async () => {
         jest.spyOn(service, 'findOne')
           .mockResolvedValueOnce({
             id: 'conn-1',
             accountId: 'acc-1',
             title: 'Group Meeting',
+            status: 'Scheduled',
+            isDeleted: false,
             attendees: [
               { id: 'stk-1', name: 'Attendee 1', stakeholderType: 'CLIENT' },
               { id: 'stk-2', name: 'Attendee 2', stakeholderType: 'CLIENT' },
@@ -881,16 +924,104 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
             id: 'conn-1',
             accountId: 'acc-1',
             title: 'Group Meeting',
+            status: 'Scheduled',
+            isDeleted: false,
             attendees: [{ id: 'stk-2', name: 'Attendee 2', stakeholderType: 'CLIENT' }],
           });
 
         mockDb.query.mockResolvedValue({ rows: [] });
 
-        const result = await service.removeAttendee('conn-1', 'stk-1', 'user-1');
-        expect(result.attendees.length).toBe(1);
+        const result = await service.removeAttendee('conn-1', 'stk-1', 'user-1', 'Tester');
+        expect(result.attendees).toEqual([
+          { id: 'stk-2', name: 'Attendee 2', stakeholderType: 'CLIENT' },
+        ]);
         expect(mockDb.query).toHaveBeenCalledWith(
-          expect.stringContaining('DELETE FROM stakeholder_connect_attendees'),
+          expect.stringContaining('DELETE FROM stakeholder_connect_attendees WHERE connect_id = $1 AND stakeholder_id = $2'),
           ['conn-1', 'stk-1'],
+        );
+        const deleteStakeholderCalls = mockDb.query.mock.calls.filter((c: any) =>
+          String(c[0]).includes('DELETE FROM stakeholders'),
+        );
+        expect(deleteStakeholderCalls.length).toBe(0);
+      });
+
+      it('rejects removing attendee when stakeholderId is missing or literal undefined', async () => {
+        await expect(
+          service.removeAttendee('conn-1', '', 'user-1'),
+        ).rejects.toThrow(new BadRequestException('Valid attendee stakeholder ID is required.'));
+
+        await expect(
+          service.removeAttendee('conn-1', 'undefined', 'user-1'),
+        ).rejects.toThrow(new BadRequestException('Valid attendee stakeholder ID is required.'));
+
+        expect(mockDb.query).not.toHaveBeenCalled();
+      });
+
+      it('rejects removing attendee when stakeholderId is not associated with the meeting', async () => {
+        jest.spyOn(service, 'findOne').mockResolvedValue({
+          id: 'conn-1',
+          accountId: 'acc-1',
+          title: 'Group Meeting',
+          status: 'Scheduled',
+          isDeleted: false,
+          attendees: [
+            { id: 'stk-1', name: 'Attendee 1', stakeholderType: 'CLIENT' },
+            { id: 'stk-2', name: 'Attendee 2', stakeholderType: 'CLIENT' },
+          ],
+        });
+
+        await expect(
+          service.removeAttendee('conn-1', 'stk-nonexistent', 'user-1'),
+        ).rejects.toThrow(new NotFoundException('Attendee is not associated with this meeting.'));
+
+        const deleteCalls = mockDb.query.mock.calls.filter((c: any) =>
+          String(c[0]).includes('DELETE FROM stakeholder_connect_attendees'),
+        );
+        expect(deleteCalls.length).toBe(0);
+      });
+
+      it('successfully adds an eligible attendee to an existing meeting', async () => {
+        jest.spyOn(service, 'findOne')
+          .mockResolvedValueOnce({
+            id: 'conn-1',
+            accountId: 'acc-1',
+            title: 'Group Meeting',
+            status: 'Scheduled',
+            isDeleted: false,
+            attendees: [{ id: 'stk-1', name: 'Attendee 1', stakeholderType: 'CLIENT' }],
+          })
+          .mockResolvedValueOnce({
+            id: 'conn-1',
+            accountId: 'acc-1',
+            title: 'Group Meeting',
+            status: 'Scheduled',
+            isDeleted: false,
+            attendees: [
+              { id: 'stk-1', name: 'Attendee 1', stakeholderType: 'CLIENT' },
+              { id: 'stk-2', name: 'Attendee 2', stakeholderType: 'CLIENT' },
+            ],
+          });
+
+        mockDb.query.mockImplementation((sql: string) => {
+          if (sql.includes('FROM stakeholders WHERE id = $1')) {
+            return {
+              rows: [{
+                id: 'stk-2',
+                name: 'Attendee 2',
+                account_id: 'acc-1',
+                stakeholder_type: 'CLIENT',
+                is_deleted: false,
+              }],
+            };
+          }
+          return { rows: [] };
+        });
+
+        const result = await service.addAttendee('conn-1', 'stk-2', 'user-1', 'Tester');
+        expect(result.attendees.length).toBe(2);
+        expect(mockDb.query).toHaveBeenCalledWith(
+          expect.stringContaining('INSERT INTO stakeholder_connect_attendees'),
+          ['conn-1', 'stk-2'],
         );
       });
 
@@ -1081,11 +1212,35 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
 
     // ─── Meeting Restoration Validation Constraints ──────────────────────────
     describe('Meeting Restoration Constraints', () => {
+      it('rejects restoration if meeting is already active (not soft-deleted) without updating or logging', async () => {
+        mockDb.query.mockImplementation((sql: string) => {
+          if (sql.includes('FROM stakeholder_connects sc') && sql.includes('accounts a')) {
+            return {
+              rows: [{ id: 'conn-1', accountId: 'acc-1', title: 'Active Meeting', isDeleted: false, accountDeleted: false }],
+            };
+          }
+          return { rows: [] };
+        });
+
+        await expect(service.restore('conn-1', 'user-1', 'Tester')).rejects.toThrow(
+          new BadRequestException('Cannot restore meeting because it is already active.'),
+        );
+
+        const updateCalls = mockDb.query.mock.calls.filter((c: any) =>
+          String(c[0]).includes('UPDATE stakeholder_connects'),
+        );
+        const activityCalls = mockDb.query.mock.calls.filter((c: any) =>
+          String(c[0]).includes('INSERT INTO activities'),
+        );
+        expect(updateCalls).toHaveLength(0);
+        expect(activityCalls).toHaveLength(0);
+      });
+
       it('rejects restoration if parent account is deleted', async () => {
         mockDb.query.mockImplementation((sql: string) => {
           if (sql.includes('FROM stakeholder_connects sc') && sql.includes('accounts a')) {
             return {
-              rows: [{ id: 'conn-1', accountId: 'acc-del', title: 'Deleted Account Meeting', accountDeleted: true }],
+              rows: [{ id: 'conn-1', accountId: 'acc-del', title: 'Deleted Account Meeting', isDeleted: true, accountDeleted: true }],
             };
           }
           return { rows: [] };
@@ -1100,7 +1255,7 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
         mockDb.query.mockImplementation((sql: string) => {
           if (sql.includes('FROM stakeholder_connects sc') && sql.includes('accounts a')) {
             return {
-              rows: [{ id: 'conn-1', accountId: 'acc-1', title: 'Meeting', accountDeleted: false }],
+              rows: [{ id: 'conn-1', accountId: 'acc-1', title: 'Meeting', isDeleted: true, accountDeleted: false }],
             };
           }
           if (sql.includes('FROM accounts a WHERE a.id = $1')) {
@@ -1130,7 +1285,7 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
         mockDb.query.mockImplementation((sql: string) => {
           if (sql.includes('FROM stakeholder_connects sc') && sql.includes('accounts a')) {
             return {
-              rows: [{ id: 'conn-1', accountId: 'acc-1', title: 'Meeting', accountDeleted: false }],
+              rows: [{ id: 'conn-1', accountId: 'acc-1', title: 'Meeting', isDeleted: true, accountDeleted: false }],
             };
           }
           if (sql.includes('FROM accounts a WHERE a.id = $1')) {
@@ -1155,6 +1310,127 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
           new BadRequestException('Cannot restore meeting because an attendee belongs to a different account.'),
         );
       });
+
+      it('successfully restores a soft-deleted meeting when parent account and attendees are valid', async () => {
+        mockDb.query.mockImplementation((sql: string) => {
+          if (sql.includes('FROM stakeholder_connects sc') && sql.includes('accounts a')) {
+            return {
+              rows: [{ id: 'conn-1', accountId: 'acc-1', title: 'Archived Meeting', isDeleted: true, accountDeleted: false }],
+            };
+          }
+          if (sql.includes('FROM accounts a WHERE a.id = $1')) {
+            return { rows: [{ id: 'acc-1' }] };
+          }
+          if (sql.includes('FROM stakeholder_connect_attendees sca')) {
+            return {
+              rows: [
+                {
+                  stakeholder_id: 'stk-1',
+                  is_deleted: false,
+                  account_id: 'acc-1',
+                  stakeholder_type: 'CLIENT',
+                },
+              ],
+            };
+          }
+          return { rows: [] };
+        });
+
+        jest.spyOn(service, 'findOne').mockResolvedValue({
+          id: 'conn-1',
+          accountId: 'acc-1',
+          title: 'Archived Meeting',
+          isDeleted: false,
+        });
+
+        const restored = await service.restore('conn-1', 'user-1', 'Tester');
+        expect(restored.isDeleted).toBe(false);
+        expect(mockDb.query).toHaveBeenCalledWith(
+          expect.stringContaining('SET is_deleted = FALSE'),
+          ['user-1', 'conn-1'],
+        );
+      });
+    });
+
+    // ─── Draft Follow-Up Update and Deletion ─────────────────────────────────
+    describe('Draft Follow-Up Update & Deletion', () => {
+      it('updates an unconverted draft follow-up', async () => {
+        jest.spyOn(service, 'findOne').mockResolvedValue({
+          id: 'conn-1',
+          accountId: 'acc-1',
+          title: 'Meeting 1',
+          status: 'Scheduled',
+          isDeleted: false,
+        });
+
+        mockDb.query.mockImplementation((sql: string) => {
+          if (sql.includes('SELECT * FROM stakeholder_connect_draft_follow_ups')) {
+            return {
+              rows: [{
+                id: 'draft-1',
+                connect_id: 'conn-1',
+                title: 'Old Draft',
+                description: 'Old Desc',
+                suggested_owner_id: null,
+                suggested_due_date: null,
+                suggested_priority: null,
+                converted_at: null,
+              }],
+            };
+          }
+          if (sql.includes('FROM stakeholder_connect_draft_follow_ups d')) {
+            return {
+              rows: [{
+                id: 'draft-1',
+                connectId: 'conn-1',
+                title: 'Updated Draft',
+                description: 'Updated Desc',
+                suggestedOwnerId: null,
+                suggestedOwnerName: null,
+                suggestedDueDate: null,
+                suggestedPriority: null,
+              }],
+            };
+          }
+          return { rows: [] };
+        });
+
+        const updated = await service.updateDraft(
+          'conn-1',
+          'draft-1',
+          { title: 'Updated Draft', description: 'Updated Desc' },
+          'user-1',
+        );
+        expect(updated.title).toBe('Updated Draft');
+        expect(mockDb.query).toHaveBeenCalledWith(
+          expect.stringContaining('UPDATE stakeholder_connect_draft_follow_ups'),
+          ['Updated Draft', 'Updated Desc', null, null, null, 'draft-1'],
+        );
+      });
+
+      it('deletes an unconverted draft follow-up', async () => {
+        jest.spyOn(service, 'findOne').mockResolvedValue({
+          id: 'conn-1',
+          accountId: 'acc-1',
+          title: 'Meeting 1',
+          status: 'Scheduled',
+          isDeleted: false,
+        });
+
+        mockDb.query.mockImplementation((sql: string) => {
+          if (sql.includes('SELECT id, converted_at FROM stakeholder_connect_draft_follow_ups')) {
+            return { rows: [{ id: 'draft-1', converted_at: null }] };
+          }
+          return { rows: [] };
+        });
+
+        const result = await service.deleteDraft('conn-1', 'draft-1', 'user-1');
+        expect(result).toEqual({ success: true });
+        expect(mockDb.query).toHaveBeenCalledWith(
+          expect.stringContaining('DELETE FROM stakeholder_connect_draft_follow_ups WHERE id = $1 AND connect_id = $2'),
+          ['draft-1', 'conn-1'],
+        );
+      });
     });
 
     // ─── Hard-Delete & Soft-Delete Protections ────────────────────────────────
@@ -1164,6 +1440,8 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
           id: 'conn-1',
           accountId: 'acc-1',
           title: 'Meeting 1',
+          status: 'Scheduled',
+          isDeleted: false,
         });
 
         mockDb.query.mockImplementation((sql: string) => {
@@ -1191,6 +1469,8 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
           id: 'conn-1',
           accountId: 'acc-1',
           title: 'Meeting 1',
+          status: 'Scheduled',
+          isDeleted: false,
         });
 
         mockDb.query.mockResolvedValue({ rows: [] });
@@ -1216,6 +1496,8 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
           id: 'conn-1',
           accountId: 'acc-1',
           title: 'Meeting 1',
+          status: 'Scheduled',
+          isDeleted: false,
         });
 
         mockDb.query.mockImplementation((sql: string) => {
@@ -1249,6 +1531,8 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
           id: 'conn-1',
           accountId: 'acc-1',
           title: 'Meeting 1',
+          status: 'Scheduled',
+          isDeleted: false,
         });
 
         mockDb.query.mockImplementation((sql: string) => {
@@ -1270,6 +1554,8 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
           id: 'conn-1',
           accountId: 'acc-1',
           title: 'Meeting 1',
+          status: 'Scheduled',
+          isDeleted: false,
         });
 
         mockDb.query.mockImplementation((sql: string) => {
@@ -1294,6 +1580,8 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
           id: 'conn-1',
           accountId: 'acc-1',
           title: 'Meeting 1',
+          status: 'Scheduled',
+          isDeleted: false,
         });
 
         mockDb.query.mockImplementation((sql: string) => {
@@ -1546,10 +1834,25 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
         );
         expect(queryCall).toBeDefined();
       });
+
+      it('rejects findAllDeactivated and findAll(includeDeleted=true) before querying DB when user lacks delete permission', async () => {
+        mockPermissions.can.mockResolvedValue(false);
+
+        await expect(
+          service.findAllDeactivated({ userId: 'user-view-only', accountId: 'acc-1' }),
+        ).rejects.toThrow(ForbiddenException);
+
+        await expect(
+          service.findAll({ userId: 'user-view-only', accountId: 'acc-1', includeDeleted: true }),
+        ).rejects.toThrow(ForbiddenException);
+
+        // Neither call should execute any SQL against stakeholder_connects before permission check
+        expect(mockDb.query).not.toHaveBeenCalled();
+      });
     });
   });
 
-  // ─── 4. Controller Route Registration & Disambiguation ─────────────────────
+  // ─── 4. Controller Route Registration, HTTP Methods & Disambiguation ──────
   describe('StakeholderConnectsController Route Registration & Disambiguation', () => {
     let controller: StakeholderConnectsController;
     let mockService: any;
@@ -1559,8 +1862,57 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
         findAll: jest.fn<any>().mockResolvedValue([]),
         findAllDeactivated: jest.fn<any>().mockResolvedValue([{ id: 'deact-1', isDeleted: true }]),
         findOne: jest.fn<any>().mockImplementation((id: string) => Promise.resolve({ id, title: 'Sample Meeting' })),
+        create: jest.fn<any>().mockResolvedValue({ id: 'conn-new', title: 'New Meeting' }),
+        update: jest.fn<any>().mockImplementation((id: string, dto: any) => Promise.resolve({ id, ...dto })),
+        complete: jest.fn<any>().mockResolvedValue({ id: 'conn-1', status: 'Completed' }),
+        reschedule: jest.fn<any>().mockResolvedValue({ id: 'conn-1', status: 'Rescheduled' }),
+        cancel: jest.fn<any>().mockResolvedValue({ id: 'conn-1', status: 'Cancelled' }),
+        remove: jest.fn<any>().mockResolvedValue({ success: true }),
+        restore: jest.fn<any>().mockResolvedValue({ id: 'conn-1', isDeleted: false }),
+        addAttendee: jest.fn<any>().mockResolvedValue({ id: 'conn-1', attendees: [{ id: 'stk-1' }, { id: 'stk-2' }] }),
+        removeAttendee: jest.fn<any>().mockResolvedValue({ id: 'conn-1', attendees: [{ id: 'stk-2' }] }),
+        createDraft: jest.fn<any>().mockResolvedValue({ id: 'draft-1', title: 'Draft 1' }),
+        updateDraft: jest.fn<any>().mockResolvedValue({ id: 'draft-1', title: 'Draft Updated' }),
+        deleteDraft: jest.fn<any>().mockResolvedValue({ success: true }),
+        convertDraft: jest.fn<any>().mockResolvedValue({ draft: { id: 'draft-1' }, actionItem: { id: 'ai-1' } }),
+        linkActionItem: jest.fn<any>().mockResolvedValue({ id: 'conn-1', success: true }),
+        unlinkActionItem: jest.fn<any>().mockResolvedValue({ id: 'conn-1', success: true }),
       };
       controller = new StakeholderConnectsController(mockService);
+    });
+
+    it('standardizes all controller routes exclusively to GET and POST (no PATCH/PUT/DELETE)', () => {
+      const proto = StakeholderConnectsController.prototype;
+      const methodNames = Object.getOwnPropertyNames(proto).filter(
+        (name) => name !== 'constructor' && typeof (proto as any)[name] === 'function',
+      );
+
+      const registeredRoutes = methodNames.map((name) => {
+        const handler = (proto as any)[name];
+        const httpMethod: RequestMethod = Reflect.getMetadata(METHOD_METADATA, handler);
+        const path: string = Reflect.getMetadata(PATH_METADATA, handler);
+        const httpCode: number | undefined = Reflect.getMetadata(HTTP_CODE_METADATA, handler);
+        return { name, httpMethod, path, httpCode };
+      });
+
+      expect(registeredRoutes.length).toBe(23);
+      for (const route of registeredRoutes) {
+        expect([RequestMethod.GET, RequestMethod.POST]).toContain(route.httpMethod);
+      }
+
+      const routeMap = Object.fromEntries(registeredRoutes.map((r) => [r.name, r]));
+      expect(routeMap.update).toMatchObject({ httpMethod: RequestMethod.POST, path: ':id/update', httpCode: HttpStatus.OK });
+      expect(routeMap.complete).toMatchObject({ httpMethod: RequestMethod.POST, path: ':id/complete', httpCode: HttpStatus.OK });
+      expect(routeMap.reschedule).toMatchObject({ httpMethod: RequestMethod.POST, path: ':id/reschedule', httpCode: HttpStatus.OK });
+      expect(routeMap.cancel).toMatchObject({ httpMethod: RequestMethod.POST, path: ':id/cancel', httpCode: HttpStatus.OK });
+      expect(routeMap.remove).toMatchObject({ httpMethod: RequestMethod.POST, path: ':id/delete', httpCode: HttpStatus.OK });
+      expect(routeMap.restore).toMatchObject({ httpMethod: RequestMethod.POST, path: ':id/restore', httpCode: HttpStatus.OK });
+      expect(routeMap.addAttendee).toMatchObject({ httpMethod: RequestMethod.POST, path: ':id/attendees' });
+      expect(routeMap.removeAttendee).toMatchObject({ httpMethod: RequestMethod.POST, path: ':id/attendees/:stakeholderId/delete', httpCode: HttpStatus.OK });
+      expect(routeMap.createDraft).toMatchObject({ httpMethod: RequestMethod.POST, path: ':id/drafts', httpCode: HttpStatus.CREATED });
+      expect(routeMap.updateDraft).toMatchObject({ httpMethod: RequestMethod.POST, path: ':id/drafts/:draftId/update', httpCode: HttpStatus.OK });
+      expect(routeMap.deleteDraft).toMatchObject({ httpMethod: RequestMethod.POST, path: ':id/drafts/:draftId/delete', httpCode: HttpStatus.OK });
+      expect(routeMap.unlinkActionItem).toMatchObject({ httpMethod: RequestMethod.POST, path: ':id/action-items/:actionItemId/delete', httpCode: HttpStatus.OK });
     });
 
     it('routes GET deactivated to findAllDeactivated, not findOne', async () => {
@@ -1575,6 +1927,17 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
       expect(result).toEqual([{ id: 'deact-1', isDeleted: true }]);
     });
 
+    it('requires both stakeholder-connects:view and stakeholder-connects:delete on GET deactivated route', () => {
+      const perms = Reflect.getMetadata(
+        REQUIRE_PERMISSION_KEY,
+        StakeholderConnectsController.prototype.findAllDeactivated,
+      );
+      expect(perms).toEqual([
+        { module: 'stakeholder-connects', permission: 'view' },
+        { module: 'stakeholder-connects', permission: 'delete' },
+      ]);
+    });
+
     it('routes GET :id with an actual meeting ID to findOne correctly', async () => {
       const authUser = { sub: 'user-1', email: 'test@example.com' } as any;
       const meetingId = 'e2c34a8e-2f98-4d3b-9a48-89c0a6b7d123';
@@ -1583,8 +1946,33 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
       expect(result.id).toBe(meetingId);
     });
 
+    it('routes POST :id/update for MoM-only update to update on service', async () => {
+      const authUser = { sub: 'user-1', name: 'Tester', email: 'test@example.com' } as any;
+      const payload = { mom: 'Updated MoM notes', momNotes: 'Updated MoM notes' };
+      const result = await controller.update('conn-1', payload, authUser);
+
+      expect(mockService.update).toHaveBeenCalledWith('conn-1', payload, 'user-1', 'Tester');
+      expect(result.momNotes).toBe('Updated MoM notes');
+    });
+
+    it('routes POST :id/update for full connect edit to update on service', async () => {
+      const authUser = { sub: 'user-1', name: 'Tester', email: 'test@example.com' } as any;
+      const payload = {
+        title: 'Q4 Executive Sync',
+        meetingDate: '2026-12-01',
+        meetingTime: '14:30:00',
+        ownerId: 'user-2',
+        momNotes: 'Agenda & outcomes',
+        mom: 'Agenda & outcomes',
+        attendees: ['stk-1', 'stk-2'],
+      };
+      const result = await controller.update('conn-1', payload, authUser);
+
+      expect(mockService.update).toHaveBeenCalledWith('conn-1', payload, 'user-1', 'Tester');
+      expect(result.title).toBe('Q4 Executive Sync');
+    });
+
     it('routes POST :id/complete to complete method on service', async () => {
-      mockService.complete = jest.fn<any>().mockResolvedValue({ id: 'conn-1', status: 'Completed' });
       const authUser = { sub: 'user-1', name: 'Tester', email: 'test@example.com' } as any;
       const result = await controller.complete('conn-1', authUser);
 
@@ -1592,8 +1980,40 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
       expect(result.status).toBe('Completed');
     });
 
+    it('routes POST :id/delete and POST :id/restore to remove and restore on service', async () => {
+      const authUser = { sub: 'user-1', name: 'Tester', email: 'test@example.com' } as any;
+      const delRes = await controller.remove('conn-1', authUser);
+      expect(mockService.remove).toHaveBeenCalledWith('conn-1', 'user-1', 'Tester');
+      expect(delRes).toEqual({ success: true });
+
+      const restoreRes = await controller.restore('conn-1', authUser);
+      expect(mockService.restore).toHaveBeenCalledWith('conn-1', 'user-1', 'Tester');
+      expect(restoreRes.isDeleted).toBe(false);
+    });
+
+    it('routes POST :id/attendees and POST :id/attendees/:stakeholderId/delete to attendee handlers on service', async () => {
+      const authUser = { sub: 'user-1', name: 'Tester', email: 'test@example.com' } as any;
+      const added = await controller.addAttendee('conn-1', 'stk-2', authUser);
+      expect(mockService.addAttendee).toHaveBeenCalledWith('conn-1', 'stk-2', 'user-1', 'Tester');
+      expect(added.attendees.length).toBe(2);
+
+      const removed = await controller.removeAttendee('conn-1', 'stk-1', authUser);
+      expect(mockService.removeAttendee).toHaveBeenCalledWith('conn-1', 'stk-1', 'user-1', 'Tester');
+      expect(removed.attendees).toEqual([{ id: 'stk-2' }]);
+    });
+
+    it('routes POST :id/drafts/:draftId/update and POST :id/drafts/:draftId/delete to draft handlers on service', async () => {
+      const authUser = { sub: 'user-1', name: 'Tester', email: 'test@example.com' } as any;
+      const updated = await controller.updateDraft('conn-1', 'draft-1', { title: 'Draft Updated' }, authUser);
+      expect(mockService.updateDraft).toHaveBeenCalledWith('conn-1', 'draft-1', { title: 'Draft Updated' }, 'user-1');
+      expect(updated.title).toBe('Draft Updated');
+
+      const deleted = await controller.deleteDraft('conn-1', 'draft-1', authUser);
+      expect(mockService.deleteDraft).toHaveBeenCalledWith('conn-1', 'draft-1', 'user-1');
+      expect(deleted).toEqual({ success: true });
+    });
+
     it('routes POST :id/action-items with body to linkActionItem on service', async () => {
-      mockService.linkActionItem = jest.fn<any>().mockResolvedValue({ id: 'conn-1', success: true });
       const authUser = { sub: 'user-1', name: 'Tester', email: 'test@example.com' } as any;
       const result = await controller.linkActionItemFromBody('conn-1', 'ai-123', authUser);
 
@@ -1609,7 +2029,6 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
     });
 
     it('routes POST :id/action-items/:actionItemId to linkActionItem on service', async () => {
-      mockService.linkActionItem = jest.fn<any>().mockResolvedValue({ id: 'conn-1', success: true });
       const authUser = { sub: 'user-1', name: 'Tester', email: 'test@example.com' } as any;
       const result = await controller.linkActionItem('conn-1', 'ai-123', authUser);
 
@@ -1618,16 +2037,6 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
     });
 
     it('routes POST :id/action-items/:actionItemId/delete to unlinkActionItem on service', async () => {
-      mockService.unlinkActionItem = jest.fn<any>().mockResolvedValue({ id: 'conn-1', success: true });
-      const authUser = { sub: 'user-1', name: 'Tester', email: 'test@example.com' } as any;
-      const result = await controller.unlinkActionItemPost('conn-1', 'ai-123', authUser);
-
-      expect(mockService.unlinkActionItem).toHaveBeenCalledWith('conn-1', 'ai-123', 'user-1', 'Tester');
-      expect(result.success).toBe(true);
-    });
-
-    it('routes DELETE :id/action-items/:actionItemId to unlinkActionItem on service', async () => {
-      mockService.unlinkActionItem = jest.fn<any>().mockResolvedValue({ id: 'conn-1', success: true });
       const authUser = { sub: 'user-1', name: 'Tester', email: 'test@example.com' } as any;
       const result = await controller.unlinkActionItem('conn-1', 'ai-123', authUser);
 
@@ -2183,6 +2592,740 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
         );
         expect(lockQuery).toBeDefined();
         expect(lockQuery[1]).toEqual(['conn-lock']);
+      });
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 15. COMPREHENSIVE LIFECYCLE, DRAFT CONTRACT, CONVERSION & TXN NOTIFICATIONS
+  // ═══════════════════════════════════════════════════════════════════════════
+  describe('Lifecycle Policy Matrix, Draft Contract, Conversion & Post-Commit Notifications', () => {
+    let service: StakeholderConnectsService;
+    let mockDb: any;
+    let mockAccess: any;
+    let mockPermissions: any;
+    let mockActionItems: any;
+    let mockSpResolver: any;
+
+    beforeEach(() => {
+      mockDb = {
+        query: jest.fn(),
+        withTransaction: jest.fn(async (cb: any) => {
+          const hooks: Array<() => void | Promise<void>> = [];
+          const res = await cb(mockDb, { afterCommit: (fn: () => void | Promise<void>) => hooks.push(fn) });
+          for (const h of hooks) {
+            await h();
+          }
+          return res;
+        }),
+      };
+      mockAccess = {
+        getContext: jest.fn<any>().mockResolvedValue({ canViewAllAccounts: true, permissions: new Set() }),
+        buildChildVisibility: jest.fn().mockReturnValue({ conditions: [], params: [] }),
+        verifyAccountVisibility: jest.fn<any>().mockResolvedValue(true),
+      };
+      mockPermissions = { can: jest.fn<any>().mockResolvedValue(true) };
+      mockActionItems = { create: jest.fn<any>() };
+      mockSpResolver = { resolveOrCreate: jest.fn<any>() };
+
+      service = new StakeholderConnectsService(
+        mockDb,
+        mockAccess,
+        mockPermissions,
+        mockActionItems,
+        mockSpResolver,
+      );
+    });
+
+    const mockFindOneStatus = (status: 'Scheduled' | 'Rescheduled' | 'Completed' | 'Cancelled', isDeleted = false) => {
+      jest.spyOn(service, 'findOne').mockResolvedValue({
+        id: 'conn-1',
+        accountId: 'acc-1',
+        ownerId: 'user-host',
+        title: 'Test Meeting',
+        meetingDate: '2025-10-01',
+        meetingTime: '10:00:00',
+        status,
+        momNotes: 'Existing MoM',
+        cancellationReason: status === 'Cancelled' ? 'Reason' : null,
+        rescheduleReason: null,
+        isDeleted,
+        attendees: [
+          { id: 'stk-c1', name: 'Client One', stakeholderType: 'CLIENT' },
+          { id: 'stk-c2', name: 'Client Two', stakeholderType: 'CLIENT' },
+        ],
+      });
+    };
+
+    describe('10-Row Lifecycle Policy Matrix', () => {
+      it('Completed meetings allow MoM updates and draft CRUD/convert, and reject meeting details, attendees, action items, reschedule, complete, cancel', async () => {
+        // 1. Update MoM-only succeeds on Completed connect
+        mockDb.query.mockImplementation((sql: string) => {
+          if (sql.includes('FROM stakeholder_connects') && sql.includes('FOR UPDATE')) {
+            return {
+              rows: [{
+                id: 'conn-1',
+                accountId: 'acc-1',
+                ownerId: 'user-host',
+                title: 'Completed Connect',
+                meetingDate: '2025-10-01',
+                meetingTime: '10:00:00',
+                status: 'Completed',
+                momNotes: 'Initial',
+                cancellationReason: null,
+                isDeleted: false,
+              }],
+            };
+          }
+          if (sql.includes('FROM accounts a WHERE a.id = $1')) {
+            return { rows: [{ id: 'acc-1' }] };
+          }
+          return { rows: [] };
+        });
+        const findOneSpy = jest.spyOn(service, 'findOne').mockResolvedValue({
+          id: 'conn-1',
+          accountId: 'acc-1',
+          status: 'Completed',
+          momNotes: 'Final Post-Meeting MoM',
+          isDeleted: false,
+        });
+
+        const momRes = await service.update('conn-1', { mom: 'Final Post-Meeting MoM' }, 'user-1');
+        expect(momRes.momNotes).toBe('Final Post-Meeting MoM');
+        findOneSpy.mockRestore();
+
+        // 2. Rejects any non-MoM detail fields on Completed connect
+        for (const payload of [
+          { title: 'Retitled' },
+          { meetingDate: '2026-12-01' },
+          { meetingTime: '11:30' },
+          { ownerId: 'user-other' },
+          { attendees: ['stk-c1'] },
+          { status: 'Scheduled' as any },
+          { rescheduleReason: 'Later' },
+          { cancellationReason: 'Cancelled' },
+          { title: 'Retitled', mom: 'With MoM' },
+        ]) {
+          await expect(service.update('conn-1', payload as any, 'user-1')).rejects.toThrow(BadRequestException);
+        }
+
+        // 3. Rejects attendees, action items, reschedule, complete, cancel on Completed connect
+        mockFindOneStatus('Completed');
+        await expect(service.addAttendee('conn-1', 'stk-c2', 'user-1')).rejects.toThrow(BadRequestException);
+        await expect(service.removeAttendee('conn-1', 'stk-c1', 'user-1')).rejects.toThrow(BadRequestException);
+        await expect(service.linkActionItem('conn-1', 'ai-1', 'user-1')).rejects.toThrow(BadRequestException);
+        await expect(service.unlinkActionItem('conn-1', 'ai-1', 'user-1')).rejects.toThrow(BadRequestException);
+
+        mockDb.query.mockImplementation((sql: string) => {
+          if (sql.includes('FROM stakeholder_connects') && sql.includes('FOR UPDATE')) {
+            return { rows: [{ id: 'conn-1', account_id: 'acc-1', status: 'Completed', is_deleted: false }] };
+          }
+          if (sql.includes('FROM stakeholder_connects WHERE id = $1')) {
+            return { rows: [{ id: 'conn-1', account_id: 'acc-1', status: 'Completed', is_deleted: false }] };
+          }
+          if (sql.includes('FROM accounts a WHERE a.id = $1')) {
+            return { rows: [{ id: 'acc-1' }] };
+          }
+          return { rows: [] };
+        });
+        await expect(service.reschedule('conn-1', { newDate: '2027-01-01', newTime: '11:00' }, 'user-1')).rejects.toThrow(BadRequestException);
+        await expect(service.complete('conn-1', 'user-1')).rejects.toThrow(BadRequestException);
+        await expect(service.cancel('conn-1', { reason: 'No' }, 'user-1')).rejects.toThrow(BadRequestException);
+      });
+
+      it('Cancelled meetings are completely read-only for every mutation (including MoM and drafts CRUD/convert) while allowing soft delete', async () => {
+        mockDb.query.mockImplementation((sql: string) => {
+          if (sql.includes('FROM stakeholder_connects')) {
+            return {
+              rows: [{
+                id: 'conn-1',
+                accountId: 'acc-1',
+                account_id: 'acc-1',
+                ownerId: 'user-host',
+                title: 'Cancelled Sync',
+                meetingDate: '2025-10-01',
+                meetingTime: '10:00:00',
+                status: 'Cancelled',
+                isDeleted: false,
+                is_deleted: false,
+              }],
+            };
+          }
+          if (sql.includes('FROM accounts a WHERE a.id = $1')) {
+            return { rows: [{ id: 'acc-1' }] };
+          }
+          return { rows: [] };
+        });
+
+        await expect(service.update('conn-1', { mom: 'MoM on Cancelled' }, 'user-1')).rejects.toThrow(BadRequestException);
+        await expect(service.update('conn-1', { title: 'Title on Cancelled' }, 'user-1')).rejects.toThrow(BadRequestException);
+        await expect(service.reschedule('conn-1', { newDate: '2027-01-01', newTime: '11:00' }, 'user-1')).rejects.toThrow(BadRequestException);
+        await expect(service.complete('conn-1', 'user-1')).rejects.toThrow(BadRequestException);
+        await expect(service.cancel('conn-1', { reason: 'Again' }, 'user-1')).rejects.toThrow(BadRequestException);
+        await expect(
+          service.convertDraft('conn-1', 'draft-1', { ownerStakeholderId: 'stk-c1', dueDate: '2027-01-01', priority: 'High' } as any, 'user-1'),
+        ).rejects.toThrow(BadRequestException);
+
+        mockFindOneStatus('Cancelled');
+        await expect(service.createDraft('conn-1', { title: 'New Draft' }, 'user-1')).rejects.toThrow(BadRequestException);
+        await expect(service.updateDraft('conn-1', 'draft-1', { title: 'Edited Draft' }, 'user-1')).rejects.toThrow(BadRequestException);
+        await expect(service.deleteDraft('conn-1', 'draft-1', 'user-1')).rejects.toThrow(BadRequestException);
+        await expect(service.addAttendee('conn-1', 'stk-c2', 'user-1')).rejects.toThrow(BadRequestException);
+        await expect(service.removeAttendee('conn-1', 'stk-c1', 'user-1')).rejects.toThrow(BadRequestException);
+        await expect(service.linkActionItem('conn-1', 'ai-1', 'user-1')).rejects.toThrow(BadRequestException);
+        await expect(service.unlinkActionItem('conn-1', 'ai-1', 'user-1')).rejects.toThrow(BadRequestException);
+
+        // Soft delete (remove) still succeeds on Cancelled meetings
+        const del = await service.remove('conn-1', 'user-1', 'Tester');
+        expect(del).toEqual({ success: true });
+      });
+
+      it('Soft-deleted meetings reject findOne with 404, reject remove idempotently without duplicate logs, and reject normal mutations', async () => {
+        mockDb.query.mockImplementation((sql: string) => {
+          if (sql.includes('FROM stakeholder_connects sc') && sql.includes('WHERE sc.id = $1')) {
+            return {
+              rows: [{
+                id: 'conn-del',
+                accountId: 'acc-1',
+                status: 'Scheduled',
+                isDeleted: true,
+              }],
+            };
+          }
+          if (sql.includes('FROM stakeholder_connects')) {
+            return {
+              rows: [{
+                id: 'conn-del',
+                accountId: 'acc-1',
+                account_id: 'acc-1',
+                status: 'Scheduled',
+                isDeleted: true,
+                is_deleted: true,
+              }],
+            };
+          }
+          if (sql.includes('FROM accounts a WHERE a.id = $1')) {
+            return { rows: [{ id: 'acc-1' }] };
+          }
+          return { rows: [] };
+        });
+
+        await expect(service.findOne('conn-del', 'user-1')).rejects.toThrow(NotFoundException);
+        await expect(service.remove('conn-del', 'user-1')).rejects.toThrow(NotFoundException);
+        expect(
+          mockDb.query.mock.calls.filter((c: any) => String(c[0]).includes('INSERT INTO activity_logs')),
+        ).toHaveLength(0);
+
+        await expect(service.update('conn-del', { mom: 'Deleted edit' }, 'user-1')).rejects.toThrow(NotFoundException);
+        await expect(service.reschedule('conn-del', { newDate: '2027-01-01', newTime: '10:00' }, 'user-1')).rejects.toThrow(NotFoundException);
+        await expect(service.complete('conn-del', 'user-1')).rejects.toThrow(NotFoundException);
+        await expect(service.cancel('conn-del', { reason: 'Deleted' }, 'user-1')).rejects.toThrow(NotFoundException);
+        await expect(
+          service.convertDraft('conn-del', 'draft-1', { ownerStakeholderId: 'stk-c1', dueDate: '2027-01-01', priority: 'High' } as any, 'user-1'),
+        ).rejects.toThrow(NotFoundException);
+      });
+    });
+
+    describe('Draft & Conversion ValidationPipe Strict Contracts', () => {
+      const strictPipe = new ValidationPipe({
+        whitelist: true,
+        transform: true,
+        forbidNonWhitelisted: true,
+      });
+
+      it('CreateDraftFollowUpDto & UpdateDraftFollowUpDto accept canonical suggested fields, normalize blanks to null, and reject unknown/legacy fields', async () => {
+        const created = await strictPipe.transform(
+          {
+            title: '  Follow up  ',
+            description: 'Details',
+            suggestedOwnerId: 'stk-1',
+            suggestedDueDate: '2026-12-20',
+            suggestedPriority: 'High',
+          },
+          { type: 'body', metatype: CreateDraftFollowUpDto },
+        );
+        expect(created).toMatchObject({
+          title: '  Follow up  ',
+          suggestedOwnerId: 'stk-1',
+          suggestedDueDate: '2026-12-20',
+          suggestedPriority: 'High',
+        });
+
+        // Empty optional fields in UpdateDraftFollowUpDto normalize to null so edits can clear fields
+        const cleared = await strictPipe.transform(
+          {
+            description: '',
+            suggestedOwnerId: '',
+            suggestedDueDate: '',
+            suggestedPriority: '',
+          },
+          { type: 'body', metatype: UpdateDraftFollowUpDto },
+        );
+        expect(cleared).toMatchObject({
+          description: null,
+          suggestedOwnerId: null,
+          suggestedDueDate: null,
+          suggestedPriority: null,
+        });
+
+        // Reject legacy field name suggestedAssigneeStakeholderId & invalid values
+        await expect(
+          strictPipe.transform(
+            { title: 'Legacy', suggestedAssigneeStakeholderId: 'stk-1' },
+            { type: 'body', metatype: CreateDraftFollowUpDto },
+          ),
+        ).rejects.toThrow(BadRequestException);
+
+        await expect(
+          strictPipe.transform(
+            { title: 'Bad Priority', suggestedPriority: 'Urgent' },
+            { type: 'body', metatype: CreateDraftFollowUpDto },
+          ),
+        ).rejects.toThrow(BadRequestException);
+
+        await expect(
+          strictPipe.transform(
+            { title: 'Bad Date', suggestedDueDate: '2026/12/20' },
+            { type: 'body', metatype: CreateDraftFollowUpDto },
+          ),
+        ).rejects.toThrow(BadRequestException);
+      });
+
+      it('ConvertDraftToActionItemDto accepts DB-supported types + empty notes and rejects CEO Connect & unknown frontend fields', async () => {
+        const valid = await strictPipe.transform(
+          {
+            title: 'Deliver API Spec',
+            notes: '',
+            ownerStakeholderId: 'stk-1',
+            priority: 'High',
+            openDate: '2026-11-12',
+            dueDate: '2026-12-01',
+            actionItemType: 'Stakeholder connect',
+          },
+          { type: 'body', metatype: ConvertDraftToActionItemDto },
+        );
+        expect(valid.notes).toBe('');
+        expect(valid.actionItemType).toBe('Stakeholder connect');
+        expect(DB_SUPPORTED_ACTION_ITEM_TYPES).not.toContain('CEO Connect');
+
+        // Rejects CEO Connect (blocked by PG chk_action_item_type)
+        await expect(
+          strictPipe.transform(
+            {
+              ownerStakeholderId: 'stk-1',
+              priority: 'High',
+              dueDate: '2026-12-01',
+              actionItemType: 'CEO Connect',
+            },
+            { type: 'body', metatype: ConvertDraftToActionItemDto },
+          ),
+        ).rejects.toThrow(BadRequestException);
+
+        // Rejects removed legacy fields (description, type, comments)
+        await expect(
+          strictPipe.transform(
+            {
+              ownerStakeholderId: 'stk-1',
+              priority: 'High',
+              dueDate: '2026-12-01',
+              description: 'Legacy',
+              type: 'Client Action',
+              comments: 'Legacy note',
+            },
+            { type: 'body', metatype: ConvertDraftToActionItemDto },
+          ),
+        ).rejects.toThrow(BadRequestException);
+      });
+
+      it('createDraft & updateDraft persist suggestedDueDate/suggestedPriority and return camelCase canonical rows', async () => {
+        mockFindOneStatus('Scheduled');
+        const createdCamel = {
+          id: 'draft-1',
+          connectId: 'conn-1',
+          title: 'Send SOW',
+          description: 'Review clauses',
+          suggestedOwnerId: 'stk-c1',
+          suggestedOwnerName: 'Client One',
+          suggestedDueDate: '2026-12-25',
+          suggestedPriority: 'High',
+          convertedAt: null,
+          convertedActionItemId: null,
+          actionItemNumber: null,
+        };
+        const updatedCamel = {
+          ...createdCamel,
+          title: 'Send Revised SOW',
+          suggestedDueDate: null,
+          suggestedPriority: 'Low',
+        };
+
+        mockDb.query.mockImplementation((sql: string) => {
+          if (sql.includes('FROM stakeholders WHERE id = $1')) {
+            return { rows: [{ id: 'stk-c1', account_id: 'acc-1', stakeholder_type: 'CLIENT' }] };
+          }
+          if (sql.startsWith('INSERT INTO stakeholder_connect_draft_follow_ups')) {
+            return { rows: [{ id: 'draft-1' }] };
+          }
+          if (sql.includes('SELECT * FROM stakeholder_connect_draft_follow_ups')) {
+            return {
+              rows: [{
+                id: 'draft-1',
+                connect_id: 'conn-1',
+                title: 'Send SOW',
+                description: 'Review clauses',
+                suggested_owner_id: 'stk-c1',
+                suggested_due_date: '2026-12-25',
+                suggested_priority: 'High',
+                converted_at: null,
+              }],
+            };
+          }
+          if (sql.includes('FROM stakeholder_connect_draft_follow_ups d')) {
+            const isAfterUpdate = mockDb.query.mock.calls.some((c: any) =>
+              String(c[0]).includes('UPDATE stakeholder_connect_draft_follow_ups'),
+            );
+            return { rows: [isAfterUpdate ? updatedCamel : createdCamel] };
+          }
+          return { rows: [] };
+        });
+
+        const resCreate = await service.createDraft(
+          'conn-1',
+          {
+            title: 'Send SOW',
+            description: 'Review clauses',
+            suggestedOwnerId: 'stk-c1',
+            suggestedDueDate: '2026-12-25',
+            suggestedPriority: 'High',
+          },
+          'user-1',
+        );
+        expect(resCreate).toEqual(createdCamel);
+        expect(mockDb.query).toHaveBeenCalledWith(
+          expect.stringContaining('suggested_due_date, suggested_priority'),
+          ['conn-1', 'Send SOW', 'Review clauses', 'stk-c1', '2026-12-25', 'High', 'user-1'],
+        );
+
+        const resUpdate = await service.updateDraft(
+          'conn-1',
+          'draft-1',
+          {
+            title: 'Send Revised SOW',
+            suggestedDueDate: null,
+            suggestedPriority: 'Low',
+          },
+          'user-1',
+        );
+        expect(resUpdate).toEqual(updatedCamel);
+        expect(mockDb.query).toHaveBeenCalledWith(
+          expect.stringContaining('suggested_due_date = $4'),
+          ['Send Revised SOW', 'Review clauses', 'stk-c1', null, 'Low', 'draft-1'],
+        );
+      });
+    });
+
+    describe('Post-Commit Notification Ordering with Real DatabaseService, ActionItemsService & NotificationsListener', () => {
+      it('defers ActionItem:Created notification until COMMIT, never emits on ROLLBACK, and swallows post-commit listener errors', async () => {
+        const prevDbUrl = process.env.DATABASE_URL;
+        process.env.DATABASE_URL = 'postgresql://user:pass@localhost:5432/testdb';
+
+        const realDb = new DatabaseService();
+        const sqlLog: string[] = [];
+        const persistedNotifications: any[] = [];
+        let failNotifInsert = false;
+
+        const fakeClient = {
+          query: jest.fn(async (sql: string, params?: any[]) => {
+            const clean = sql.trim();
+            sqlLog.push(clean);
+            if (clean === 'BEGIN' || clean === 'COMMIT' || clean === 'ROLLBACK') {
+              return { rows: [] };
+            }
+            if (clean.includes('FROM accounts a WHERE')) {
+              return { rows: [{ id: 'acc-1' }] };
+            }
+            if (clean.includes('SELECT name FROM accounts WHERE id = $1')) {
+              return { rows: [{ name: 'Acme Corp' }] };
+            }
+            if (clean.includes('FROM stakeholders WHERE id = $1')) {
+              return { rows: [{ id: 'stk-c1', name: 'Client One', account_id: 'acc-1', stakeholder_type: 'CLIENT' }] };
+            }
+            if (clean.includes('INSERT INTO action_item_sequences')) {
+              return { rows: [{ last_seq: 1 }] };
+            }
+            if (clean.startsWith('INSERT INTO action_items')) {
+              return { rows: [{ id: 'ai-tx-1' }] };
+            }
+            if (clean.includes('FROM action_items ai')) {
+              return {
+                rows: [{
+                  id: 'ai-tx-1',
+                  action_item_number: 'ACM-0001',
+                  title: 'Converted Task',
+                  account_id: 'acc-1',
+                  owner_id: 'user-owner-1',
+                  owner_stakeholder_id: 'stk-c1',
+                  due_date: '2026-12-20',
+                  open_date: '2026-11-12',
+                  priority: 'High',
+                  status: 'To Do',
+                  action_item_type: 'Stakeholder connect',
+                  notes: '',
+                  custom_data: {},
+                }],
+              };
+            }
+            return { rows: [] };
+          }),
+          release: jest.fn(),
+        };
+
+        jest.spyOn(realDb.pool, 'connect' as any).mockResolvedValue(fakeClient as any);
+        jest.spyOn(realDb, 'query').mockImplementation(async (sql: string, params?: any[]) => {
+          const clean = sql.trim();
+          sqlLog.push(`pool:${clean}`);
+          if (clean.includes('SELECT id FROM users')) {
+            return { rows: [{ id: 'user-owner-1' }], rowCount: 1 } as any;
+          }
+          if (clean.startsWith('INSERT INTO notifications')) {
+            if (failNotifInsert) {
+              throw new Error('Transient notification DB outage');
+            }
+            persistedNotifications.push({ userId: params?.[0], actionItemId: params?.[9], eventType: params?.[2] });
+            return { rows: [{ id: 'notif-1' }], rowCount: 1 } as any;
+          }
+          return fakeClient.query(sql, params) as any;
+        });
+
+        const bus = new NotificationEventBus();
+        const busEmitSpy = jest.spyOn(bus, 'emit');
+        const notificationsService = new NotificationsService(realDb as any, {} as any);
+        const listener = new NotificationsListener(bus, notificationsService);
+        listener.onModuleInit();
+
+        const realActionItems = new ActionItemsService(
+          realDb,
+          {
+            getFiscalContext: jest.fn<any>().mockResolvedValue({}),
+            derivePeriod: jest.fn().mockReturnValue({ financialYear: 'FY27', quarter: 'Q3' }),
+          } as any,
+          {
+            getContext: jest.fn<any>().mockResolvedValue({ canViewAllAccounts: true, permissions: new Set() }),
+            buildAccountVisibility: jest.fn().mockReturnValue({ conditions: [], params: [] }),
+          } as any,
+          bus,
+          { can: jest.fn<any>().mockResolvedValue(true) } as any,
+        );
+
+        try {
+          // Case A: Transaction commits — emit MUST happen strictly AFTER COMMIT
+          let commitSeenAtEmit = false;
+          busEmitSpy.mockImplementationOnce((event) => {
+            commitSeenAtEmit = sqlLog.includes('COMMIT');
+            return NotificationEventBus.prototype.emit.call(bus, event);
+          });
+
+          const createdItem = await realDb.withTransaction(async (client, tx) => {
+            const item = await realActionItems.create(
+              {
+                title: 'Converted Task',
+                accountId: 'acc-1',
+                ownerStakeholderId: 'stk-c1',
+                ownerId: 'user-owner-1',
+                openDate: '2026-11-12',
+                dueDate: '2026-12-20',
+                priority: 'High',
+                status: 'To Do',
+                actionItemType: 'Stakeholder connect',
+                notes: '',
+              },
+              'user-owner-1',
+              client,
+              tx.afterCommit,
+            );
+            // Before returning from callback (prior to COMMIT), bus.emit MUST NOT have fired
+            expect(busEmitSpy).not.toHaveBeenCalled();
+            return item;
+          });
+
+          await new Promise((r) => setImmediate(r));
+          expect(createdItem.id).toBe('ai-tx-1');
+          expect(commitSeenAtEmit).toBe(true);
+          expect(busEmitSpy).toHaveBeenCalledTimes(1);
+          expect(persistedNotifications).toEqual([
+            { userId: 'user-owner-1', actionItemId: 'ai-tx-1', eventType: 'Created' },
+          ]);
+
+          // Case B: Transaction rolls back AFTER ActionItemsService.create — notification MUST NOT emit
+          sqlLog.length = 0;
+          busEmitSpy.mockClear();
+          persistedNotifications.length = 0;
+
+          await expect(
+            realDb.withTransaction(async (client, tx) => {
+              await realActionItems.create(
+                {
+                  title: 'Rolled Back Task',
+                  accountId: 'acc-1',
+                  ownerStakeholderId: 'stk-c1',
+                  ownerId: 'user-owner-1',
+                  openDate: '2026-11-12',
+                  dueDate: '2026-12-20',
+                  priority: 'High',
+                  status: 'To Do',
+                  actionItemType: 'Stakeholder connect',
+                  notes: '',
+                },
+                'user-owner-1',
+                client,
+                tx.afterCommit,
+              );
+              throw new Error('Simulated draft conversion step failure');
+            }),
+          ).rejects.toThrow('Simulated draft conversion step failure');
+
+          await new Promise((r) => setImmediate(r));
+          expect(sqlLog).toContain('ROLLBACK');
+          expect(sqlLog).not.toContain('COMMIT');
+          expect(busEmitSpy).not.toHaveBeenCalled();
+          expect(persistedNotifications).toHaveLength(0);
+
+          // Case C: Notification error post-commit never fails committed transaction
+          failNotifInsert = true;
+          const postCommitRes = await realDb.withTransaction(async (_client, tx) => {
+            tx.afterCommit(() => {
+              throw new Error('Direct afterCommit error');
+            });
+            return 'committed-ok';
+          });
+          expect(postCommitRes).toBe('committed-ok');
+        } finally {
+          bus.onModuleDestroy();
+          await realDb.onModuleDestroy();
+          if (prevDbUrl === undefined) delete process.env.DATABASE_URL;
+          else process.env.DATABASE_URL = prevDbUrl;
+        }
+      });
+    });
+
+    describe('M-3 MoM Clearing Semantics & L-3 HTTP 413 Status Mapping', () => {
+      it('UpdateStakeholderConnectDto preserves omitted MoM as undefined while preserving explicit empty/whitespace/null values', async () => {
+        const pipe = new ValidationPipe({ whitelist: true, transform: true });
+
+        const omitted = await pipe.transform(
+          { title: 'Title Only' },
+          { type: 'body', metatype: UpdateStakeholderConnectDto },
+        );
+        expect(omitted.mom).toBeUndefined();
+        expect(omitted.momNotes).toBeUndefined();
+
+        const clearedEmpty = await pipe.transform(
+          { mom: '', momNotes: '' },
+          { type: 'body', metatype: UpdateStakeholderConnectDto },
+        );
+        expect(clearedEmpty.mom).toBe('');
+        expect(clearedEmpty.momNotes).toBe('');
+
+        const clearedNull = await pipe.transform(
+          { mom: null, momNotes: null },
+          { type: 'body', metatype: UpdateStakeholderConnectDto },
+        );
+        expect(clearedNull.mom).toBeNull();
+        expect(clearedNull.momNotes).toBeNull();
+
+        const nonEmpty = await pipe.transform(
+          { mom: '  Final notes  ' },
+          { type: 'body', metatype: UpdateStakeholderConnectDto },
+        );
+        expect(nonEmpty.mom).toBe('  Final notes  ');
+      });
+
+      it('update() retains existing MoM when omitted, clears to NULL when empty/whitespace/null, trims non-empty, and preserves lifecycle rules', async () => {
+        const setupExisting = (status: 'Scheduled' | 'Completed' | 'Cancelled') => {
+          mockDb.query.mockReset();
+          mockDb.query.mockImplementation((sql: string) => {
+            if (sql.includes('FROM stakeholder_connects') && sql.includes('FOR UPDATE')) {
+              return {
+                rows: [{
+                  id: 'conn-1',
+                  accountId: 'acc-1',
+                  ownerId: 'user-host',
+                  title: 'Weekly Sync',
+                  meetingDate: '2025-10-01',
+                  meetingTime: '10:00:00',
+                  status,
+                  momNotes: 'Existing MoM text',
+                  cancellationReason: null,
+                  isDeleted: false,
+                }],
+              };
+            }
+            return { rows: [] };
+          });
+          jest.spyOn(service, 'findOne').mockResolvedValue({
+            id: 'conn-1',
+            accountId: 'acc-1',
+            status,
+            isDeleted: false,
+          });
+        };
+
+        // 1. Omitted MoM retains existing momNotes
+        setupExisting('Scheduled');
+        await service.update('conn-1', { title: 'Renamed Sync' }, 'user-1');
+        let updateCall = mockDb.query.mock.calls.find((c: any) => String(c[0]).includes('UPDATE stakeholder_connects'));
+        expect(updateCall[1][5]).toBe('Existing MoM text');
+
+        // 2. Explicit empty string clears mom_notes to null (allowed on Completed too)
+        setupExisting('Completed');
+        await service.update('conn-1', { mom: '', momNotes: '' }, 'user-1');
+        updateCall = mockDb.query.mock.calls.find((c: any) => String(c[0]).includes('UPDATE stakeholder_connects'));
+        expect(updateCall[1][5]).toBeNull();
+
+        // 3. Explicit whitespace-only string clears mom_notes to null
+        setupExisting('Completed');
+        await service.update('conn-1', { mom: '   \n\t  ' }, 'user-1');
+        updateCall = mockDb.query.mock.calls.find((c: any) => String(c[0]).includes('UPDATE stakeholder_connects'));
+        expect(updateCall[1][5]).toBeNull();
+
+        // 4. Explicit null clears mom_notes to null
+        setupExisting('Scheduled');
+        await service.update('conn-1', { momNotes: null }, 'user-1');
+        updateCall = mockDb.query.mock.calls.find((c: any) => String(c[0]).includes('UPDATE stakeholder_connects'));
+        expect(updateCall[1][5]).toBeNull();
+
+        // 5. Non-empty MoM is trimmed and stored
+        setupExisting('Completed');
+        await service.update('conn-1', { mom: '  Updated summary  ' }, 'user-1');
+        updateCall = mockDb.query.mock.calls.find((c: any) => String(c[0]).includes('UPDATE stakeholder_connects'));
+        expect(updateCall[1][5]).toBe('Updated summary');
+
+        // 6. Clearing MoM on a Cancelled meeting is still rejected by lifecycle policy
+        setupExisting('Cancelled');
+        await expect(service.update('conn-1', { mom: '' }, 'user-1')).rejects.toThrow(BadRequestException);
+      });
+
+      it('HttpExceptionFilter maps HTTP 413 PayloadTooLargeException to "Payload Too Large" while preserving status and message', () => {
+        const filter = new HttpExceptionFilter();
+        const json = jest.fn();
+        const status = jest.fn().mockReturnValue({ json });
+        const host = {
+          switchToHttp: () => ({
+            getRequest: () => ({ method: 'POST', url: '/api/stakeholder-connects/conn-1/mom-attachments', headers: {} }),
+            getResponse: () => ({ status }),
+          }),
+        } as any;
+
+        filter.catch(new PayloadTooLargeException('File too large'), host);
+
+        expect(status).toHaveBeenCalledWith(413);
+        expect(json).toHaveBeenCalledWith(
+          expect.objectContaining({
+            statusCode: 413,
+            error: 'Payload Too Large',
+            message: 'File too large',
+          }),
+        );
       });
     });
   });

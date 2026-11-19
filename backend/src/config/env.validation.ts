@@ -32,6 +32,9 @@ const POSITIVE_INT_VARS = [
   'DB_POOL_MAX',
   'DB_IDLE_TIMEOUT_MS',
   'DB_CONN_TIMEOUT_MS',
+  'MOM_ATTACHMENT_MAX_FILE_SIZE_MB',
+  'MOM_ATTACHMENT_MAX_TOTAL_SIZE_MB',
+  'MOM_ATTACHMENT_MAX_FILES',
 ];
 
 /** Mask the password segment of a postgres connection string for logging. */

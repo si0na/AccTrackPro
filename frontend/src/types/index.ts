@@ -1285,14 +1285,12 @@ export type ConnectStatus = 'Scheduled' | 'Completed' | 'Cancelled' | 'Reschedul
 
 export interface StakeholderConnectAttendee {
   id: string;
-  connectId: string;
-  stakeholderId: string;
-  createdAt: string;
   name?: string;
   email?: string;
   designation?: string;
   department?: string;
   stakeholderType?: string;
+  joinedAt?: string;
   level?: string;
 }
 
@@ -1301,8 +1299,8 @@ export interface StakeholderConnectDraftFollowUp {
   connectId: string;
   title: string;
   description?: string;
-  suggestedAssigneeStakeholderId?: string;
-  suggestedAssigneeName?: string;
+  suggestedOwnerId?: string;
+  suggestedOwnerName?: string;
   suggestedDueDate?: string;
   suggestedPriority?: 'High' | 'Medium' | 'Low';
   convertedActionItemId?: string;
@@ -1344,6 +1342,19 @@ export interface StakeholderConnectRescheduleHistory {
   createdAt: string;
 }
 
+export interface StakeholderConnectMomAttachment {
+  id: string;
+  connectId: string;
+  originalFilename: string;
+  mimeType: string;
+  fileExtension: string;
+  fileSize: number;
+  uploadedBy?: string;
+  uploadedByName?: string;
+  uploadedAt: string;
+  createdAt: string;
+}
+
 export interface StakeholderConnect {
   id: string;
   accountId: string;
@@ -1366,6 +1377,7 @@ export interface StakeholderConnect {
   linkedActionItems?: StakeholderConnectLinkedActionItem[];
   actionItems?: StakeholderConnectLinkedActionItem[];
   rescheduleHistory?: StakeholderConnectRescheduleHistory[];
+  momAttachments?: StakeholderConnectMomAttachment[];
 }
 
 

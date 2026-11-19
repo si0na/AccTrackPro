@@ -91,14 +91,17 @@ export const StakeholderTable: React.FC<StakeholderTableProps> = ({
     accounts: crmAccounts,
     stakeholders: crmStakeholders,
     serviceProviders: crmServiceProviders,
+    refreshData,
   } = useCRM();
   const isServiceProvider = type === 'SERVICE_PROVIDER';
   const [scheduleConnectTarget, setScheduleConnectTarget] = useState<Stakeholder | null>(null);
+  const [connectPersistedForModal, setConnectPersistedForModal] = useState(false);
 
   const handleScheduleConnect = (s: Stakeholder) => {
     if (onScheduleConnect) {
       onScheduleConnect(s);
     } else {
+      setConnectPersistedForModal(false);
       setScheduleConnectTarget(s);
     }
   };
@@ -907,8 +910,21 @@ export const StakeholderTable: React.FC<StakeholderTableProps> = ({
       {scheduleConnectTarget && (
         <ConnectFormModal
           isOpen={!!scheduleConnectTarget}
-          onClose={() => setScheduleConnectTarget(null)}
-          onSuccess={() => setScheduleConnectTarget(null)}
+          onClose={() => {
+            setConnectPersistedForModal(false);
+            setScheduleConnectTarget(null);
+          }}
+          onConnectPersisted={() => {
+            setConnectPersistedForModal(true);
+            void refreshData();
+          }}
+          onSuccess={() => {
+            if (!connectPersistedForModal) {
+              void refreshData();
+            }
+            setConnectPersistedForModal(false);
+            setScheduleConnectTarget(null);
+          }}
           accounts={crmAccounts}
           stakeholders={crmStakeholders}
           serviceProviders={crmServiceProviders}

@@ -708,6 +708,9 @@ export const StakeholderConnectsView: React.FC = () => {
         <ConnectFormModal
           isOpen={isCreateOpen}
           onClose={() => setIsCreateOpen(false)}
+          onConnectPersisted={async () => {
+            await fetchConnects();
+          }}
           onSuccess={async () => {
             await fetchConnects();
           }}
@@ -724,6 +727,9 @@ export const StakeholderConnectsView: React.FC = () => {
         <ConnectFormModal
           isOpen={!!editConnect}
           onClose={() => setEditConnect(null)}
+          onConnectPersisted={async () => {
+            await fetchConnects();
+          }}
           onSuccess={async () => {
             await fetchConnects();
           }}

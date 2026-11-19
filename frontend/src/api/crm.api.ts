@@ -13,8 +13,9 @@ import type {
   AccountGrowthWorkspace, AccountGrowthClientPriority, AccountGrowthIndustryTrend,
   AccountGrowthBudgetPositioning, AccountGrowthWalletSharePlan, AccountGrowthSuccessParameter,
   AccountGrowthOutsourcingSplit, AccountGrowthSwot, AccountGrowthCompetitor, AccountGrowthActionPlan,
-  StakeholderConnect, StakeholderConnectAttendee, StakeholderConnectDraftFollowUp,
-  StakeholderConnectLinkedActionItem, StakeholderConnectRescheduleHistory, ConnectStatus,
+  StakeholderConnect, StakeholderConnectDraftFollowUp,
+  StakeholderConnectLinkedActionItem, StakeholderConnectRescheduleHistory,
+  StakeholderConnectMomAttachment, ConnectStatus,
 } from '@/types';
 
 /** Attributes an administrator can pre-assign / edit on a user or whitelist row. */
@@ -898,8 +899,8 @@ export interface UpdateConnectInput {
   meetingTime?: string;
   ownerId?: string;
   status?: ConnectStatus;
-  momNotes?: string;
-  mom?: string;
+  momNotes?: string | null;
+  mom?: string | null;
   cancellationReason?: string;
   rescheduleReason?: string;
   attendees?: string[];
@@ -932,20 +933,27 @@ export interface CancelConnectInput {
 export interface CreateDraftInput {
   title: string;
   description?: string;
-  suggestedAssigneeStakeholderId?: string;
+  suggestedOwnerId?: string;
   suggestedDueDate?: string;
   suggestedPriority?: 'High' | 'Medium' | 'Low';
 }
 
+export interface UpdateDraftInput {
+  title?: string;
+  description?: string | null;
+  suggestedOwnerId?: string | null;
+  suggestedDueDate?: string | null;
+  suggestedPriority?: 'High' | 'Medium' | 'Low' | null;
+}
+
 export interface ConvertDraftInput {
   title?: string;
-  description?: string;
+  notes?: string;
   ownerStakeholderId: string;
   priority: 'High' | 'Medium' | 'Low';
   openDate: string;
   dueDate: string;
-  type?: string;
-  comments?: string;
+  actionItemType?: string;
 }
 
 export const stakeholderConnectsApi = {
@@ -958,7 +966,7 @@ export const stakeholderConnectsApi = {
   create: (data: CreateConnectInput) => {
     const rawList = data.attendees || data.stakeholderIds || [];
     const attendees: string[] = rawList
-      .map((item: any) => (typeof item === 'string' ? item : item?.id || item?.stakeholderId))
+      .map((item: any) => (typeof item === 'string' ? item : item?.id))
       .filter((id): id is string => typeof id === 'string' && id.trim().length > 0);
 
     const payload = {
@@ -975,13 +983,14 @@ export const stakeholderConnectsApi = {
     return apiClient.post<StakeholderConnect>('/stakeholder-connects', payload).then((r) => r.data);
   },
   update: (id: string, data: UpdateConnectInput) => {
+    const hasMom = data.momNotes !== undefined || data.mom !== undefined;
+    const normalizedMom = data.momNotes !== undefined ? data.momNotes : data.mom;
     const payload = {
       ...data,
       meetingDate: data.meetingDate ? normalizeDateString(data.meetingDate) : undefined,
-      momNotes: data.momNotes ?? data.mom,
-      mom: data.mom ?? data.momNotes,
+      ...(hasMom ? { momNotes: normalizedMom, mom: normalizedMom } : {}),
     };
-    return apiClient.patch<StakeholderConnect>(`/stakeholder-connects/${id}`, payload).then((r) => r.data);
+    return apiClient.post<StakeholderConnect>(`/stakeholder-connects/${id}/update`, payload).then((r) => r.data);
   },
   complete: (id: string) =>
     apiClient.post<StakeholderConnect>(`/stakeholder-connects/${id}/complete`).then((r) => r.data),
@@ -1004,12 +1013,12 @@ export const stakeholderConnectsApi = {
   restore: (id: string) =>
     apiClient.post<StakeholderConnect>(`/stakeholder-connects/${id}/restore`).then((r) => r.data),
   addAttendee: (id: string, stakeholderId: string) =>
-    apiClient.post<StakeholderConnectAttendee>(`/stakeholder-connects/${id}/attendees`, { stakeholderId }).then((r) => r.data),
+    apiClient.post<StakeholderConnect>(`/stakeholder-connects/${id}/attendees`, { stakeholderId }).then((r) => r.data),
   removeAttendee: (id: string, stakeholderId: string) =>
-    apiClient.post<{ success: boolean }>(`/stakeholder-connects/${id}/attendees/${stakeholderId}/delete`).then((r) => r.data),
+    apiClient.post<StakeholderConnect>(`/stakeholder-connects/${id}/attendees/${stakeholderId}/delete`).then((r) => r.data),
   createDraft: (id: string, data: CreateDraftInput) =>
     apiClient.post<StakeholderConnectDraftFollowUp>(`/stakeholder-connects/${id}/drafts`, data).then((r) => r.data),
-  updateDraft: (id: string, draftId: string, data: Partial<CreateDraftInput>) =>
+  updateDraft: (id: string, draftId: string, data: UpdateDraftInput) =>
     apiClient.post<StakeholderConnectDraftFollowUp>(`/stakeholder-connects/${id}/drafts/${draftId}/update`, data).then((r) => r.data),
   deleteDraft: (id: string, draftId: string) =>
     apiClient.post<{ success: boolean }>(`/stakeholder-connects/${id}/drafts/${draftId}/delete`).then((r) => r.data),
@@ -1019,6 +1028,37 @@ export const stakeholderConnectsApi = {
     apiClient.post<StakeholderConnectLinkedActionItem>(`/stakeholder-connects/${id}/action-items`, { actionItemId }).then((r) => r.data),
   unlinkActionItem: (id: string, actionItemId: string) =>
     apiClient.post<{ success: boolean }>(`/stakeholder-connects/${id}/action-items/${actionItemId}/delete`).then((r) => r.data),
+  listMomAttachments: (id: string) =>
+    apiClient.get<StakeholderConnectMomAttachment[]>(`/stakeholder-connects/${id}/mom-attachments`).then((r) => r.data),
+  uploadMomAttachments: (
+    id: string,
+    files: File[],
+    onUploadProgress?: (percent: number) => void,
+  ) => {
+    const fd = new FormData();
+    files.forEach((file) => fd.append('files', file));
+    return apiClient
+      .post<StakeholderConnectMomAttachment[]>(`/stakeholder-connects/${id}/mom-attachments`, fd, {
+        onUploadProgress: onUploadProgress
+          ? (evt) => {
+              if (evt.total && evt.total > 0) {
+                onUploadProgress(Math.min(100, Math.round((evt.loaded * 100) / evt.total)));
+              }
+            }
+          : undefined,
+      })
+      .then((r) => r.data);
+  },
+  downloadMomAttachment: (id: string, attachmentId: string) =>
+    apiClient
+      .get<Blob>(`/stakeholder-connects/${id}/mom-attachments/${attachmentId}/download`, {
+        responseType: 'blob',
+      })
+      .then((r) => r.data),
+  deleteMomAttachment: (id: string, attachmentId: string) =>
+    apiClient
+      .post<{ success: boolean }>(`/stakeholder-connects/${id}/mom-attachments/${attachmentId}/delete`)
+      .then((r) => r.data),
 };
 
 

@@ -9,6 +9,7 @@ import type {
   Stakeholder,
   ServiceProviderUser,
   StakeholderConnect,
+  StakeholderConnectMomAttachment,
   ConnectStatus,
 } from '@/types';
 import { stakeholderConnectsApi } from '@/api/crm.api';
@@ -23,11 +24,20 @@ import {
 } from '@/components/ui';
 import { CalendarCheck, Users, Info } from 'lucide-react';
 import { showToast } from '@/components/common/ToastHost';
+import { MomAttachmentsSection } from './MomAttachmentsSection';
 
 export interface ConnectFormModalProps {
   isOpen: boolean;
   onClose: () => void;
+  /** Called once the full workflow (connect save + any queued attachment uploads) completes. */
   onSuccess: (savedConnect: StakeholderConnect) => void;
+  /**
+   * Called when the connect record itself was persisted on the server, but a subsequent
+   * attachment upload failed and the modal stays open in retry mode.
+   */
+  onConnectPersisted?: (savedConnect: StakeholderConnect) => void;
+  /** Called immediately after an existing MoM attachment is deleted inside the modal. */
+  onAttachmentDeleted?: (attachmentId: string, remainingAttachments: StakeholderConnectMomAttachment[]) => void;
   accounts: Account[];
   stakeholders: Stakeholder[];
   serviceProviders: ServiceProviderUser[];
@@ -41,6 +51,8 @@ export const ConnectFormModal: React.FC<ConnectFormModalProps> = ({
   isOpen,
   onClose,
   onSuccess,
+  onConnectPersisted,
+  onAttachmentDeleted,
   accounts,
   stakeholders,
   serviceProviders,
@@ -95,6 +107,13 @@ export const ConnectFormModal: React.FC<ConnectFormModalProps> = ({
   const [mom, setMom] = useState(editConnect?.mom || editConnect?.momNotes || '');
   const [rescheduleReason, setRescheduleReason] = useState('');
   const [selectedStakeholderIds, setSelectedStakeholderIds] = useState<string[]>([]);
+  const [pendingMomFiles, setPendingMomFiles] = useState<File[]>([]);
+  const [existingAttachments, setExistingAttachments] = useState<StakeholderConnectMomAttachment[]>([]);
+  const [isUploadingAttachments, setIsUploadingAttachments] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const [busyAttachmentId, setBusyAttachmentId] = useState<string | null>(null);
+  const [createdConnectForRetry, setCreatedConnectForRetry] = useState<StakeholderConnect | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -127,9 +146,16 @@ export const ConnectFormModal: React.FC<ConnectFormModalProps> = ({
       setMom(editConnect.mom || editConnect.momNotes || '');
       setRescheduleReason('');
       const existingIds = editConnect.attendees?.map((a: any) =>
-        typeof a === 'string' ? a : (a.stakeholderId || a.id)
+        typeof a === 'string' ? a : a.id
       ).filter((id): id is string => typeof id === 'string' && id.trim().length > 0) || [];
       setSelectedStakeholderIds(existingIds);
+      setExistingAttachments(editConnect.momAttachments || []);
+      if (editConnect.momAttachments === undefined) {
+        stakeholderConnectsApi
+          .listMomAttachments(editConnect.id)
+          .then(setExistingAttachments)
+          .catch(() => {});
+      }
     } else {
       const effAccId = initialAccountId || (accounts[0]?.id ?? '');
       setAccountId(effAccId);
@@ -140,6 +166,7 @@ export const ConnectFormModal: React.FC<ConnectFormModalProps> = ({
       setStatus('Scheduled');
       setMom('');
       setRescheduleReason('');
+      setExistingAttachments([]);
 
       // If opened from stakeholder row, prefill that contextual stakeholder IF eligible for this account
       if (initialStakeholderId) {
@@ -155,6 +182,10 @@ export const ConnectFormModal: React.FC<ConnectFormModalProps> = ({
         setSelectedStakeholderIds([]);
       }
     }
+    setPendingMomFiles([]);
+    setAttachmentError(null);
+    setUploadProgress(null);
+    setCreatedConnectForRetry(null);
     setError(null);
   }, [editConnect, initialAccountId, initialStakeholderId, accounts, currentUserId, serviceProviders, stakeholders, isOpen]);
 
@@ -164,7 +195,7 @@ export const ConnectFormModal: React.FC<ConnectFormModalProps> = ({
 
     setSelectedStakeholderIds((prev) => {
       const normalizedPrev = prev.map((item: any) =>
-        typeof item === 'string' ? item : item?.id || item?.stakeholderId
+        typeof item === 'string' ? item : item?.id
       ).filter((id): id is string => typeof id === 'string' && id.trim().length > 0);
 
       setError(null);
@@ -176,8 +207,16 @@ export const ConnectFormModal: React.FC<ConnectFormModalProps> = ({
     });
   };
 
+  const isNonEditableStatus = Boolean(
+    isEditing && editConnect && (editConnect.status === 'Completed' || editConnect.status === 'Cancelled'),
+  );
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isNonEditableStatus) {
+      setError(`Meeting details cannot be edited when the connect is ${editConnect?.status}.`);
+      return;
+    }
     if (!accountId) {
       setError('Account selection is required.');
       return;
@@ -200,7 +239,7 @@ export const ConnectFormModal: React.FC<ConnectFormModalProps> = ({
     }
 
     const attendeeIds: string[] = selectedStakeholderIds
-      .map((item: any) => (typeof item === 'string' ? item : item?.id || item?.stakeholderId))
+      .map((item: any) => (typeof item === 'string' ? item : item?.id))
       .filter((id): id is string => typeof id === 'string' && id.trim().length > 0);
 
     const selectedStks = stakeholders.filter((s) => attendeeIds.includes(s.id));
@@ -234,29 +273,84 @@ export const ConnectFormModal: React.FC<ConnectFormModalProps> = ({
 
     setIsSubmitting(true);
     setError(null);
+    setAttachmentError(null);
 
     const formattedTime = meetingTime.length === 5 ? `${meetingTime}:00` : meetingTime;
 
+    const uploadPendingForConnect = async (connectId: string): Promise<boolean> => {
+      if (pendingMomFiles.length === 0) return true;
+      setIsUploadingAttachments(true);
+      setUploadProgress(0);
+      try {
+        const uploaded = await stakeholderConnectsApi.uploadMomAttachments(
+          connectId,
+          pendingMomFiles,
+          setUploadProgress,
+        );
+        setExistingAttachments((prev) => [...uploaded, ...prev]);
+        setPendingMomFiles([]);
+        return true;
+      } catch (uploadErr: any) {
+        const msg = uploadErr?.response?.data?.message || uploadErr?.message || 'Failed to upload MoM attachments.';
+        setAttachmentError(Array.isArray(msg) ? msg.join('. ') : String(msg));
+        return false;
+      } finally {
+        setIsUploadingAttachments(false);
+        setUploadProgress(null);
+      }
+    };
+
     try {
+      if (createdConnectForRetry) {
+        if (pendingMomFiles.length > 0) {
+          const uploadedOk = await uploadPendingForConnect(createdConnectForRetry.id);
+          if (!uploadedOk) return;
+        }
+        const refreshed = await stakeholderConnectsApi
+          .getById(createdConnectForRetry.id)
+          .catch(() => createdConnectForRetry);
+        showToast({
+          kind: 'success',
+          message:
+            pendingMomFiles.length > 0
+              ? 'MoM attachments uploaded successfully.'
+              : 'Stakeholder connect saved successfully.',
+        });
+        onSuccess(refreshed);
+        onClose();
+        return;
+      }
+
       if (isEditing && editConnect) {
+        const trimmedMom = mom.trim();
         const updated = await stakeholderConnectsApi.update(editConnect.id, {
           title: title.trim(),
           meetingDate,
           meetingTime: formattedTime,
           ownerId: finalOwnerId,
           status: isDateTimeChanged ? undefined : (status === editConnect.status ? undefined : status),
-          momNotes: mom.trim() || undefined,
-          mom: mom.trim() || undefined,
+          momNotes: trimmedMom,
+          mom: trimmedMom,
           rescheduleReason: isDateTimeChanged ? (rescheduleReason.trim() || undefined) : undefined,
           attendees: attendeeIds,
         });
+        if (pendingMomFiles.length > 0 && status !== 'Cancelled') {
+          const uploadedOk = await uploadPendingForConnect(editConnect.id);
+          if (!uploadedOk) {
+            onConnectPersisted?.(updated);
+            return;
+          }
+        }
+        const refreshed = pendingMomFiles.length > 0
+          ? await stakeholderConnectsApi.getById(editConnect.id).catch(() => updated)
+          : updated;
         showToast({
           kind: 'success',
           message: isDateTimeChanged
             ? 'Stakeholder connect rescheduled and updated successfully.'
             : 'Stakeholder connect updated successfully.',
         });
-        onSuccess(updated);
+        onSuccess(refreshed);
       } else {
         const created = await stakeholderConnectsApi.create({
           accountId,
@@ -269,8 +363,24 @@ export const ConnectFormModal: React.FC<ConnectFormModalProps> = ({
           mom: mom.trim() || undefined,
           attendees: attendeeIds,
         });
-        showToast({ kind: 'success', message: 'Stakeholder connect scheduled successfully.' });
-        onSuccess(created);
+
+        if (pendingMomFiles.length > 0 && created.status !== 'Cancelled') {
+          const uploadedOk = await uploadPendingForConnect(created.id);
+          if (!uploadedOk) {
+            setCreatedConnectForRetry(created);
+            setError(
+              'Meeting was created, but uploading MoM attachments failed. Remove invalid files or submit again to retry uploading without creating a duplicate meeting.',
+            );
+            onConnectPersisted?.(created);
+            return;
+          }
+          const refreshed = await stakeholderConnectsApi.getById(created.id).catch(() => created);
+          showToast({ kind: 'success', message: 'Stakeholder connect and MoM attachments saved successfully.' });
+          onSuccess(refreshed);
+        } else {
+          showToast({ kind: 'success', message: 'Stakeholder connect scheduled successfully.' });
+          onSuccess(created);
+        }
       }
       onClose();
     } catch (err: any) {
@@ -280,6 +390,48 @@ export const ConnectFormModal: React.FC<ConnectFormModalProps> = ({
     }
   };
 
+  const handleDownloadExistingAttachment = async (att: StakeholderConnectMomAttachment) => {
+    const targetId = editConnect?.id || createdConnectForRetry?.id;
+    if (!targetId || busyAttachmentId) return;
+    setBusyAttachmentId(att.id);
+    setAttachmentError(null);
+    try {
+      const blob = await stakeholderConnectsApi.downloadMomAttachment(targetId, att.id);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = att.originalFilename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (err: any) {
+      setAttachmentError(err?.response?.data?.message || `Could not download "${att.originalFilename}".`);
+    } finally {
+      setBusyAttachmentId(null);
+    }
+  };
+
+  const handleDeleteExistingAttachment = async (att: StakeholderConnectMomAttachment) => {
+    const targetId = editConnect?.id || createdConnectForRetry?.id;
+    if (!targetId || busyAttachmentId) return;
+    setBusyAttachmentId(att.id);
+    setAttachmentError(null);
+    try {
+      await stakeholderConnectsApi.deleteMomAttachment(targetId, att.id);
+      const remaining = existingAttachments.filter((item) => item.id !== att.id);
+      setExistingAttachments(remaining);
+      onAttachmentDeleted?.(att.id, remaining);
+      showToast({ kind: 'success', message: `Removed attachment "${att.originalFilename}".` });
+    } catch (err: any) {
+      setAttachmentError(err?.response?.data?.message || `Could not remove "${att.originalFilename}".`);
+    } finally {
+      setBusyAttachmentId(null);
+    }
+  };
+
+  const canAttachInForm = !isNonEditableStatus && status !== 'Cancelled';
+
   return (
     <FormModal
       isOpen={isOpen}
@@ -287,11 +439,26 @@ export const ConnectFormModal: React.FC<ConnectFormModalProps> = ({
       onSubmit={handleSubmit}
       title={isEditing ? 'Edit Stakeholder Connect' : 'Schedule Stakeholder Connect'}
       icon={<CalendarCheck className="w-5 h-5 text-indigo-600" />}
-      submitLabel={isSubmitting ? 'Saving…' : isEditing ? 'Update Connect' : 'Schedule Connect'}
+      submitLabel={
+        isSubmitting
+          ? isUploadingAttachments
+            ? 'Uploading Attachments…'
+            : 'Saving…'
+          : createdConnectForRetry
+            ? 'Retry Attachment Upload'
+            : isEditing
+              ? 'Update Connect'
+              : 'Schedule Connect'
+      }
       isSubmitting={isSubmitting}
       maxWidth="max-w-2xl"
     >
       <div className="space-y-4">
+        {isNonEditableStatus && (
+          <ErrorBanner
+            message={`Meeting details cannot be edited when the connect is ${editConnect?.status}.`}
+          />
+        )}
         {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
 
         <FormGrid columns={2}>
@@ -490,6 +657,27 @@ export const ConnectFormModal: React.FC<ConnectFormModalProps> = ({
             onChange={(e) => setMom(e.target.value)}
           />
         </FormField>
+
+        {/* MoM Document Attachments */}
+        <MomAttachmentsSection
+          compact
+          existingAttachments={existingAttachments}
+          pendingFiles={pendingMomFiles}
+          onPendingFilesChange={setPendingMomFiles}
+          canMutate={canAttachInForm}
+          isUploading={isUploadingAttachments}
+          uploadProgress={uploadProgress}
+          error={attachmentError}
+          onDismissError={() => setAttachmentError(null)}
+          onDownload={handleDownloadExistingAttachment}
+          onDelete={handleDeleteExistingAttachment}
+          busyAttachmentId={busyAttachmentId}
+          hint={
+            status === 'Cancelled'
+              ? 'Cancelled meetings are read-only and cannot accept new MoM attachments.'
+              : 'Attach supporting documents to this MoM. Files are uploaded automatically when you save.'
+          }
+        />
       </div>
     </FormModal>
   );

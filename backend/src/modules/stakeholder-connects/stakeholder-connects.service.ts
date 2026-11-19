@@ -5,9 +5,12 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  InternalServerErrorException,
 } from '@nestjs/common';
+import * as fs from 'fs';
+import { randomUUID } from 'crypto';
 import { PoolClient } from 'pg';
-import { DatabaseService } from '../../database/database.service';
+import { DatabaseService, TransactionContext } from '../../database/database.service';
 import { AccessScopeService } from '../rbac/access-scope.service';
 import { PermissionsService } from '../rbac/permissions.service';
 import { ActionItemsService } from '../action-items/action-items.service';
@@ -25,6 +28,13 @@ import {
   normalizeDateToIso,
   normalizeTimeToStandard,
 } from './date-time.util';
+import {
+  MOM_ATTACHMENTS_SUBDIR,
+  UploadedMomFileInput,
+  getMomAttachmentsBaseDir,
+  resolveMomAttachmentDiskPath,
+  validateMomAttachmentBatch,
+} from './mom-attachment.util';
 
 export interface StakeholderConnectFilter {
   userId: string;
@@ -39,6 +49,53 @@ export interface StakeholderConnectFilter {
 function todayIsoDate(): string {
   return new Date().toISOString().slice(0, 10);
 }
+
+type ConnectLifecycleAction =
+  | 'view'
+  | 'edit_details'
+  | 'edit_mom'
+  | 'complete'
+  | 'reschedule'
+  | 'cancel'
+  | 'delete'
+  | 'manage_attendees'
+  | 'manage_drafts'
+  | 'convert_draft'
+  | 'manage_action_items';
+
+const DRAFT_COLUMNS_SQL = `
+  d.id,
+  d.connect_id AS "connectId",
+  d.title,
+  d.description,
+  d.suggested_owner_id AS "suggestedOwnerId",
+  s.name AS "suggestedOwnerName",
+  TO_CHAR(d.suggested_due_date, 'YYYY-MM-DD') AS "suggestedDueDate",
+  d.suggested_priority AS "suggestedPriority",
+  d.converted_at AS "convertedAt",
+  d.converted_action_item_id AS "convertedActionItemId",
+  ai.action_item_number AS "actionItemNumber",
+  d.created_at AS "createdAt",
+  d.updated_at AS "updatedAt"
+`;
+
+const DRAFT_JSON_OBJECT_SQL = `
+  json_build_object(
+    'id', d.id,
+    'connectId', d.connect_id,
+    'title', d.title,
+    'description', d.description,
+    'suggestedOwnerId', d.suggested_owner_id,
+    'suggestedOwnerName', s.name,
+    'suggestedDueDate', TO_CHAR(d.suggested_due_date, 'YYYY-MM-DD'),
+    'suggestedPriority', d.suggested_priority,
+    'convertedAt', d.converted_at,
+    'convertedActionItemId', d.converted_action_item_id,
+    'actionItemNumber', ai.action_item_number,
+    'createdAt', d.created_at,
+    'updatedAt', d.updated_at
+  )
+`;
 
 
 @Injectable()
@@ -94,12 +151,113 @@ export class StakeholderConnectsService {
     }
   }
 
+  /**
+   * Centralized meeting lifecycle policy enforcement:
+   * - Soft-deleted meetings reject normal reads and all normal mutations with 404.
+   * - Cancelled meetings are completely read-only (only view & soft-delete allowed).
+   * - Completed meetings permit view, MoM editing, draft follow-ups, draft conversion,
+   *   and soft-delete, while locking meeting details, attendees, and Action Item links.
+   * - Scheduled and Rescheduled meetings allow all lifecycle actions.
+   */
+  private assertLifecycleAllowed(
+    meeting: { status?: string; isDeleted?: boolean },
+    action: ConnectLifecycleAction,
+  ): void {
+    if (meeting.isDeleted) {
+      throw new NotFoundException('Stakeholder Connect not found.');
+    }
+
+    if (action === 'view' || action === 'delete') {
+      return;
+    }
+
+    const status = meeting.status;
+    if (status === 'Cancelled') {
+      switch (action) {
+        case 'complete':
+          throw new BadRequestException('Cancelled meetings cannot be completed.');
+        case 'reschedule':
+          throw new BadRequestException('Cancelled meetings cannot be rescheduled.');
+        case 'cancel':
+          throw new BadRequestException('Meeting is already cancelled.');
+        case 'edit_details':
+        case 'edit_mom':
+          throw new BadRequestException('Cancelled meetings cannot be modified.');
+        default:
+          throw new BadRequestException('Cancelled meetings are read-only and cannot be modified.');
+      }
+    }
+
+    if (status === 'Completed') {
+      switch (action) {
+        case 'edit_mom':
+        case 'manage_drafts':
+        case 'convert_draft':
+          return;
+        case 'complete':
+          throw new BadRequestException('Completed meetings cannot be completed again.');
+        case 'reschedule':
+          throw new BadRequestException('Completed meetings cannot be rescheduled.');
+        case 'cancel':
+          throw new BadRequestException('Completed meetings cannot be cancelled.');
+        case 'edit_details':
+          throw new BadRequestException(
+            'Completed meeting details cannot be modified. Only Minutes of Meeting and draft follow-ups may be updated.',
+          );
+        case 'manage_attendees':
+          throw new BadRequestException('Attendees cannot be added or removed once a meeting is Completed.');
+        case 'manage_action_items':
+          throw new BadRequestException('Action Items cannot be linked or unlinked once a meeting is Completed.');
+      }
+    }
+
+    if (status === 'Scheduled' || status === 'Rescheduled') {
+      return;
+    }
+
+    throw new BadRequestException(`Cannot perform operation on meeting with status "${status}".`);
+  }
+
+  /** Queries a single draft follow-up using the canonical camelCase projection. */
+  private async findDraftOne(
+    draftId: string,
+    clientOrDb: PoolClient | DatabaseService = this.db,
+  ): Promise<any> {
+    const { rows } = await clientOrDb.query(
+      `SELECT
+         ${DRAFT_COLUMNS_SQL}
+       FROM stakeholder_connect_draft_follow_ups d
+       LEFT JOIN stakeholders s ON s.id = d.suggested_owner_id
+       LEFT JOIN action_items ai ON ai.id = d.converted_action_item_id
+       WHERE d.id = $1`,
+      [draftId],
+    );
+    return rows[0] ?? null;
+  }
+
+  /**
+   * Soft-deleted / deactivated Stakeholder Connects are restricted to users with
+   * elevated delete/restore permission (`stakeholder-connects:delete`).
+   */
+  private async assertCanViewDeleted(userId: string): Promise<void> {
+    const canAccessDeleted = await this.permissions.can(userId, 'stakeholder-connects', 'delete');
+    if (!canAccessDeleted) {
+      throw new ForbiddenException(
+        'You do not have permission to view deactivated stakeholder connects.',
+      );
+    }
+  }
+
   // ─── Query / Read Paths ───────────────────────────────────────────────────
 
   async findAll(
     params: StakeholderConnectFilter,
     pg: Pagination | null = null,
   ): Promise<any[] | Paginated<any>> {
+    if (params.includeDeleted) {
+      await this.assertCanViewDeleted(params.userId);
+    }
+
     const ctx = await this.access.getContext(params.userId);
     const scope = this.access.buildChildVisibility('sc', ctx, 1, 'stakeholder-connects');
 
@@ -190,19 +348,7 @@ export class StakeholderConnectsService {
         COALESCE(
           (
             SELECT json_agg(
-              json_build_object(
-                'id', d.id,
-                'connectId', d.connect_id,
-                'title', d.title,
-                'description', d.description,
-                'suggestedOwnerId', d.suggested_owner_id,
-                'suggestedOwnerName', s.name,
-                'convertedAt', d.converted_at,
-                'convertedActionItemId', d.converted_action_item_id,
-                'actionItemNumber', ai.action_item_number,
-                'createdAt', d.created_at,
-                'updatedAt', d.updated_at
-              ) ORDER BY d.created_at ASC
+              ${DRAFT_JSON_OBJECT_SQL} ORDER BY d.created_at ASC
             )
             FROM stakeholder_connect_draft_follow_ups d
             LEFT JOIN stakeholders s ON s.id = d.suggested_owner_id
@@ -240,6 +386,8 @@ export class StakeholderConnectsService {
     params: { userId: string; accountId?: string },
     pg: Pagination | null = null,
   ): Promise<any[] | Paginated<any>> {
+    await this.assertCanViewDeleted(params.userId);
+
     const ctx = await this.access.getContext(params.userId);
     const scope = this.access.buildChildVisibility('sc', ctx, 1, 'stakeholder-connects');
 
@@ -307,19 +455,7 @@ export class StakeholderConnectsService {
         COALESCE(
           (
             SELECT json_agg(
-              json_build_object(
-                'id', d.id,
-                'connectId', d.connect_id,
-                'title', d.title,
-                'description', d.description,
-                'suggestedOwnerId', d.suggested_owner_id,
-                'suggestedOwnerName', s.name,
-                'convertedAt', d.converted_at,
-                'convertedActionItemId', d.converted_action_item_id,
-                'actionItemNumber', ai.action_item_number,
-                'createdAt', d.created_at,
-                'updatedAt', d.updated_at
-              ) ORDER BY d.created_at ASC
+              ${DRAFT_JSON_OBJECT_SQL} ORDER BY d.created_at ASC
             )
             FROM stakeholder_connect_draft_follow_ups d
             LEFT JOIN stakeholders s ON s.id = d.suggested_owner_id
@@ -379,6 +515,7 @@ export class StakeholderConnectsService {
     if (userId) {
       await this.assertAccountAccess(meeting.accountId, userId, 'read');
     }
+    this.assertLifecycleAllowed(meeting, 'view');
 
     // Attendees list
     const { rows: attendees } = await this.db.query(
@@ -399,17 +536,7 @@ export class StakeholderConnectsService {
     // Draft follow-ups list
     const { rows: drafts } = await this.db.query(
       `SELECT
-         d.id,
-         d.connect_id AS "connectId",
-         d.title,
-         d.description,
-         d.suggested_owner_id AS "suggestedOwnerId",
-         s.name AS "suggestedOwnerName",
-         d.converted_at AS "convertedAt",
-         d.converted_action_item_id AS "convertedActionItemId",
-         ai.action_item_number AS "actionItemNumber",
-         d.created_at AS "createdAt",
-         d.updated_at AS "updatedAt"
+         ${DRAFT_COLUMNS_SQL}
        FROM stakeholder_connect_draft_follow_ups d
        LEFT JOIN stakeholders s ON s.id = d.suggested_owner_id
        LEFT JOIN action_items ai ON ai.id = d.converted_action_item_id
@@ -463,6 +590,26 @@ export class StakeholderConnectsService {
       [id],
     );
 
+    // MoM document attachments (metadata only — never expose storage_path or stored_filename)
+    const { rows: momAttachments } = await this.db.query(
+      `SELECT
+         a.id,
+         a.connect_id AS "connectId",
+         a.original_filename AS "originalFilename",
+         a.mime_type AS "mimeType",
+         a.file_extension AS "fileExtension",
+         a.file_size::BIGINT AS "fileSize",
+         a.uploaded_by AS "uploadedBy",
+         COALESCE(NULLIF(u.name, ''), u.email) AS "uploadedByName",
+         a.uploaded_at AS "uploadedAt",
+         a.created_at AS "createdAt"
+       FROM stakeholder_connect_mom_attachments a
+       LEFT JOIN users u ON u.id = a.uploaded_by
+       WHERE a.connect_id = $1
+       ORDER BY a.uploaded_at DESC, a.created_at DESC`,
+      [id],
+    );
+
     const clientStakeholderNames = attendees
       .filter((a: any) => a.stakeholderType === 'CLIENT')
       .map((a: any) => a.name)
@@ -480,6 +627,10 @@ export class StakeholderConnectsService {
       actionItems,
       linkedActionItems: actionItems,
       rescheduleHistory: history,
+      momAttachments: momAttachments.map((att: any) => ({
+        ...att,
+        fileSize: Number(att.fileSize),
+      })),
     };
   }
 
@@ -604,21 +755,12 @@ export class StakeholderConnectsService {
          WHERE id = $1 FOR UPDATE`,
         [id],
       );
-      if (!rows.length || rows[0].isDeleted) {
+      if (!rows.length) {
         throw new NotFoundException(`Stakeholder Connect "${id}" not found.`);
       }
       const meeting = rows[0];
       await this.assertAccountAccess(meeting.accountId, userId, 'write');
-
-      if (meeting.status === 'Completed') {
-        throw new BadRequestException('Completed meetings cannot be completed again.');
-      }
-      if (meeting.status === 'Cancelled') {
-        throw new BadRequestException('Cancelled meetings cannot be completed.');
-      }
-      if (meeting.status !== 'Scheduled' && meeting.status !== 'Rescheduled') {
-        throw new BadRequestException(`Cannot complete meeting with status "${meeting.status}".`);
-      }
+      this.assertLifecycleAllowed(meeting, 'complete');
 
       if (isFutureDateTime(meeting.meetingDate, meeting.meetingTime)) {
         throw new BadRequestException(
@@ -656,16 +798,12 @@ export class StakeholderConnectsService {
          WHERE id = $1 FOR UPDATE`,
         [id],
       );
-      if (!rows.length || rows[0].isDeleted) {
+      if (!rows.length) {
         throw new NotFoundException(`Stakeholder Connect "${id}" not found.`);
       }
       const existing = rows[0];
       await this.assertAccountAccess(existing.accountId, userId, 'write');
-
-      // Rule: Cancelled meetings cannot be edited or modified
-      if (existing.status === 'Cancelled') {
-        throw new BadRequestException('Cancelled meetings cannot be modified.');
-      }
+      this.assertLifecycleAllowed(existing, 'edit_mom');
 
       const existingDate = normalizeDateToIso(existing.meetingDate);
       const existingTime = normalizeTimeToStandard(existing.meetingTime);
@@ -673,13 +811,30 @@ export class StakeholderConnectsService {
       const targetTime = data.meetingTime ? normalizeTimeToStandard(data.meetingTime) : existingTime;
       const isDateTimeChanged = !isSameDateTime(existingDate, existingTime, targetDate, targetTime);
 
-      // Rule: Completed meetings cannot be rescheduled or cancelled
+      const hasTitleChange = data.title !== undefined && data.title.trim() !== existing.title;
+      const hasOwnerChange = data.ownerId !== undefined && data.ownerId !== existing.ownerId;
+      const hasStatusChange = data.status !== undefined && data.status !== existing.status;
+      const hasCancellationReasonChange =
+        data.cancellationReason !== undefined && data.cancellationReason !== existing.cancellationReason;
+      const hasRescheduleReason = data.rescheduleReason !== undefined;
+      const hasAttendeesPayload = data.attendees !== undefined;
+
+      // Completed meetings lock all core meeting fields, schedule, status, and attendees; only MoM may be edited.
       if (existing.status === 'Completed') {
         if (isDateTimeChanged) {
-          throw new BadRequestException('Completed meetings cannot be rescheduled.');
+          this.assertLifecycleAllowed(existing, 'reschedule');
         }
-        if (data.status && data.status !== 'Completed') {
+        if (hasStatusChange) {
           throw new BadRequestException('Completed meetings cannot change status.');
+        }
+        if (
+          hasTitleChange ||
+          hasOwnerChange ||
+          hasCancellationReasonChange ||
+          hasRescheduleReason ||
+          hasAttendeesPayload
+        ) {
+          this.assertLifecycleAllowed(existing, 'edit_details');
         }
       }
 
@@ -735,7 +890,12 @@ export class StakeholderConnectsService {
         ownerId = data.ownerId;
       }
       const rawMom = data.momNotes !== undefined ? data.momNotes : data.mom;
-      const momNotes = rawMom !== undefined ? rawMom : existing.momNotes;
+      const momNotes =
+        rawMom === undefined
+          ? existing.momNotes
+          : rawMom === null || rawMom.trim() === ''
+            ? null
+            : rawMom.trim();
       const cancellationReason = data.cancellationReason !== undefined ? data.cancellationReason : existing.cancellationReason;
 
       await client.query(
@@ -823,7 +983,9 @@ export class StakeholderConnectsService {
         client,
         isDateTimeChanged
           ? `Rescheduled meeting "${title}" from ${existingDate} to ${targetDate} via Edit [meetingId=${id}]`
-          : `Updated meeting "${title}" details [meetingId=${id}]`,
+          : existing.status === 'Completed'
+            ? `Updated Minutes of Meeting for "${title}" [meetingId=${id}]`
+            : `Updated meeting "${title}" details [meetingId=${id}]`,
         existing.accountId,
         userId,
         userName,
@@ -843,18 +1005,12 @@ export class StakeholderConnectsService {
          WHERE id = $1 FOR UPDATE`,
         [id],
       );
-      if (!rows.length || rows[0].isDeleted) {
+      if (!rows.length) {
         throw new NotFoundException(`Stakeholder Connect "${id}" not found.`);
       }
       const existing = rows[0];
       await this.assertAccountAccess(existing.accountId, userId, 'write');
-
-      if (existing.status === 'Completed') {
-        throw new BadRequestException('Completed meetings cannot be rescheduled.');
-      }
-      if (existing.status === 'Cancelled') {
-        throw new BadRequestException('Cancelled meetings cannot be rescheduled.');
-      }
+      this.assertLifecycleAllowed(existing, 'reschedule');
 
       const newDate = normalizeDateToIso(data.newDate);
       const newTime = normalizeTimeToStandard(data.newTime);
@@ -912,18 +1068,12 @@ export class StakeholderConnectsService {
          WHERE id = $1 FOR UPDATE`,
         [id],
       );
-      if (!rows.length || rows[0].isDeleted) {
+      if (!rows.length) {
         throw new NotFoundException(`Stakeholder Connect "${id}" not found.`);
       }
       const existing = rows[0];
       await this.assertAccountAccess(existing.accountId, userId, 'write');
-
-      if (existing.status === 'Completed') {
-        throw new BadRequestException('Completed meetings cannot be cancelled.');
-      }
-      if (existing.status === 'Cancelled') {
-        throw new BadRequestException('Meeting is already cancelled.');
-      }
+      this.assertLifecycleAllowed(existing, 'cancel');
 
       await client.query(
         `UPDATE stakeholder_connects
@@ -947,11 +1097,12 @@ export class StakeholderConnectsService {
   async remove(id: string, userId: string, userName?: string): Promise<{ success: boolean }> {
     const existing = await this.findOne(id, userId);
     await this.assertAccountAccess(existing.accountId, userId, 'write');
+    this.assertLifecycleAllowed(existing, 'delete');
 
     await this.db.query(
       `UPDATE stakeholder_connects
        SET is_deleted = TRUE, updated_by = $1, updated_at = NOW()
-       WHERE id = $2`,
+       WHERE id = $2 AND is_deleted = FALSE`,
       [userId, id],
     );
 
@@ -968,7 +1119,7 @@ export class StakeholderConnectsService {
 
   async restore(id: string, userId: string, userName?: string): Promise<any> {
     const { rows } = await this.db.query(
-      `SELECT sc.id, sc.account_id AS "accountId", sc.title, a.is_deleted AS "accountDeleted"
+      `SELECT sc.id, sc.account_id AS "accountId", sc.title, sc.is_deleted AS "isDeleted", a.is_deleted AS "accountDeleted"
        FROM stakeholder_connects sc
        JOIN accounts a ON a.id = sc.account_id
        WHERE sc.id = $1`,
@@ -977,11 +1128,15 @@ export class StakeholderConnectsService {
     if (!rows.length) throw new NotFoundException(`Meeting "${id}" not found.`);
     const meeting = rows[0];
 
+    await this.assertAccountAccess(meeting.accountId, userId, 'write');
+
+    if (!meeting.isDeleted) {
+      throw new BadRequestException('Cannot restore meeting because it is already active.');
+    }
+
     if (meeting.accountDeleted) {
       throw new BadRequestException('Cannot restore meeting because its parent account is deleted.');
     }
-
-    await this.assertAccountAccess(meeting.accountId, userId, 'write');
 
     // Revalidate attendees: Ensure active stakeholders exist
     const { rows: attRows } = await this.db.query(
@@ -1023,6 +1178,7 @@ export class StakeholderConnectsService {
   async addAttendee(connectId: string, stakeholderId: string, userId: string, userName?: string): Promise<any> {
     const meeting = await this.findOne(connectId, userId);
     await this.assertAccountAccess(meeting.accountId, userId, 'write');
+    this.assertLifecycleAllowed(meeting, 'manage_attendees');
 
     const { rows: stkRows } = await this.db.query(
       `SELECT id, name, account_id, stakeholder_type, is_deleted FROM stakeholders WHERE id = $1`,
@@ -1058,10 +1214,21 @@ export class StakeholderConnectsService {
   }
 
   async removeAttendee(connectId: string, stakeholderId: string, userId: string, userName?: string): Promise<any> {
+    if (!stakeholderId || !stakeholderId.trim() || stakeholderId === 'undefined') {
+      throw new BadRequestException('Valid attendee stakeholder ID is required.');
+    }
+
     const meeting = await this.findOne(connectId, userId);
     await this.assertAccountAccess(meeting.accountId, userId, 'write');
+    this.assertLifecycleAllowed(meeting, 'manage_attendees');
 
-    const remainingAttendees = (meeting.attendees || []).filter((a: any) => a.id !== stakeholderId);
+    const attendees = meeting.attendees || [];
+    const targetAttendee = attendees.find((a: any) => a.id === stakeholderId);
+    if (!targetAttendee) {
+      throw new NotFoundException('Attendee is not associated with this meeting.');
+    }
+
+    const remainingAttendees = attendees.filter((a: any) => a.id !== stakeholderId);
     if (remainingAttendees.length === 0) {
       throw new BadRequestException('A meeting must retain at least one attendee.');
     }
@@ -1073,8 +1240,6 @@ export class StakeholderConnectsService {
       throw new BadRequestException('A meeting must retain at least one client attendee from the account.');
     }
 
-    const stk = meeting.attendees.find((a: any) => a.id === stakeholderId);
-
     await this.db.query(
       `DELETE FROM stakeholder_connect_attendees WHERE connect_id = $1 AND stakeholder_id = $2`,
       [connectId, stakeholderId],
@@ -1082,7 +1247,7 @@ export class StakeholderConnectsService {
 
     await this.logActivity(
       this.db,
-      `Removed attendee ${stk?.name || stakeholderId} from meeting "${meeting.title}" [meetingId=${connectId}, stakeholderId=${stakeholderId}]`,
+      `Removed attendee ${targetAttendee.name || stakeholderId} from meeting "${meeting.title}" [meetingId=${connectId}, stakeholderId=${stakeholderId}]`,
       meeting.accountId,
       userId,
       userName,
@@ -1093,35 +1258,52 @@ export class StakeholderConnectsService {
 
   // ─── Draft Follow-Ups Management ──────────────────────────────────────────
 
+  /** Verify an optional suggestedOwnerId belongs to an active stakeholder on `accountId`. */
+  private async assertValidSuggestedOwner(suggestedOwnerId: string | null | undefined, accountId: string): Promise<void> {
+    if (!suggestedOwnerId) return;
+    const { rows } = await this.db.query(
+      `SELECT id, account_id, stakeholder_type FROM stakeholders WHERE id = $1 AND is_deleted = FALSE`,
+      [suggestedOwnerId],
+    );
+    const stk = rows[0];
+    const invalidClient = stk?.stakeholder_type === 'CLIENT' && stk.account_id !== accountId;
+    const invalidOther = stk?.stakeholder_type !== 'CLIENT' && Boolean(stk?.account_id && stk.account_id !== accountId);
+    if (!stk || invalidClient || invalidOther) {
+      throw new BadRequestException('Suggested owner must be an active stakeholder on this meeting account.');
+    }
+  }
+
   async createDraft(connectId: string, data: CreateDraftFollowUpDto, userId: string): Promise<any> {
     const meeting = await this.findOne(connectId, userId);
     await this.assertAccountAccess(meeting.accountId, userId, 'write');
+    this.assertLifecycleAllowed(meeting, 'manage_drafts');
 
-    if (data.suggestedOwnerId) {
-      const { rows } = await this.db.query(
-        `SELECT id, account_id FROM stakeholders WHERE id = $1 AND is_deleted = FALSE`,
-        [data.suggestedOwnerId],
-      );
-      if (!rows.length || (rows[0].account_id && rows[0].account_id !== meeting.accountId)) {
-        throw new BadRequestException('Suggested owner must be an active stakeholder on this meeting account.');
-      }
-    }
+    await this.assertValidSuggestedOwner(data.suggestedOwnerId, meeting.accountId);
 
     const { rows } = await this.db.query(
       `INSERT INTO stakeholder_connect_draft_follow_ups
-         (id, connect_id, title, description, suggested_owner_id, created_by)
+         (id, connect_id, title, description, suggested_owner_id, suggested_due_date, suggested_priority, created_by)
        VALUES
-         (gen_random_uuid()::TEXT, $1, $2, $3, $4, $5)
-       RETURNING *`,
-      [connectId, data.title.trim(), data.description ?? null, data.suggestedOwnerId ?? null, userId],
+         (gen_random_uuid()::TEXT, $1, $2, $3, $4, $5, $6, $7)
+       RETURNING id`,
+      [
+        connectId,
+        data.title.trim(),
+        data.description ?? null,
+        data.suggestedOwnerId ?? null,
+        data.suggestedDueDate ?? null,
+        data.suggestedPriority ?? null,
+        userId,
+      ],
     );
 
-    return rows[0];
+    return this.findDraftOne(rows[0].id);
   }
 
   async updateDraft(connectId: string, draftId: string, data: UpdateDraftFollowUpDto, userId: string): Promise<any> {
     const meeting = await this.findOne(connectId, userId);
     await this.assertAccountAccess(meeting.accountId, userId, 'write');
+    this.assertLifecycleAllowed(meeting, 'manage_drafts');
 
     const { rows: drafts } = await this.db.query(
       `SELECT * FROM stakeholder_connect_draft_follow_ups WHERE id = $1 AND connect_id = $2`,
@@ -1134,34 +1316,33 @@ export class StakeholderConnectsService {
       throw new BadRequestException('Cannot edit a draft follow-up that has already been converted.');
     }
 
-    if (data.suggestedOwnerId) {
-      const { rows } = await this.db.query(
-        `SELECT id, account_id FROM stakeholders WHERE id = $1 AND is_deleted = FALSE`,
-        [data.suggestedOwnerId],
-      );
-      if (!rows.length || (rows[0].account_id && rows[0].account_id !== meeting.accountId)) {
-        throw new BadRequestException('Suggested owner must be an active stakeholder on this meeting account.');
-      }
-    }
+    await this.assertValidSuggestedOwner(data.suggestedOwnerId, meeting.accountId);
 
     const title = data.title !== undefined ? data.title.trim() : draft.title;
     const description = data.description !== undefined ? data.description : draft.description;
     const suggestedOwnerId = data.suggestedOwnerId !== undefined ? data.suggestedOwnerId : draft.suggested_owner_id;
+    const suggestedDueDate = data.suggestedDueDate !== undefined ? data.suggestedDueDate : draft.suggested_due_date;
+    const suggestedPriority = data.suggestedPriority !== undefined ? data.suggestedPriority : draft.suggested_priority;
 
-    const { rows: updated } = await this.db.query(
+    await this.db.query(
       `UPDATE stakeholder_connect_draft_follow_ups
-       SET title = $1, description = $2, suggested_owner_id = $3, updated_at = NOW()
-       WHERE id = $4
-       RETURNING *`,
-      [title, description, suggestedOwnerId, draftId],
+       SET title = $1,
+           description = $2,
+           suggested_owner_id = $3,
+           suggested_due_date = $4,
+           suggested_priority = $5,
+           updated_at = NOW()
+       WHERE id = $6`,
+      [title, description, suggestedOwnerId, suggestedDueDate, suggestedPriority, draftId],
     );
 
-    return updated[0];
+    return this.findDraftOne(draftId);
   }
 
   async deleteDraft(connectId: string, draftId: string, userId: string): Promise<{ success: boolean }> {
     const meeting = await this.findOne(connectId, userId);
     await this.assertAccountAccess(meeting.accountId, userId, 'write');
+    this.assertLifecycleAllowed(meeting, 'manage_drafts');
 
     const { rows: drafts } = await this.db.query(
       `SELECT id, converted_at FROM stakeholder_connect_draft_follow_ups WHERE id = $1 AND connect_id = $2`,
@@ -1199,8 +1380,24 @@ export class StakeholderConnectsService {
       throw new ForbiddenException('You do not have permission to create action-items.');
     }
 
-    return this.db.withTransaction(async (client) => {
-      // 1. Lock draft row for update
+    return this.db.withTransaction(async (client, tx?: TransactionContext) => {
+      // 1. Verify meeting exists and user has write access BEFORE locking or inspecting lifecycle/draft state
+      const { rows: meetings } = await client.query(
+        `SELECT id, account_id, meeting_date, status, is_deleted FROM stakeholder_connects WHERE id = $1`,
+        [connectId],
+      );
+      if (!meetings.length) {
+        throw new NotFoundException('Meeting not found or has been deleted.');
+      }
+      const meeting = meetings[0];
+
+      await this.assertAccountAccess(meeting.account_id, userId, 'write');
+      this.assertLifecycleAllowed(
+        { status: meeting.status, isDeleted: meeting.is_deleted },
+        'convert_draft',
+      );
+
+      // 2. Lock draft row for update
       const { rows: drafts } = await client.query(
         `SELECT * FROM stakeholder_connect_draft_follow_ups
          WHERE id = $1 AND connect_id = $2 FOR UPDATE`,
@@ -1212,22 +1409,10 @@ export class StakeholderConnectsService {
       }
       const draft = drafts[0];
 
-      // 2. Prevent duplicate conversion
+      // 3. Prevent duplicate conversion
       if (draft.converted_at) {
         throw new ConflictException('Draft follow-up has already been converted to an Action Item.');
       }
-
-      // 3. Verify meeting access
-      const { rows: meetings } = await client.query(
-        `SELECT id, account_id, meeting_date, is_deleted FROM stakeholder_connects WHERE id = $1`,
-        [connectId],
-      );
-      if (!meetings.length || meetings[0].is_deleted) {
-        throw new NotFoundException('Meeting not found or has been deleted.');
-      }
-      const meeting = meetings[0];
-
-      await this.assertAccountAccess(meeting.account_id, userId, 'write');
 
       // 4. Validate ownerStakeholderId: strictly required and must belong to meeting account
       const { rows: stkRows } = await client.query(
@@ -1257,19 +1442,23 @@ export class StakeholderConnectsService {
         priority: data.priority,
         status: data.status || 'To Do',
         actionItemType: data.actionItemType || 'Stakeholder connect',
-        notes: data.notes ?? (draft.description || ''),
+        notes: data.notes !== undefined ? data.notes : (draft.description || ''),
         ownerId: userId,
       };
 
-      // 6. Create Action Item atomically via shared transaction client
-      const actionItem = await this.actionItemsService.create(actionItemPayload, userId, client);
+      // 6. Create Action Item atomically via shared transaction client; defer notification emission until post-commit
+      const actionItem = await this.actionItemsService.create(
+        actionItemPayload,
+        userId,
+        client,
+        tx?.afterCommit,
+      );
 
       // 7. Update draft: set converted_at and converted_action_item_id
-      const { rows: updatedDrafts } = await client.query(
+      await client.query(
         `UPDATE stakeholder_connect_draft_follow_ups
          SET converted_at = NOW(), converted_action_item_id = $1, updated_at = NOW()
-         WHERE id = $2
-         RETURNING *`,
+         WHERE id = $2`,
         [actionItem.id, draftId],
       );
 
@@ -1290,9 +1479,11 @@ export class StakeholderConnectsService {
         userName,
       );
 
+      const updatedDraft = await this.findDraftOne(draftId, client);
+
       return {
         actionItem,
-        draft: updatedDrafts[0],
+        draft: updatedDraft,
       };
     });
   }
@@ -1305,6 +1496,7 @@ export class StakeholderConnectsService {
     }
     const meeting = await this.findOne(connectId, userId);
     await this.assertAccountAccess(meeting.accountId, userId, 'write');
+    this.assertLifecycleAllowed(meeting, 'manage_action_items');
 
     const { rows: aiRows } = await this.db.query(
       `SELECT id, title, account_id, is_deleted, action_item_number FROM action_items WHERE id = $1`,
@@ -1356,6 +1548,7 @@ export class StakeholderConnectsService {
     }
     const meeting = await this.findOne(connectId, userId);
     await this.assertAccountAccess(meeting.accountId, userId, 'write');
+    this.assertLifecycleAllowed(meeting, 'manage_action_items');
 
     await this.db.query(
       `DELETE FROM stakeholder_connect_action_items WHERE connect_id = $1 AND action_item_id = $2`,
@@ -1376,5 +1569,280 @@ export class StakeholderConnectsService {
       success: true,
       actionItemId,
     };
+  }
+
+  // ─── MoM Document Attachments ─────────────────────────────────────────────
+
+  private async loadConnectForAttachmentOp(
+    connectId: string,
+    userId: string,
+    accessMode: 'read' | 'write',
+    lifecycleAction: 'view' | 'edit_mom',
+  ): Promise<{ id: string; accountId: string; title: string; status: string; isDeleted: boolean }> {
+    const { rows } = await this.db.query(
+      `SELECT id, account_id AS "accountId", title, status, is_deleted AS "isDeleted"
+       FROM stakeholder_connects
+       WHERE id = $1`,
+      [connectId],
+    );
+    if (!rows.length) {
+      throw new NotFoundException('Stakeholder Connect not found.');
+    }
+    const meeting = rows[0];
+    // Always check account-level access BEFORE lifecycle/deleted state to prevent state oracles
+    await this.assertAccountAccess(meeting.accountId, userId, accessMode);
+    this.assertLifecycleAllowed(meeting, lifecycleAction);
+    return meeting;
+  }
+
+  private async cleanupDiskFiles(paths: string[]): Promise<void> {
+    await Promise.allSettled(
+      paths.map(async (filePath) => {
+        try {
+          await fs.promises.unlink(filePath);
+        } catch (err: any) {
+          if (err?.code !== 'ENOENT') {
+            this.logger.warn(`Failed to clean up attachment file [path=${filePath}]: ${err?.message || err}`);
+          }
+        }
+      }),
+    );
+  }
+
+  async listMomAttachments(connectId: string, userId: string): Promise<any[]> {
+    await this.loadConnectForAttachmentOp(connectId, userId, 'read', 'view');
+
+    const { rows } = await this.db.query(
+      `SELECT
+         a.id,
+         a.connect_id AS "connectId",
+         a.original_filename AS "originalFilename",
+         a.mime_type AS "mimeType",
+         a.file_extension AS "fileExtension",
+         a.file_size::BIGINT AS "fileSize",
+         a.uploaded_by AS "uploadedBy",
+         COALESCE(NULLIF(u.name, ''), u.email) AS "uploadedByName",
+         a.uploaded_at AS "uploadedAt",
+         a.created_at AS "createdAt"
+       FROM stakeholder_connect_mom_attachments a
+       LEFT JOIN users u ON u.id = a.uploaded_by
+       WHERE a.connect_id = $1
+       ORDER BY a.uploaded_at DESC, a.created_at DESC`,
+      [connectId],
+    );
+
+    return rows.map((row: any) => ({
+      ...row,
+      fileSize: Number(row.fileSize),
+    }));
+  }
+
+  async uploadMomAttachments(
+    connectId: string,
+    files: UploadedMomFileInput[],
+    userId: string,
+    userName?: string,
+  ): Promise<any[]> {
+    const meeting = await this.loadConnectForAttachmentOp(connectId, userId, 'write', 'edit_mom');
+    const validatedFiles = validateMomAttachmentBatch(files);
+
+    const momDir = getMomAttachmentsBaseDir();
+    const prepared = validatedFiles.map((file) => {
+      const storedFilename = `${randomUUID()}${file.fileExtension}`;
+      const storagePath = `${MOM_ATTACHMENTS_SUBDIR}/${storedFilename}`;
+      const diskPath = resolveMomAttachmentDiskPath(storagePath);
+      return { ...file, storedFilename, storagePath, diskPath };
+    });
+
+    const writtenDiskPaths: string[] = [];
+
+    try {
+      await fs.promises.mkdir(momDir, { recursive: true });
+      for (const item of prepared) {
+        await fs.promises.writeFile(item.diskPath, item.buffer);
+        writtenDiskPaths.push(item.diskPath);
+      }
+    } catch (err: any) {
+      await this.cleanupDiskFiles(writtenDiskPaths);
+      this.logger.error(
+        `Failed to write MoM attachment(s) to disk [connectId=${connectId}]`,
+        err instanceof Error ? err.stack : String(err),
+      );
+      throw new InternalServerErrorException('Failed to store attachment files. Please try again.');
+    }
+
+    try {
+      const inserted = await this.db.withTransaction(async (client) => {
+        const insertedIds: string[] = [];
+        for (const item of prepared) {
+          const { rows } = await client.query(
+            `INSERT INTO stakeholder_connect_mom_attachments
+               (id, connect_id, original_filename, stored_filename, storage_path, mime_type, file_extension, file_size, uploaded_by)
+             VALUES
+               (gen_random_uuid()::TEXT, $1, $2, $3, $4, $5, $6, $7, $8)
+             RETURNING id`,
+            [
+              connectId,
+              item.originalFilename,
+              item.storedFilename,
+              item.storagePath,
+              item.mimeType,
+              item.fileExtension,
+              item.fileSize,
+              userId,
+            ],
+          );
+          insertedIds.push(rows[0].id);
+        }
+
+        await this.logActivity(
+          client,
+          `Uploaded ${prepared.length} MoM attachment(s) to meeting "${meeting.title}" [meetingId=${connectId}]`,
+          meeting.accountId,
+          userId,
+          userName,
+        );
+
+        const { rows: metadataRows } = await client.query(
+          `SELECT
+             a.id,
+             a.connect_id AS "connectId",
+             a.original_filename AS "originalFilename",
+             a.mime_type AS "mimeType",
+             a.file_extension AS "fileExtension",
+             a.file_size::BIGINT AS "fileSize",
+             a.uploaded_by AS "uploadedBy",
+             COALESCE(NULLIF(u.name, ''), u.email) AS "uploadedByName",
+             a.uploaded_at AS "uploadedAt",
+             a.created_at AS "createdAt"
+           FROM stakeholder_connect_mom_attachments a
+           LEFT JOIN users u ON u.id = a.uploaded_by
+           WHERE a.id = ANY($1)
+           ORDER BY a.uploaded_at DESC, a.created_at DESC`,
+          [insertedIds],
+        );
+
+        return metadataRows.map((row: any) => ({
+          ...row,
+          fileSize: Number(row.fileSize),
+        }));
+      });
+
+      return inserted;
+    } catch (err) {
+      await this.cleanupDiskFiles(writtenDiskPaths);
+      throw err;
+    }
+  }
+
+  async getMomAttachmentDownload(
+    connectId: string,
+    attachmentId: string,
+    userId: string,
+  ): Promise<{
+    attachment: {
+      id: string;
+      connectId: string;
+      originalFilename: string;
+      mimeType: string;
+      fileSize: number;
+    };
+    filePath: string;
+  }> {
+    await this.loadConnectForAttachmentOp(connectId, userId, 'read', 'view');
+
+    const { rows } = await this.db.query(
+      `SELECT
+         id,
+         connect_id AS "connectId",
+         original_filename AS "originalFilename",
+         storage_path AS "storagePath",
+         mime_type AS "mimeType",
+         file_size::BIGINT AS "fileSize"
+       FROM stakeholder_connect_mom_attachments
+       WHERE id = $1 AND connect_id = $2`,
+      [attachmentId, connectId],
+    );
+    if (!rows.length) {
+      throw new NotFoundException('Attachment not found for this meeting.');
+    }
+
+    const row = rows[0];
+    const filePath = resolveMomAttachmentDiskPath(row.storagePath);
+
+    try {
+      await fs.promises.access(filePath, fs.constants.R_OK);
+    } catch {
+      throw new NotFoundException('Attachment file data not found on server.');
+    }
+
+    return {
+      attachment: {
+        id: row.id,
+        connectId: row.connectId,
+        originalFilename: row.originalFilename,
+        mimeType: row.mimeType,
+        fileSize: Number(row.fileSize),
+      },
+      filePath,
+    };
+  }
+
+  async deleteMomAttachment(
+    connectId: string,
+    attachmentId: string,
+    userId: string,
+    userName?: string,
+  ): Promise<{ success: boolean }> {
+    const meeting = await this.loadConnectForAttachmentOp(connectId, userId, 'write', 'edit_mom');
+
+    let diskPathToDelete: string | null = null;
+    let deferredToAfterCommit = false;
+
+    await this.db.withTransaction(async (client, tx?: TransactionContext) => {
+      const { rows } = await client.query(
+        `SELECT
+           id,
+           original_filename AS "originalFilename",
+           storage_path AS "storagePath"
+         FROM stakeholder_connect_mom_attachments
+         WHERE id = $1 AND connect_id = $2
+         FOR UPDATE`,
+        [attachmentId, connectId],
+      );
+      if (!rows.length) {
+        throw new NotFoundException('Attachment not found for this meeting.');
+      }
+
+      const att = rows[0];
+      diskPathToDelete = resolveMomAttachmentDiskPath(att.storagePath);
+
+      await client.query(
+        `DELETE FROM stakeholder_connect_mom_attachments WHERE id = $1 AND connect_id = $2`,
+        [attachmentId, connectId],
+      );
+
+      await this.logActivity(
+        client,
+        `Removed MoM attachment "${att.originalFilename}" from meeting "${meeting.title}" [meetingId=${connectId}, attachmentId=${attachmentId}]`,
+        meeting.accountId,
+        userId,
+        userName,
+      );
+
+      if (tx?.afterCommit && diskPathToDelete) {
+        const targetPath = diskPathToDelete;
+        deferredToAfterCommit = true;
+        tx.afterCommit(async () => {
+          await this.cleanupDiskFiles([targetPath]);
+        });
+      }
+    });
+
+    if (!deferredToAfterCommit && diskPathToDelete) {
+      await this.cleanupDiskFiles([diskPathToDelete]);
+    }
+
+    return { success: true };
   }
 }
