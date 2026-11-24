@@ -5,9 +5,10 @@ import type { NpsResponse } from '@/types';
 import { NpsFormModal, getNpsClassification } from './NpsFormModal';
 import { LoadingState } from '@/components/common/LoadingState';
 import { ConfirmDialog } from '@/components/ui';
+import { isRawIdStr } from '@/utils';
 import {
   Plus, Search, Star, AlertCircle, Smile, Meh, Frown,
-  Trash2, Edit, MessageSquare, Calendar, UserCheck
+  Trash2, Edit, MessageSquare, Calendar, UserCheck, Sparkles
 } from 'lucide-react';
 
 export function formatMonthYear(val: string): string {
@@ -32,8 +33,24 @@ export interface NpsTabProps {
   projectId?: string;
 }
 
-export const NpsTab: React.FC<NpsTabProps> = ({ accountId, accountName = '', projectId }) => {
-  const { projects: allProjects, stakeholders: allStakeholders } = useCRM();
+export const NpsTab: React.FC<NpsTabProps> = ({ accountId: propAccountId, accountName: propAccountName = '', projectId }) => {
+  const { projects: allProjects, stakeholders: allStakeholders, accounts: allAccounts } = useCRM();
+
+  // Resolve project if projectId passed
+  const currentProject = useMemo(
+    () => (projectId ? (allProjects || []).find((p) => p.id === projectId) : null),
+    [allProjects, projectId],
+  );
+
+  const accountId = propAccountId || currentProject?.accountId || '';
+
+  const accountName = useMemo(() => {
+    if (propAccountName && !isRawIdStr(propAccountName)) return propAccountName;
+    if (currentProject?.accountName && !isRawIdStr(currentProject.accountName)) return currentProject.accountName;
+    const acc = (allAccounts || []).find((a) => a.id === accountId);
+    if (acc?.name && !isRawIdStr(acc.name)) return acc.name;
+    return propAccountName && !isRawIdStr(propAccountName) ? propAccountName : '';
+  }, [propAccountName, currentProject, allAccounts, accountId]);
 
   const projects = useMemo(
     () => (allProjects || []).filter((p) => p.accountId === accountId),
@@ -47,6 +64,7 @@ export const NpsTab: React.FC<NpsTabProps> = ({ accountId, accountName = '', pro
 
   const [responses, setResponses] = useState<NpsResponse[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   // Filter & Search state
@@ -63,7 +81,10 @@ export const NpsTab: React.FC<NpsTabProps> = ({ accountId, accountName = '', pro
     try {
       setIsLoading(true);
       setErrorMsg(null);
-      const data = await npsApi.getAll({ accountId, projectId });
+      const data = await npsApi.getAll({
+        accountId: accountId || undefined,
+        projectId: projectId || undefined,
+      });
       setResponses(data);
     } catch (err: any) {
       setErrorMsg(err?.message || 'Failed to load NPS responses.');
@@ -75,6 +96,19 @@ export const NpsTab: React.FC<NpsTabProps> = ({ accountId, accountName = '', pro
   useEffect(() => {
     fetchNpsData();
   }, [accountId, projectId]);
+
+  const handleGenerateNps = async () => {
+    try {
+      setIsGenerating(true);
+      setErrorMsg(null);
+      await npsApi.generate({ projectId, accountId: accountId || undefined });
+      await fetchNpsData();
+    } catch (err: any) {
+      setErrorMsg(err?.response?.data?.message || err?.message || 'Failed to generate NPS score.');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
 
   // Derived NPS Summary Metrics
   const metrics = useMemo(() => {
@@ -249,13 +283,24 @@ export const NpsTab: React.FC<NpsTabProps> = ({ accountId, accountName = '', pro
         </div>
 
         <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+          {projectId && !responses.length && (
+            <button
+              type="button"
+              disabled={isGenerating}
+              onClick={handleGenerateNps}
+              className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-300 rounded-lg shadow-sm transition-all disabled:opacity-60 cursor-pointer"
+            >
+              <Sparkles className="w-4 h-4 text-amber-600" />
+              {isGenerating ? 'Generating…' : 'Generate NPS Score'}
+            </button>
+          )}
           <button
             type="button"
             onClick={() => {
               setEditingItem(null);
               setIsModalOpen(true);
             }}
-            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 rounded-lg shadow-sm transition-all"
+            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 rounded-lg shadow-sm transition-all cursor-pointer"
           >
             <Plus className="w-4 h-4" /> Add NPS Response
           </button>
@@ -274,8 +319,21 @@ export const NpsTab: React.FC<NpsTabProps> = ({ accountId, accountName = '', pro
           <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
             {searchTerm || classificationFilter !== 'ALL' || quarterFilter !== 'ALL'
               ? 'No NPS feedback matches your current filter criteria.'
-              : 'Add an NPS response to begin recording customer feedback.'}
+              : 'Add an NPS response or generate the initial score to begin recording customer feedback.'}
           </p>
+          {projectId && !responses.length && !searchTerm && (
+            <div className="mt-4">
+              <button
+                type="button"
+                disabled={isGenerating}
+                onClick={handleGenerateNps}
+                className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold text-amber-900 bg-amber-100 hover:bg-amber-200 border border-amber-300 rounded-xl shadow-sm transition-all disabled:opacity-60 cursor-pointer"
+              >
+                <Sparkles className="w-4 h-4 text-amber-700" />
+                {isGenerating ? 'Generating NPS Score…' : 'Generate Project NPS Score'}
+              </button>
+            </div>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

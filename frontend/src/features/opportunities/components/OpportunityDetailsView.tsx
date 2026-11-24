@@ -30,6 +30,7 @@ import {
   X,
   Pencil,
   Building2,
+  Clock,
 } from 'lucide-react';
 import { CustomizeColumnsSidebar } from '@/components/table/CustomizeColumnsSidebar';
 import { DocumentsPanel } from '@/components/documents/DocumentsPanel';
@@ -78,7 +79,7 @@ import {
   InlineSelectEditCell,
   InlineTextEditCell,
 } from '@/components/ui';
-import { compareForSort, getTodayISODate, isOpenActionItemStatus, serviceProviderOptionLabel, cleanOwnerName, SortDirection } from '@/utils';
+import { compareForSort, formatDateTime, getTodayISODate, isOpenActionItemStatus, serviceProviderOptionLabel, cleanOwnerName, SortDirection } from '@/utils';
 
 type OppTab = 'overview' | 'action-items' | 'stakeholders' | 'comments' | 'documents';
 
@@ -395,6 +396,18 @@ export const OpportunityDetailsView: React.FC = () => {
     return list;
   }, [stakeholders, opp?.accountId, opp?.serviceProviderStakeholderId]);
 
+  // Action items: filter -> sort -> paginate (omit Project column in Opportunity Detailed View)
+  const displayedActionCols = useMemo(() => {
+    const cols = actionItemsColumnConfig.filter(col => col.isDisplayed && col.key !== 'projectId');
+    const pinned = cols.filter(col => col.isPinned);
+    const unpinned = cols.filter(col => !col.isPinned);
+    return [...pinned, ...unpinned];
+  }, [actionItemsColumnConfig]);
+
+  const actionColPinnedOffsets = useMemo(() => {
+    return computePinnedOffsets(displayedActionCols, 'opportunity-details:action-items');
+  }, [displayedActionCols]);
+
   if (loading) {
     return <LoadingState label="Loading opportunity details..." />;
   }
@@ -431,18 +444,6 @@ export const OpportunityDetailsView: React.FC = () => {
     addComment('opportunity', opp.id, commentText);
     setCommentText('');
   };
-
-  // Action items: filter -> sort -> paginate (omit Project column in Opportunity Detailed View)
-  const displayedActionCols = useMemo(() => {
-    const cols = actionItemsColumnConfig.filter(col => col.isDisplayed && col.key !== 'projectId');
-    const pinned = cols.filter(col => col.isPinned);
-    const unpinned = cols.filter(col => !col.isPinned);
-    return [...pinned, ...unpinned];
-  }, [actionItemsColumnConfig]);
-
-  const actionColPinnedOffsets = useMemo(() => {
-    return computePinnedOffsets(displayedActionCols, 'opportunity-details:action-items');
-  }, [displayedActionCols]);
 
   // User-added (non-standard) columns widen the table past the viewport and
   // trigger horizontal scroll; the default column set always fits the screen.
@@ -607,8 +608,10 @@ export const OpportunityDetailsView: React.FC = () => {
           { icon: <DollarSign className="w-4 h-4" />, label: 'CRM Value', mono: true, value: formatCur(opp.crmValue) },
           { icon: <TrendingUp className="w-4 h-4" />, label: 'Probability', mono: true, value: `${opp.probability}%` },
           { icon: <Calendar className="w-4 h-4" />, label: 'Expected Project End Date', mono: true, value: opp.allocationEndDate || 'N/A' },
+          { icon: <Clock className="w-4 h-4" />, label: 'Created Date', value: formatDateTime(opp.createdAt) },
+          { icon: <Clock className="w-4 h-4" />, label: 'Last Modified Date', value: formatDateTime(opp.updatedAt) },
         ]}
-        attributesClassName="grid-cols-2 lg:grid-cols-5"
+        attributesClassName="grid-cols-2 sm:grid-cols-3 lg:grid-cols-6"
       />
 
       {opp.stage === 'Won' && (
@@ -901,6 +904,25 @@ export const OpportunityDetailsView: React.FC = () => {
                       <p className="text-sm text-slate-600 leading-relaxed font-medium">
                         {opp.risksAndDependencies || <span className="text-slate-400 font-medium italic">None noted</span>}
                       </p>
+                    </div>
+                  </div>
+                </FormSection>
+
+                <FormSection title="System Information">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    <div>
+                      <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1">Created Date</span>
+                      <span className="text-sm text-slate-800 font-semibold flex items-center">
+                        <Clock className="w-3.5 h-3.5 text-slate-400 mr-1.5" aria-hidden="true" />
+                        {formatDateTime(opp.createdAt)}
+                      </span>
+                    </div>
+                    <div>
+                      <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1">Last Modified Date</span>
+                      <span className="text-sm text-slate-800 font-semibold flex items-center">
+                        <Clock className="w-3.5 h-3.5 text-slate-400 mr-1.5" aria-hidden="true" />
+                        {formatDateTime(opp.updatedAt)}
+                      </span>
                     </div>
                   </div>
                 </FormSection>

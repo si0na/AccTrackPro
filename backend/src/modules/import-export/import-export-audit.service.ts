@@ -2,12 +2,13 @@ import { Injectable, Logger } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
 import { BulkImportOutcome } from '../../common/utils/bulk-import.util';
 
-export type ImportExportModule = 'accounts' | 'opportunities' | 'stakeholders' | 'actionItems';
+export type ImportExportModule = 'accounts' | 'opportunities' | 'stakeholders' | 'projects' | 'actionItems';
 
 const MODULE_LABEL: Record<string, string> = {
   accounts: 'Accounts',
   opportunities: 'Opportunities',
   stakeholders: 'Stakeholders',
+  projects: 'Projects',
   actionItems: 'Action Items',
 };
 
@@ -24,7 +25,7 @@ const MODULE_LABEL: Record<string, string> = {
 export class ImportExportAuditService {
   private readonly logger = new Logger(ImportExportAuditService.name);
 
-  constructor(private readonly db: DatabaseService) {}
+  constructor(private readonly db: DatabaseService) { }
 
   /**
    * Records a Global Import run: one `import_export_audit` row per module that
@@ -59,7 +60,7 @@ export class ImportExportAuditService {
         );
         parts.push(
           `${label} — ${outcome.created} created, ${outcome.updated} updated, ` +
-            `${outcome.skipped} skipped, ${outcome.failed} failed`,
+          `${outcome.skipped} skipped, ${outcome.failed} failed`,
         );
       }
       await this.logActivity(`Imported CRM workbook: ${parts.join('; ')}`, userId, userName);

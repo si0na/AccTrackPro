@@ -5,13 +5,15 @@ import { Comment } from '../../types';
 import { toIsoString } from '../../common/utils/db-mapping.util';
 
 function rowToComment(row: any): Comment {
-  const { user_name, user_id, user_display_name, target_type, target_id, created_at, ...base } = row;
+  const { user_name, user_id, user_display_name, target_type, target_id, created_at, updated_at, ...base } = row;
   return {
     ...base,
     targetType: target_type,
     targetId:   target_id,
     user:       user_display_name ?? user_name ?? '',
     timestamp:  toIsoString(created_at),
+    createdAt:  toIsoString(created_at),
+    updatedAt:  toIsoString(updated_at || created_at),
   } as Comment;
 }
 
@@ -179,7 +181,7 @@ export class CommentsService {
 
   async update(id: string, text: string, userId?: string): Promise<Comment> {
     const { rows } = await this.db.query(
-      `UPDATE comments SET text = $1
+      `UPDATE comments SET text = $1, updated_at = NOW()
        WHERE id = $2 AND ($3::TEXT IS NULL OR user_id = $3)
        RETURNING *`,
       [text, id, userId ?? null],

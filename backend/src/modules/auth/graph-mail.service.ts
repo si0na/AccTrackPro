@@ -80,11 +80,11 @@ export class GraphMailService {
         throw new Error(`Graph sendMail API returned status ${mailRes.status}: ${errorText}`);
       }
 
-      this.logger.log(`Password reset email successfully sent to <${to}> via Microsoft Graph API`);
+      this.logger.log(`Email successfully sent to <${to}> via Microsoft Graph API [subject="${subject}"]`);
       return true;
     } catch (error: any) {
       // Safe error logging: never expose secret, access token, or user credentials
-      this.logger.error(`Failed to send password reset email via Microsoft Graph API. Reason: ${error.message}`);
+      this.logger.error(`Failed to send email via Microsoft Graph API [to=<${to}> subject="${subject}"]. Reason: ${error.message}`);
       return false;
     }
   }

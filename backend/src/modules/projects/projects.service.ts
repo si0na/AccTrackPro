@@ -7,7 +7,12 @@ import { Project } from '../../types';
 import { extractCustomData } from '../../common/utils/db-mapping.util';
 import { Pagination, Paginated, extractTotal } from '../../common/utils/pagination.util';
 import { insertHealthHistory } from './project-health-history.util';
+import { insertInitialProjectNps } from '../nps/project-nps-generator.util';
 import { assertNotFutureDate } from './project-progress-date.util';
+import { BulkModuleAdapter } from '../import-export/bulk-adapter';
+import { PROJECT_FIELDS, projectPostValidate } from '../import-export/import-field-schemas';
+import { validateDto } from '../../common/utils/validate-dto.util';
+import { CreateProjectDto } from './dto/project.dto';
 
 const KNOWN = new Set([
   'id', 'name', 'description', 'accountId', 'accountName',
@@ -23,6 +28,7 @@ const KNOWN = new Set([
   'plannedEffortHours', 'actualEffortHours',
   'plannedCost', 'actualCost', 'dealValue',
   'priority', 'deliveryModel', 'billingModel', 'tower',
+  'createdAt', 'updatedAt',
 ]);
 
 function rowToProject(row: any): Project {
@@ -73,6 +79,8 @@ function rowToProject(row: any): Project {
     deliveryModel:        delivery_model ?? undefined,
     billingModel:         billing_model  ?? undefined,
     tower:                tower         ?? undefined,
+    createdAt: created_at instanceof Date ? created_at.toISOString() : (created_at ?? undefined),
+    updatedAt: updated_at instanceof Date ? updated_at.toISOString() : (updated_at ?? undefined),
     ...(custom_data || {}),
   } as Project;
 }
@@ -204,6 +212,52 @@ export class ProjectsService {
     return rowToProject(rows[0]);
   }
 
+  /**
+   * Bulk adapter for Global Import/Export. Every imported project row is
+   * validated against CreateProjectDto and inserted/updated via canonical paths.
+   * Duplicates are matched by (name, account) or (opportunityId).
+   */
+  bulkAdapter(userId: string): BulkModuleAdapter {
+    return {
+      moduleKey: 'projects',
+      fields: PROJECT_FIELDS,
+      postValidate: (row) => projectPostValidate(row),
+      validate: (row) => validateDto(CreateProjectDto, row),
+      naturalKey: (row) =>
+        row.accountId && row.name ? `${row.accountId}::${String(row.name).trim().toLowerCase()}` : null,
+      findExistingId: (row) => this.findActiveByNameAndAccount(row.name, row.accountId, userId, row.opportunityId),
+      create: (row) => this.create({ ...row, ownerId: userId }),
+      update: (id, row) => this.update(id, { ...row, id }, userId),
+    };
+  }
+
+  async findActiveByNameAndAccount(
+    name?: string,
+    accountId?: string,
+    ownerId?: string,
+    opportunityId?: string,
+  ): Promise<string | null> {
+    const n = String(name ?? '').trim();
+    if (!n || !accountId) return null;
+    if (opportunityId) {
+      const { rows } = await this.db.query(
+        `SELECT id FROM projects
+         WHERE (opportunity_id = $1 OR (LOWER(TRIM(name)) = LOWER($2) AND account_id = $3))
+           AND is_deleted = FALSE
+         LIMIT 1`,
+        [opportunityId, n, accountId],
+      );
+      return rows[0]?.id ?? null;
+    }
+    const { rows } = await this.db.query(
+      `SELECT id FROM projects
+       WHERE LOWER(TRIM(name)) = LOWER($1) AND account_id = $2 AND is_deleted = FALSE
+       LIMIT 1`,
+      [n, accountId],
+    );
+    return rows[0]?.id ?? null;
+  }
+
   async create(data: any): Promise<Project> {
     this.logger.log(`Creating project [name="${data.name}" accountId=${data.accountId} opportunityId=${data.opportunityId ?? 'NONE'}]`);
 
@@ -290,6 +344,9 @@ export class ProjectsService {
         statusSummary: '',
         updatedById: requestingUserId ?? data.ownerId ?? null,
       });
+      if (data.accountId) {
+        await insertInitialProjectNps(client, rows[0].id, data.accountId, data.clientPmName);
+      }
       return rows[0].id as string;
     }).catch((err) => { throw this.mapOpportunityConflict(err); });
     const project = await this.findOne(newId);

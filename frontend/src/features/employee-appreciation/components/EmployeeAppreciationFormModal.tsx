@@ -8,8 +8,9 @@ import {
   INPUT_CLS,
   INPUT_CLS_AMBER,
   SELECT_CLS,
+  EmployeeSearchableSelect,
 } from '@/components/ui';
-import { EmployeeAppreciation } from '@/types';
+import { EmployeeAppreciation, EmployeeDirectoryUser } from '@/types';
 import { getTodayISODate } from '@/utils';
 import { HeartHandshake } from 'lucide-react';
 
@@ -107,17 +108,15 @@ export const EmployeeAppreciationFormModal: React.FC<EmployeeAppreciationFormMod
     }
   };
 
-  // Helper when selecting an existing Employee/User from Service Provider directory
-  const handleSelectEmployee = (spId: string) => {
-    if (!spId) {
+  // Helper when selecting an employee from the unified Microsoft Graph / Local directory
+  const handleSelectEmployee = (emp: EmployeeDirectoryUser | null) => {
+    if (!emp) {
       setEmployeeId('');
       return;
     }
-    const sp = serviceProviders.find((s) => s.id === spId);
-    if (sp) {
-      setEmployeeId(sp.id);
-      setEmployeeName(sp.name);
-    }
+    // Prefer local employee ID if matched to preserve database relations; otherwise use Graph ID
+    setEmployeeId(emp.localEmployeeId || emp.id);
+    setEmployeeName(emp.displayName);
   };
 
   // Helper when selecting an existing Stakeholder
@@ -283,20 +282,12 @@ export const EmployeeAppreciationFormModal: React.FC<EmployeeAppreciationFormMod
         <FormSection title="Employee Details">
           <FormGrid columns={2}>
             <FormField label="Select from Directory (Optional)">
-              <select
-                value={employeeId}
-                onChange={(e) => handleSelectEmployee(e.target.value)}
-                className={selectCls}
-              >
-                <option value="">— Select from Team Directory —</option>
-                {[...serviceProviders]
-                  .sort((a, b) => (a.name || a.email || '').localeCompare(b.name || b.email || '', undefined, { sensitivity: 'base' }))
-                  .map((sp) => (
-                    <option key={sp.id} value={sp.id}>
-                      {sp.name} {sp.designation ? `(${sp.designation})` : ''}
-                    </option>
-                  ))}
-              </select>
+              <EmployeeSearchableSelect
+                valueId={employeeId}
+                valueName={employeeName}
+                onSelect={handleSelectEmployee}
+                placeholder="Search Microsoft Graph or local directory…"
+              />
             </FormField>
 
             <FormField label="Emp ID (Optional)">

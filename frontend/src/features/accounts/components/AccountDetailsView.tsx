@@ -64,9 +64,11 @@ import { StakeholderTabs } from '@/features/stakeholders/components/StakeholderT
 import { NpsTab } from '@/features/nps/components/NpsTab';
 import { EmployeeAppreciationTab } from '@/features/employee-appreciation/components/EmployeeAppreciationTab';
 import { AccountRisksDependenciesTab } from './AccountRisksDependenciesTab';
+import { AccountWeeklyHealthTab } from './AccountWeeklyHealthTab';
 import { LOCATION_OPTIONS, STAGE_DEFAULT_PROBABILITY, stageChangePatch, ACTION_ITEM_STATUS_OPTIONS } from '@/constants';
 import {
   deriveOppStatus,
+  formatDateTime,
   getTodayISODate,
   isOpenActionItemStatus,
   mapLocationToOption,
@@ -83,6 +85,7 @@ import {
   Briefcase,
   Building2,
   Calendar,
+  Clock,
   Factory,
   MoreVertical,
   User,
@@ -101,6 +104,7 @@ import {
   FolderKanban,
   Eye,
   Trash2,
+  HeartPulse,
 } from 'lucide-react';
 
 /** First letters of up to the first two words of the account name, for the avatar chip. */
@@ -163,7 +167,7 @@ export const AccountDetailsView: React.FC = () => {
   const account = accounts.find(a => a.id === selectedAccountId);
 
   // Tab State
-  const [activeTab, setActiveTab] = useState<'overview' | 'projects' | 'opportunities' | 'stakeholders' | 'action-items' | 'comments' | 'documents' | 'nps' | 'appreciation' | 'risks-dependencies'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'weekly-health' | 'projects' | 'opportunities' | 'stakeholders' | 'action-items' | 'comments' | 'documents' | 'nps' | 'appreciation' | 'risks-dependencies'>('overview');
 
   // Selected opportunity in opportunities tab
   const [selectedExcelOppId, setSelectedExcelOppId] = useState<string | null>(null);
@@ -412,6 +416,20 @@ export const AccountDetailsView: React.FC = () => {
   // Selected Action Item for Quick Panel
   const [selectedActionItemId, setSelectedActionItemId] = useState<string | null>(null);
 
+  // Displayed columns for the Action Items table in Account Details View — excludes Project column
+  const displayActionItemColumns = useMemo(() => {
+    const cols = actionItemsColumnConfig.filter(
+      c => c.isDisplayed && c.key !== 'projectId' && c.key !== 'projectName'
+    );
+    const pinned = cols.filter(col => col.isPinned);
+    const unpinned = cols.filter(col => !col.isPinned);
+    return [...pinned, ...unpinned];
+  }, [actionItemsColumnConfig]);
+
+  const actionItemPinnedOffsets = useMemo(() => {
+    return computePinnedOffsets(displayActionItemColumns, 'account-details:action-items');
+  }, [displayActionItemColumns]);
+
   if (loading) {
     return <LoadingState label="Loading account details..." />;
   }
@@ -435,20 +453,6 @@ export const AccountDetailsView: React.FC = () => {
   const accountStks = stakeholders.filter(s => s.accountId === account.id);
   const accountComments = comments.filter(c => c.targetType === 'account' && c.targetId === account.id);
   const accountProjects = (projects || []).filter(p => p.accountId === account.id);
-
-  // Displayed columns for the Action Items table in Account Details View — excludes Project column
-  const displayActionItemColumns = useMemo(() => {
-    const cols = actionItemsColumnConfig.filter(
-      c => c.isDisplayed && c.key !== 'projectId' && c.key !== 'projectName'
-    );
-    const pinned = cols.filter(col => col.isPinned);
-    const unpinned = cols.filter(col => !col.isPinned);
-    return [...pinned, ...unpinned];
-  }, [actionItemsColumnConfig]);
-
-  const actionItemPinnedOffsets = useMemo(() => {
-    return computePinnedOffsets(displayActionItemColumns, 'account-details:action-items');
-  }, [displayActionItemColumns]);
 
   // Open subsets backing the overview summary cards: opportunities still in 'Open'
   // lifecycle status, action items not yet Completed
@@ -662,13 +666,17 @@ export const AccountDetailsView: React.FC = () => {
           },
           { icon: <Calendar className="w-4 h-4" />, label: 'Customer Since', value: account.since },
           { icon: <Layers className="w-4 h-4" />, label: 'Tower', value: account.tower },
+          { icon: <Clock className="w-4 h-4" />, label: 'Created Date', value: formatDateTime(account.createdAt) },
+          { icon: <Clock className="w-4 h-4" />, label: 'Last Modified Date', value: formatDateTime(account.updatedAt) },
         ]}
+        attributesClassName="grid-cols-2 sm:grid-cols-3 lg:grid-cols-4"
       />
 
       {/* Navigation Tabs */}
       <DetailTabBar
         tabs={[
           { id: 'overview', label: 'Overview', icon: Briefcase, count: null },
+          { id: 'weekly-health', label: 'Weekly Health', icon: HeartPulse, count: null },
           { id: 'projects', label: 'Projects', icon: FolderKanban, count: accountProjects.length },
           { id: 'stakeholders', label: 'Stakeholders', icon: Users, count: accountStks.length },
           { id: 'opportunities', label: 'Opportunities', icon: DollarSign, count: visibleOpps.length },
@@ -842,6 +850,26 @@ export const AccountDetailsView: React.FC = () => {
                         <span className="font-semibold text-slate-800">{row.name || <span className="text-slate-400 font-normal italic">Not assigned</span>}</span>
                       </div>
                     ))}
+                  </div>
+                </Card>
+
+                <Card
+                  padding="none"
+                  title="System Information"
+                >
+                  <div className="p-5 divide-y divide-slate-100">
+                    <div className="py-3.5 first:pt-0 last:pb-0 flex items-center justify-between text-xs">
+                      <span className="font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5 text-slate-400" /> Created Date
+                      </span>
+                      <span className="font-semibold text-slate-800">{formatDateTime(account.createdAt)}</span>
+                    </div>
+                    <div className="py-3.5 first:pt-0 last:pb-0 flex items-center justify-between text-xs">
+                      <span className="font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5 text-slate-400" /> Last Modified Date
+                      </span>
+                      <span className="font-semibold text-slate-800">{formatDateTime(account.updatedAt)}</span>
+                    </div>
                   </div>
                 </Card>
 
@@ -1751,6 +1779,12 @@ export const AccountDetailsView: React.FC = () => {
         {activeTab === 'nps' && (
           <NpsTab accountId={account.id} accountName={account.name} />
         )}
+
+        {/* Weekly Health Tab */}
+        {activeTab === 'weekly-health' && (
+          <AccountWeeklyHealthTab accountId={account.id} account={account} />
+        )}
+
 
         {/* Edit Opportunity Modal */}
         {isEditOppModalOpen && editingOpp && (

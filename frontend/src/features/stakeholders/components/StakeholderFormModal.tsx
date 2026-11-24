@@ -6,8 +6,8 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
 import { Account, InfluenceLevel, RelationshipStatus, Stakeholder, StakeholderType } from '@/types';
-import { Pencil, Users } from 'lucide-react';
-import { serviceProviderOptionLabel } from '@/utils';
+import { Pencil, Users, Clock } from 'lucide-react';
+import { serviceProviderOptionLabel, formatDateTime } from '@/utils';
 import {
   FormField,
   FormGrid,
@@ -448,6 +448,25 @@ export const StakeholderFormModal: React.FC<StakeholderFormModalProps> = ({
             </FormField>
           </FormGrid>
         </FormSection>
+
+        {isEdit && stakeholder && (
+          <FormSection title="System Information">
+            <FormGrid columns={2}>
+              <FormField label="Created Date">
+                <div className="text-xs font-semibold text-slate-700 py-2 flex items-center">
+                  <Clock className="w-3.5 h-3.5 text-slate-400 mr-1.5" />
+                  {formatDateTime(stakeholder.createdAt)}
+                </div>
+              </FormField>
+              <FormField label="Last Modified Date">
+                <div className="text-xs font-semibold text-slate-700 py-2 flex items-center">
+                  <Clock className="w-3.5 h-3.5 text-slate-400 mr-1.5" />
+                  {formatDateTime(stakeholder.updatedAt)}
+                </div>
+              </FormField>
+            </FormGrid>
+          </FormSection>
+        )}
       </div>
     </FormModal>
   );

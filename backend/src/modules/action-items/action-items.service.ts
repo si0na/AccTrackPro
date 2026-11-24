@@ -9,8 +9,11 @@ import { extractCustomData } from '../../common/utils/db-mapping.util';
 import { Pagination, Paginated, extractTotal } from '../../common/utils/pagination.util';
 import { validateDto } from '../../common/utils/validate-dto.util';
 import { CreateActionItemDto } from './dto/action-item.dto';
-import { ACTION_ITEM_FIELDS } from '../import-export/import-field-schemas';
+import { ACTION_ITEM_FIELDS, PROJECT_ACTION_ITEM_FIELDS } from '../import-export/import-field-schemas';
 import { BulkModuleAdapter } from '../import-export/bulk-adapter';
+import { ActionItemNotificationsService } from './action-item-notifications.service';
+import { getCurrentDateString, getCurrentHourInTimezone } from './action-item-due-reminder.scheduler';
+import { getNotificationCutoffDate, isDateOnOrAfterCutoff } from './action-item-cutoff.util';
 
 // 'financialYear'/'quarter' remain listed so payloads from older clients are
 // stripped instead of leaking into custom_data — fiscal periods are derived
@@ -18,8 +21,9 @@ import { BulkModuleAdapter } from '../import-export/bulk-adapter';
 const KNOWN = new Set([
   'id', 'actionItemNumber', 'title', 'accountId', 'accountName', 'opportunityId', 'opportunityName', 'projectId', 'projectName', 'owner', 'ownerId', 'ownerStakeholderId',
   'ownerName', 'ownerDesignation', 'ownerStakeholderType',
-  'openDate', 'dueDate', 'priority', 'status', 'actionItemType', 'notes', 'risksAndDependencies', 'nextAction', 'impediments', 'completedDate',
+  'openDate', 'dueDate', 'priority', 'status', 'actionItemType', 'type', 'notes', 'risksAndDependencies', 'nextAction', 'impediments', 'completedDate',
   'financialYear', 'quarter',
+  'createdAt', 'updatedAt',
 ]);
 
 /** Default open_date for rows created without one (e.g. older API clients). */
@@ -71,10 +75,13 @@ function rowToActionItem(row: any, derive: (date: string) => { financialYear: st
     openDate: open_date,
     dueDate: due_date,
     actionItemType: action_item_type ?? undefined,
+    type: action_item_type ?? undefined,
     completedDate: completed_date ?? undefined,
     risksAndDependencies: risks_and_dependencies ?? '',
     nextAction: next_action ?? '',
     impediments: impediments ?? '',
+    createdAt: created_at instanceof Date ? created_at.toISOString() : (created_at ?? undefined),
+    updatedAt: updated_at instanceof Date ? updated_at.toISOString() : (updated_at ?? undefined),
     // Read-only reporting labels derived from the business date (due date).
     ...derive(due_date),
     ...(custom_data || {}),
@@ -104,6 +111,7 @@ export class ActionItemsService {
     private readonly access: AccessScopeService,
     private readonly bus: NotificationEventBus,
     private readonly permissions: PermissionsService,
+    private readonly emailNotifications: ActionItemNotificationsService,
   ) { }
 
   /**
@@ -133,41 +141,52 @@ export class ActionItemsService {
       fields: ACTION_ITEM_FIELDS,
       postValidate: async (payload, raw) => {
         const errors: string[] = [];
-        if (payload.projectId || raw?.projectId || raw?.Project || raw?.['Project Name']) {
-          errors.push('Project Action Items cannot be imported or updated via Global Import/Export');
-        }
-        if (payload.accountId && payload.title) {
-          const existingId = await this.findActiveByTitleAndAccount(payload.title, payload.accountId, userId);
-          if (existingId) {
-            const existing = await this.findOneRaw(existingId);
-            if (existing && existing.projectId != null) {
-              errors.push('Project Action Items cannot be imported or updated via Global Import/Export');
-            }
-          }
+        if (payload.projectId) {
+          errors.push('Regular Action Items cannot be linked to a project — use the Project Action Items sheet');
         }
         return errors;
       },
       validate: (row) => validateDto(CreateActionItemDto, row),
-      naturalKey: (row) =>
-        row.accountId && row.title ? `${row.accountId}::${String(row.title).trim().toLowerCase()}` : null,
-      findExistingId: (row) => this.findActiveByTitleAndAccount(row.title, row.accountId, userId),
+      naturalKey: (row) => {
+        if (!row.accountId || !row.title) return null;
+        return `${row.accountId}::${String(row.title).trim().toLowerCase()}`;
+      },
+      findExistingId: (row) => this.findActiveByTitleAndAccount(row.title, row.accountId, userId, null),
       create: (row) => {
-        if (row.projectId) {
-          throw new BadRequestException('Project Action Items cannot be imported or updated via Global Import/Export');
-        }
-        const { projectId, ...cleanRow } = row;
-        return this.create({ ...cleanRow, ownerId: userId });
+        return this.create({ ...row, projectId: undefined, ownerId: userId }, userId);
       },
       update: async (id, row) => {
-        const existing = await this.findOneRaw(id);
-        if (existing && existing.projectId != null) {
-          throw new ForbiddenException('Project Action Items cannot be imported or updated via Global Import/Export');
+        return this.update(id, { ...row, projectId: undefined }, userId);
+      },
+    };
+  }
+
+  /**
+   * Adapts Project Action Items for the Global Import/Export pipeline.
+   * Project Action Items are strictly associated with individual projects.
+   */
+  bulkProjectActionItemsAdapter(userId: string): BulkModuleAdapter {
+    return {
+      moduleKey: 'projectActionItems',
+      fields: PROJECT_ACTION_ITEM_FIELDS,
+      postValidate: async (payload, raw) => {
+        const errors: string[] = [];
+        if (!payload.projectId) {
+          errors.push('Project is required for Project Action Items');
         }
-        if (row.projectId) {
-          throw new BadRequestException('Project Action Items cannot be imported or updated via Global Import/Export');
-        }
-        const { projectId, ...cleanRow } = row;
-        return this.update(id, cleanRow, userId);
+        return errors;
+      },
+      validate: (row) => validateDto(CreateActionItemDto, row),
+      naturalKey: (row) => {
+        if (!row.projectId || !row.title) return null;
+        return `${row.projectId}::${String(row.title).trim().toLowerCase()}`;
+      },
+      findExistingId: (row) => this.findActiveByTitleAndProject(row.title, row.projectId, userId),
+      create: (row) => {
+        return this.create({ ...row, ownerId: userId }, userId);
+      },
+      update: async (id, row) => {
+        return this.update(id, row, userId);
       },
     };
   }
@@ -176,6 +195,7 @@ export class ActionItemsService {
     title?: string,
     accountId?: string,
     ownerId?: string,
+    projectId?: string | null,
   ): Promise<string | null> {
     const t = String(title ?? '').trim();
     if (!t || !accountId) return null;
@@ -183,8 +203,26 @@ export class ActionItemsService {
       `SELECT id FROM action_items
        WHERE LOWER(TRIM(title)) = LOWER($1) AND account_id = $2 AND is_deleted = FALSE
          AND ($3::TEXT IS NULL OR owner_id = $3)
+         AND (($4::TEXT IS NULL AND project_id IS NULL) OR project_id = $4)
        LIMIT 1`,
-      [t, accountId, ownerId ?? null],
+      [t, accountId, ownerId ?? null, projectId ?? null],
+    );
+    return rows[0]?.id ?? null;
+  }
+
+  private async findActiveByTitleAndProject(
+    title?: string,
+    projectId?: string | null,
+    ownerId?: string,
+  ): Promise<string | null> {
+    const t = String(title ?? '').trim();
+    if (!t || !projectId) return null;
+    const { rows } = await this.db.query(
+      `SELECT id FROM action_items
+       WHERE LOWER(TRIM(title)) = LOWER($1) AND project_id = $2 AND is_deleted = FALSE
+         AND ($3::TEXT IS NULL OR owner_id = $3)
+       LIMIT 1`,
+      [t, projectId, ownerId ?? null],
     );
     return rows[0]?.id ?? null;
   }
@@ -321,6 +359,8 @@ export class ActionItemsService {
     const accountName = acctRows[0]?.name ?? '';
     const prefix = generateAccountPrefix(accountName);
 
+    const actionItemType = data.actionItemType ?? data.type ?? null;
+
     const createdId = await this.db.withTransaction(async (client) => {
       // Lock and increment sequence counter row per account prefix atomically
       const { rows: seqRows } = await client.query(
@@ -343,7 +383,7 @@ export class ActionItemsService {
           data.title, data.accountId, data.opportunityId ?? null, data.projectId ?? null,
           data.ownerId ?? null, data.ownerStakeholderId ?? null,
           data.openDate || todayIsoDate(), data.dueDate ?? '', data.priority, data.status,
-          data.actionItemType ?? null, data.notes ?? '',
+          actionItemType, data.notes ?? '',
           data.risksAndDependencies ?? '',
           data.nextAction ?? '',
           data.impediments ?? '',
@@ -373,6 +413,42 @@ export class ActionItemsService {
     } else {
       this.logger.warn(`ActionItem created without ownerId — notification suppressed [actionItemId=${item.id}]`);
     }
+
+    // In-app and Outlook creation notifications (safe against errors; immediate email sent if owner assigned)
+    try {
+      await this.emailNotifications.sendCreationNotification(item.id, requestingUserId ?? data.ownerId);
+    } catch (err: any) {
+      this.logger.error(
+        `Failed to send action item creation notifications [actionItemId=${item.id}]: ${err.message}`,
+        err.stack,
+      );
+    }
+
+    // If due date has already passed or reached 9:00 AM on due date, dispatch due reminder immediately without waiting
+    if (item.dueDate) {
+      try {
+        const timeZone = process.env.APP_TIMEZONE || process.env.TZ || 'UTC';
+        const todayStr = getCurrentDateString(timeZone);
+        const currentHour = getCurrentHourInTimezone(timeZone);
+        const scheduledHour = parseInt(process.env.ACTION_ITEM_DUE_REMINDER_HOUR || '9', 10);
+        const isPastDue = item.dueDate < todayStr || (item.dueDate === todayStr && currentHour >= scheduledHour);
+        const cutoffDate = getNotificationCutoffDate();
+        const isEligibleDue = isDateOnOrAfterCutoff(item.dueDate, cutoffDate);
+
+        if (isPastDue && isEligibleDue) {
+          this.logger.log(
+            `Action item created with due date already reached/expired [id=${item.id} dueDate=${item.dueDate}] — dispatching due reminder immediately`,
+          );
+          await this.emailNotifications.sendDueReminder(item.id, item.dueDate);
+        }
+      } catch (dueErr: any) {
+        this.logger.error(
+          `Failed to process immediate due reminder for past-due action item [actionItemId=${item.id}]: ${dueErr.message}`,
+          dueErr.stack,
+        );
+      }
+    }
+
     return item;
   }
 
@@ -396,7 +472,9 @@ export class ActionItemsService {
     const dueDate = 'dueDate' in data ? (data.dueDate ?? '') : existing.dueDate;
     const priority = data.priority ?? existing.priority;
     const status = data.status ?? existing.status;
-    const actionItemType = 'actionItemType' in data ? (data.actionItemType ?? null) : (existing.actionItemType ?? null);
+    const actionItemType = 'actionItemType' in data
+      ? (data.actionItemType ?? null)
+      : ('type' in data ? (data.type ?? null) : (existing.actionItemType ?? null));
     const notes = 'notes' in data ? (data.notes ?? '') : existing.notes;
     const risksAndDependencies = 'risksAndDependencies' in data ? (data.risksAndDependencies ?? '') : existing.risksAndDependencies;
     const completedDate = 'completedDate' in data ? (data.completedDate ?? null) : existing.completedDate;
@@ -517,6 +595,30 @@ export class ActionItemsService {
         });
       }
     }
+
+    // Handle due date changes and completion tracking for reminders
+    if ('dueDate' in data && data.dueDate !== undefined && data.dueDate !== existing.dueDate) {
+      try {
+        await this.emailNotifications.handleDueDateChanged(id, existing.dueDate, data.dueDate);
+      } catch (err: any) {
+        this.logger.error(`Error handling due date change [actionItemId=${id}]: ${err.message}`);
+      }
+    }
+
+    if (item.status === 'Completed' && existing.status !== 'Completed') {
+      try {
+        await this.emailNotifications.handleActionItemCompleted(id);
+      } catch (err: any) {
+        this.logger.error(`Error handling action item completion notification tracking [actionItemId=${id}]: ${err.message}`);
+      }
+    } else if (item.status === 'Cancelled' && existing.status !== 'Cancelled') {
+      try {
+        await this.emailNotifications.handleActionItemCancelled(id);
+      } catch (err: any) {
+        this.logger.error(`Error handling action item cancellation notification tracking [actionItemId=${id}]: ${err.message}`);
+      }
+    }
+
     return item;
   }
 
@@ -524,6 +626,12 @@ export class ActionItemsService {
     const item = await this.findOne(id, userId);
     await this.db.query(`UPDATE action_items SET is_deleted=TRUE, updated_at=NOW() WHERE id=$1`, [id]);
     await this.log(`Deleted Action Item '${item.title}'`, item.accountId);
+
+    try {
+      await this.emailNotifications.handleActionItemDeleted(id);
+    } catch (err: any) {
+      this.logger.error(`Error handling action item deletion notification tracking [actionItemId=${id}]: ${err.message}`);
+    }
 
     if (item.ownerId) {
       this.bus.emit({

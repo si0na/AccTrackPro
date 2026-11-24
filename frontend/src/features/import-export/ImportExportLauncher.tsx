@@ -24,7 +24,7 @@ import { ImportWizard } from './ImportWizard';
 export const ImportExportLauncher: React.FC = () => {
   const {
     accounts, opportunities, actionItems, stakeholders, projects, comments,
-    accountsColumnConfig, opportunitiesColumnConfig, actionItemsColumnConfig,
+    accountsColumnConfig, opportunitiesColumnConfig, projectsColumnConfig, actionItemsColumnConfig,
     refreshData, activeExportRows,
   } = useCRM();
 
@@ -64,8 +64,22 @@ export const ImportExportLauncher: React.FC = () => {
     () => [...opportunities].sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' })),
     [opportunities],
   );
+  const defaultProjects = React.useMemo(
+    () => [...projects].sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' })),
+    [projects],
+  );
   const defaultActionItems = React.useMemo(
-    () => [...actionItems].filter((ai) => !ai.projectId).sort((a, b) => (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' })),
+    () =>
+      actionItems
+        .filter((ai) => !ai.projectId)
+        .sort((a, b) => (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' })),
+    [actionItems],
+  );
+  const defaultProjectActionItems = React.useMemo(
+    () =>
+      actionItems
+        .filter((ai) => !!ai.projectId)
+        .sort((a, b) => (a.title || '').localeCompare(b.title || '', undefined, { sensitivity: 'base' })),
     [actionItems],
   );
   const defaultStakeholders = React.useMemo(
@@ -80,19 +94,25 @@ export const ImportExportLauncher: React.FC = () => {
     accounts: activeExportRows.accounts ?? defaultAccounts,
     stakeholders: activeExportRows.stakeholders ?? defaultStakeholders,
     opportunities: activeExportRows.opportunities ?? defaultOpportunities,
-    actionItems: activeExportRows.actionItems ?? defaultActionItems,
+    projects: activeExportRows.projects ?? defaultProjects,
+    actionItems: (activeExportRows.actionItems ?? defaultActionItems).filter((ai) => !ai.projectId),
+    projectActionItems: (activeExportRows.projectActionItems ?? defaultProjectActionItems).filter((ai) => !!ai.projectId),
   };
   const columnsFor: Record<IEModuleKey, ColumnConfig[] | undefined> = {
     accounts: accountsColumnConfig,
     opportunities: opportunitiesColumnConfig,
+    projects: projectsColumnConfig,
     actionItems: actionItemsColumnConfig,
+    projectActionItems: actionItemsColumnConfig,
     stakeholders: undefined, // Stakeholders has no column customization
   };
   const counts: Record<IEModuleKey, number> = {
     accounts: rowsFor.accounts.length,
     stakeholders: rowsFor.stakeholders.length,
     opportunities: rowsFor.opportunities.length,
+    projects: rowsFor.projects.length,
     actionItems: rowsFor.actionItems.length,
+    projectActionItems: rowsFor.projectActionItems.length,
   };
 
   const doExport = async (selection: ExportSelection) => {

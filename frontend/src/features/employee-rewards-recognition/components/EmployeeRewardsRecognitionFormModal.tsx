@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
-import { usersApi, serviceProvidersApi, employeeMasterApi } from '@/api/crm.api';
-import { User, EmployeeRewardsRecognition } from '@/types';
+import { EmployeeRewardsRecognition, EmployeeDirectoryUser } from '@/types';
 import { Award, Pencil } from 'lucide-react';
 import {
   FormGrid,
@@ -11,8 +10,10 @@ import {
   INPUT_CLS,
   INPUT_CLS_AMBER,
   SELECT_CLS,
+  EmployeeSearchableSelect,
 } from '@/components/ui';
 import { MultiEmployeePicker } from '@/components/MultiEmployeePicker';
+import { useEmployees } from '@/hooks/useEmployees';
 import {
   REWARDS_RECOGNITION_TYPE_OPTIONS,
   REWARDS_RECOGNITION_TEAM_OR_INDIVIDUAL_OPTIONS,
@@ -43,65 +44,8 @@ export const EmployeeRewardsRecognitionFormModal: React.FC<EmployeeRewardsRecogn
   onSubmit,
 }) => {
   const isEdit = mode === 'edit';
-  const { currentUser, serviceProviders: contextServiceProviders } = useCRM();
-
-  const [users, setUsers] = useState<User[]>([]);
-  const [fetchedSpUsers, setFetchedSpUsers] = useState<any[]>([]);
-  const [fetchedEmpMaster, setFetchedEmpMaster] = useState<any[]>([]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    usersApi.getAll().then(setUsers).catch(() => setUsers([]));
-    serviceProvidersApi.getAll().then(setFetchedSpUsers).catch(() => setFetchedSpUsers([]));
-    employeeMasterApi.getAll().then(setFetchedEmpMaster).catch(() => setFetchedEmpMaster([]));
-  }, [isOpen]);
-
-  // Connect system employee options to serviceProviders, employeeMaster & users lists
-  const spUsers = useMemo(() => {
-    const list: Array<{ id: string; name: string; email: string; role: string; department: string }> = [];
-    const seenIds = new Set<string>();
-    const seenKeys = new Set<string>();
-
-    const addCandidate = (item: any) => {
-      if (!item) return;
-      const resolvedName = (item.name || item.fullName || item.displayName || item.email || '').trim();
-      if (!resolvedName) return;
-
-      const email = (item.email || '').trim().toLowerCase();
-      const nameKey = resolvedName.toLowerCase();
-      const primaryKey = email || nameKey;
-      const id = item.id || primaryKey;
-
-      if (seenIds.has(id) || seenKeys.has(primaryKey) || seenKeys.has(nameKey)) return;
-
-      seenIds.add(id);
-      if (email) seenKeys.add(email);
-      seenKeys.add(nameKey);
-
-      list.push({
-        id,
-        name: resolvedName,
-        email: item.email || '',
-        role: item.designation || item.role || item.department || '',
-        department: item.department || '',
-      });
-    };
-
-    if (contextServiceProviders && contextServiceProviders.length > 0) {
-      contextServiceProviders.forEach(addCandidate);
-    }
-    if (fetchedSpUsers && fetchedSpUsers.length > 0) {
-      fetchedSpUsers.forEach(addCandidate);
-    }
-    if (fetchedEmpMaster && fetchedEmpMaster.length > 0) {
-      fetchedEmpMaster.forEach(addCandidate);
-    }
-    if (users && users.length > 0) {
-      users.forEach(addCandidate);
-    }
-
-    return list.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
-  }, [contextServiceProviders, fetchedSpUsers, fetchedEmpMaster, users]);
+  const { currentUser } = useCRM();
+  const { employees } = useEmployees(isOpen);
 
   const [monthOfRr, setMonthOfRr] = useState<string>(getCurrentMonthYearISO());
   const [nominatedById, setNominatedById] = useState<string>('');
@@ -174,8 +118,8 @@ export const EmployeeRewardsRecognitionFormModal: React.FC<EmployeeRewardsRecogn
 
     let resolvedNominatedByName = nominatedByName.trim();
     if (nominatedById) {
-      const found = spUsers.find(u => u.id === nominatedById);
-      if (found) resolvedNominatedByName = found.name;
+      const found = employees.find((u) => u.id === nominatedById || u.localEmployeeId === nominatedById);
+      if (found) resolvedNominatedByName = found.displayName;
     }
     if (!resolvedNominatedByName) {
       resolvedNominatedByName = currentUser || 'Nominator';
@@ -184,8 +128,8 @@ export const EmployeeRewardsRecognitionFormModal: React.FC<EmployeeRewardsRecogn
     let resolvedEmployeeName = employeeName.trim();
     if (teamOrIndividual === 'Individual') {
       if (employeeId) {
-        const found = spUsers.find(u => u.id === employeeId);
-        if (found) resolvedEmployeeName = found.name;
+        const found = employees.find((u) => u.id === employeeId || u.localEmployeeId === employeeId);
+        if (found) resolvedEmployeeName = found.displayName;
       }
       if (!resolvedEmployeeName) return; // Individual requires employee name
     } else if (teamOrIndividual === 'Team' && !resolvedEmployeeName) {
@@ -249,23 +193,21 @@ export const EmployeeRewardsRecognitionFormModal: React.FC<EmployeeRewardsRecogn
             </FormField>
 
             <FormField label="Nominated By" required>
-              <select
-                value={nominatedById}
-                onChange={(e) => {
-                  const id = e.target.value;
-                  setNominatedById(id);
-                  const selUser = spUsers.find(u => u.id === id);
-                  if (selUser) setNominatedByName(selUser.name);
+              <EmployeeSearchableSelect
+                valueId={nominatedById}
+                valueName={nominatedByName}
+                onSelect={(emp) => {
+                  if (emp) {
+                    setNominatedById(emp.localEmployeeId || emp.id);
+                    setNominatedByName(emp.displayName);
+                  } else {
+                    setNominatedById('');
+                    setNominatedByName('');
+                  }
                 }}
-                className={selectCls}
-              >
-                <option value="">{nominatedByName ? `Current: ${nominatedByName}` : 'Select Nominator...'}</option>
-                {spUsers.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.name} {u.role ? `(${u.role})` : u.email ? `(${u.email})` : ''}
-                  </option>
-                ))}
-              </select>
+                placeholder="Search nominator from directory..."
+                required
+              />
             </FormField>
           </FormGrid>
         </FormSection>
@@ -296,7 +238,7 @@ export const EmployeeRewardsRecognitionFormModal: React.FC<EmployeeRewardsRecogn
                 className={selectCls}
               >
                 <option value="" disabled>Select category...</option>
-                {availableCategories.map((cat) => (
+                {availableCategories.map((cat: string) => (
                   <option key={cat} value={cat}>
                     {cat}
                   </option>
@@ -333,24 +275,21 @@ export const EmployeeRewardsRecognitionFormModal: React.FC<EmployeeRewardsRecogn
 
             {teamOrIndividual === 'Individual' ? (
               <FormField label="Employee Name" required>
-                <select
-                  required
-                  value={employeeId}
-                  onChange={(e) => {
-                    const id = e.target.value;
-                    setEmployeeId(id);
-                    const found = spUsers.find(u => u.id === id);
-                    if (found) setEmployeeName(found.name);
+                <EmployeeSearchableSelect
+                  valueId={employeeId}
+                  valueName={employeeName}
+                  onSelect={(emp) => {
+                    if (emp) {
+                      setEmployeeId(emp.localEmployeeId || emp.id);
+                      setEmployeeName(emp.displayName);
+                    } else {
+                      setEmployeeId('');
+                      setEmployeeName('');
+                    }
                   }}
-                  className={selectCls}
-                >
-                  <option value="">Select Employee...</option>
-                  {spUsers.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name} {u.role ? `(${u.role})` : u.email ? `(${u.email})` : ''}
-                    </option>
-                  ))}
-                </select>
+                  placeholder="Search employee from directory..."
+                  required
+                />
               </FormField>
             ) : (
               <FormField label="Target Team Name">
@@ -384,7 +323,7 @@ export const EmployeeRewardsRecognitionFormModal: React.FC<EmployeeRewardsRecogn
               <div className="sm:col-span-full">
                 <FormField label="Team Members" wide>
                   <MultiEmployeePicker
-                    users={spUsers}
+                    users={employees}
                     selectedIds={teamMemberIds}
                     onChangeIds={setTeamMemberIds}
                     valueText={teamMembers}

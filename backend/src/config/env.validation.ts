@@ -143,6 +143,20 @@ export function validateEnvironment(
   if (azureClientSecret) summary.push(`AZURE_CLIENT_SECRET=*** (${azureClientSecret.length} chars)`);
   summary.push(`GRAPH_SENDER_EMAIL=${graphSenderEmail}`);
 
+  // ── Action Item Email Notification Cutoff ──────────────────────────────────
+  const notificationCutoff = env.ACTION_ITEM_NOTIFICATION_CUTOFF_DATE?.trim();
+  if (notificationCutoff) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(notificationCutoff) || isNaN(new Date(notificationCutoff).getTime())) {
+      errors.push(
+        `ACTION_ITEM_NOTIFICATION_CUTOFF_DATE must be a valid YYYY-MM-DD date, got "${notificationCutoff}"`,
+      );
+    } else {
+      summary.push(`ACTION_ITEM_NOTIFICATION_CUTOFF_DATE=${notificationCutoff}`);
+    }
+  } else {
+    summary.push('ACTION_ITEM_NOTIFICATION_CUTOFF_DATE=(default) 2026-11-24');
+  }
+
   // ── Numeric tuning vars: only validated when explicitly set ────────────────
   for (const name of POSITIVE_INT_VARS) {
     const raw = env[name];

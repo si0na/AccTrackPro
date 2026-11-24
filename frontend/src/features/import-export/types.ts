@@ -9,14 +9,23 @@ export type ExportFormat = 'xlsx';
  * processed (parents before children) regardless of their order in the file.
  * Mirrors the backend's MODULE_ORDER.
  */
-export const MODULE_ORDER: IEModuleKey[] = ['accounts', 'stakeholders', 'opportunities', 'actionItems'];
+export const MODULE_ORDER: IEModuleKey[] = [
+  'accounts',
+  'stakeholders',
+  'opportunities',
+  'projects',
+  'actionItems',
+  'projectActionItems',
+];
 
 /** Worksheet (tab) name used in the workbook for each module. */
 export const SHEET_NAMES: Record<IEModuleKey, string> = {
   accounts: 'Accounts',
   stakeholders: 'Stakeholders',
   opportunities: 'Opportunities',
+  projects: 'Projects',
   actionItems: 'Action Items',
+  projectActionItems: 'Project Action Items',
 };
 
 /**

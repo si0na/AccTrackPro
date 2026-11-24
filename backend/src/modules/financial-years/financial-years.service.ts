@@ -20,22 +20,26 @@ interface FinancialYear {
   quarters: QuarterRange[];
   calendarStartMonth: number;
   calendarQuarters: FYQuarterDef[];
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 /** Map a DB row (which must include calendar_start_month + calendar_quarters) to a FinancialYear. */
 function rowToFY(row: any): FinancialYear {
-  const calStartMonth: number       = row.calendar_start_month ?? 4;
-  const calQuarters:   FYQuarterDef[] = row.calendar_quarters ?? DEFAULT_QUARTERS;
+  const calStartMonth: number = row.calendar_start_month ?? 4;
+  const calQuarters: FYQuarterDef[] = row.calendar_quarters ?? DEFAULT_QUARTERS;
   return {
-    id:                  row.id,
-    fyLabel:             row.fy_label,
-    startYear:           row.start_year,
-    startDate:           row.start_date,
-    endDate:             row.end_date,
-    isActive:            row.is_active,
-    quarters:            buildQuarterRanges(row.start_year, calStartMonth, calQuarters),
-    calendarStartMonth:  calStartMonth,
-    calendarQuarters:    calQuarters,
+    id: row.id,
+    fyLabel: row.fy_label,
+    startYear: row.start_year,
+    startDate: row.start_date,
+    endDate: row.end_date,
+    isActive: row.is_active,
+    quarters: buildQuarterRanges(row.start_year, calStartMonth, calQuarters),
+    calendarStartMonth: calStartMonth,
+    calendarQuarters: calQuarters,
+    createdAt: row.created_at ? new Date(row.created_at).toISOString() : undefined,
+    updatedAt: row.updated_at ? new Date(row.updated_at).toISOString() : undefined,
   };
 }
 
@@ -45,7 +49,9 @@ const SELECT_COLS = `
   end_date::TEXT           AS end_date,
   is_active,
   calendar_start_month,
-  calendar_quarters
+  calendar_quarters,
+  created_at,
+  updated_at
 `;
 
 @Injectable()
@@ -55,7 +61,7 @@ export class FinancialYearsService {
   constructor(
     private readonly db: DatabaseService,
     private readonly bus: NotificationEventBus,
-  ) {}
+  ) { }
 
   /** Fetch current global calendar template — used only when creating a new FY. */
   private async getCalendarTemplate(): Promise<{ startMonth: number; quarters: FYQuarterDef[] }> {
@@ -92,7 +98,7 @@ export class FinancialYearsService {
           calendar_start_month, calendar_quarters)
        VALUES
          (gen_random_uuid()::TEXT, $1, $2, $3::DATE, $4::DATE, TRUE, $5, $6::JSONB)
-       ON CONFLICT (fy_label) DO UPDATE SET is_active = TRUE
+       ON CONFLICT (fy_label) DO UPDATE SET is_active = TRUE, updated_at = NOW()
        RETURNING ${SELECT_COLS}`,
       [fyLabel, startYear, startDate, endDate, startMonth, JSON.stringify(quarters)],
     );
@@ -101,11 +107,11 @@ export class FinancialYearsService {
     if (userId) {
       this.bus.emit({
         userId,
-        type:                 'System',
-        eventType:            'FYCreated',
-        title:                'Financial Year Added',
-        message:              `FY ${fy.fyLabel} (${fy.startDate} – ${fy.endDate}) has been added to the system.`,
-        severity:             'Success',
+        type: 'System',
+        eventType: 'FYCreated',
+        title: 'Financial Year Added',
+        message: `FY ${fy.fyLabel} (${fy.startDate} – ${fy.endDate}) has been added to the system.`,
+        severity: 'Success',
         notificationCategory: 'SYSTEM',
       });
     } else {
@@ -117,7 +123,7 @@ export class FinancialYearsService {
 
   async activate(id: string): Promise<FinancialYear> {
     const { rows } = await this.db.query(
-      `UPDATE financial_years SET is_active = TRUE
+      `UPDATE financial_years SET is_active = TRUE, updated_at = NOW()
        WHERE id = $1
        RETURNING ${SELECT_COLS}`,
       [id],
@@ -128,7 +134,7 @@ export class FinancialYearsService {
 
   async deactivate(id: string): Promise<FinancialYear> {
     const { rows } = await this.db.query(
-      `UPDATE financial_years SET is_active = FALSE
+      `UPDATE financial_years SET is_active = FALSE, updated_at = NOW()
        WHERE id = $1
        RETURNING ${SELECT_COLS}`,
       [id],
@@ -141,7 +147,7 @@ export class FinancialYearsService {
     const { startMonth, quarters } = data;
     const { rows } = await this.db.query(
       `UPDATE financial_years
-       SET calendar_start_month = $2, calendar_quarters = $3::JSONB
+       SET calendar_start_month = $2, calendar_quarters = $3::JSONB, updated_at = NOW()
        WHERE id = $1
        RETURNING ${SELECT_COLS}`,
       [id, startMonth, JSON.stringify(quarters)],

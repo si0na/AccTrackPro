@@ -36,6 +36,7 @@ import {
   AutoResizeTextarea,
 } from '@/components/ui';
 import { CommentCard } from '@/components/CommentCard';
+import { formatDateTime } from '@/utils';
 
 interface RiskQuickPanelProps {
   item: NormalizedRisk;
@@ -664,6 +665,20 @@ export const RiskQuickPanel: React.FC<RiskQuickPanelProps> = ({
                   </div>
                 </>
               )}
+
+              <div className="space-y-0.5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                  <Clock className="w-3 h-3 text-slate-400" /> Created Date
+                </span>
+                <p className="font-semibold text-slate-700">{formatDateTime(item.createdAt)}</p>
+              </div>
+
+              <div className="space-y-0.5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                  <Clock className="w-3 h-3 text-slate-400" /> Last Modified
+                </span>
+                <p className="font-semibold text-slate-700">{formatDateTime(item.updatedAt)}</p>
+              </div>
             </div>
           )}
 

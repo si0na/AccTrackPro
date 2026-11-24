@@ -3,7 +3,7 @@ import {
 } from 'class-validator';
 import { EmptyToUndefined, ISO_DATE_RE, ISO_DATE_MSG } from '../../../common/utils/dto-transforms.util';
 
-const ACTION_ITEM_TYPES = [
+export const ACTION_ITEM_TYPES = [
   'Account mining',
   'Approval',
   'Board Meeting',
@@ -58,8 +58,18 @@ export class CreateActionItemDto {
 
   @EmptyToUndefined()
   @IsOptional()
-  @IsIn(ACTION_ITEM_TYPES)
+  @IsIn(ACTION_ITEM_TYPES, {
+    message: `actionItemType must be one of: ${ACTION_ITEM_TYPES.join(', ')}`,
+  })
   actionItemType?: string;
+
+  /** Alias for actionItemType accepted by API clients. */
+  @EmptyToUndefined()
+  @IsOptional()
+  @IsIn(ACTION_ITEM_TYPES, {
+    message: `type must be one of: ${ACTION_ITEM_TYPES.join(', ')}`,
+  })
+  type?: string;
 
   @IsString() @IsOptional() @MaxLength(5000) notes?: string;
   @IsString() @IsOptional() @MaxLength(5000) risksAndDependencies?: string;
@@ -84,7 +94,21 @@ export class UpdateActionItemDto {
   @EmptyToUndefined() @IsOptional() @Matches(ISO_DATE_RE, { message: `dueDate ${ISO_DATE_MSG}` }) dueDate?: string;
   @IsOptional() @IsIn(['High', 'Medium', 'Low']) priority?: string;
   @IsOptional() @IsIn(['To Do', 'In Progress', 'Blocked', 'Completed', 'Cancelled']) status?: string;
-  @EmptyToUndefined() @IsOptional() @IsIn(ACTION_ITEM_TYPES) actionItemType?: string;
+  @EmptyToUndefined()
+  @IsOptional()
+  @IsIn(ACTION_ITEM_TYPES, {
+    message: `actionItemType must be one of: ${ACTION_ITEM_TYPES.join(', ')}`,
+  })
+  actionItemType?: string;
+
+  /** Alias for actionItemType accepted by API clients. */
+  @EmptyToUndefined()
+  @IsOptional()
+  @IsIn(ACTION_ITEM_TYPES, {
+    message: `type must be one of: ${ACTION_ITEM_TYPES.join(', ')}`,
+  })
+  type?: string;
+
   @IsString() @IsOptional() @MaxLength(5000) notes?: string;
   @IsString() @IsOptional() @MaxLength(5000) risksAndDependencies?: string;
   @IsString() @IsOptional() @MaxLength(5000) nextAction?: string;

@@ -66,8 +66,11 @@ const INDUSTRY = [
   'Transportation & Logistics',
   'Wearhouse management',
 ] as const;
+const PROJECT_STATUS = ['Active', 'On Hold', 'Completed', 'Cancelled'] as const;
+const PROJECT_HEALTH = ['Green', 'Amber', 'Red'] as const;
+const PROJECT_METHODOLOGY = ['Agile', 'Waterfall'] as const;
 
-export type IEModuleKey = 'accounts' | 'opportunities' | 'stakeholders' | 'actionItems';
+export type IEModuleKey = 'accounts' | 'stakeholders' | 'opportunities' | 'projects' | 'actionItems' | 'projectActionItems';
 
 export const ACCOUNT_FIELDS: ImportFieldDef[] = [
   { key: 'name', header: 'Account Name', headerAliases: ['Target Corporate Account', 'Account'], type: 'string', required: true },
@@ -83,7 +86,7 @@ export const ACCOUNT_FIELDS: ImportFieldDef[] = [
   { key: 'email', header: 'Email', type: 'string', format: 'email' },
   { key: 'address', header: 'Address', type: 'string' },
   { key: 'description', header: 'Description', type: 'string' },
-  { key: 'tower', header: 'Tower', type: 'enum', options: TOWER },
+  { key: 'tower', header: 'Tower', type: 'enum', options: TOWER, default: 'Others' },
   { key: 'accountManagerId', header: 'Account Manager', type: 'reference', reference: 'user' },
   { key: 'practiceLeadId', header: 'Practice Lead', type: 'reference', reference: 'user' },
   { key: 'clientPartnerId', header: 'Client Partner', type: 'reference', reference: 'user' },
@@ -145,8 +148,50 @@ export const STAKEHOLDER_FIELDS: ImportFieldDef[] = [
   { key: 'linkedinProfileUrl', header: 'LinkedIn Profile URL', headerAliases: ['LinkedIn', 'LinkedIn Profile', 'LinkedIn URL'], type: 'string', format: 'website' },
 ];
 
+export const PROJECT_FIELDS: ImportFieldDef[] = [
+  { key: 'name', header: 'Project Name', type: 'string', required: true },
+  { key: 'accountId', header: 'Account', headerAliases: ['Account Name'], type: 'reference', reference: 'account', required: true },
+  { key: 'opportunityId', header: 'Opportunity', headerAliases: ['Opportunity Name'], type: 'reference', reference: 'opportunity' },
+  { key: 'status', header: 'Status', type: 'enum', options: PROJECT_STATUS, default: 'Active' },
+  { key: 'health', header: 'Health', type: 'enum', options: PROJECT_HEALTH, default: 'Green' },
+  { key: 'priority', header: 'Priority', type: 'enum', options: PRIORITY },
+  { key: 'startDate', header: 'Start Date', type: 'date' },
+  { key: 'endDate', header: 'End Date', type: 'date' },
+  { key: 'methodology', header: 'Methodology', type: 'enum', options: PROJECT_METHODOLOGY, default: 'Agile' },
+  { key: 'serviceProviderPmId', header: 'Project Manager', headerAliases: ['Service Provider PM', 'PM'], type: 'reference', reference: 'user' },
+  { key: 'practiceLeadId', header: 'Practice Lead', type: 'reference', reference: 'user' },
+  { key: 'clientPartnerId', header: 'Client Partner', type: 'reference', reference: 'user' },
+  { key: 'clientPmName', header: 'Client PM', headerAliases: ['Client Project Manager'], type: 'string' },
+  { key: 'dealValue', header: 'Deal Value', type: 'number' },
+  { key: 'plannedEffortHours', header: 'Planned Effort Hours', type: 'number' },
+  { key: 'actualEffortHours', header: 'Actual Effort Hours', type: 'number' },
+  { key: 'plannedCost', header: 'Planned Cost', type: 'number' },
+  { key: 'actualCost', header: 'Actual Cost', type: 'number' },
+  { key: 'plannedCompletionPct', header: 'Planned Completion (%)', type: 'number' },
+  { key: 'actualCompletionPct', header: 'Actual Completion (%)', type: 'number' },
+  { key: 'asOnDate', header: 'As On Date', type: 'date' },
+  { key: 'deliveryModel', header: 'Delivery Model', type: 'enum', options: DELIVERY_MODEL },
+  { key: 'billingModel', header: 'Billing Model', type: 'enum', options: BILLING_MODEL },
+  { key: 'tower', header: 'Tower', type: 'enum', options: TOWER },
+  { key: 'description', header: 'Description', type: 'string' },
+];
+
+export function projectPostValidate(payload: Record<string, any>): string[] {
+  const errors: string[] = [];
+  if (payload.startDate && payload.endDate && payload.endDate < payload.startDate) {
+    errors.push('Project End Date cannot be earlier than Project Start Date');
+  }
+  if (payload.asOnDate) {
+    const today = new Date().toISOString().slice(0, 10);
+    if (payload.asOnDate > today) {
+      errors.push('As On Date cannot be in the future');
+    }
+  }
+  return errors;
+}
+
 export const ACTION_ITEM_FIELDS: ImportFieldDef[] = [
-  { key: 'title', header: 'Task Title', headerAliases: ['Title', 'Task'], type: 'string', required: true },
+  { key: 'title', header: 'Task Title', headerAliases: ['Title', 'Task', 'Action Item Title'], type: 'string', required: true },
   { key: 'accountId', header: 'Account', headerAliases: ['Account Name'], type: 'reference', reference: 'account', required: true },
   { key: 'ownerStakeholderId', header: 'Owner', headerAliases: ['Task Owner', 'Owner Stakeholder'], type: 'reference', reference: 'stakeholder', required: true },
   { key: 'priority', header: 'Priority', type: 'enum', options: PRIORITY, required: true },
@@ -162,20 +207,46 @@ export const ACTION_ITEM_FIELDS: ImportFieldDef[] = [
   { key: 'completedDate', header: 'Completed Date', type: 'date' },
 ];
 
+export const PROJECT_ACTION_ITEM_FIELDS: ImportFieldDef[] = [
+  { key: 'title', header: 'Task Title', headerAliases: ['Title', 'Task', 'Action Item Title'], type: 'string', required: true },
+  { key: 'projectId', header: 'Project', headerAliases: ['Project Name', 'Project'], type: 'reference', reference: 'project', required: true },
+  { key: 'accountId', header: 'Account', headerAliases: ['Account Name'], type: 'reference', reference: 'account' },
+  { key: 'ownerStakeholderId', header: 'Owner', headerAliases: ['Task Owner', 'Owner Stakeholder'], type: 'reference', reference: 'stakeholder', required: true },
+  { key: 'priority', header: 'Priority', type: 'enum', options: PRIORITY, required: true },
+  { key: 'status', header: 'Status', type: 'enum', options: ACTION_ITEM_STATUS, required: true },
+  { key: 'actionItemType', header: 'Type', headerAliases: ['Action Item Type', 'Type of Action Item'], type: 'enum', options: ACTION_ITEM_TYPE },
+  { key: 'openDate', header: 'Open Date', type: 'date' },
+  { key: 'dueDate', header: 'Due Date', type: 'date' },
+  { key: 'notes', header: 'Description', headerAliases: ['Notes'], type: 'string' },
+  { key: 'risksAndDependencies', header: 'Risks & Dependencies', type: 'string' },
+  { key: 'nextAction', header: 'Next Action', type: 'string' },
+  { key: 'impediments', header: 'Impediments', type: 'string' },
+  { key: 'completedDate', header: 'Completed Date', type: 'date' },
+];
+
 /**
  * The workbook's worksheets, in the fixed DEPENDENCY order they must always be
  * processed regardless of their position in the uploaded file: a parent
- * (Account) is created before the children (Stakeholder/Opportunity/Action
- * Item) that reference it, and an Opportunity before Action Items that link to
- * it. The Global Import/Export service iterates modules in exactly this order.
+ * (Account) is created before the children (Stakeholder/Opportunity/Project/Action
+ * Item) that reference it, an Opportunity before Projects/Action Items that link to
+ * it, and a Project before Project Action Items that link to it. The Global Import/Export service iterates modules in exactly this order.
  */
-export const MODULE_ORDER: IEModuleKey[] = ['accounts', 'stakeholders', 'opportunities', 'actionItems'];
+export const MODULE_ORDER: IEModuleKey[] = [
+  'accounts',
+  'stakeholders',
+  'opportunities',
+  'projects',
+  'actionItems',
+  'projectActionItems',
+];
 
 export const FIELDS_BY_MODULE: Record<IEModuleKey, ImportFieldDef[]> = {
   accounts: ACCOUNT_FIELDS,
   stakeholders: STAKEHOLDER_FIELDS,
   opportunities: OPPORTUNITY_FIELDS,
+  projects: PROJECT_FIELDS,
   actionItems: ACTION_ITEM_FIELDS,
+  projectActionItems: PROJECT_ACTION_ITEM_FIELDS,
 };
 
 /** Human labels for a module key (used in audit rows and activity messages). */
@@ -183,5 +254,7 @@ export const MODULE_LABEL: Record<IEModuleKey, string> = {
   accounts: 'Accounts',
   stakeholders: 'Stakeholders',
   opportunities: 'Opportunities',
+  projects: 'Projects',
   actionItems: 'Action Items',
+  projectActionItems: 'Project Action Items',
 };
