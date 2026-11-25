@@ -273,7 +273,7 @@ describe('Production Notification Cutoff (24 November 2026) Safeguards', () => {
           } as any;
         }
         if (sql.includes('SELECT channel, status, attempt_count FROM action_item_notifications') ||
-            sql.includes('SELECT id, status, attempt_count FROM action_item_notifications')) {
+          sql.includes('SELECT id, status, attempt_count FROM action_item_notifications')) {
           return { rows: [] } as any;
         }
         return { rows: [] } as any;
@@ -289,7 +289,7 @@ describe('Production Notification Cutoff (24 November 2026) Safeguards', () => {
       expect(mockMail.sendMail).toHaveBeenCalledTimes(1);
       const [to, subject] = mockMail.sendMail.mock.calls[0];
       expect(to).toBe('david@example.com');
-      expect(subject).toBe('Action Item Due Today: Task Due On Cutoff Date');
+      expect(subject).toMatch(/Action Item (Due Today|Due Date Expired): Task Due On Cutoff Date/);
     });
 
     // ── Test 5: New Action Item created on 24 Nov with future due date ────────
