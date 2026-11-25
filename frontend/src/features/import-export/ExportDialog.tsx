@@ -16,7 +16,12 @@ interface ExportDialogProps {
 }
 
 const allSelected = (): ExportSelection => ({
-  accounts: true, stakeholders: true, opportunities: true, actionItems: true,
+  accounts: true,
+  stakeholders: true,
+  opportunities: true,
+  projects: true,
+  actionItems: true,
+  projectActionItems: true,
 });
 
 export const ExportDialog: React.FC<ExportDialogProps> = ({ isOpen, onClose, counts, busy, onConfirm }) => {
@@ -36,7 +41,7 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ isOpen, onClose, cou
   return (
     <Modal
       isOpen={isOpen}
-      onClose={busy ? () => {} : onClose}
+      onClose={busy ? () => { } : onClose}
       title="Export CRM Workbook"
       icon={<Download className="w-5 h-5 text-blue-600" aria-hidden="true" />}
       maxWidth="max-w-lg"
@@ -51,9 +56,8 @@ export const ExportDialog: React.FC<ExportDialogProps> = ({ isOpen, onClose, cou
           {MODULE_ORDER.map((m) => (
             <label
               key={m}
-              className={`flex items-center justify-between gap-3 rounded-xl border px-4 py-3 cursor-pointer transition-colors ${
-                selection[m] ? 'border-blue-300 bg-blue-50/60' : 'border-slate-200 hover:bg-slate-50'
-              }`}
+              className={`flex items-center justify-between gap-3 rounded-xl border px-4 py-3 cursor-pointer transition-colors ${selection[m] ? 'border-blue-300 bg-blue-50/60' : 'border-slate-200 hover:bg-slate-50'
+                }`}
             >
               <div className="flex items-center gap-3">
                 <input type="checkbox" checked={selection[m]} onChange={() => toggle(m)} className="w-4 h-4" />

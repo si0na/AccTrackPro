@@ -29,6 +29,8 @@ const DEFAULT_ACCOUNTS_COLUMNS: ColumnConfig[] = [
   { key: 'verticalHeadId',          name: 'Vertical Head',              isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
   { key: 'since',                  name: 'Customer Since',             isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
   { key: 'revenue',                name: 'Revenue',                    isStandard: true, isPinned: false, isDisplayed: true, type: 'number' },
+  { key: 'createdAt',              name: 'Created Date',               isStandard: true, isPinned: false, isDisplayed: false, type: 'date' },
+  { key: 'updatedAt',              name: 'Last Modified Date',         isStandard: true, isPinned: false, isDisplayed: false, type: 'date' },
 ];
 
 const DEFAULT_OPPORTUNITIES_COLUMNS: ColumnConfig[] = [
@@ -55,6 +57,8 @@ const DEFAULT_OPPORTUNITIES_COLUMNS: ColumnConfig[] = [
   { key: 'nextStep',            name: 'Next Action',                isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
   { key: 'impediments',         name: 'Impediments',                isStandard: true, isPinned: false, isDisplayed: true, type: 'text'   },
   { key: 'risksAndDependencies', name: 'Risks & Dependencies',       isStandard: true, isPinned: false, isDisplayed: false, type: 'text'   },
+  { key: 'createdAt',            name: 'Created Date',               isStandard: true, isPinned: false, isDisplayed: false, type: 'date'   },
+  { key: 'updatedAt',            name: 'Last Modified Date',         isStandard: true, isPinned: false, isDisplayed: false, type: 'date'   },
 ];
 
 const DEFAULT_ACTION_ITEMS_COLUMNS: ColumnConfig[] = [
@@ -74,6 +78,8 @@ const DEFAULT_ACTION_ITEMS_COLUMNS: ColumnConfig[] = [
   { key: 'nextAction',    name: 'Next Action',       isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
   { key: 'impediments',   name: 'Impediments',       isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
   { key: 'comments',      name: 'Comments',          isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
+  { key: 'createdAt',     name: 'Created Date',      isStandard: true, isPinned: false, isDisplayed: false, type: 'date' },
+  { key: 'updatedAt',     name: 'Last Modified Date', isStandard: true, isPinned: false, isDisplayed: false, type: 'date' },
 ];
 
 const DEFAULT_PERFORMANCE_EVALUATION_COLUMNS: ColumnConfig[] = [
@@ -127,6 +133,8 @@ const DEFAULT_PROJECTS_COLUMNS: ColumnConfig[] = [
   { key: 'methodology',         name: 'Methodology',         isStandard: true, isPinned: false, isDisplayed: false, type: 'text' },
   { key: 'dealValue',           name: 'Deal Value',          isStandard: true, isPinned: false, isDisplayed: false, type: 'number' },
   { key: 'description',         name: 'Description',         isStandard: true, isPinned: false, isDisplayed: false, type: 'text' },
+  { key: 'createdAt',           name: 'Created Date',        isStandard: true, isPinned: false, isDisplayed: false, type: 'date' },
+  { key: 'updatedAt',           name: 'Last Modified Date',  isStandard: true, isPinned: false, isDisplayed: false, type: 'date' },
 ];
 
 const DEFAULT_PROJECT_ACTION_ITEMS_COLUMNS: ColumnConfig[] = [
@@ -145,6 +153,8 @@ const DEFAULT_PROJECT_ACTION_ITEMS_COLUMNS: ColumnConfig[] = [
   { key: 'nextAction',    name: 'Next Action',       isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
   { key: 'impediments',   name: 'Impediments',       isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
   { key: 'comments',      name: 'Comments',          isStandard: true, isPinned: false, isDisplayed: true, type: 'text' },
+  { key: 'createdAt',     name: 'Created Date',      isStandard: true, isPinned: false, isDisplayed: false, type: 'date' },
+  { key: 'updatedAt',     name: 'Last Modified Date', isStandard: true, isPinned: false, isDisplayed: false, type: 'date' },
 ];
 
 const DEFAULT_STAKEHOLDERS_COLUMNS: ColumnConfig[] = [

@@ -38,6 +38,7 @@ import {
 import { CommentCard } from '@/components/CommentCard';
 import { InlineEditModal } from '@/components/InlineEditModal';
 import { showToast } from '@/components/common/ToastHost';
+import { formatDateTime } from '@/utils';
 
 type ActionItemDetailTab = 'overview' | 'comments' | 'activity';
 
@@ -366,7 +367,18 @@ export const ActionItemDetailsView: React.FC = () => {
             value: item.dueDate || 'No Due Date',
             mono: true,
           },
+          {
+            icon: <Clock className="w-4 h-4" />,
+            label: 'Created Date',
+            value: formatDateTime(item.createdAt),
+          },
+          {
+            icon: <Clock className="w-4 h-4" />,
+            label: 'Last Modified Date',
+            value: formatDateTime(item.updatedAt),
+          },
         ]}
+        attributesClassName="grid-cols-2 sm:grid-cols-3 lg:grid-cols-6"
       />
 
       {/* Tab Bar Navigation */}
@@ -416,6 +428,24 @@ export const ActionItemDetailsView: React.FC = () => {
                   </label>
                   <span className="font-mono font-semibold text-slate-700">
                     {item.financialYear ? `${item.financialYear} ${item.quarter || ''}` : '—'}
+                  </span>
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                    Created Date
+                  </label>
+                  <span className="font-semibold text-slate-700 flex items-center">
+                    <Clock className="w-3.5 h-3.5 text-slate-400 mr-1.5" />
+                    {formatDateTime(item.createdAt)}
+                  </span>
+                </div>
+                <div>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                    Last Modified Date
+                  </label>
+                  <span className="font-semibold text-slate-700 flex items-center">
+                    <Clock className="w-3.5 h-3.5 text-slate-400 mr-1.5" />
+                    {formatDateTime(item.updatedAt)}
                   </span>
                 </div>
               </div>

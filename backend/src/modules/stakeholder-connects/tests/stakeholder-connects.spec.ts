@@ -3115,6 +3115,10 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
           } as any,
           bus,
           { can: jest.fn<any>().mockResolvedValue(true) } as any,
+          {
+            sendCreationNotification: jest.fn<any>().mockResolvedValue({ inApp: true, email: true }),
+            sendDueReminder: jest.fn<any>().mockResolvedValue({ inApp: true, email: true }),
+          } as any,
         );
 
         try {

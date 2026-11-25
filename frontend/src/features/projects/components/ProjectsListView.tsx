@@ -61,6 +61,7 @@ export const ProjectsListView: React.FC = () => {
     loading,
     can,
     projectsColumnConfig,
+    setActiveExportRows,
   } = useCRM();
 
   const canDeleteProject = can('projects', 'delete');
@@ -266,6 +267,10 @@ export const ProjectsListView: React.FC = () => {
   const sortedProjects = [...filteredProjects].sort((a, b) =>
     compareForSort(getSortValue(a, sortField), getSortValue(b, sortField), sortDirection),
   );
+
+  useEffect(() => {
+    setActiveExportRows('projects', sortedProjects);
+  }, [sortedProjects, setActiveExportRows]);
 
   const totalPages = Math.max(1, Math.ceil(sortedProjects.length / pageSize));
   const currentPage = Math.min(page, totalPages);

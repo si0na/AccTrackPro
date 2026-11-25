@@ -353,3 +353,35 @@ export function formatCommentTimestamp(timestamp?: string | Date): string {
 
   return `${day} ${month} ${year} ${hoursStr}:${minutes} ${ampm}`;
 }
+
+/**
+ * Formats an ISO timestamp or Date into a localized human-readable date & time:
+ * e.g. "Nov 18, 2026, 04:30 PM" (or "—" if empty/invalid).
+ */
+export function formatDateTime(iso?: string | Date | null): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+/**
+ * Formats an ISO date or Date into a localized human-readable date:
+ * e.g. "Nov 18, 2026" (or "—" if empty/invalid).
+ */
+export function formatDate(iso?: string | Date | null): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+}

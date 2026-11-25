@@ -14,6 +14,7 @@ import {
   Pencil, Trash2, ShieldCheck, ShieldAlert,
   ClipboardList, SlidersHorizontal,
   KeyRound, Power, PowerOff, UserCog, UserPlus,
+  Cloud, CloudOff, Database,
 } from 'lucide-react';
 import {
   Button,
@@ -43,6 +44,7 @@ import {
 } from '@/components/ui';
 import type { CardTone } from '@/components/ui';
 import { showToast } from '@/components/common/ToastHost';
+import { useEmployees } from '@/hooks/useEmployees';
 import { RolePermissionMatrix } from './RolePermissionMatrix';
 
 // ─── Local status color maps (admin-only enums) ──────────────────────────────
@@ -123,6 +125,51 @@ export const AdministrationPage: React.FC = () => {
   const { financialYears, financialCalendar, adminSettings, loadConfig, loadAdminConfig, refreshPermissions, can } = useCRM();
 
   const [activeTab, setActiveTab] = useState<AdminTab>('users');
+
+  // Microsoft Graph Employee Directory integration
+  const {
+    employees: graphEmployees,
+    loading: graphLoading,
+    connecting: graphConnecting,
+    source: graphSource,
+    fallbackReason: graphFallbackReason,
+    isGraphConnected,
+    totalCount: graphEmployeeCount,
+    lastSyncTime: graphLastSyncTime,
+    connectGraph,
+    disconnectGraph,
+    refresh: refreshGraph,
+  } = useEmployees(activeTab === 'settings');
+
+  const handleConnectGraph = async () => {
+    try {
+      const count = await connectGraph();
+      showToast({
+        kind: 'success',
+        message: `Connected to Microsoft Entra Directory. Successfully synced ${count} employees.`,
+      });
+    } catch (err: any) {
+      showToast({
+        kind: 'error',
+        message: err?.message || 'Failed to connect Microsoft Employee Directory.',
+      });
+    }
+  };
+
+  const handleDisconnectGraph = async () => {
+    try {
+      await disconnectGraph();
+      showToast({
+        kind: 'success',
+        message: 'Disconnected Microsoft Employee Directory.',
+      });
+    } catch (err: any) {
+      showToast({
+        kind: 'error',
+        message: err?.message || 'Failed to disconnect Microsoft directory.',
+      });
+    }
+  };
 
   // Roles (shared dropdown source for User forms)
   const [roles, setRoles] = useState<Role[]>([]);
@@ -1050,32 +1097,126 @@ export const AdministrationPage: React.FC = () => {
 
       {/* ── Application Settings ── */}
       {activeTab === 'settings' && (
-      <Card title="Application Settings" padding="cozy">
-        <div className="flex flex-wrap items-end gap-4">
-          <FormField
-            label="Financial Years shown in global selector"
-            hint="Controls how many financial years appear in the period selector in the application header."
-            className="max-w-xs"
-          >
-            <input
-              type="number"
-              value={selectorCount}
-              onChange={(e) => { setSelectorCount(e.target.value); setSettingsSuccess(''); }}
-              min={1}
-              max={20}
-              className={`${INPUT_CLS} font-mono`}
-            />
-          </FormField>
-          <Button
-            size="sm"
-            onClick={handleSaveSettings}
-            disabled={settingsSaving}
-          >
-            {settingsSaving ? 'Saving…' : 'Save Settings'}
-          </Button>
-          {settingsSuccess && <p className="text-xs text-green-600 font-medium">{settingsSuccess}</p>}
-        </div>
-      </Card>
+      <div className="space-y-6">
+        {/* ── Microsoft Graph Employee Directory Card ── */}
+        <Card
+          title="Microsoft Graph Employee Directory"
+          subtitle="Connect to Microsoft Entra ID using delegated User.ReadBasic.All permissions to synchronize the employee directory across all CRM modules."
+          padding="cozy"
+        >
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-4 p-4 rounded-xl border border-slate-200 bg-slate-50/70">
+              <div className="flex items-start gap-3">
+                <div
+                  className={`p-2.5 rounded-lg shrink-0 ${
+                    isGraphConnected
+                      ? 'bg-blue-100 text-blue-700'
+                      : 'bg-slate-200 text-slate-600'
+                  }`}
+                >
+                  <Cloud className="w-6 h-6" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h4 className="text-sm font-bold text-slate-900">
+                      Microsoft Entra Directory Integration
+                    </h4>
+                    {isGraphConnected ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-green-100 text-green-700">
+                        <CheckCircle className="w-3 h-3" /> Connected
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600">
+                        <CloudOff className="w-3 h-3" /> Disconnected
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {isGraphConnected
+                      ? `Synchronized ${graphEmployeeCount} employees using delegated User.ReadBasic.All permission.`
+                      : graphFallbackReason ||
+                        'Not connected to Microsoft Graph. Connect Microsoft Employee Directory to search and select organization employees.'}
+                  </p>
+                  <div className="flex flex-wrap items-center gap-3 mt-2 text-[11px] text-slate-400">
+                    <span>
+                      Scope: <code className="font-mono bg-white px-1.5 py-0.5 rounded border border-slate-200 text-slate-600">User.ReadBasic.All</code>
+                    </span>
+                    <span>
+                      Source: <strong className="text-slate-700">{isGraphConnected ? 'Microsoft Graph API (Exclusive Source)' : 'Disconnected'}</strong>
+                    </span>
+                    {graphLastSyncTime && (
+                      <span>
+                        Last Synced: <strong className="text-slate-700">{new Date(graphLastSyncTime).toLocaleTimeString()}</strong>
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 ml-auto">
+                {isGraphConnected ? (
+                  <>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      icon={<RefreshCw className={`w-3.5 h-3.5 ${graphLoading ? 'animate-spin' : ''}`} />}
+                      onClick={() => refreshGraph(true)}
+                      disabled={graphLoading}
+                    >
+                      {graphLoading ? 'Syncing…' : 'Sync Directory'}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={handleDisconnectGraph}
+                    >
+                      Disconnect
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    icon={<Cloud className="w-4 h-4" />}
+                    onClick={handleConnectGraph}
+                    disabled={graphConnecting}
+                  >
+                    {graphConnecting ? 'Connecting…' : 'Connect Microsoft Employee Directory'}
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        {/* ── Global Selector Settings ── */}
+        <Card title="Application Settings" padding="cozy">
+          <div className="flex flex-wrap items-end gap-4">
+            <FormField
+              label="Financial Years shown in global selector"
+              hint="Controls how many financial years appear in the period selector in the application header."
+              className="max-w-xs"
+            >
+              <input
+                type="number"
+                value={selectorCount}
+                onChange={(e) => { setSelectorCount(e.target.value); setSettingsSuccess(''); }}
+                min={1}
+                max={20}
+                className={`${INPUT_CLS} font-mono`}
+              />
+            </FormField>
+            <Button
+              size="sm"
+              onClick={handleSaveSettings}
+              disabled={settingsSaving}
+            >
+              {settingsSaving ? 'Saving…' : 'Save Settings'}
+            </Button>
+            {settingsSuccess && <p className="text-xs text-green-600 font-medium">{settingsSuccess}</p>}
+          </div>
+        </Card>
+      </div>
       )}
       </div>
 

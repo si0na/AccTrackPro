@@ -35,6 +35,7 @@ import {
 } from '@/components/ui';
 import { LoadingState } from '@/components/common/LoadingState';
 import { CommentCard } from '@/components/CommentCard';
+import { formatDateTime } from '@/utils';
 import { RiskFormModal } from './RiskFormModal';
 import { IssueFormModal } from './IssueFormModal';
 
@@ -202,11 +203,10 @@ export const RiskDetailsView: React.FC = () => {
         badges={
           <div className="flex flex-wrap items-center gap-2">
             <span
-              className={`text-[10px] px-2.5 py-0.5 rounded-full font-extrabold uppercase tracking-wider ${
-                isIssue
+              className={`text-[10px] px-2.5 py-0.5 rounded-full font-extrabold uppercase tracking-wider ${isIssue
                   ? 'bg-amber-100 text-amber-800 border border-amber-200'
                   : 'bg-red-100 text-red-800 border border-red-200'
-              }`}
+                }`}
             >
               {currentItem.riskType}
             </span>
@@ -314,39 +314,48 @@ export const RiskDetailsView: React.FC = () => {
           },
           ...(!isIssue
             ? [
-                {
-                  icon: <Tag className="w-4 h-4" />,
-                  label: 'Likelihood',
-                  value: currentItem.likelihood || '—',
-                },
-                {
-                  icon: <AlertTriangle className="w-4 h-4" />,
-                  label: 'Severity',
-                  value: currentItem.severity ? (
-                    <span
-                      className={`px-2 py-0.5 rounded font-bold text-xs ${
-                        currentItem.severity === 'High' || currentItem.severity === 'Critical'
-                          ? 'bg-red-100 text-red-700'
-                          : currentItem.severity === 'Medium'
+              {
+                icon: <Tag className="w-4 h-4" />,
+                label: 'Likelihood',
+                value: currentItem.likelihood || '—',
+              },
+              {
+                icon: <AlertTriangle className="w-4 h-4" />,
+                label: 'Severity',
+                value: currentItem.severity ? (
+                  <span
+                    className={`px-2 py-0.5 rounded font-bold text-xs ${currentItem.severity === 'High' || currentItem.severity === 'Critical'
+                        ? 'bg-red-100 text-red-700'
+                        : currentItem.severity === 'Medium'
                           ? 'bg-amber-100 text-amber-700'
                           : 'bg-slate-100 text-slate-700'
                       }`}
-                    >
-                      {currentItem.severity}
-                    </span>
-                  ) : (
-                    '—'
-                  ),
-                },
-                {
-                  icon: <Layers className="w-4 h-4" />,
-                  label: 'Classification',
-                  value: currentItem.classification || '—',
-                },
-              ]
+                  >
+                    {currentItem.severity}
+                  </span>
+                ) : (
+                  '—'
+                ),
+              },
+              {
+                icon: <Layers className="w-4 h-4" />,
+                label: 'Classification',
+                value: currentItem.classification || '—',
+              },
+            ]
             : []),
+          {
+            icon: <Clock className="w-4 h-4" />,
+            label: 'Created Date',
+            value: formatDateTime(currentItem.createdAt),
+          },
+          {
+            icon: <Clock className="w-4 h-4" />,
+            label: 'Last Modified Date',
+            value: formatDateTime(currentItem.updatedAt),
+          },
         ]}
-        attributesClassName="grid-cols-2 md:grid-cols-3 lg:grid-cols-5"
+        attributesClassName="grid-cols-2 md:grid-cols-3 lg:grid-cols-6"
       />
 
       {/* Tab Navigation */}
@@ -551,6 +560,16 @@ export const RiskDetailsView: React.FC = () => {
                         </div>
                       </>
                     )}
+
+                    <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200/60">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase block">Created Date</span>
+                      <span className="font-semibold text-slate-800">{formatDateTime(currentItem.createdAt)}</span>
+                    </div>
+
+                    <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200/60">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase block">Last Modified Date</span>
+                      <span className="font-semibold text-slate-800">{formatDateTime(currentItem.updatedAt)}</span>
+                    </div>
                   </div>
                 </div>
               </Card>

@@ -1,36 +1,27 @@
 import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { DatabaseService } from '../../database/database.service';
 import { CreateNpsDto, UpdateNpsDto } from './dto/nps.dto';
+import { deriveQuarterFromMonthYear, insertInitialProjectNps } from './project-nps-generator.util';
 
-export function deriveQuarterFromMonthYear(val: string): string {
-  if (!val) return 'Q1';
-  const match = String(val).match(/^(\d{4})-(\d{2})/);
-  if (!match) return 'Q1';
-  const month = parseInt(match[2], 10);
-  if (isNaN(month) || month < 1 || month > 12) return 'Q1';
-  if (month >= 4 && month <= 6) return 'Q1';
-  if (month >= 7 && month <= 9) return 'Q2';
-  if (month >= 10 && month <= 12) return 'Q3';
-  return 'Q4';
-}
+export { deriveQuarterFromMonthYear };
 
 function rowToNps(row: any) {
   return {
-    id:                     row.id,
-    accountId:              row.account_id,
-    accountName:            row.account_name ?? '',
-    projectId:              row.project_id ?? null,
-    projectName:            row.project_name ?? null,
-    respondentId:           row.respondent_id ?? null,
-    respondentName:         row.respondent_name || row.stakeholder_name || '',
-    respondentDesignation:  row.stakeholder_designation || '',
-    receivedMonthYear:      row.received_month_year,
-    quarter:                row.quarter,
-    npsScore:               Number(row.nps_score),
-    likedMost:              row.liked_most ?? '',
+    id: row.id,
+    accountId: row.account_id,
+    accountName: row.account_name ?? '',
+    projectId: row.project_id ?? null,
+    projectName: row.project_name ?? null,
+    respondentId: row.respondent_id ?? null,
+    respondentName: row.respondent_name || row.stakeholder_name || '',
+    respondentDesignation: row.stakeholder_designation || '',
+    receivedMonthYear: row.received_month_year,
+    quarter: row.quarter,
+    npsScore: Number(row.nps_score),
+    likedMost: row.liked_most ?? '',
     improvementSuggestions: row.improvement_suggestions ?? '',
-    createdAt:              row.created_at,
-    updatedAt:              row.updated_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   };
 }
 
@@ -38,7 +29,7 @@ function rowToNps(row: any) {
 export class NpsService {
   private readonly logger = new Logger(NpsService.name);
 
-  constructor(private readonly db: DatabaseService) {}
+  constructor(private readonly db: DatabaseService) { }
 
   async findAll(params: { accountId?: string; projectId?: string }): Promise<any[]> {
     const conditions: string[] = ['n.is_deleted = FALSE'];
@@ -99,6 +90,39 @@ export class NpsService {
       throw new BadRequestException('NPS score must be between 0 and 10');
     }
 
+    let accountId = dto.accountId;
+
+    // Validate project relationship if projectId is supplied
+    if (dto.projectId) {
+      const { rows: projRows } = await this.db.query(
+        `SELECT id, name, account_id FROM projects WHERE id = $1 AND is_deleted = FALSE`,
+        [dto.projectId],
+      );
+      if (!projRows.length) {
+        throw new NotFoundException(`Project "${dto.projectId}" not found`);
+      }
+      const project = projRows[0];
+      if (!project.account_id) {
+        throw new BadRequestException(`Project "${project.name || dto.projectId}" is not associated with an account`);
+      }
+      if (accountId && accountId !== project.account_id) {
+        throw new BadRequestException('Specified accountId does not match the Project account association');
+      }
+      accountId = project.account_id;
+    }
+
+    if (!accountId) {
+      throw new BadRequestException('accountId is required');
+    }
+
+    const { rows: accCheck } = await this.db.query(
+      `SELECT id FROM accounts WHERE id = $1 AND is_deleted = FALSE`,
+      [accountId],
+    );
+    if (!accCheck.length) {
+      throw new BadRequestException('The selected account does not exist');
+    }
+
     const quarter = deriveQuarterFromMonthYear(dto.receivedMonthYear);
 
     const { rows } = await this.db.query(
@@ -109,7 +133,7 @@ export class NpsService {
        VALUES (gen_random_uuid()::TEXT, $1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING id`,
       [
-        dto.accountId,
+        accountId,
         dto.projectId || null,
         dto.respondentId || null,
         dto.respondentName || null,
@@ -121,8 +145,70 @@ export class NpsService {
       ],
     );
 
-    this.logger.log(`Created NPS Response [id=${rows[0].id} accountId=${dto.accountId} score=${dto.npsScore}]`);
+    this.logger.log(`Created NPS Response [id=${rows[0].id} accountId=${accountId} projectId=${dto.projectId || 'none'} score=${dto.npsScore}]`);
     return this.findOne(rows[0].id);
+  }
+
+  /**
+   * Idempotently generates an NPS score for a project.
+   * Works for Projects associated with Opportunities and Projects directly linked to an Account without an Opportunity.
+   * Preserves existing scores intact and avoids duplicate records upon repeated calls.
+   */
+  async generateForProject(projectId: string): Promise<any> {
+    const raw = await insertInitialProjectNps(this.db, projectId);
+    return this.findOne(raw.id);
+  }
+
+  /**
+   * Generates NPS scores for all active projects under a given account.
+   */
+  async generateForAccount(accountId: string): Promise<any[]> {
+    if (!accountId) {
+      throw new BadRequestException('Account ID is required');
+    }
+    const { rows: acc } = await this.db.query(
+      `SELECT id FROM accounts WHERE id = $1 AND is_deleted = FALSE`,
+      [accountId],
+    );
+    if (!acc.length) {
+      throw new NotFoundException(`Account "${accountId}" not found`);
+    }
+
+    const { rows: projects } = await this.db.query(
+      `SELECT id FROM projects WHERE account_id = $1 AND is_deleted = FALSE ORDER BY created_at ASC`,
+      [accountId],
+    );
+
+    const generated = [];
+    for (const p of projects) {
+      generated.push(await this.generateForProject(p.id));
+    }
+    return generated;
+  }
+
+  /**
+   * Generates NPS scores for all active projects across all accounts that do not have one yet.
+   */
+  async generateAllPending(): Promise<any[]> {
+    const { rows: projects } = await this.db.query(
+      `SELECT p.id FROM projects p
+       INNER JOIN accounts a ON p.account_id = a.id AND a.is_deleted = FALSE
+       WHERE p.is_deleted = FALSE
+         AND NOT EXISTS (
+           SELECT 1 FROM nps_responses n WHERE n.project_id = p.id AND n.is_deleted = FALSE
+         )
+       ORDER BY p.created_at ASC`,
+    );
+
+    const generated = [];
+    for (const p of projects) {
+      try {
+        generated.push(await this.generateForProject(p.id));
+      } catch (err: any) {
+        this.logger.warn(`Failed to generate NPS for project ${p.id}: ${err.message}`);
+      }
+    }
+    return generated;
   }
 
   async update(id: string, dto: Partial<CreateNpsDto>): Promise<any> {

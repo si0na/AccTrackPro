@@ -21,6 +21,7 @@ const KNOWN = new Set([
   'accountManagerId','practiceLeadId','clientPartnerId','verticalHeadId',
   'financial_year','quarter','financialYear',
   'clientStakeholderIds','serviceProviderUserIds',
+  'createdAt', 'updatedAt',
 ]);
 
 function rowToAccount(row: any): Account {
@@ -43,7 +44,7 @@ function rowToAccount(row: any): Account {
     'practiceLeadId', 'practiceLeadName',
     'clientPartnerId', 'clientPartnerName',
     'verticalHeadId', 'verticalHeadName',
-    'updatedAt'
+    'createdAt', 'updatedAt'
   ];
   for (const field of firstClassFields) {
     delete cleanedCustomData[field];
@@ -63,8 +64,8 @@ function rowToAccount(row: any): Account {
     clientPartnerName:  client_partner_name   ?? '',
     verticalHeadId:     vertical_head_id      ?? undefined,
     verticalHeadName:   vertical_head_name    ?? '',
-    // Exposed for the dashboard's "Recently Updated Accounts" widget.
-    updatedAt: updated_at instanceof Date ? updated_at.toISOString() : updated_at,
+    createdAt: created_at instanceof Date ? created_at.toISOString() : (created_at ?? undefined),
+    updatedAt: updated_at instanceof Date ? updated_at.toISOString() : (updated_at ?? undefined),
     ...cleanedCustomData,
   } as Account;
 }

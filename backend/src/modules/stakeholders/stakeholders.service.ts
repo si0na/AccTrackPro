@@ -59,6 +59,8 @@ function rowToStakeholder(row: any): Stakeholder {
     // A whitelist link with no user link means the person was assigned as a
     // Service Provider before completing registration.
     pendingRegistration: !!employee_id && !user_id,
+    createdAt: created_at instanceof Date ? created_at.toISOString() : (created_at ?? undefined),
+    updatedAt: updated_at instanceof Date ? updated_at.toISOString() : (updated_at ?? undefined),
   } as Stakeholder;
 }
 

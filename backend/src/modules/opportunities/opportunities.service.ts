@@ -33,6 +33,7 @@ const KNOWN = new Set([
   // opportunity payload; edited via the dedicated forecast endpoint). Listed so
   // a full-object round-trip through update() never leaks them into custom_data.
   'forecastDate', 'forecastValue', 'actualDate', 'actualValue', 'forecastRemarks', 'forecastUpdatedAt',
+  'createdAt', 'updatedAt',
 ]);
 
 /** Deal outcome is now tracked solely via pipeline stage — no separate status field. */
@@ -110,6 +111,8 @@ function rowToOpportunity(
     actualValue: actual_value !== null && actual_value !== undefined ? Number(actual_value) : undefined,
     forecastRemarks: forecast_remarks ?? undefined,
     forecastUpdatedAt: forecast_updated_at ? new Date(forecast_updated_at).toISOString() : undefined,
+    createdAt: created_at instanceof Date ? created_at.toISOString() : (created_at ?? undefined),
+    updatedAt: updated_at instanceof Date ? updated_at.toISOString() : (updated_at ?? undefined),
     // Read-only reporting labels and applicable periods derived from project timeline.
     ...derive(allocation_start_date, allocation_end_date),
     ...(custom_data || {}),
@@ -444,6 +447,18 @@ ${OPP_FORECAST_SELECT}${totalCol}
     
     if (data.serviceProviderUserId) {
       data.serviceProviderStakeholderId = await this.resolveServiceProviderStakeholder(data.serviceProviderUserId, data.accountId);
+    } else if (data.serviceProviderStakeholderId) {
+      const { rows: stkRows } = await this.db.query(
+        `SELECT id FROM stakeholders WHERE id = $1 AND account_id = $2 AND stakeholder_type = 'SERVICE_PROVIDER' AND is_deleted = FALSE`,
+        [data.serviceProviderStakeholderId, data.accountId],
+      );
+      if (!stkRows.length) {
+        try {
+          data.serviceProviderStakeholderId = await this.resolveServiceProviderStakeholder(data.serviceProviderStakeholderId, data.accountId);
+        } catch {
+          // Fall through to assertStakeholderAssignment
+        }
+      }
     }
     
     await this.assertStakeholderAssignment(data.serviceProviderStakeholderId, data.accountId, 'SERVICE_PROVIDER', 'service provider stakeholder');
@@ -529,6 +544,18 @@ ${OPP_FORECAST_SELECT}${totalCol}
     
     if (data.serviceProviderUserId) {
       data.serviceProviderStakeholderId = await this.resolveServiceProviderStakeholder(data.serviceProviderUserId, targetAccountId);
+    } else if (data.serviceProviderStakeholderId) {
+      const { rows: stkRows } = await this.db.query(
+        `SELECT id FROM stakeholders WHERE id = $1 AND account_id = $2 AND stakeholder_type = 'SERVICE_PROVIDER' AND is_deleted = FALSE`,
+        [data.serviceProviderStakeholderId, targetAccountId],
+      );
+      if (!stkRows.length) {
+        try {
+          data.serviceProviderStakeholderId = await this.resolveServiceProviderStakeholder(data.serviceProviderStakeholderId, targetAccountId);
+        } catch {
+          // Fall through to assertStakeholderAssignment
+        }
+      }
     }
     
     await this.assertStakeholderAssignment(data.serviceProviderStakeholderId, targetAccountId, 'SERVICE_PROVIDER', 'service provider stakeholder');

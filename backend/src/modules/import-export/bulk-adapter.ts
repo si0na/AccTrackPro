@@ -45,11 +45,12 @@ export const pendingOpportunityId = (name: string): string => `${PENDING}opportu
 // embedding it here would nest a second "PENDING::" marker (when the account
 // is ALSO new in the same workbook) and break the naive `::`-split parser below.
 export const pendingStakeholderId = (name: string): string => `${PENDING}stakeholder::${norm(name)}`;
+export const pendingProjectId = (name: string): string => `${PENDING}project::${norm(name)}`;
 
 export const isPendingId = (v: unknown): v is string =>
   typeof v === 'string' && v.startsWith(PENDING);
 
-/** Extracts the kind ('account' | 'opportunity' | 'stakeholder') and normalized name from a marker. */
+/** Extracts the kind ('account' | 'opportunity' | 'stakeholder' | 'project') and normalized name from a marker. */
 export function parsePendingId(v: string): { kind: string; name: string } {
   const parts = v.slice(PENDING.length).split('::');
   return { kind: parts[0] ?? '', name: parts[1] ?? '' };

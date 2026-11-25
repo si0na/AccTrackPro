@@ -31,6 +31,6 @@ import { GraphMailService } from './graph-mail.service';
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     GraphMailService,
   ],
-  exports: [JwtModule, AuthService, PresenceService],
+  exports: [JwtModule, AuthService, PresenceService, GraphMailService],
 })
 export class AuthModule {}

@@ -118,3 +118,7 @@ export { InlineTextEditCell, InlineSelectEditCell, InlineTextareaEditCell } from
 export { AutoResizeTextarea } from './AutoResizeTextarea';
 export type { AutoResizeTextareaProps } from './AutoResizeTextarea';
 
+export { EmployeeSearchableSelect } from '../common/EmployeeSearchableSelect';
+export type { EmployeeSearchableSelectProps } from '../common/EmployeeSearchableSelect';
+
+

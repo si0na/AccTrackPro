@@ -79,12 +79,12 @@ export class NotificationsService {
    *    error instead of an FK violation at the DB level.
    *  • Throws on all other DB errors so the caller (listener) can log them.
    */
-  async create(dto: CreateNotificationDto): Promise<void> {
+  async create(dto: CreateNotificationDto): Promise<string | null> {
     if (!dto.userId) {
       this.logger.warn(
         `Notification dropped — empty userId [type=${dto.type} eventType=${dto.eventType}]`,
       );
-      return;
+      return null;
     }
 
     // Validate FK before inserting — gives a structured error instead of a pg FK violation
@@ -96,14 +96,15 @@ export class NotificationsService {
       this.logger.warn(
         `Notification dropped — userId not found in users table [userId=${dto.userId} type=${dto.type}]`,
       );
-      return;
+      return null;
     }
 
-    await this.db.query(
+    const { rows: insertRows } = await this.db.query(
       `INSERT INTO notifications
          (id, user_id, type, event_type, title, message, severity, notification_category,
           account_id, opportunity_id, action_item_id, stakeholder_id, document_id, metadata)
-       VALUES (gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+       VALUES (gen_random_uuid()::TEXT, $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+       RETURNING id`,
       [
         dto.userId,
         dto.type,
@@ -121,9 +122,11 @@ export class NotificationsService {
       ],
     );
 
+    const insertedId = insertRows[0]?.id as string | undefined;
     this.logger.log(
       `Notification persisted [type=${dto.type} eventType=${dto.eventType} userId=${dto.userId} category=${dto.notificationCategory}]`,
     );
+    return insertedId ?? null;
   }
 
   async findAll(

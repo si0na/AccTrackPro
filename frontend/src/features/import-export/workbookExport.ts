@@ -1,7 +1,7 @@
 import type { ColumnConfig } from '@/types';
 import type { IEModuleKey } from '@/api/crm.api';
 import { IE_CONFIGS } from './moduleConfigs';
-import { SHEET_NAMES } from './types';
+import { MODULE_ORDER, SHEET_NAMES } from './types';
 import type { ExportColumn, ModuleIEConfig, RefData } from './types';
 
 /** SheetJS worksheet names: max 31 chars, no []:*?/\ characters. */
@@ -80,16 +80,52 @@ export async function exportWorkbook(
   const wb = XLSX.utils.book_new();
   const counts: { module: IEModuleKey; count: number }[] = [];
 
-  for (const input of inputs) {
-    const config = IE_CONFIGS[input.module];
-    let exportRows = input.rows;
-    if (input.module === 'actionItems') {
-      // Global export ONLY exports Account Management Action Items (projectId IS NULL).
-      exportRows = input.rows.filter((r) => !r.projectId);
-    }
-    const cols = buildExportColumns(config, input.columns).filter(
-      (c) => c.header !== 'Project' && c.header !== 'Project Name',
+  // Ensure that exporting Projects also exports their associated Project Action Items into the Project Action Items sheet
+  const projectsInput = inputs.find((i) => i.module === 'projects');
+  let projectActionItemsInput = inputs.find((i) => i.module === 'projectActionItems');
+
+  if (projectsInput && projectsInput.rows.length > 0) {
+    const exportedProjectIds = new Set(projectsInput.rows.map((p) => p.id).filter(Boolean));
+    const projectActionItems = (ref.actionItems || []).filter(
+      (ai) => ai.projectId && exportedProjectIds.has(ai.projectId),
     );
+
+    if (projectActionItems.length > 0) {
+      if (!projectActionItemsInput) {
+        projectActionItemsInput = {
+          module: 'projectActionItems',
+          rows: projectActionItems,
+        };
+        inputs.push(projectActionItemsInput);
+      } else {
+        const existingIds = new Set(projectActionItemsInput.rows.map((r) => r.id).filter(Boolean));
+        const missing = projectActionItems.filter((ai) => !existingIds.has(ai.id));
+        if (missing.length > 0) {
+          projectActionItemsInput.rows = [...projectActionItemsInput.rows, ...missing];
+        }
+      }
+    }
+  }
+
+  // Ensure strict separation: actionItems contains only regular action items,
+  // and projectActionItems contains only project action items
+  const actionItemsInput = inputs.find((i) => i.module === 'actionItems');
+  if (actionItemsInput) {
+    actionItemsInput.rows = actionItemsInput.rows.filter((r) => !r.projectId);
+  }
+  if (projectActionItemsInput) {
+    projectActionItemsInput.rows = projectActionItemsInput.rows.filter((r) => !!r.projectId);
+  }
+
+  // Ensure worksheets are written in canonical dependency order
+  const orderedInputs = [...inputs].sort(
+    (a, b) => MODULE_ORDER.indexOf(a.module) - MODULE_ORDER.indexOf(b.module),
+  );
+
+  for (const input of orderedInputs) {
+    const config = IE_CONFIGS[input.module];
+    const exportRows = input.rows;
+    const cols = buildExportColumns(config, input.columns);
     const headers = cols.map((c) => c.header);
     const data = exportRows.map((e) => cols.map((c) => c.value(e, ref)));
 

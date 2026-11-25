@@ -1,11 +1,12 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Activity, BadgeCheck, Building2, CalendarClock, DollarSign, Edit2,
+  Activity, BadgeCheck, Building2, CalendarClock, Clock, DollarSign, Edit2,
   FolderKanban, History, Layers, Users,
 } from 'lucide-react';
 import { useCRM } from '@/contexts/CRMContext';
 import type { AdminUser, ProjectHealth, SqaRecord, SqaWeeklyHealth } from '@/types';
 import { administrationApi } from '@/api/crm.api';
+import { formatDateTime } from '@/utils';
 import {
   Button,
   Card,
@@ -192,7 +193,10 @@ export const SqaDetailsView: React.FC = () => {
           },
           { icon: <Layers className="w-4 h-4" />, label: 'FTE', mono: true, value: record.fte },
           { icon: <CalendarClock className="w-4 h-4" />, label: 'SDLC Phase', value: record.currentSdlcPhase },
+          { icon: <Clock className="w-4 h-4" />, label: 'Created Date', value: formatDateTime(record.createdAt) },
+          { icon: <Clock className="w-4 h-4" />, label: 'Last Modified Date', value: formatDateTime(record.updatedAt) },
         ]}
+        attributesClassName="grid-cols-2 sm:grid-cols-4 lg:grid-cols-7"
       />
 
       {writeError && <ErrorBanner message={writeError} onDismiss={() => setWriteError(null)} />}
@@ -325,6 +329,15 @@ export const SqaDetailsView: React.FC = () => {
                 <div className="md:col-span-2">
                   <TextBlock label="SQA Remarks" text={record.sqaRemarks} />
                 </div>
+              </div>
+            </FormSection>
+          </Card>
+
+          <Card>
+            <FormSection title="System Information">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <Field label="Created Date" value={formatDateTime(record.createdAt)} />
+                <Field label="Last Modified Date" value={formatDateTime(record.updatedAt)} />
               </div>
             </FormSection>
           </Card>
