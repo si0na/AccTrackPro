@@ -705,7 +705,7 @@ describe('Stakeholder Connect MoM Document Attachments', () => {
   describe('Migration 116 SQL Definition', () => {
     it('defines stakeholder_connect_mom_attachments table with FK, indexes, and rollback instructions', () => {
       const sql = fs.readFileSync(
-        path.join(__dirname, '../../../database/migrations/116_stakeholder_connect_mom_attachments.sql'),
+        path.join(__dirname, '../../../database/migrations/123_stakeholder_connect_mom_attachments.sql'),
         'utf-8',
       );
       expect(sql).toContain('CREATE TABLE IF NOT EXISTS stakeholder_connect_mom_attachments');

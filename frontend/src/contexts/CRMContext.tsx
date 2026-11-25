@@ -446,6 +446,7 @@ export const CRMProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (path === '/action-items') return 'actionItems';
     if (path === '/project-action-items') return 'projectActionItems';
     if (path === '/stakeholders') return 'stakeholders';
+    if (path === '/stakeholder-connects') return 'stakeholderConnects';
     if (path.startsWith('/risks/')) return 'risk-details';
     if (path === '/risks') return 'risks';
     if (path === '/reports') return 'reports';
