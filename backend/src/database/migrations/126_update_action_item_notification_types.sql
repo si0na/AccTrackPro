@@ -1,4 +1,4 @@
--- Migration 115: Update action_item_notifications notification_type check constraint and indexes
+-- Migration 126: Update action_item_notifications notification_type check constraint and indexes
 -- Supports 'ACTION_ITEM_CREATED' and 'ACTION_ITEM_DUE', while preserving backwards compatibility.
 
 -- 1. Update check constraint

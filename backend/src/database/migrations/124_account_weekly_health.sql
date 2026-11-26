@@ -1,4 +1,4 @@
--- Migration 112: Account Weekly Health History Table
+-- Migration 124: Account Weekly Health History Table
 -- Dedicated table for maintaining and viewing weekly account health updates over time.
 
 CREATE TABLE IF NOT EXISTS account_weekly_health (
