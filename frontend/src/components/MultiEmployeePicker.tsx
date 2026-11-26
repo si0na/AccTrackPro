@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Search, X, Check, Plus, Users } from 'lucide-react';
-import { User, ServiceProviderUser } from '@/types';
+import { User, ServiceProviderUser, EmployeeDirectoryUser } from '@/types';
 
 const MENU_GAP = 4;
 const MENU_MAX_HEIGHT = 240;
@@ -24,8 +24,10 @@ export interface EmployeeOption {
   department?: string;
 }
 
+export type MultiEmployeePickerItem = EmployeeOption | ServiceProviderUser | User | EmployeeDirectoryUser;
+
 export interface MultiEmployeePickerProps {
-  users: Array<EmployeeOption | ServiceProviderUser | User>;
+  users: Array<MultiEmployeePickerItem>;
   selectedIds: string[];
   onChangeIds: (ids: string[]) => void;
   valueText: string;
@@ -73,7 +75,7 @@ export const MultiEmployeePicker: React.FC<MultiEmployeePickerProps> = ({
     const seen = new Set<string>();
 
     const list = users.filter((u) => {
-      const displayName = (u.name || (u as any).fullName || (u as any).displayName || u.email || '').trim();
+      const displayName = ((u as any).displayName || (u as any).name || (u as any).fullName || u.email || '').trim();
       if (!displayName) return false;
 
       const email = (u.email || '').trim().toLowerCase();
@@ -99,8 +101,8 @@ export const MultiEmployeePicker: React.FC<MultiEmployeePickerProps> = ({
     });
 
     return list.sort((a, b) => {
-      const nameA = (a.name || (a as any).fullName || (a as any).displayName || a.email || '').trim();
-      const nameB = (b.name || (b as any).fullName || (b as any).displayName || b.email || '').trim();
+      const nameA = ((a as any).displayName || (a as any).name || (a as any).fullName || a.email || '').trim();
+      const nameB = ((b as any).displayName || (b as any).name || (b as any).fullName || b.email || '').trim();
       return nameA.localeCompare(nameB, undefined, { sensitivity: 'base' });
     });
   }, [users, query]);
@@ -158,11 +160,15 @@ export const MultiEmployeePicker: React.FC<MultiEmployeePickerProps> = ({
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
+  const getDisplayName = (u: any): string =>
+    (u?.displayName || u?.name || u?.fullName || u?.email || 'Unnamed Employee').trim();
+
   // Add a user by object
-  const handleSelectUser = (user: EmployeeOption | ServiceProviderUser | User) => {
-    const nameExists = currentNames.some((n) => n.toLowerCase() === user.name.toLowerCase());
+  const handleSelectUser = (user: MultiEmployeePickerItem) => {
+    const userName = getDisplayName(user);
+    const nameExists = currentNames.some((n) => n.toLowerCase() === userName.toLowerCase());
     if (!nameExists) {
-      setNames([...currentNames, user.name]);
+      setNames([...currentNames, userName]);
     }
     if (!selectedIds.includes(user.id)) {
       onChangeIds([...selectedIds, user.id]);
@@ -171,13 +177,14 @@ export const MultiEmployeePicker: React.FC<MultiEmployeePickerProps> = ({
   };
 
   // Toggle user selection
-  const handleToggleUser = (user: EmployeeOption | ServiceProviderUser | User) => {
-    const nameExists = currentNames.some((n) => n.toLowerCase() === user.name.toLowerCase());
+  const handleToggleUser = (user: MultiEmployeePickerItem) => {
+    const userName = getDisplayName(user);
+    const nameExists = currentNames.some((n) => n.toLowerCase() === userName.toLowerCase());
     const isIdSelected = selectedIds.includes(user.id);
 
     if (nameExists || isIdSelected) {
       // Remove
-      setNames(currentNames.filter((n) => n.toLowerCase() !== user.name.toLowerCase()));
+      setNames(currentNames.filter((n) => n.toLowerCase() !== userName.toLowerCase()));
       onChangeIds(selectedIds.filter((id) => id !== user.id));
     } else {
       // Add
@@ -189,7 +196,7 @@ export const MultiEmployeePicker: React.FC<MultiEmployeePickerProps> = ({
   const handleAddCustom = (customName: string) => {
     const trimmed = customName.trim();
     if (!trimmed) return;
-    const foundUser = users.find((u) => u.name.toLowerCase() === trimmed.toLowerCase());
+    const foundUser = users.find((u) => getDisplayName(u).toLowerCase() === trimmed.toLowerCase());
     if (foundUser) {
       handleSelectUser(foundUser);
     } else {
@@ -205,7 +212,7 @@ export const MultiEmployeePicker: React.FC<MultiEmployeePickerProps> = ({
   const handleRemoveName = (nameToRemove: string) => {
     const updatedNames = currentNames.filter((n) => n !== nameToRemove);
     setNames(updatedNames);
-    const matchedUser = users.find((u) => u.name.toLowerCase() === nameToRemove.toLowerCase());
+    const matchedUser = users.find((u) => getDisplayName(u).toLowerCase() === nameToRemove.toLowerCase());
     if (matchedUser) {
       onChangeIds(selectedIds.filter((id) => id !== matchedUser.id));
     }
@@ -223,7 +230,7 @@ export const MultiEmployeePicker: React.FC<MultiEmployeePickerProps> = ({
   };
 
   const showCustomOption =
-    query.trim() && !users.some((u) => u.name.toLowerCase() === query.trim().toLowerCase());
+    query.trim() && !users.some((u) => getDisplayName(u).toLowerCase() === query.trim().toLowerCase());
 
   return (
     <div ref={containerRef} className="relative w-full">
@@ -317,7 +324,7 @@ export const MultiEmployeePicker: React.FC<MultiEmployeePickerProps> = ({
               )}
 
               {filteredUsers.map((user) => {
-                const displayName = user.name || (user as any).fullName || (user as any).displayName || user.email || 'Unnamed Employee';
+                const displayName = getDisplayName(user);
                 const isSelected =
                   currentNames.some((n) => n.toLowerCase() === displayName.toLowerCase()) ||
                   selectedIds.includes(user.id);
@@ -325,7 +332,7 @@ export const MultiEmployeePicker: React.FC<MultiEmployeePickerProps> = ({
                   <button
                     type="button"
                     key={user.id}
-                    onClick={() => handleToggleUser({ ...user, name: displayName })}
+                    onClick={() => handleToggleUser(user)}
                     className={`w-full text-left px-3 py-2 rounded-md text-xs font-medium flex items-center justify-between cursor-pointer transition-colors ${
                       isSelected
                         ? 'bg-indigo-50/60 text-indigo-900 font-semibold'

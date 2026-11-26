@@ -22,12 +22,14 @@ import {
   pendingAccountId,
   pendingOpportunityId,
   pendingStakeholderId,
+  pendingProjectId,
   norm,
 } from './bulk-adapter';
 import { ImportExportAuditService } from './import-export-audit.service';
 import { AccountsService } from '../accounts/accounts.service';
 import { StakeholdersService } from '../stakeholders/stakeholders.service';
 import { OpportunitiesService } from '../opportunities/opportunities.service';
+import { ProjectsService } from '../projects/projects.service';
 import { ActionItemsService } from '../action-items/action-items.service';
 import { ServiceProviderService } from '../service-provider/service-provider.service';
 
@@ -70,8 +72,11 @@ class ParentIndex {
   private readonly userByName = new Map<string, ParentRef>();
   private readonly userByEmail = new Map<string, ParentRef>();
   private readonly userById = new Map<string, ParentRef>();
-  private readonly prjByKey = new Map<string, ParentRef>(); // `${accountId}::${lcName}`
+  private readonly prjByKey = new Map<string, ParentRef & { accountId?: string }>(); // `${accountId}::${lcName}`
   private readonly prjById = new Map<string, ParentRef & { accountId?: string }>();
+  private readonly prjByName = new Map<string, ParentRef & { accountId?: string }>();
+  private readonly pendingPrj = new Map<string, ParentRef & { accountId?: string }>(); // `${accountId}::${lcName}`
+  private readonly pendingPrjByName = new Map<string, ParentRef & { accountId?: string }>();
 
   seedAccount(id: string, name: string): void {
     const ref = { id, name };
@@ -99,9 +104,12 @@ class ParentIndex {
     this.userById.set(id, ref);
   }
   seedProject(id: string, name: string, accountId: string): void {
-    const ref = { id, name };
+    const ref = { id, name, accountId };
     this.prjByKey.set(`${accountId}::${norm(name)}`, ref);
-    this.prjById.set(id, { id, name, accountId });
+    this.prjById.set(id, ref);
+    if (!this.prjByName.has(norm(name))) {
+      this.prjByName.set(norm(name), ref);
+    }
   }
 
   /** A NEW account defined in the workbook — resolves to a marker until committed. */
@@ -123,6 +131,16 @@ class ParentIndex {
     this.pendingStk.set(key, ref);
     if (isServiceProvider) {
       this.pendingSp.set(key, ref);
+    }
+  }
+  /** A NEW project defined in the workbook, under a (real or pending) account. */
+  addPendingProject(name: string, accountId: string): void {
+    const key = `${accountId}::${norm(name)}`;
+    if (this.prjByKey.has(key) || this.pendingPrj.has(key)) return;
+    const ref = { id: pendingProjectId(name), name, accountId };
+    this.pendingPrj.set(key, ref);
+    if (!this.pendingPrjByName.has(norm(name))) {
+      this.pendingPrjByName.set(norm(name), ref);
     }
   }
 
@@ -162,14 +180,19 @@ class ParentIndex {
     const lc = norm(raw);
     return this.userByName.get(lc) ?? this.userByEmail.get(lc) ?? this.userById.get(raw.trim()) ?? null;
   }
-  resolveProject(raw: string, accountId?: string): ParentRef | null {
+  resolveProject(raw: string, accountId?: string): (ParentRef & { accountId?: string }) | null {
     const lc = norm(raw);
     if (accountId) {
       const key = `${accountId}::${lc}`;
       if (this.prjByKey.has(key)) return this.prjByKey.get(key)!;
+      if (this.pendingPrj.has(key)) return this.pendingPrj.get(key)!;
     }
     const byId = this.prjById.get(raw.trim());
     if (byId && (!accountId || byId.accountId === accountId)) return byId;
+    if (!accountId) {
+      if (this.prjByName.has(lc)) return this.prjByName.get(lc)!;
+      if (this.pendingPrjByName.has(lc)) return this.pendingPrjByName.get(lc)!;
+    }
     return null;
   }
 }
@@ -194,16 +217,19 @@ export class GlobalImportExportService {
     private readonly accounts: AccountsService,
     private readonly stakeholders: StakeholdersService,
     private readonly opportunities: OpportunitiesService,
+    private readonly projects: ProjectsService,
     private readonly actionItems: ActionItemsService,
     private readonly serviceProviderService: ServiceProviderService,
-  ) {}
+  ) { }
 
   private adapterFor(module: IEModuleKey, userId: string): BulkModuleAdapter {
     switch (module) {
-      case 'accounts':      return this.accounts.bulkAdapter(userId);
-      case 'stakeholders':  return this.stakeholders.bulkAdapter(userId);
+      case 'accounts': return this.accounts.bulkAdapter(userId);
+      case 'stakeholders': return this.stakeholders.bulkAdapter(userId);
       case 'opportunities': return this.opportunities.bulkAdapter(userId);
-      case 'actionItems':   return this.actionItems.bulkAdapter(userId);
+      case 'projects': return this.projects.bulkAdapter(userId);
+      case 'actionItems': return this.actionItems.bulkAdapter(userId);
+      case 'projectActionItems': return this.actionItems.bulkProjectActionItemsAdapter(userId);
     }
   }
 
@@ -240,7 +266,11 @@ export class GlobalImportExportService {
 
   /** Central reference resolver — same rules for every module, driven by the schema. */
   private buildResolver(module: IEModuleKey, parents: ParentIndex) {
-    const refFields = FIELDS_BY_MODULE[module].filter((f) => f.type === 'reference');
+    // Sort reference fields so account is resolved first (providing resolvedAccountId), followed by project (which can provide accountId if account is omitted)
+    const refFields = [...FIELDS_BY_MODULE[module].filter((f) => f.type === 'reference')].sort((a, b) => {
+      const order = { account: 1, project: 2, opportunity: 3, stakeholder: 4, user: 5 };
+      return (order[a.reference as keyof typeof order] ?? 99) - (order[b.reference as keyof typeof order] ?? 99);
+    });
     return async (payload: Record<string, any>) => {
       const errors: string[] = [];
       const refNames: Record<string, string> = {};
@@ -305,6 +335,14 @@ export class GlobalImportExportService {
           if (!raw) continue;
           const usr = parents.resolveUser(raw);
           if (!usr) {
+            if (resolvedAccountId && f.key === 'serviceProviderStakeholderId') {
+              const stk = parents.resolveStakeholder(raw, resolvedAccountId);
+              if (stk) {
+                payload[f.key] = stk.id;
+                refNames[f.key] = stk.name;
+                continue;
+              }
+            }
             errors.push(`User "${raw}" was not found`);
             continue;
           }
@@ -319,6 +357,11 @@ export class GlobalImportExportService {
           }
           payload[f.key] = prj.id;
           refNames[f.key] = prj.name;
+          refNames.project = prj.name;
+          if (!resolvedAccountId && prj.accountId) {
+            resolvedAccountId = prj.accountId;
+            if (!payload.accountId) payload.accountId = resolvedAccountId;
+          }
         }
       }
       return { errors, refNames };
@@ -335,7 +378,7 @@ export class GlobalImportExportService {
     validation: BulkValidationResult,
     parents: ParentIndex,
   ): void {
-    if (module !== 'accounts' && module !== 'opportunities' && module !== 'stakeholders') return;
+    if (module !== 'accounts' && module !== 'opportunities' && module !== 'stakeholders' && module !== 'projects') return;
     for (const row of validation.rows) {
       if (row.status === 'invalid' || row.existsInSystem) continue;
       if (module === 'accounts') {
@@ -348,6 +391,10 @@ export class GlobalImportExportService {
         if (row.payload.name && row.payload.accountId) {
           const isSp = row.payload.stakeholderType === 'SERVICE_PROVIDER';
           parents.addPendingStakeholder(String(row.payload.name), String(row.payload.accountId), isSp);
+        }
+      } else if (module === 'projects') {
+        if (row.payload.name && row.payload.accountId) {
+          parents.addPendingProject(String(row.payload.name), String(row.payload.accountId));
         }
       }
     }
@@ -369,6 +416,8 @@ export class GlobalImportExportService {
     const committedAccounts = new Map<string, string>(); // lcName -> real id
     const committedOpps = new Map<string, string>();      // `${accountId}::${lcName}` -> real id
     const committedStakeholders = new Map<string, string>(); // `${accountId}::${lcName}` -> real id
+    const committedProjects = new Map<string, string>();  // `${accountId}::${lcName}` -> real id
+    const committedProjectsByName = new Map<string, { id: string; accountId: string }>();
     const results: WorkbookImportResult = {};
 
     for (const module of MODULE_ORDER) {
@@ -387,6 +436,8 @@ export class GlobalImportExportService {
           committedAccounts,
           committedOpps,
           committedStakeholders,
+          committedProjects,
+          committedProjectsByName,
           userOwnerCache,
         );
         if (err) preFailures.push({ index, status: 'failed', message: err });
@@ -411,6 +462,9 @@ export class GlobalImportExportService {
           committedOpps.set(`${payload.accountId}::${norm(payload.name)}`, r.id);
         } else if (module === 'stakeholders') {
           committedStakeholders.set(`${payload.accountId}::${norm(payload.name)}`, r.id);
+        } else if (module === 'projects') {
+          committedProjects.set(`${payload.accountId}::${norm(payload.name)}`, r.id);
+          committedProjectsByName.set(norm(payload.name), { id: r.id, accountId: payload.accountId });
         }
       }
 
@@ -428,6 +482,8 @@ export class GlobalImportExportService {
     accounts: Map<string, string>,
     opps: Map<string, string>,
     stakeholders: Map<string, string>,
+    projects: Map<string, string>,
+    projectsByName: Map<string, { id: string; accountId: string }> | undefined,
     userOwnerCache: Map<string, string>,
   ): Promise<string | null> {
     const fields = FIELDS_BY_MODULE[module];
@@ -449,10 +505,23 @@ export class GlobalImportExportService {
     const stkField = fields.find((f) => f.reference === 'stakeholder');
     if (stkField && isPendingId(payload[stkField.key])) {
       const { name } = parsePendingId(payload[stkField.key]);
-      const accountId = accField ? payload[accField.key] : undefined;
+      const accountId = (accField ? payload[accField.key] : undefined) || payload.accountId;
       const id = accountId ? stakeholders.get(`${accountId}::${name}`) : undefined;
       if (!id) return `Referenced stakeholder was not imported (it may have been removed or failed to import)`;
       payload[stkField.key] = id;
+    }
+    const prjField = fields.find((f) => f.reference === 'project');
+    if (prjField && isPendingId(payload[prjField.key])) {
+      const { name } = parsePendingId(payload[prjField.key]);
+      const accountId = (accField ? payload[accField.key] : undefined) || payload.accountId;
+      let id = accountId ? projects.get(`${accountId}::${name}`) : undefined;
+      if (!id && projectsByName?.has(name)) {
+        const prjInfo = projectsByName.get(name)!;
+        id = prjInfo.id;
+        if (!payload.accountId) payload.accountId = prjInfo.accountId;
+      }
+      if (!id) return `Referenced project was not imported (it may have been removed or failed to import)`;
+      payload[prjField.key] = id;
     }
 
     if (module === 'stakeholders') {
@@ -543,7 +612,12 @@ export class GlobalImportExportService {
     }
 
     const userRes = await this.db.query(
-      `SELECT id, name, email FROM users WHERE is_active = TRUE`,
+      `SELECT COALESCE(u.id, em.id) AS id,
+              COALESCE(NULLIF(u.name, ''), NULLIF(em.name, ''), u.email, em.email) AS name,
+              COALESCE(u.email, em.email) AS email
+       FROM employee_master em
+       FULL OUTER JOIN users u ON LOWER(u.email) = LOWER(em.email)
+       WHERE (u.is_active IS NULL OR u.is_active = TRUE)`,
     );
     for (const r of userRes.rows) index.seedUser(r.id, r.name, r.email ?? '');
 

@@ -8,6 +8,7 @@ ALTER TABLE action_items ADD CONSTRAINT chk_action_item_type
     'Account mining',
     'Approval',
     'Board Meeting',
+    'CEO Connect',
     'Communication',
     'Customer Request',
     'Decision',

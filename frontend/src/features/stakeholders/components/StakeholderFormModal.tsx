@@ -16,7 +16,7 @@ import {
   StakeholderRoleInDecision,
   StakeholderType,
 } from '@/types';
-import { Pencil, Users } from 'lucide-react';
+import { Pencil, Users, Clock } from 'lucide-react';
 import {
   LOCATION_OPTIONS,
   NEXT_CONNECT_STATUS_OPTIONS,
@@ -25,7 +25,7 @@ import {
   STAKEHOLDER_LEVEL_OPTIONS,
   STAKEHOLDER_RELATIONSHIP_OPTIONS,
 } from '@/constants';
-import { serviceProviderOptionLabel } from '@/utils';
+import { serviceProviderOptionLabel, formatDateTime } from '@/utils';
 import {
   FormField,
   FormGrid,
@@ -217,15 +217,15 @@ export const StakeholderFormModal: React.FC<StakeholderFormModalProps> = ({
       // so the API contract and stored data stay intact without display.
       const payload: Omit<Stakeholder, 'id'> = isServiceProvider
         ? {
-            ...draft,
-            influence: (draft.influence || 'Medium') as InfluenceLevel,
-            relationship: (draft.relationship || 'Neutral') as RelationshipStatus,
-            level: (draft.level || 'Level 3') as StakeholderLevel,
-          }
+          ...draft,
+          influence: (draft.influence || 'Medium') as InfluenceLevel,
+          relationship: (draft.relationship || 'Neutral') as RelationshipStatus,
+          level: (draft.level || 'Level 3') as StakeholderLevel,
+        }
         : {
-            ...draft,
-            level: (draft.level || 'Level 3') as StakeholderLevel,
-          };
+          ...draft,
+          level: (draft.level || 'Level 3') as StakeholderLevel,
+        };
 
       // Auto-resolve system user selection for owner fields
       const resolveOwnerId = async (ownerId: string | undefined): Promise<string | undefined> => {
@@ -655,6 +655,25 @@ export const StakeholderFormModal: React.FC<StakeholderFormModalProps> = ({
             </FormField>
           </FormGrid>
         </FormSection>
+
+        {isEdit && stakeholder && (
+          <FormSection title="System Information">
+            <FormGrid columns={2}>
+              <FormField label="Created Date">
+                <div className="text-xs font-semibold text-slate-700 py-2 flex items-center">
+                  <Clock className="w-3.5 h-3.5 text-slate-400 mr-1.5" />
+                  {formatDateTime(stakeholder.createdAt)}
+                </div>
+              </FormField>
+              <FormField label="Last Modified Date">
+                <div className="text-xs font-semibold text-slate-700 py-2 flex items-center">
+                  <Clock className="w-3.5 h-3.5 text-slate-400 mr-1.5" />
+                  {formatDateTime(stakeholder.updatedAt)}
+                </div>
+              </FormField>
+            </FormGrid>
+          </FormSection>
+        )}
       </div>
     </FormModal>
   );

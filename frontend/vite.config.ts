@@ -15,8 +15,23 @@ export default defineConfig({
     proxy: {
       // Proxy all /api requests to the NestJS backend in development
       '/api': {
-        target: process.env.VITE_API_URL || 'http://localhost:3000',
+        target: process.env.VITE_API_URL || 'http://127.0.0.1:3000',
         changeOrigin: true,
+        configure: (proxy) => {
+          proxy.on('error', (err, _req, res) => {
+            // Avoid unhandled socket errors when the backend is booting up
+            if (res && !res.headersSent && typeof (res as any).writeHead === 'function') {
+              (res as any).writeHead(503, { 'Content-Type': 'application/json' });
+              res.end(
+                JSON.stringify({
+                  statusCode: 503,
+                  error: 'Service Unavailable',
+                  message: 'Backend server is starting up or unavailable. Please retry in a moment.',
+                }),
+              );
+            }
+          });
+        },
       },
     },
   },

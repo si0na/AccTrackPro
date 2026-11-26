@@ -1,14 +1,12 @@
 import { Controller, Get, Post, Body, Param, Query } from '@nestjs/common';
 import { NpsService } from './nps.service';
 import { CreateNpsDto, UpdateNpsDto } from './dto/nps.dto';
-import { RequirePermission } from '../rbac/require-permission.decorator';
 
 @Controller('nps')
 export class NpsController {
   constructor(private readonly npsService: NpsService) {}
 
   @Get()
-  @RequirePermission('accounts', 'view')
   findAll(
     @Query('accountId') accountId?: string,
     @Query('projectId') projectId?: string,
@@ -17,25 +15,37 @@ export class NpsController {
   }
 
   @Get(':id')
-  @RequirePermission('accounts', 'view')
   findOne(@Param('id') id: string) {
     return this.npsService.findOne(id);
   }
 
   @Post()
-  @RequirePermission('accounts', 'update')
   create(@Body() dto: CreateNpsDto) {
     return this.npsService.create(dto);
   }
 
+  @Post('generate')
+  generate(@Body() body: { projectId?: string; accountId?: string }) {
+    if (body.projectId) {
+      return this.npsService.generateForProject(body.projectId);
+    }
+    if (body.accountId) {
+      return this.npsService.generateForAccount(body.accountId);
+    }
+    return this.npsService.generateAllPending();
+  }
+
+  @Post('generate/:projectId')
+  generateForProject(@Param('projectId') projectId: string) {
+    return this.npsService.generateForProject(projectId);
+  }
+
   @Post(':id/update')
-  @RequirePermission('accounts', 'update')
   update(@Param('id') id: string, @Body() dto: UpdateNpsDto) {
     return this.npsService.update(id, dto);
   }
 
   @Post(':id/delete')
-  @RequirePermission('accounts', 'delete')
   remove(@Param('id') id: string) {
     return this.npsService.remove(id);
   }

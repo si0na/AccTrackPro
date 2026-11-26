@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { FormModal, FormSection, FormField, FormGrid, INPUT_CLS_AMBER } from '@/components/ui';
 import { Star, MessageSquare, UserCheck, Calendar, ThumbsUp, HeartHandshake } from 'lucide-react';
 import type { NpsResponse, Stakeholder, Project } from '@/types';
+import { isRawIdStr } from '@/utils';
 
 export function deriveQuarterFromMonthYear(val: string): string {
   if (!val) return 'Q1';
@@ -110,6 +111,15 @@ export const NpsFormModal: React.FC<NpsFormModalProps> = ({
   const derivedQuarter = useMemo(() => deriveQuarterFromMonthYear(receivedMonthYear), [receivedMonthYear]);
   const classification = useMemo(() => getNpsClassification(npsScore), [npsScore]);
 
+  const displayAccountName = useMemo(() => {
+    if (accountName && !isRawIdStr(accountName)) return accountName;
+    if (selectedProjectId) {
+      const p = projects.find((proj) => proj.id === selectedProjectId);
+      if (p?.accountName && !isRawIdStr(p.accountName)) return p.accountName;
+    }
+    return (accountName && !isRawIdStr(accountName)) ? accountName : 'Associated Account';
+  }, [accountName, selectedProjectId, projects]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (npsScore < 0 || npsScore > 10) {
@@ -176,7 +186,7 @@ export const NpsFormModal: React.FC<NpsFormModalProps> = ({
               <input
                 type="text"
                 disabled
-                value={accountName || accountId}
+                value={displayAccountName}
                 className="w-full text-xs p-2.5 border border-slate-200 rounded-xl bg-slate-100 text-slate-700 font-semibold"
               />
             </FormField>
@@ -290,8 +300,8 @@ export const NpsFormModal: React.FC<NpsFormModalProps> = ({
                   ? isPromoter
                     ? 'bg-emerald-600 text-white font-extrabold ring-2 ring-emerald-400 scale-105 shadow'
                     : isPassive
-                    ? 'bg-amber-500 text-white font-extrabold ring-2 ring-amber-300 scale-105 shadow'
-                    : 'bg-rose-600 text-white font-extrabold ring-2 ring-rose-400 scale-105 shadow'
+                      ? 'bg-amber-500 text-white font-extrabold ring-2 ring-amber-300 scale-105 shadow'
+                      : 'bg-rose-600 text-white font-extrabold ring-2 ring-rose-400 scale-105 shadow'
                   : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200 font-semibold';
 
                 return (

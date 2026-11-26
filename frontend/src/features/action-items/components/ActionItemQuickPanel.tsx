@@ -22,6 +22,7 @@ import {
   FolderKanban,
   User,
   Calendar,
+  Clock,
   AlertTriangle,
   ExternalLink,
   Tag,
@@ -33,7 +34,7 @@ import {
   StatusBadge,
   AutoResizeTextarea,
 } from '@/components/ui';
-import { cleanOwnerName } from '@/utils';
+import { cleanOwnerName, formatDateTime } from '@/utils';
 
 interface ActionItemQuickPanelProps {
   actionItemId: string;
@@ -569,6 +570,21 @@ export const ActionItemQuickPanel: React.FC<ActionItemQuickPanelProps> = ({
                     <Calendar className="w-3 h-3 text-slate-400" /> Open Date
                   </span>
                   <p className="font-mono font-semibold text-slate-800 pt-1.5">{item.openDate || '—'}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3 text-xs bg-slate-50/70 p-3.5 rounded-xl border border-slate-200/80">
+                <div className="space-y-0.5">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                    <Clock className="w-3 h-3 text-slate-400" /> Created Date
+                  </span>
+                  <p className="font-semibold text-slate-800 pt-1.5">{formatDateTime(item.createdAt)}</p>
+                </div>
+                <div className="space-y-0.5">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                    <Clock className="w-3 h-3 text-slate-400" /> Last Modified
+                  </span>
+                  <p className="font-semibold text-slate-800 pt-1.5">{formatDateTime(item.updatedAt)}</p>
                 </div>
               </div>
 

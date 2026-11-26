@@ -109,6 +109,8 @@ export interface Account {
   tower?: string;
   clientStakeholderIds?: string[];
   serviceProviderUserIds?: string[];
+  createdAt?: string;
+  updatedAt?: string;
   [key: string]: any;
 }
 
@@ -186,6 +188,8 @@ export interface Opportunity {
   actualValue?: number;
   forecastRemarks?: string;
   forecastUpdatedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
   [key: string]: any;
 }
 
@@ -230,6 +234,8 @@ export interface Project {
   deliveryModel?: string;
   billingModel?: string;
   tower?: string;
+  createdAt?: string;
+  updatedAt?: string;
   [key: string]: any;
 }
 
@@ -406,6 +412,25 @@ export interface ProjectTeamMember {
   seniorityLevel?: string;
   location?: string;
   createdAt?: string;
+  updatedAt?: string;
+}
+
+export type ProjectDocumentationType = 'URL' | 'FILE';
+
+export interface ProjectDocumentation {
+  id: string;
+  projectId: string;
+  name: string;
+  type: ProjectDocumentationType;
+  url?: string;
+  fileName?: string;
+  fileSize?: number;
+  mimeType?: string;
+  description: string;
+  createdById?: string;
+  addedBy?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface ProjectMilestone {
@@ -603,6 +628,7 @@ export interface ActionItem {
   priority: PriorityLevel;
   status: ActionItemStatus;
   actionItemType?: ActionItemType;
+  type?: ActionItemType;
   notes: string;
   /** Known risks or blocking dependencies for this action item. */
   risksAndDependencies: string;
@@ -613,6 +639,8 @@ export interface ActionItem {
   financialYear: string;
   /** Derived (never stored): quarter computed from dueDate via the configured Financial Calendar. */
   quarter: string;
+  createdAt?: string;
+  updatedAt?: string;
   [key: string]: any;
 }
 
@@ -657,6 +685,8 @@ export interface Stakeholder {
   employeeId?: string;
   /** True while the linked person is whitelisted but has not completed self-registration. */
   pendingRegistration?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Activity {
@@ -676,6 +706,8 @@ export interface Comment {
   user: string;
   text: string;
   timestamp: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Document {
@@ -788,6 +820,26 @@ export interface EmployeeRewardsRecognition {
   status: RewardsRecognitionStatus;
   details: string;
   createdBy?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AccountWeeklyHealth {
+  id: string;
+  accountId: string;
+  reportingDate: string;
+  healthStatus: AccountHealth;
+  summary: string;
+  keyUpdates?: string;
+  risksAndIssues?: string;
+  actionItemsMitigation?: string;
+  owner?: string;
+  ownerId?: string;
+  nextSteps?: string;
+  createdBy?: string;
+  createdByName?: string;
+  updatedBy?: string;
+  updatedByName?: string;
   createdAt: string;
   updatedAt: string;
 }

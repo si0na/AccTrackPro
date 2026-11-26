@@ -37,6 +37,8 @@ import {
   Users,
   Star,
   HeartHandshake,
+  Clock,
+  FileText,
 } from 'lucide-react';
 import {
   administrationApi,
@@ -46,6 +48,7 @@ import {
   projectAssumptionsApi,
   projectIssuesApi,
   projectDependenciesApi,
+  projectDocumentationApi,
 } from '@/api/crm.api';
 import { NumberInput } from '@/components/NumberInput';
 import { InlineEditModal } from '@/components/InlineEditModal';
@@ -63,8 +66,9 @@ import { AssumptionDetailsModal } from './AssumptionDetailsModal';
 import { IssueFormModal, IssueDraft, emptyIssueDraft } from './IssueFormModal';
 import { DependencyFormModal, DependencyDraft, emptyDependencyDraft, createDependencyDraftFromModel } from './DependencyFormModal';
 import { DependencyDetailsModal } from './DependencyDetailsModal';
+import { ProjectDocumentationTab } from './ProjectDocumentationTab';
 import { ACTION_ITEM_STATUS_OPTIONS, LOCATION_OPTIONS, PROJECT_HEALTH_OPTIONS } from '@/constants';
-import { isRawIdStr, serviceProviderOptionLabel } from '@/utils';
+import { formatDateTime, isRawIdStr, serviceProviderOptionLabel } from '@/utils';
 import {
   ACTION_STATUS_COLORS,
   BackButton,
@@ -102,7 +106,7 @@ import { compareForSort, getTodayISODate, cleanOwnerName, SortDirection } from '
 type ProjectTab =
   | 'overview' | 'progress' | 'team'
   | 'milestones' | 'risks-issues' | 'assumptions' | 'dependencies'
-  | 'action-items' | 'health' | 'nps' | 'appreciation';
+  | 'action-items' | 'documentation' | 'health' | 'nps' | 'appreciation';
 
 const SORTABLE_AI_FIELDS = new Set(['title', 'owner', 'priority', 'status', 'dueDate']);
 
@@ -212,6 +216,15 @@ export const ProjectDetailsView: React.FC = () => {
     if (!can('administration', 'view')) return;
     administrationApi.getUsers().then(setUsers).catch(() => setUsers([]));
   }, [can]);
+
+  const [docCount, setDocCount] = useState<number>(0);
+  useEffect(() => {
+    if (!project?.id) return;
+    projectDocumentationApi
+      .getAllForProject(project.id)
+      .then((docs) => setDocCount(docs.length))
+      .catch(() => setDocCount(0));
+  }, [project?.id]);
 
   // ── Edit Project modal ──────────────────────────────────────────────────────
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -775,8 +788,10 @@ export const ProjectDetailsView: React.FC = () => {
             mono: true,
             value: `${project.startDate || 'N/A'} → ${project.endDate || 'N/A'}`,
           },
+          { icon: <Clock className="w-4 h-4" />, label: 'Created Date', value: formatDateTime(project.createdAt) },
+          { icon: <Clock className="w-4 h-4" />, label: 'Last Modified Date', value: formatDateTime(project.updatedAt) },
         ]}
-        attributesClassName="grid-cols-2 lg:grid-cols-5"
+        attributesClassName="grid-cols-2 sm:grid-cols-4 lg:grid-cols-7"
       />
 
       <DetailTabBar
@@ -791,6 +806,7 @@ export const ProjectDetailsView: React.FC = () => {
           ...(can('project-action-items', 'view') || can('project-action-items', 'view-all')
             ? [{ id: 'action-items' as const, label: 'Action Items', icon: CheckSquare, count: projectActions.length }]
             : []),
+          { id: 'documentation', label: 'Project Documentation', icon: FileText, count: docCount > 0 ? docCount : null },
           { id: 'health', label: 'Health Tracker', icon: Gauge, count: null },
           { id: 'appreciation', label: 'Employee Appreciation', icon: HeartHandshake, count: null },
           { id: 'nps', label: 'NPS', icon: Star, count: null },
@@ -804,20 +820,34 @@ export const ProjectDetailsView: React.FC = () => {
           <>
           <Card title="Project Details" bodyClassName="space-y-6">
             <FormSection title="Linked Opportunity">
-              <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-100 p-3.5">
-                <div className="min-w-0">
-                  <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1">Originating Opportunity</span>
-                  <p className="text-sm text-slate-800 font-semibold truncate">{project.opportunityName || 'Unknown'}</p>
+              {project.opportunityId ? (
+                <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-100 p-3.5">
+                  <div className="min-w-0">
+                    <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1">Originating Opportunity</span>
+                    <p className="text-sm text-slate-800 font-semibold truncate">{project.opportunityName || 'Linked Opportunity'}</p>
+                  </div>
+                  <Button
+                    variant="secondary"
+                    className="shrink-0"
+                    icon={<TrendingUp className="w-3.5 h-3.5" aria-hidden="true" />}
+                    onClick={() => { setSelectedOpportunityId(project.opportunityId); setView('opportunity-details'); }}
+                  >
+                    Open Opportunity
+                  </Button>
                 </div>
-                <Button
-                  variant="secondary"
-                  className="shrink-0"
-                  icon={<TrendingUp className="w-3.5 h-3.5" aria-hidden="true" />}
-                  onClick={() => { setSelectedOpportunityId(project.opportunityId); setView('opportunity-details'); }}
-                >
-                  Open Opportunity
-                </Button>
-              </div>
+              ) : (
+                <div className="rounded-lg border border-slate-100 bg-slate-50/70 p-3.5">
+                  <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1">Originating Opportunity</span>
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-slate-200 text-slate-700">
+                      Direct Project
+                    </span>
+                    <span className="text-xs text-slate-500">
+                      Directly associated with {project.accountName || account?.name || 'Account'} without an Opportunity
+                    </span>
+                  </div>
+                </div>
+              )}
             </FormSection>
 
             <FormSection title="Assignments">
@@ -897,6 +927,25 @@ export const ProjectDetailsView: React.FC = () => {
               <p className="text-sm text-slate-600 leading-relaxed font-medium">
                 {project.description || <span className="text-slate-400 font-medium italic">No description provided.</span>}
               </p>
+            </FormSection>
+
+            <FormSection title="System Information">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <div>
+                  <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1">Created Date</span>
+                  <span className="text-sm text-slate-800 font-semibold flex items-center">
+                    <Clock className="w-3.5 h-3.5 text-slate-400 mr-1.5" aria-hidden="true" />
+                    {formatDateTime(project.createdAt)}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-label font-semibold text-slate-400 uppercase tracking-wider block mb-1">Last Modified Date</span>
+                  <span className="text-sm text-slate-800 font-semibold flex items-center">
+                    <Clock className="w-3.5 h-3.5 text-slate-400 mr-1.5" aria-hidden="true" />
+                    {formatDateTime(project.updatedAt)}
+                  </span>
+                </div>
+              </div>
             </FormSection>
           </Card>
           </>
@@ -1563,6 +1612,13 @@ export const ProjectDetailsView: React.FC = () => {
           </div>
         )}
 
+        {activeTab === 'documentation' && (
+          <ProjectDocumentationTab
+            projectId={project.id}
+            onCountChange={setDocCount}
+          />
+        )}
+
         {activeTab === 'health' && (
           <ProjectHealthTab
             projectId={project.id}
@@ -1572,11 +1628,11 @@ export const ProjectDetailsView: React.FC = () => {
         )}
 
         {activeTab === 'appreciation' && (
-          <EmployeeAppreciationTab projectId={project.id} accountId={project.accountId} accountName={account?.name || ''} />
+          <EmployeeAppreciationTab projectId={project.id} accountId={project.accountId} accountName={project.accountName || account?.name || ''} />
         )}
 
         {activeTab === 'nps' && (
-          <NpsTab projectId={project.id} accountId={project.accountId} accountName={account?.name || ''} />
+          <NpsTab projectId={project.id} accountId={project.accountId} accountName={project.accountName || account?.name || ''} />
         )}
       </div>
 

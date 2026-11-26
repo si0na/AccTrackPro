@@ -6,6 +6,7 @@ import type {
   AdminSystemOverview, AdminUser, FinancialCalendar, AdminSettings, FYQuarterDef,
   PerformanceEvaluation, EmployeeMaster, Project, ProjectTeamMember,
   ProjectMilestone, ProjectRisk, ProjectAssumption, ProjectIssue, ProjectDependency, ProjectHealthUpdate, ProjectProgressUpdate,
+  ProjectDocumentation,
   OpportunityForecastResult, OpportunityForecastPayload,
   Role, PermissionMatrix, MyPermissions,
   SqaRecord, SqaWeeklyHealth, SqaAvailableProject, SqaTrackerSnapshot, NpsResponse,
@@ -13,6 +14,7 @@ import type {
   AccountGrowthWorkspace, AccountGrowthClientPriority, AccountGrowthIndustryTrend,
   AccountGrowthBudgetPositioning, AccountGrowthWalletSharePlan, AccountGrowthSuccessParameter,
   AccountGrowthOutsourcingSplit, AccountGrowthSwot, AccountGrowthCompetitor, AccountGrowthActionPlan,
+  EmployeeDirectoryUser, AccountWeeklyHealth,
   StakeholderConnect, StakeholderConnectDraftFollowUp,
   StakeholderConnectLinkedActionItem, StakeholderConnectRescheduleHistory,
   StakeholderConnectMomAttachment, ConnectStatus,
@@ -101,8 +103,8 @@ export interface BulkValidationResult {
   unknownColumns: string[];
 }
 
-/** The four modules that share the single Import/Export workbook. */
-export type IEModuleKey = 'accounts' | 'stakeholders' | 'opportunities' | 'actionItems';
+/** The modules that share the single Import/Export workbook. */
+export type IEModuleKey = 'accounts' | 'stakeholders' | 'opportunities' | 'projects' | 'actionItems' | 'projectActionItems';
 
 /** One parsed worksheet posted for validation. */
 export interface WorkbookSheet {
@@ -143,6 +145,20 @@ export const accountsApi = {
   restore: (id: string) => apiClient.post<Account>(`/accounts/${id}/restore`).then((r) => r.data),
   delete: (id: string) => apiClient.post<{ success: boolean }>(`/accounts/${id}/delete`).then((r) => r.data),
 };
+
+export const accountWeeklyHealthApi = {
+  getAll: (accountId: string) =>
+    apiClient.get<AccountWeeklyHealth[]>(`/accounts/${accountId}/weekly-health`).then((r) => r.data),
+  getById: (accountId: string, id: string) =>
+    apiClient.get<AccountWeeklyHealth>(`/accounts/${accountId}/weekly-health/${id}`).then((r) => r.data),
+  create: (accountId: string, data: Omit<AccountWeeklyHealth, 'id' | 'accountId' | 'createdAt' | 'updatedAt' | 'createdByName' | 'updatedByName'>) =>
+    apiClient.post<AccountWeeklyHealth>(`/accounts/${accountId}/weekly-health`, data).then((r) => r.data),
+  update: (accountId: string, id: string, data: Partial<AccountWeeklyHealth>) =>
+    apiClient.post<AccountWeeklyHealth>(`/accounts/${accountId}/weekly-health/${id}/update`, data).then((r) => r.data),
+  delete: (accountId: string, id: string) =>
+    apiClient.post<{ success: boolean }>(`/accounts/${accountId}/weekly-health/${id}/delete`).then((r) => r.data),
+};
+
 
 export const opportunitiesApi = {
   getAll: (f?: OwnerFilter) => apiClient.get<Opportunity[]>('/opportunities', { params: f }).then((r) => r.data),
@@ -355,6 +371,52 @@ export const projectDependenciesApi = {
     apiClient.post<{ success: boolean }>(`/projects/${projectId}/dependencies/${id}/delete`).then((r) => r.data),
 };
 
+export const projectDocumentationApi = {
+  getAllForProject: (projectId: string) =>
+    apiClient.get<ProjectDocumentation[]>(`/projects/${projectId}/documentation`).then((r) => r.data),
+  createUrl: (projectId: string, data: { name: string; url: string; description?: string }) =>
+    apiClient.post<ProjectDocumentation>(`/projects/${projectId}/documentation/url`, data).then((r) => r.data),
+  uploadFile: (projectId: string, data: { name: string; description?: string }, file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('name', data.name);
+    if (data.description) formData.append('description', data.description);
+    return apiClient
+      .post<ProjectDocumentation>(`/projects/${projectId}/documentation/upload`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      .then((r) => r.data);
+  },
+  update: (
+    projectId: string,
+    id: string,
+    data: { name?: string; url?: string; description?: string },
+    file?: File | null,
+  ) => {
+    if (file) {
+      const formData = new FormData();
+      formData.append('file', file);
+      if (data.name !== undefined) formData.append('name', data.name);
+      if (data.url !== undefined) formData.append('url', data.url);
+      if (data.description !== undefined) formData.append('description', data.description);
+      return apiClient
+        .post<ProjectDocumentation>(`/projects/${projectId}/documentation/${id}/update`, formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+        })
+        .then((r) => r.data);
+    }
+    return apiClient
+      .post<ProjectDocumentation>(`/projects/${projectId}/documentation/${id}/update`, data)
+      .then((r) => r.data);
+  },
+  delete: (projectId: string, id: string) =>
+    apiClient.post<{ success: boolean }>(`/projects/${projectId}/documentation/${id}/delete`).then((r) => r.data),
+  getFileBlob: (projectId: string, id: string) =>
+    apiClient
+      .get<Blob>(`/projects/${projectId}/documentation/${id}/download`, { responseType: 'blob' })
+      .then((r) => r.data),
+};
+
 export const stakeholdersApi = {
   getAll: (f?: OwnerFilter) => apiClient.get<Stakeholder[]>('/stakeholders', { params: f }).then((r) => r.data),
   getDeactivated: (f?: OwnerFilter) => apiClient.get<Stakeholder[]>('/stakeholders/deactivated', { params: f }).then((r) => r.data),
@@ -418,30 +480,30 @@ export const financialYearsApi = {
     apiClient.get<FinancialYear[]>('/financial-years', { params }).then((r) => r.data),
   create: (data: { startYear: number }, userId?: string) =>
     apiClient.post<FinancialYear>('/financial-years', data, { params: userId ? { userId } : undefined }).then((r) => r.data),
-  activate:       (id: string) => apiClient.post<FinancialYear>(`/financial-years/${id}/activate`).then((r) => r.data),
-  deactivate:     (id: string) => apiClient.post<FinancialYear>(`/financial-years/${id}/deactivate`).then((r) => r.data),
+  activate: (id: string) => apiClient.post<FinancialYear>(`/financial-years/${id}/activate`).then((r) => r.data),
+  deactivate: (id: string) => apiClient.post<FinancialYear>(`/financial-years/${id}/deactivate`).then((r) => r.data),
   updateCalendar: (id: string, data: { startMonth: number; quarters: FYQuarterDef[] }) =>
     apiClient.post<FinancialYear>(`/financial-years/${id}/calendar`, data).then((r) => r.data),
 };
 
 export const administrationApi = {
-  getSystemOverview:        () =>
+  getSystemOverview: () =>
     apiClient.get<AdminSystemOverview>('/administration/system-overview').then((r) => r.data),
   getUsers: (params?: { page?: number; pageSize?: number; search?: string; status?: string }) =>
     apiClient.get<any>('/administration/users', { params }).then((r) => r.data),
-  getFinancialCalendar:     () =>
+  getFinancialCalendar: () =>
     apiClient.get<FinancialCalendar>('/administration/financial-calendar').then((r) => r.data),
-  updateFinancialCalendar:  (data: FinancialCalendar) =>
+  updateFinancialCalendar: (data: FinancialCalendar) =>
     apiClient.post<FinancialCalendar>('/administration/financial-calendar/update', data).then((r) => r.data),
-  getSettings:              () =>
+  getSettings: () =>
     apiClient.get<AdminSettings>('/administration/settings').then((r) => r.data),
-  updateSettings:           (data: Partial<AdminSettings>) =>
+  updateSettings: (data: Partial<AdminSettings>) =>
     apiClient.post<AdminSettings>('/administration/settings/update', data).then((r) => r.data),
   /** Whitelist / add a new authorized user. */
-  createUser:               (data: UserRbacAttrs & { email: string; roleIds: string[] }) =>
+  createUser: (data: UserRbacAttrs & { email: string; roleIds: string[] }) =>
     apiClient.post<AdminUser>('/administration/users', data).then((r) => r.data),
   /** Assign role, edit department/designation/employeeId, activate/deactivate. */
-  updateUser:               (id: string, data: UserRbacAttrs & { roleIds?: string[]; isActive?: boolean }) =>
+  updateUser: (id: string, data: UserRbacAttrs & { roleIds?: string[]; isActive?: boolean }) =>
     apiClient.post<AdminUser>(`/administration/users/${id}/update`, data).then((r) => r.data),
 };
 
@@ -714,6 +776,12 @@ export const employeeMasterApi = {
     apiClient.post<{ success: boolean }>(`/employee-master/${id}/delete`).then((r) => r.data),
 };
 
+export const employeesApi = {
+  /** GET /api/employees — local fallback directory (employee_master + active users) */
+  getAll: (search?: string) =>
+    apiClient.get<EmployeeDirectoryUser[]>('/employees', { params: search ? { search } : undefined }).then((r) => r.data),
+};
+
 /** Per-employee aggregates for the Performance Evaluation reporting header. */
 export interface PerformanceEvaluationSummaryRow {
   employeeId?: string;
@@ -746,6 +814,8 @@ export const npsApi = {
     apiClient.get<NpsResponse>(`/nps/${id}`).then((r) => r.data),
   create: (data: Omit<NpsResponse, 'id' | 'createdAt' | 'updatedAt' | 'quarter'>) =>
     apiClient.post<NpsResponse>('/nps', data).then((r) => r.data),
+  generate: (params?: { projectId?: string; accountId?: string }) =>
+    apiClient.post<NpsResponse>('/nps/generate', params || {}).then((r) => r.data),
   update: (id: string, data: Partial<NpsResponse>) =>
     apiClient.post<NpsResponse>(`/nps/${id}/update`, data).then((r) => r.data),
   delete: (id: string) =>
@@ -1041,10 +1111,10 @@ export const stakeholderConnectsApi = {
       .post<StakeholderConnectMomAttachment[]>(`/stakeholder-connects/${id}/mom-attachments`, fd, {
         onUploadProgress: onUploadProgress
           ? (evt) => {
-              if (evt.total && evt.total > 0) {
-                onUploadProgress(Math.min(100, Math.round((evt.loaded * 100) / evt.total)));
-              }
+            if (evt.total && evt.total > 0) {
+              onUploadProgress(Math.min(100, Math.round((evt.loaded * 100) / evt.total)));
             }
+          }
           : undefined,
       })
       .then((r) => r.data);

@@ -32,6 +32,7 @@ import { EmployeeAppreciationModule } from './modules/employee-appreciation/empl
 import { EmployeeRewardsRecognitionModule } from './modules/employee-rewards-recognition/employee-rewards-recognition.module';
 import { RisksModule } from './modules/risks/risks.module';
 import { AccountGrowthModule } from './modules/account-growth/account-growth.module';
+import { EmployeesModule } from './modules/employees/employees.module';
 import { StakeholderConnectsModule } from './modules/stakeholder-connects/stakeholder-connects.module';
 
 @Module({
@@ -74,10 +75,11 @@ import { StakeholderConnectsModule } from './modules/stakeholder-connects/stakeh
     HealthModule,
     PerformanceEvaluationsModule,
     ServiceProviderModule,
+    EmployeesModule,
   ],
   providers: [
     // Apply rate limiting globally; auth controller methods set tighter limits
     { provide: APP_GUARD, useClass: ThrottlerGuard },
   ],
 })
-export class AppModule {}
+export class AppModule { }

@@ -133,7 +133,7 @@ export const ActionItemsView: React.FC = () => {
 
   const resolveAccount = useCallback((accountId?: string) =>
     accountId ? (accounts.find(a => a.id === accountId) || deactivatedAccounts.find(a => a.id === accountId)) : undefined,
-  [accounts, deactivatedAccounts]);
+    [accounts, deactivatedAccounts]);
 
   // Single-record focus set when the user opens an action-item notification
   const focusedActionItemId = focusedRecord?.type === 'actionItem' ? focusedRecord.id : null;
@@ -288,11 +288,11 @@ export const ActionItemsView: React.FC = () => {
     if (selectedType !== 'All' && ai.actionItemType !== selectedType) return false;
 
     if (dueFilter === 'Overdue' &&
-        (!isOpenActionItemStatus(ai.status) || !ai.dueDate || !/^\d{4}-\d{2}-\d{2}$/.test(ai.dueDate) || ai.dueDate >= todayStr)) return false;
+      (!isOpenActionItemStatus(ai.status) || !ai.dueDate || !/^\d{4}-\d{2}-\d{2}$/.test(ai.dueDate) || ai.dueDate >= todayStr)) return false;
     if (dueFilter === 'Due Today' &&
-        (!isOpenActionItemStatus(ai.status) || ai.dueDate !== todayStr)) return false;
+      (!isOpenActionItemStatus(ai.status) || ai.dueDate !== todayStr)) return false;
     if (dueFilter === 'Due This Week' &&
-        (!isOpenActionItemStatus(ai.status) || !isDueThisWeek(ai.dueDate))) return false;
+      (!isOpenActionItemStatus(ai.status) || !isDueThisWeek(ai.dueDate))) return false;
 
     if (dueThisWeekFilter && (!isOpenActionItemStatus(ai.status) || !isDueThisWeek(ai.dueDate))) return false;
     if (openActionItemsFilter && !isOpenActionItemStatus(ai.status)) return false;
@@ -319,14 +319,15 @@ export const ActionItemsView: React.FC = () => {
     [filteredActionItems, sortField, sortDirection],
   );
 
-  const exportActionItems = useMemo(
-    () => sortedActionItems.filter((ai) => !ai.projectId),
-    [sortedActionItems],
-  );
+  const exportActionItems = sortedActionItems;
 
   useEffect(() => {
-    setActiveExportRows('actionItems', exportActionItems);
-  }, [exportActionItems, setActiveExportRows]);
+    if (isProjectMode || selectedTypeFilter === 'Project') {
+      setActiveExportRows('projectActionItems', exportActionItems);
+    } else {
+      setActiveExportRows('actionItems', exportActionItems);
+    }
+  }, [exportActionItems, isProjectMode, selectedTypeFilter, setActiveExportRows]);
 
   // Clamp the page so filter changes never leave the user on an empty page.
   const totalPages = Math.max(1, Math.ceil(sortedActionItems.length / pageSize));
@@ -363,8 +364,8 @@ export const ActionItemsView: React.FC = () => {
     const filtered = selectedTypeFilter === 'Project'
       ? cols.filter(col => col.key !== 'opportunityId')
       : selectedTypeFilter === 'AccountOpp'
-      ? cols.filter(col => col.key !== 'projectId')
-      : cols;
+        ? cols.filter(col => col.key !== 'projectId')
+        : cols;
     const pinned = filtered.filter(col => col.isPinned);
     const unpinned = filtered.filter(col => !col.isPinned);
     return [...pinned, ...unpinned];
@@ -381,20 +382,20 @@ export const ActionItemsView: React.FC = () => {
   const headerTitle = overdueActionItemsFilter
     ? "Overdue Action Items"
     : openActionItemsFilter
-    ? "Open Action Items"
-    : dueThisWeekFilter
-    ? "Action Items Due This Week"
-    : isProjectMode
-    ? "Project Action Items"
-    : "Governance & Action Items";
+      ? "Open Action Items"
+      : dueThisWeekFilter
+        ? "Action Items Due This Week"
+        : isProjectMode
+          ? "Project Action Items"
+          : "Governance & Action Items";
 
   const headerSubtitle = overdueActionItemsFilter
     ? "Review and resolve overdue action items across all accounts and projects."
     : openActionItemsFilter
-    ? "Track and manage all open action items requiring execution."
-    : isProjectMode
-    ? "Coordinate delivery, track critical project tasks, and resolve blocks instantly."
-    : "Coordinate delivery, track critical dependencies, and resolve blocks instantly.";
+      ? "Track and manage all open action items requiring execution."
+      : isProjectMode
+        ? "Coordinate delivery, track critical project tasks, and resolve blocks instantly."
+        : "Coordinate delivery, track critical dependencies, and resolve blocks instantly.";
 
   if (loading) return <LoadingState label="Loading action items…" />;
 
@@ -619,10 +620,10 @@ export const ActionItemsView: React.FC = () => {
                     dueThisWeekFilter
                       ? 'No open action items are due this week.'
                       : overdueActionItemsFilter
-                      ? 'No overdue action items found.'
-                      : openActionItemsFilter
-                      ? 'No open action items found.'
-                      : 'No action items match the current filters.'
+                        ? 'No overdue action items found.'
+                        : openActionItemsFilter
+                          ? 'No open action items found.'
+                          : 'No action items match the current filters.'
                   }
                 />
               )}

@@ -823,7 +823,7 @@ describe('Stakeholder Connects Account-Level RBAC & BOLA Regression Suite', () =
     it('idempotently revokes stakeholder-connects:view-all from account-manager only', () => {
       const migrationPath = join(
         __dirname,
-        '../../../database/migrations/114_fix_stakeholder_connects_account_manager_scope.sql',
+        '../../../database/migrations/121_fix_stakeholder_connects_account_manager_scope.sql',
       );
       const sql = readFileSync(migrationPath, 'utf-8');
       expect(sql).toContain("'account-manager'");

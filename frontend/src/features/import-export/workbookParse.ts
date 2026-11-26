@@ -15,7 +15,7 @@ export type ParsedWorkbook = Partial<Record<IEModuleKey, ParsedSheet>>;
 
 const MAX_ROWS = 20000;
 
-export class FileParseError extends Error {}
+export class FileParseError extends Error { }
 
 /** Normalizes a worksheet name for tolerant matching. */
 function normalizeName(name: string): string {
@@ -24,7 +24,17 @@ function normalizeName(name: string): string {
 
 /** Accepted normalized names for each module (its sheet name and its key). */
 function acceptedNames(module: IEModuleKey): Set<string> {
-  return new Set([normalizeName(SHEET_NAMES[module]), normalizeName(module)]);
+  const names = new Set([normalizeName(SHEET_NAMES[module]), normalizeName(module)]);
+  if (module === 'actionItems') {
+    names.add('regularactionitems');
+    names.add('actionitem');
+  }
+  if (module === 'projectActionItems') {
+    names.add('projectactionitem');
+    names.add('projecttasks');
+    names.add('projecttask');
+  }
+  return names;
 }
 
 export async function parseWorkbook(file: File): Promise<ParsedWorkbook> {
@@ -69,7 +79,7 @@ export async function parseWorkbook(file: File): Promise<ParsedWorkbook> {
   if (Object.keys(result).length === 0) {
     throw new FileParseError(
       'No worksheets with data were found. Expected sheets named Accounts, Stakeholders, ' +
-        'Opportunities or Action Items — download the template for the correct layout.',
+      'Opportunities, Projects or Action Items — download the template for the correct layout.',
     );
   }
   if (totalRows > MAX_ROWS) {

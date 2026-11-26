@@ -4,13 +4,14 @@ import { ProjectsService } from './projects.service';
 import { ProjectTeamMember } from '../../types';
 
 function rowToTeamMember(row: any): ProjectTeamMember {
-  const { project_id, employee_name, seniority_level, created_at, ...base } = row;
+  const { project_id, employee_name, seniority_level, created_at, updated_at, ...base } = row;
   return {
     ...base,
     projectId: project_id,
     employeeName: employee_name,
     seniorityLevel: seniority_level ?? undefined,
-    createdAt: created_at ?? undefined,
+    createdAt: created_at ? (created_at instanceof Date ? created_at.toISOString() : String(created_at)) : undefined,
+    updatedAt: updated_at ? (updated_at instanceof Date ? updated_at.toISOString() : String(updated_at)) : undefined,
   } as ProjectTeamMember;
 }
 
@@ -26,7 +27,7 @@ export class ProjectTeamService {
   constructor(
     private readonly db: DatabaseService,
     private readonly projectsService: ProjectsService,
-  ) {}
+  ) { }
 
   async findAll(projectId: string, userId?: string): Promise<ProjectTeamMember[]> {
     await this.projectsService.findOne(projectId, userId); // existence + ownership check
@@ -51,7 +52,7 @@ export class ProjectTeamService {
   async update(projectId: string, id: string, data: any, userId?: string): Promise<ProjectTeamMember> {
     await this.projectsService.findOne(projectId, userId);
     await this.db.query(
-      `UPDATE project_team_members SET role=$1, employee_name=$2, seniority_level=$3, location=$4
+      `UPDATE project_team_members SET role=$1, employee_name=$2, seniority_level=$3, location=$4, updated_at=NOW()
        WHERE id=$5 AND project_id=$6`,
       [data.role, data.employeeName, data.seniorityLevel ?? null, data.location ?? null, id, projectId],
     );

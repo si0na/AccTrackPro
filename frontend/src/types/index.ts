@@ -107,6 +107,7 @@ export interface Account {
   tower?: string;
   clientStakeholderIds?: string[];
   serviceProviderUserIds?: string[];
+  createdAt?: string;
   /** Read-only, set by backend — used for "Recently Updated Accounts". */
   updatedAt?: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -130,6 +131,8 @@ export interface FinancialYear {
   /** Calendar config that was active when this FY was created — never changes after creation. */
   calendarStartMonth: number;
   calendarQuarters: FYQuarterDef[];
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Opportunity {
@@ -219,6 +222,8 @@ export interface Opportunity {
   forecastRemarks?: string;
   /** When the forecast record was last saved (ISO). */
   forecastUpdatedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   [key: string]: any;
 }
@@ -303,6 +308,8 @@ export interface Project {
   deliveryModel?: string;
   billingModel?: string;
   tower?: string;
+  createdAt?: string;
+  updatedAt?: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   [key: string]: any;
 }
@@ -539,6 +546,25 @@ export interface ProjectTeamMember {
   seniorityLevel?: string;
   location?: string;
   createdAt?: string;
+  updatedAt?: string;
+}
+
+export type ProjectDocumentationType = 'URL' | 'FILE';
+
+export interface ProjectDocumentation {
+  id: string;
+  projectId: string;
+  name: string;
+  type: ProjectDocumentationType;
+  url?: string;
+  fileName?: string;
+  fileSize?: number;
+  mimeType?: string;
+  description: string;
+  createdById?: string;
+  addedBy?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface ProjectMilestone {
@@ -737,6 +763,7 @@ export interface ActionItem {
   priority: PriorityLevel;
   status: ActionItemStatus;
   actionItemType?: ActionItemType;
+  type?: ActionItemType;
   notes: string;
   /** Known risks or blocking dependencies for this action item. */
   risksAndDependencies: string;
@@ -747,6 +774,8 @@ export interface ActionItem {
   financialYear?: string;
   /** Read-only, derived by backend from dueDate via the configured Financial Calendar. Never sent on create/update. */
   quarter?: string;
+  createdAt?: string;
+  updatedAt?: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   [key: string]: any;
 }
@@ -835,6 +864,8 @@ export interface Stakeholder {
   employeeId?: string;
   /** True while the linked person is whitelisted but has not completed self-registration. */
   pendingRegistration?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Activity {
@@ -855,6 +886,8 @@ export interface Comment {
   userId?: string;
   text: string;
   timestamp: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Document {
@@ -1278,6 +1311,56 @@ export interface AccountGrowthWorkspace {
   competitors: AccountGrowthCompetitor[];
   actionPlans: AccountGrowthActionPlan[];
 }
+
+/**
+ * Normalized employee record retrieved strictly with User.ReadBasic.All delegated scope.
+ */
+export interface GraphEmployee {
+  id: string;
+  displayName: string;
+  givenName: string | null;
+  surname: string | null;
+  mail: string | null;
+  userPrincipalName: string;
+}
+
+export type DirectorySource = 'microsoft_graph' | 'disconnected';
+
+export interface EmployeeDirectoryUser extends GraphEmployee {
+  /** Preferred contact email (mail || userPrincipalName) */
+  email: string;
+  source: DirectorySource;
+  /**
+   * Corresponding local employee identifier if matched in ReflectOne.
+   * Kept optional for backward compatibility with form handlers.
+   */
+  localEmployeeId?: string | null;
+  department?: string | null;
+  designation?: string | null;
+  role?: string | null;
+}
+
+export interface AccountWeeklyHealth {
+  id: string;
+  accountId: string;
+  reportingDate: string;
+  healthStatus: AccountHealth;
+  summary: string;
+  keyUpdates?: string;
+  risksAndIssues?: string;
+  actionItemsMitigation?: string;
+  owner?: string;
+  ownerId?: string;
+  nextSteps?: string;
+  createdBy?: string;
+  createdByName?: string;
+  updatedBy?: string;
+  updatedByName?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+
 
 // ─── Stakeholder Connects Interfaces ──────────────────────────────────────────
 

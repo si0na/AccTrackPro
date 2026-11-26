@@ -5,8 +5,9 @@
 
 import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import { useCRM } from '@/contexts/CRMContext';
-import { performanceEvaluationsApi, employeeMasterApi, PerformanceEvaluationSummaryRow } from '@/api/crm.api';
-import type { PerformanceEvaluation, EmployeeMaster, ColumnConfig } from '@/types';
+import { performanceEvaluationsApi, PerformanceEvaluationSummaryRow } from '@/api/crm.api';
+import type { PerformanceEvaluation, EmployeeDirectoryUser, ColumnConfig } from '@/types';
+import { useEmployees } from '@/hooks/useEmployees';
 import {
   Plus,
   Trash2,
@@ -40,6 +41,7 @@ import {
   SummaryCard,
   Table,
   SearchableSelect,
+  EmployeeSearchableSelect,
 } from '@/components/ui';
 import { CustomizeColumnsSidebar } from '@/components/table/CustomizeColumnsSidebar';
 import { CustomColumnFields } from '@/components/CustomColumnFields';
@@ -84,14 +86,9 @@ export const PerformanceEvaluationView: React.FC = () => {
 
   useEffect(() => { loadEvaluations(); }, [loadEvaluations]);
 
-  // Employee Master directory — only whitelisted employees can be evaluated.
-  const [employees, setEmployees] = useState<EmployeeMaster[]>([]);
-  useEffect(() => {
-    employeeMasterApi.getAll().then(data => {
-      setEmployees([...data].sort((a, b) => (a.name || a.email || '').localeCompare(b.name || b.email || '', undefined, { sensitivity: 'base' })));
-    }).catch(() => {});
-  }, []);
-  const employeeLabel = (emp: EmployeeMaster) => emp.name || emp.email;
+  // Shared Employee Directory (Microsoft Graph with resilient local fallback)
+  const { employees } = useEmployees();
+  const employeeLabel = (emp: EmployeeDirectoryUser) => emp.displayName || emp.email;
 
   // Server-side per-employee reporting aggregates.
   const [summaryRows, setSummaryRows] = useState<PerformanceEvaluationSummaryRow[]>([]);
@@ -423,20 +420,23 @@ export const PerformanceEvaluationView: React.FC = () => {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
           <div className="space-y-1">
             <label className="font-bold text-slate-600 uppercase tracking-wide">Employee</label>
-            {/* Evaluations are restricted to Employee Master entries — no free-text names. */}
-            <select required value={vals.employeeId ?? ''}
-              onChange={e => {
-                const emp = employees.find(x => x.id === e.target.value);
-                set({ ...vals, employeeId: e.target.value, employeeName: emp ? employeeLabel(emp) : '' });
+            <EmployeeSearchableSelect
+              valueId={vals.employeeId ?? ''}
+              valueName={vals.employeeName ?? ''}
+              onSelect={(emp) => {
+                if (emp) {
+                  set({
+                    ...vals,
+                    employeeId: emp.localEmployeeId || emp.id,
+                    employeeName: emp.displayName,
+                  });
+                } else {
+                  set({ ...vals, employeeId: '', employeeName: '' });
+                }
               }}
-              className="w-full p-2 border border-slate-200 rounded-lg bg-white focus:ring-1 focus:ring-indigo-500 text-xs focus:outline-none">
-              <option value="" disabled>
-                {employees.length ? 'Select employee…' : 'No employees in Employee Master'}
-              </option>
-              {employees.map(emp => (
-                <option key={emp.id} value={emp.id}>{employeeLabel(emp)}</option>
-              ))}
-            </select>
+              placeholder="Search employee from directory…"
+              required
+            />
             {vals.employeeName && !vals.employeeId && (
               <p className="text-[10px] text-amber-600 font-medium">
                 Legacy record for “{vals.employeeName}” — select the matching employee to link it.
@@ -890,23 +890,21 @@ export const PerformanceEvaluationView: React.FC = () => {
                       <td className="px-4 py-3 font-semibold text-slate-900 border-r border-slate-200 sticky left-10 bg-white group-hover:bg-slate-50 z-10 cursor-cell"
                         onDoubleClick={() => setEditingCell({ id: evalItem.id, key: 'employeeName', value: evalItem.employeeId || '' })}>
                         {editingCell?.id === evalItem.id && (editingCell?.key === 'employeeName' || editingCell?.key === 'employeeId') ? (
-                          <select
-                            autoFocus
-                            value={evalItem.employeeId ?? ''}
-                            onChange={(e) => {
-                              const emp = employees.find(x => x.id === e.target.value);
-                              if (emp) {
-                                saveInlineCell(evalItem.id, 'employeeId', emp.id, { employeeName: emp.name || emp.email });
-                              }
-                            }}
-                            onBlur={() => setEditingCell(null)}
-                            className="text-xs p-1 border border-indigo-500 rounded bg-white w-full min-w-[140px]"
-                          >
-                            <option value="" disabled>Select employee…</option>
-                            {employees.map(emp => (
-                              <option key={emp.id} value={emp.id}>{employeeLabel(emp)}</option>
-                            ))}
-                          </select>
+                          <div className="min-w-[180px]" onClick={(e) => e.stopPropagation()}>
+                            <EmployeeSearchableSelect
+                              valueId={evalItem.employeeId ?? ''}
+                              valueName={evalItem.employeeName ?? ''}
+                              onSelect={(emp) => {
+                                if (emp) {
+                                  saveInlineCell(evalItem.id, 'employeeId', emp.localEmployeeId || emp.id, {
+                                    employeeName: emp.displayName,
+                                  });
+                                }
+                                setEditingCell(null);
+                              }}
+                              placeholder="Select employee…"
+                            />
+                          </div>
                         ) : (
                           <div className="flex items-center justify-between">
                             <span>{evalItem.employeeName}</span>

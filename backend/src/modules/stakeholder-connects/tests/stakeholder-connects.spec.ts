@@ -1658,7 +1658,7 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
         // 2. Reschedule
         await service.reschedule(
           'conn-1',
-          { newDate: '2026-11-25', newTime: '11:00', reason: 'Client requested postponement' },
+          { newDate: '2026-11-28', newTime: '11:00', reason: 'Client requested postponement' },
           'user-1',
         );
 
@@ -3115,6 +3115,10 @@ describe('Stakeholder Connects Module Verification & Contracts', () => {
           } as any,
           bus,
           { can: jest.fn<any>().mockResolvedValue(true) } as any,
+          {
+            sendCreationNotification: jest.fn<any>().mockResolvedValue({ inApp: true, email: true }),
+            sendDueReminder: jest.fn<any>().mockResolvedValue({ inApp: true, email: true }),
+          } as any,
         );
 
         try {
