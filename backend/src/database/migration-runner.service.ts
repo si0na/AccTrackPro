@@ -14,16 +14,43 @@ export class MigrationRunner {
     await this.ensureMigrationsTable();
 
     const { rows } = await this.db.query(
-      `SELECT version FROM schema_migrations ORDER BY version`,
+      `SELECT version, name FROM schema_migrations ORDER BY version`,
     );
-    const applied = new Set<string>(rows.map((r: any) => r.version as string));
+    const appliedMap = new Map<string, string>(
+      rows.map((r: any) => [r.version as string, r.name as string]),
+    );
 
     const files = this.getMigrationFiles();
+
+    // Check for duplicate numeric prefixes among migration files on disk
+    const seenVersions = new Map<string, string>();
+    for (const file of files) {
+      const version = file.replace(/\.sql$/, '').split('_')[0];
+      if (seenVersions.has(version)) {
+        throw new Error(
+          `Duplicate migration version "${version}" detected: both "${seenVersions.get(version)}" and "${file}" share the same numeric prefix.`,
+        );
+      }
+      seenVersions.set(version, file);
+    }
+
+    // Check for version recorded under a different name in schema_migrations
+    for (const file of files) {
+      const version = file.replace(/\.sql$/, '').split('_')[0];
+      const diskName = file.replace(/\.sql$/, '');
+      const recordedName = appliedMap.get(version);
+      if (recordedName !== undefined && recordedName !== diskName) {
+        throw new Error(
+          `Migration version mismatch for version "${version}": already recorded in schema_migrations as "${recordedName}", but disk file is "${diskName}". Please use an unused number instead of reusing an applied one.`,
+        );
+      }
+    }
+
     let ran = 0;
 
     for (const file of files) {
       const version = file.replace(/\.sql$/, '').split('_')[0];
-      if (applied.has(version)) continue;
+      if (appliedMap.has(version)) continue;
 
       const sql = readFileSync(join(__dirname, 'migrations', file), 'utf-8');
       const client = await this.db.pool.connect();

@@ -9,7 +9,7 @@
   "scripts": {
     "start:dev": "nodemon --watch src --ext ts --exec \"ts-node src/main.ts\"",
     "start:prod": "node dist/main.js",
-    "build": "tsc -p tsconfig.build.json && node -e \"require('fs').cpSync('src/database/migrations','dist/database/migrations',{recursive:true})\"",
+    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && tsc -p tsconfig.build.json && node -e \"require('fs').cpSync('src/database/migrations','dist/database/migrations',{recursive:true})\"",
     "seed:dev": "ts-node src/database/seed.script.ts",
     "lint": "tsc --noEmit",
     "test": "jest",

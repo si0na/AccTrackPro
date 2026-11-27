@@ -1,4 +1,4 @@
--- Migration 113: Action Item Dual-Channel Notifications tracking table
+-- Migration 125: Action Item Dual-Channel Notifications tracking table
 -- Tracks delivery status, timestamps, and error details separately for EMAIL and IN_APP channels.
 
 DO $$
