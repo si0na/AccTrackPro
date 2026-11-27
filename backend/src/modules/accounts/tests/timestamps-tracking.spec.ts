@@ -25,12 +25,12 @@ describe('Created Date and Last Modified Date Tracking Across ReflectOne', () =>
       expect(content).toContain('ALTER TABLE column_configs ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()');
 
       // Verifies historical preservation / backfill
-      expect(content).toContain('UPDATE comments SET updated_at = created_at WHERE updated_at IS NULL');
-      expect(content).toContain('UPDATE project_team_members SET updated_at = created_at WHERE updated_at IS NULL');
-      expect(content).toContain('UPDATE financial_years SET updated_at = created_at WHERE updated_at IS NULL');
-      expect(content).toContain('UPDATE financial_calendar SET created_at = updated_at WHERE created_at IS NULL');
-      expect(content).toContain('UPDATE administration_settings SET created_at = updated_at WHERE created_at IS NULL');
-      expect(content).toContain('UPDATE column_configs SET created_at = updated_at WHERE created_at IS NULL');
+      expect(content).toContain('UPDATE comments SET updated_at = created_at WHERE updated_at = NOW()');
+      expect(content).toContain('UPDATE project_team_members SET updated_at = created_at WHERE updated_at = NOW()');
+      expect(content).toContain('UPDATE financial_years SET updated_at = created_at WHERE updated_at = NOW()');
+      expect(content).toContain('UPDATE financial_calendar SET created_at = updated_at WHERE created_at = NOW()');
+      expect(content).toContain('UPDATE administration_settings SET created_at = updated_at WHERE created_at = NOW()');
+      expect(content).toContain('UPDATE column_configs SET created_at = updated_at WHERE created_at = NOW()');
     });
   });
 
